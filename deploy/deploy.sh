@@ -14,6 +14,9 @@ fi
 "${compose[@]}" build --pull backend dashboard
 "${compose[@]}" pull postgres redis caddy
 "${compose[@]}" up -d --remove-orphans
+"${compose[@]}" exec -T caddy caddy reload \
+  --config /etc/caddy/Caddyfile \
+  --adapter caddyfile
 
 domain="$(grep -E '^SAUTI_DOMAIN=' .env.production | tail -1 | cut -d= -f2-)"
 domain="${domain:-sauti.uk}"
