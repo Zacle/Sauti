@@ -4,7 +4,6 @@ set -Eeuo pipefail
 cd /opt/sauti
 
 : "${IMAGE_TAG:?IMAGE_TAG is required}"
-: "${GHCR_OWNER:=zacle}"
 
 compose=(docker compose --env-file .env.production -f docker-compose.prod.yml)
 previous_tag=""
@@ -12,7 +11,8 @@ if [[ -f .deployed-image-tag ]]; then
   previous_tag="$(<.deployed-image-tag)"
 fi
 
-"${compose[@]}" pull
+"${compose[@]}" build --pull backend dashboard
+"${compose[@]}" pull postgres redis caddy
 "${compose[@]}" up -d --remove-orphans
 
 domain="$(grep -E '^SAUTI_DOMAIN=' .env.production | tail -1 | cut -d= -f2-)"

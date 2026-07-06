@@ -1,8 +1,8 @@
 # Production deployment
 
 Sauti deploys from `main` to one Docker host. GitHub Actions tests the
-backend and dashboard, publishes immutable images to GHCR, and then updates
-the host over SSH.
+backend and dashboard, then updates the host over SSH. The host checks out
+the exact verified commit and builds immutable Docker images locally.
 
 ## Server
 
@@ -36,12 +36,6 @@ Create these repository Actions secrets:
 - `VPS_HOST`: server IPv4 address or hostname
 - `VPS_USER`: non-root deployment user
 - `VPS_SSH_KEY`: private key for that user's authorized public key
-- `GHCR_READ_TOKEN`: fine-grained or classic token that can read the private
-  `sauti-backend` and `sauti-dashboard` packages
-
-The workflow publishes packages privately by default. The read token can be
-removed from the deployment flow after both packages are explicitly made
-public in GitHub.
 
 Protect `main`, require the `backend` and `dashboard` CI jobs, and require pull
 requests for changes once additional collaborators join.

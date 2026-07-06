@@ -29,7 +29,10 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ghcr.io/${GHCR_OWNER:-zacle}/sauti-backend:${IMAGE_TAG:-latest}
+    image: sauti-backend:${IMAGE_TAG:-latest}
+    build:
+      context: ./source
+      dockerfile: Dockerfile
     env_file:
       - ${SAUTI_ENV_FILE:-.env.production}
     environment:
@@ -57,7 +60,12 @@ services:
     restart: unless-stopped
 
   dashboard:
-    image: ghcr.io/${GHCR_OWNER:-zacle}/sauti-dashboard:${IMAGE_TAG:-latest}
+    image: sauti-dashboard:${IMAGE_TAG:-latest}
+    build:
+      context: ./source
+      dockerfile: dashboard/Dockerfile
+      args:
+        SAUTI_API_BASE_URL: http://backend:8080
     environment:
       SAUTI_API_BASE_URL: http://backend:8080
       NODE_ENV: production

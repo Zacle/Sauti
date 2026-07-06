@@ -60,8 +60,9 @@ OpenAPI UI is available at `/swagger-ui.html` when the backend is running.
 
 ## Production deployment
 
-Production runs from immutable GHCR images using Docker Compose and Caddy.
-Pushes to `main` deploy only after the backend and dashboard CI jobs pass.
+Production runs from immutable Docker images using Docker Compose and Caddy.
+Pushes to `main` deploy only after the backend and dashboard CI jobs pass;
+the VPS builds the exact commit that passed CI.
 See [docs/deployment.md](docs/deployment.md) for server provisioning, GitHub
 secrets, DNS, TLS, and backup requirements.
 
