@@ -12,7 +12,7 @@ if [[ -f .deployed-image-tag ]]; then
 fi
 
 "${compose[@]}" build --pull backend dashboard
-"${compose[@]}" pull postgres redis caddy
+"${compose[@]}" pull caddy
 "${compose[@]}" up -d --remove-orphans
 "${compose[@]}" exec -T caddy caddy reload \
   --config /etc/caddy/Caddyfile \
