@@ -1,3 +1,7 @@
+www.{$SAUTI_DOMAIN:sauti.uk} {
+	redir https://{$SAUTI_DOMAIN:sauti.uk}{uri} permanent
+}
+
 {$SAUTI_DOMAIN:sauti.uk} {
 	encode zstd gzip
 
