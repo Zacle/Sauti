@@ -46,6 +46,7 @@ jobs:
             deploy/Caddyfile \
             deploy/docker-compose.prod.yml \
             deploy/deploy.sh \
+            deploy/bootstrap-server-env.sh \
             deploy/backup-postgres.sh \
             "$VPS_USER@$VPS_HOST:/opt/sauti/"
 

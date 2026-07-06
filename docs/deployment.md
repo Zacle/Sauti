@@ -25,6 +25,10 @@ Copy `deploy/.env.production.example` to
 chmod 600 /opt/sauti/.env.production
 ```
 
+For the initial server only, run `deploy/bootstrap-server-env.sh` after the
+database container exists. It generates production secrets directly on the
+host and replaces local-only settings without printing the secrets.
+
 Point the `A` and `AAAA` records for `sauti.uk` at the server. Allow inbound
 TCP 22, 80, and 443 and UDP 443. PostgreSQL, Redis, the backend, and the
 dashboard are intentionally not published on host ports.

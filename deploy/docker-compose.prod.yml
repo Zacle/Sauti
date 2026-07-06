@@ -50,6 +50,7 @@ services:
       TELNYX_MEDIA_WEBSOCKET_BASE_URL: wss://${SAUTI_DOMAIN:-sauti.uk}/ws/telnyx/media
       SAUTI_RECORDINGS_DIR: /data/recordings
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx1536m}
+      MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
     volumes:
       - recordings-data:/data/recordings
     depends_on:
