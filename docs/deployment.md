@@ -1,0 +1,63 @@
+# Production deployment
+
+Sauti deploys from `main` to one Docker host. GitHub Actions tests the
+backend and dashboard, publishes immutable images to GHCR, and then updates
+the host over SSH.
+
+## Server
+
+Use Ubuntu 24.04 on a server with at least 4 GB RAM. The recommended initial
+size is 8 GB because the host runs Spring Boot, Next.js, PostgreSQL, Redis,
+ffmpeg, and Caddy.
+
+Install Docker Engine and the Compose plugin, then create the deployment
+directory:
+
+```bash
+sudo mkdir -p /opt/sauti
+sudo chown "$USER":"$USER" /opt/sauti
+```
+
+Copy `deploy/.env.production.example` to
+`/opt/sauti/.env.production`, replace every placeholder, and restrict it:
+
+```bash
+chmod 600 /opt/sauti/.env.production
+```
+
+Point the `A` and `AAAA` records for `sauti.uk` at the server. Allow inbound
+TCP 22, 80, and 443 and UDP 443. PostgreSQL, Redis, the backend, and the
+dashboard are intentionally not published on host ports.
+
+## GitHub configuration
+
+Create these repository Actions secrets:
+
+- `VPS_HOST`: server IPv4 address or hostname
+- `VPS_USER`: non-root deployment user
+- `VPS_SSH_KEY`: private key for that user's authorized public key
+- `GHCR_READ_TOKEN`: fine-grained or classic token that can read the private
+  `sauti-backend` and `sauti-dashboard` packages
+
+The workflow publishes packages privately by default. The read token can be
+removed from the deployment flow after both packages are explicitly made
+public in GitHub.
+
+Protect `main`, require the `backend` and `dashboard` CI jobs, and require pull
+requests for changes once additional collaborators join.
+
+## Backups
+
+The included backup script creates a PostgreSQL custom-format dump and retains
+seven local days:
+
+```bash
+0 2 * * * /opt/sauti/backup-postgres.sh
+```
+
+Local backups do not protect against server loss. Copy them to encrypted
+off-site object storage with restic or rclone before production customer data
+is stored.
+
+The `recordings-data` volume also needs an off-site retention policy if call
+recordings are kept locally.

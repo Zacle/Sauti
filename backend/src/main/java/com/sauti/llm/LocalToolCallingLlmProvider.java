@@ -1,0 +1,262 @@
+package com.sauti.llm;
+
+import com.sauti.session.BookingDraft;
+import com.sauti.session.CallSessionStore;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.util.regex.Pattern;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
+
+@Component
+@ConditionalOnProperty(name = "sauti.llm.provider", havingValue = "heuristic", matchIfMissing = true)
+public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
+    private static final Pattern NAME_PATTERN = Pattern.compile("(?i)\\b(?:my name is|i am|i'm)\\s+([a-z][a-z\\-']{1,40})\\b");
+    private final CallSessionStore callSessionStore;
+
+    public LocalToolCallingLlmProvider(CallSessionStore callSessionStore) {
+        this.callSessionStore = callSessionStore;
+    }
+
+    @Override
+    public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
+        if (hasSuccessfulTool(context, "transfer_to_human")) {
+            return new LlmToolTurnResponse(transferResponse(context.language(), context.agent().humanTransferNumber()), List.of());
+        }
+        if (hasSuccessfulTool(context, "book_slot")) {
+            return new LlmToolTurnResponse(localized(
+                    context.language(),
+                    "Perfect, you're all booked!",
+                    "Parfait, c'est confirme !",
+                    "Vizuri, umewekwa kwenye ratiba!",
+                    "رائع، تم حجز موعدك!"
+            ), List.of());
+        }
+        if (hasSuccessfulTool(context, "end_call")) {
+            return new LlmToolTurnResponse(localized(
+                    context.language(),
+                    "Great, take care!",
+                    "Tres bien, bonne journee !",
+                    "Sawa, jiangalie!",
+                    "حسناً، إلى اللقاء!"
+            ), List.of());
+        }
+
+        var transcript = context.callerTranscript().toLowerCase(Locale.ROOT);
+        if (isConfirmation(transcript)) {
+            var pendingBooking = callSessionStore.pendingBooking(context.callSid()).orElse(null);
+            if (pendingBooking != null) {
+                callSessionStore.updatePendingBooking(context.callSid(), null);
+                return new LlmToolTurnResponse(localized(
+                        context.language(),
+                        "I will confirm that appointment now.",
+                        "Je confirme ce rendez-vous maintenant.",
+                        "Nitathibitisha miadi hiyo sasa.",
+                        "سأؤكد هذا الموعد الآن."
+                ), List.of(
+                        tool("book_slot", Map.of(
+                                "appointment_at", pendingBooking.confirmedSlot(),
+                                "caller_name", pendingBooking.callerName(),
+                                "caller_phone", pendingBooking.callerPhone(),
+                                "service_type", pendingBooking.serviceType()
+                        )),
+                        tool("send_confirmation_sms", Map.of(
+                                "phone", pendingBooking.callerPhone(),
+                                "message", "Your appointment is confirmed."
+                        ))
+                ));
+            }
+        }
+        if (isEscalationRequest(context, transcript)) {
+            return new LlmToolTurnResponse("", List.of(tool("transfer_to_human", Map.of("reason", "caller requested human"))));
+        }
+        if (transcript.contains("voicemail") || transcript.contains("leave a message")) {
+            return new LlmToolTurnResponse(
+                    localized(
+                            context.language(),
+                            "I can take a message. Please tell me what you would like to share.",
+                            "Je peux prendre votre message. Dites-moi ce que vous souhaitez transmettre.",
+                            "Ninaweza kuchukua ujumbe. Tafadhali niambie ungependa kusema nini.",
+                            "يمكنني تدوين رسالة. أخبرني بما تود مشاركته."
+                    ),
+                    List.of(tool("end_call", Map.of("outcome", "voicemail", "summary", "Caller requested voicemail")))
+            );
+        }
+        if (context.agent().bookingEnabled() && isBookingRequest(transcript)) {
+            var appointmentAt = inferAppointmentTime(transcript, context.agent().timezone());
+            if (appointmentAt == null) {
+                return new LlmToolTurnResponse(
+                        localized(
+                                context.language(),
+                                "Of course. What date and time would you like for the booking?",
+                                "Bien sur. Quelle date et heure souhaitez-vous pour le rendez-vous ?",
+                                "Sawa. Ungependa miadi iwe tarehe na saa gani?",
+                                "بالتأكيد. ما التاريخ والوقت المناسبان للموعد؟"
+                        ),
+                        List.of()
+                );
+            }
+            var availability = latestSuccessfulResult(context, "check_availability");
+            if (availability == null) {
+                return new LlmToolTurnResponse(localized(
+                        context.language(),
+                        "One moment while I check availability.",
+                        "Un instant pendant que je verifie les disponibilites.",
+                        "Subiri kidogo ninapoangalia nafasi zilizopo.",
+                        "لحظة من فضلك بينما أتحقق من الأوقات المتاحة."
+                ), List.of(
+                        tool("check_availability", Map.of(
+                                "date", appointmentAt.toLocalDate().toString(),
+                                "time_preference", appointmentAt.toLocalTime().toString(),
+                                "duration_minutes", 60,
+                                "timezone", context.agent().timezone()
+                        ))
+                ));
+            }
+            var selectedSlot = firstAvailableSlot(availability, appointmentAt);
+            callSessionStore.updatePendingBooking(context.callSid(), new BookingDraft(
+                    inferName(context.callerTranscript()),
+                    inferService(transcript),
+                    appointmentAt.toLocalDate().toString(),
+                    selectedSlot,
+                    context.callerPhone()
+            ));
+            return new LlmToolTurnResponse(localized(
+                    context.language(),
+                    "I found an available slot at " + selectedSlot + ". Would you like me to confirm it?",
+                    "J'ai une disponibilite a " + selectedSlot + ". Voulez-vous confirmer ce rendez-vous ?",
+                    "Nimepata nafasi saa " + selectedSlot + ". Ungependa niithibitishe?",
+                    "وجدت موعدا متاحا في " + selectedSlot + ". هل تريد تأكيده؟"
+            ),
+                    List.of()
+            );
+        }
+
+        var response = localized(
+                context.language(),
+                "Thanks. I am " + context.agent().name() + ". How can I help today?",
+                "Merci. Je suis " + context.agent().name() + ". Comment puis-je vous aider aujourd'hui ?",
+                "Asante. Mimi ni " + context.agent().name() + ". Ninaweza kukusaidiaje leo?",
+                "شكرا. أنا " + context.agent().name() + ". كيف يمكنني مساعدتك اليوم؟"
+        );
+        return new LlmToolTurnResponse(response, List.of());
+    }
+
+    private boolean hasSuccessfulTool(LlmToolTurnContext context, String name) {
+        return context.toolResults().stream().anyMatch(result -> name.equals(result.name()) && result.success());
+    }
+
+    private LlmToolResult latestSuccessfulResult(LlmToolTurnContext context, String name) {
+        return context.toolResults().stream()
+                .filter(result -> name.equals(result.name()) && result.success())
+                .reduce((first, second) -> second)
+                .orElse(null);
+    }
+
+    private String firstAvailableSlot(LlmToolResult availability, OffsetDateTime fallback) {
+        var slots = availability.result().get("slots");
+        if (slots instanceof List<?> slotList && !slotList.isEmpty() && slotList.get(0) instanceof Map<?, ?> slot) {
+            var start = slot.get("start");
+            if (start != null && !start.toString().isBlank()) {
+                return start.toString();
+            }
+        }
+        return fallback.toString();
+    }
+
+    private boolean isConfirmation(String transcript) {
+        return transcript.contains("yes")
+                || transcript.contains("confirm")
+                || transcript.contains("go ahead")
+                || transcript.contains("oui")
+                || transcript.contains("confirme")
+                || transcript.contains("ndiyo")
+                || transcript.contains("thibitisha")
+                || transcript.contains("نعم")
+                || transcript.contains("أكد");
+    }
+
+    private boolean isEscalationRequest(LlmToolTurnContext context, String transcript) {
+        return context.agent().escalationPhrases().stream()
+                .map(phrase -> phrase.toLowerCase(Locale.ROOT))
+                .anyMatch(transcript::contains);
+    }
+
+    private boolean isBookingRequest(String transcript) {
+        return transcript.contains("book")
+                || transcript.contains("appointment")
+                || transcript.contains("schedule")
+                || transcript.contains("reservation")
+                || transcript.contains("rendez-vous")
+                || transcript.contains("miadi")
+                || transcript.contains("موعد")
+                || transcript.contains("حجز");
+    }
+
+    private OffsetDateTime inferAppointmentTime(String transcript, String timezone) {
+        var zone = ZoneId.of(timezone == null || timezone.isBlank() ? "UTC" : timezone);
+        var now = OffsetDateTime.now(zone).plusDays(1).withMinute(0).withSecond(0).withNano(0);
+        if (transcript.contains("tomorrow") || transcript.contains("kesho") || transcript.contains("غدا")) {
+            return now.withHour(10);
+        }
+        if (transcript.contains("next week")) {
+            return now.plusWeeks(1).withHour(10);
+        }
+        return null;
+    }
+
+    private String inferName(String transcript) {
+        var matcher = NAME_PATTERN.matcher(transcript);
+        if (matcher.find()) {
+            return matcher.group(1);
+        }
+        return "Caller";
+    }
+
+    private String inferService(String transcript) {
+        if (transcript.contains("consult")) {
+            return "Consultation";
+        }
+        if (transcript.contains("demo")) {
+            return "Demo";
+        }
+        return "Appointment";
+    }
+
+    private String transferResponse(String language, String transferNumber) {
+        if (transferNumber == null || transferNumber.isBlank()) {
+            return localized(
+                    language,
+                    "I cannot reach a human right now, but I can take a message.",
+                    "Je ne peux pas joindre un humain pour le moment, mais je peux prendre un message.",
+                    "Siwezi kumpata mhudumu kwa sasa, lakini ninaweza kuchukua ujumbe.",
+                    "لا يمكنني الوصول إلى موظف الآن، لكن يمكنني تدوين رسالة."
+            );
+        }
+        return localized(
+                language,
+                "I am transferring you to a team member.",
+                "Je vous transfere vers un membre de l'equipe.",
+                "Ninakuhamishia kwa mhudumu wa timu.",
+                "سأحولك إلى أحد أعضاء الفريق."
+        );
+    }
+
+    private String localized(String language, String english, String french, String swahili, String arabic) {
+        return switch (language == null ? "" : language.toLowerCase(Locale.ROOT)) {
+            case "fr" -> french;
+            case "sw" -> swahili;
+            case "ar" -> arabic;
+            default -> english;
+        };
+    }
+
+    private LlmToolCall tool(String name, Map<String, Object> arguments) {
+        return new LlmToolCall(UUID.randomUUID().toString(), name, arguments);
+    }
+
+}

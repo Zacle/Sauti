@@ -1,0 +1,17 @@
+:root {
+  --ink: #ecfbff;
+  --ink-soft: #b9c9d7;
+  --muted: #7f91a3;
+  --line: rgba(108, 238, 230, 0.2);
+  --paper: #020a14;
+  --panel: rgba(9, 22, 36, 0.82);
+  --panel-2: rgba(15, 31, 48, 0.72);
+  --navy: #04111f;
+  --navy-2: #071c31;
+  --cyan: #37e6da;
+  --mint: #6af5cf;
+  --violet: #8f77ff;
+  --amber: #ffb35c;
+  --rose: #ff596d;
+  --shadow: 0 28px 90px rgba(0, 0, 0, 0.42);
+}

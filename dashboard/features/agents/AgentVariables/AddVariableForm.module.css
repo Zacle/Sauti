@@ -1,0 +1,247 @@
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid #b9e8e3;
+  border-radius: 11px;
+  color: #087e78;
+  background: #effbf9;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.form {
+  margin-top: 22px;
+  padding: 22px;
+  border: 1px solid #dce6ec;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 34px rgba(22, 52, 73, 0.06);
+}
+
+.form header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.form footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.form header .icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  color: #087e78;
+  background: #e8f8f6;
+}
+
+.form header div {
+  display: grid;
+  gap: 3px;
+}
+
+.form header div > span {
+  color: #1d2939;
+  font-size: 0.88rem;
+  font-weight: 550;
+}
+
+.form header small {
+  color: #7c899b;
+  font-size: 0.7rem;
+}
+
+.form header button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  color: #667085;
+  background: transparent;
+  cursor: pointer;
+}
+
+.form header button:hover {
+  background: #f1f4f7;
+}
+
+.tip {
+  margin: 18px 0;
+  padding: 10px 12px;
+  border: 1px solid #dcefeb;
+  border-radius: 10px;
+  color: #607086;
+  background: #f5fbfa;
+  font-size: 0.72rem;
+}
+
+.tip code {
+  margin-left: 4px;
+  color: #087e78;
+  font-size: 0.72rem;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: start;
+  gap: 15px 16px;
+}
+
+.form label {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  color: #344054;
+  font-size: 0.75rem;
+}
+
+.fields > label:not(.wide) {
+  grid-template-rows: 18px 44px auto;
+}
+
+.form label.wide {
+  grid-column: 1 / -1;
+}
+
+.form input:not([type="checkbox"]),
+.form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid #d6e0e8;
+  border-radius: 11px;
+  outline: none;
+  background: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.form input:not([type="checkbox"]):focus,
+.form textarea:focus {
+  border-color: #27bdb4;
+  box-shadow: 0 0 0 3px rgba(39, 189, 180, 0.1);
+}
+
+.form textarea {
+  height: 72px;
+  min-height: 72px;
+  padding-block: 11px;
+  resize: vertical;
+}
+
+.form small {
+  color: #8996a8;
+  font-size: 0.66rem;
+}
+
+.keyInput {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  height: 44px;
+  padding: 0 11px;
+  border: 1px solid #d6e0e8;
+  border-radius: 11px;
+  color: #07958e;
+  background: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.keyInput:focus-within {
+  border-color: #27bdb4;
+  box-shadow: 0 0 0 3px rgba(39, 189, 180, 0.1);
+}
+
+.keyInput input:not([type="checkbox"]) {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-family: inherit;
+}
+
+.form footer {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid #e9eef2;
+}
+
+.required {
+  display: inline-flex;
+  align-items: center;
+  grid-template-columns: auto 1fr;
+  gap: 9px;
+}
+
+.required > span {
+  display: grid;
+  gap: 2px;
+}
+
+.required i {
+  color: #344054;
+  font-size: 0.72rem;
+  font-style: normal;
+}
+
+.form footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.cancel {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid #d8e1e8;
+  border-radius: 10px;
+  color: #536176;
+  background: #fff;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.error {
+  margin-top: 12px;
+  color: #b42318;
+  font-size: 0.74rem;
+}
+
+@media (max-width: 640px) {
+  .fields {
+    grid-template-columns: 1fr;
+  }
+
+  .form label.wide {
+    grid-column: auto;
+  }
+
+  .form footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .form footer > div {
+    justify-content: flex-end;
+  }
+}

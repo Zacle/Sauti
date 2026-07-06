@@ -1,0 +1,4 @@
+ALTER TABLE agents ADD COLUMN after_hours_behavior VARCHAR(30) NOT NULL DEFAULT 'answer';
+ALTER TABLE agents ADD COLUMN after_hours_message VARCHAR(1000);
+
+ALTER TABLE calls ADD COLUMN after_hours BOOLEAN NOT NULL DEFAULT FALSE;

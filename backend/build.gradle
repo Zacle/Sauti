@@ -1,0 +1,70 @@
+plugins {
+    id "java"
+    id "org.springframework.boot" version "3.5.14"
+    id "io.spring.dependency-management" version "1.1.6"
+}
+
+group = "com.sauti"
+version = "0.1.0-SNAPSHOT"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+dependencies {
+    implementation platform("org.springframework.ai:spring-ai-bom:1.1.8")
+
+    implementation "org.springframework.boot:spring-boot-starter-actuator"
+    implementation "org.springframework.boot:spring-boot-starter-data-jpa"
+    implementation "org.springframework.boot:spring-boot-starter-data-redis"
+    implementation "org.springframework.boot:spring-boot-starter-security"
+    implementation "org.springframework.boot:spring-boot-starter-mail"
+    implementation "org.springframework.boot:spring-boot-starter-validation"
+    implementation "org.springframework.boot:spring-boot-starter-thymeleaf"
+    implementation "org.springframework.boot:spring-boot-starter-web"
+    implementation "org.springframework.boot:spring-boot-starter-websocket"
+    implementation "org.flywaydb:flyway-core"
+    implementation "org.flywaydb:flyway-database-postgresql"
+    implementation "org.postgresql:postgresql"
+    implementation "com.auth0:java-jwt:4.4.0"
+    implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0"
+    implementation "org.springframework.ai:spring-ai-google-genai"
+    implementation "org.springframework.ai:spring-ai-openai"
+    implementation "org.apache.tika:tika-core:3.2.3"
+    implementation "org.apache.tika:tika-parsers-standard-package:3.2.3"
+    implementation "com.google.firebase:firebase-admin:9.9.0"
+
+    runtimeOnly "com.h2database:h2"
+    runtimeOnly "io.micrometer:micrometer-registry-prometheus"
+
+    testImplementation "org.springframework.boot:spring-boot-starter-test"
+    testImplementation "org.springframework.security:spring-security-test"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+tasks.named("test") {
+    useJUnitPlatform()
+}
+
+tasks.named("processResources") {
+    from(rootProject.file("docs/agent-templates.md")) {
+        into "templates"
+    }
+}
+
+tasks.named("bootRun") {
+    def dotenv = rootProject.file(".env")
+    if (dotenv.exists()) {
+        dotenv.eachLine { rawLine ->
+            def line = rawLine.trim()
+            if (line && !line.startsWith("#") && line.contains("=")) {
+                def separator = line.indexOf("=")
+                def key = line.substring(0, separator).trim()
+                def value = line.substring(separator + 1).trim()
+                environment key, value
+            }
+        }
+    }
+}

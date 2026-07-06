@@ -1,0 +1,33 @@
+(function () {
+  var script = document.currentScript;
+  var agent = script && script.getAttribute("data-agent");
+  if (!script || !agent) return;
+  var source = new URL(script.src);
+  var base = script.getAttribute("data-base-url") || source.origin;
+  var color = script.getAttribute("data-color") || "#31d9c9";
+  var position = script.getAttribute("data-position") === "left" ? "left" : "right";
+  var language = script.getAttribute("data-lang") || "";
+  var label = script.getAttribute("data-label") || "Talk to us";
+  if (!/^#[0-9a-f]{6}$/i.test(color)) color = "#31d9c9";
+  var button = document.createElement("button");
+  button.type = "button";
+  button.setAttribute("aria-label", "Talk to our voice assistant");
+  button.textContent = label;
+  button.style.cssText = "position:fixed;" + position + ":24px;bottom:24px;z-index:2147483646;border:0;border-radius:999px;padding:14px 20px;background:" + color + ";color:#062d2b;font:600 15px system-ui;box-shadow:0 14px 36px rgba(5,55,61,.24);cursor:pointer";
+  var frame = document.createElement("iframe");
+  var callUrl = new URL(base.replace(/\/$/, "") + "/call/" + encodeURIComponent(agent));
+  callUrl.searchParams.set("embed", "1");
+  callUrl.searchParams.set("color", color);
+  if (language) callUrl.searchParams.set("lang", language);
+  frame.src = callUrl.toString();
+  frame.referrerPolicy = "strict-origin";
+  frame.title = "Voice assistant";
+  frame.allow = "microphone";
+  frame.style.cssText = "position:fixed;" + position + ":24px;bottom:88px;z-index:2147483647;width:min(410px,calc(100vw - 32px));height:min(680px,calc(100vh - 120px));border:0;border-radius:24px;background:white;box-shadow:0 24px 80px rgba(3,31,43,.28);display:none";
+  button.addEventListener("click", function () {
+    frame.style.display = frame.style.display === "none" ? "block" : "none";
+    button.textContent = frame.style.display === "none" ? label : "Close";
+  });
+  document.body.appendChild(frame);
+  document.body.appendChild(button);
+})();

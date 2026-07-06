@@ -1,0 +1,241 @@
+package com.sauti.agent;
+
+import com.sauti.agent.AgentDtos.AgentRequest;
+import com.sauti.agent.OnboardingDtos.CompleteOnboardingRequest;
+import com.sauti.tool.DefaultToolSeeder;
+import java.net.URI;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class OnboardingCompletionService {
+    private static final Set<String> BUSINESS_TYPES = Set.of(
+            "Local business", "Healthcare", "Service team", "Multi-location"
+    );
+    private static final Set<String> USE_CASES = Set.of(
+            "Appointment booking", "Customer support", "Lead qualification", "Call routing", "Reminders"
+    );
+    private static final Set<String> CALENDAR_PROVIDERS = Set.of(
+            "Google Calendar", "Calendly", "Custom webhook", "Set up later"
+    );
+    private static final Set<String> ROUTING_POLICIES = Set.of("Fixed calendar", "Set up later");
+    private static final Set<String> LANGUAGES = Set.of("sw", "en", "fr", "ar");
+
+    private final AgentService agentService;
+    private final AgentRepository agentRepository;
+    private final AgentVariableService agentVariableService;
+    private final DefaultToolSeeder defaultToolSeeder;
+
+    public OnboardingCompletionService(
+            AgentService agentService,
+            AgentRepository agentRepository,
+            AgentVariableService agentVariableService,
+            DefaultToolSeeder defaultToolSeeder
+    ) {
+        this.agentService = agentService;
+        this.agentRepository = agentRepository;
+        this.agentVariableService = agentVariableService;
+        this.defaultToolSeeder = defaultToolSeeder;
+    }
+
+    @Transactional
+    public Agent complete(UUID tenantId, CompleteOnboardingRequest request) {
+        validate(request);
+        var services = request.bookableServices().stream()
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
+        boolean bookingEnabled = "Appointment booking".equals(request.primaryUseCase());
+        String website = normalizeWebsite(request.businessWebsite());
+        String voiceProfile = request.voiceProfile() == null || request.voiceProfile().isBlank()
+                ? "Provider default"
+                : request.voiceProfile().trim();
+        String prompt = prompt(request, bookingEnabled);
+        var draft = new AgentRequest(
+                request.agentName().trim(),
+                request.primaryUseCase() + " agent for " + request.businessType().toLowerCase(Locale.ROOT),
+                greeting(request.defaultLanguage(), request.primaryUseCase()),
+                prompt,
+                request.defaultLanguage(),
+                List.copyOf(new LinkedHashSet<>(request.supportedLanguages())),
+                blankToNull(request.ttsVoiceId()),
+                null,
+                List.of("speak to a person", "talk to a human", "human agent", "representative"),
+                bookingEnabled,
+                request.timezone(),
+                "",
+                "workspace",
+                "answer",
+                null,
+                300,
+                true,
+                false,
+                "Healthcare".equals(request.businessType()) ? "advanced" : "standard",
+                0.70,
+                300,
+                600,
+                10,
+                1,
+                true,
+                true,
+                false,
+                300,
+                "Healthcare".equals(request.businessType()) ? "medical" : null,
+                services.isEmpty() ? null : String.join(",", services),
+                "Healthcare".equals(request.businessType()) ? List.of("medical diagnosis") : List.of(),
+                List.of("summary", "successful", "sentiment", "intent"),
+                "#",
+                5,
+                8,
+                java.util.Map.of(),
+                false,
+                java.util.List.of(),
+                true,
+                false,
+                null
+        );
+
+        var agent = agentService.create(tenantId, draft);
+        agent.configureOnboarding(
+                request.businessType(),
+                request.primaryUseCase(),
+                website,
+                services,
+                request.calendarProvider(),
+                request.routingPolicy(),
+                voiceProfile
+        );
+        agentRepository.save(agent);
+        defaultToolSeeder.configureOnboardingDraft(agent);
+        seedVariables(tenantId, agent, website, services, request);
+        return agent;
+    }
+
+    private void seedVariables(
+            UUID tenantId,
+            Agent agent,
+            String website,
+            List<String> services,
+            CompleteOnboardingRequest request
+    ) {
+        agentVariableService.create(
+                tenantId, agent.getId(), "business_website", "Business website",
+                "Website the agent can reference when directing callers.", website, false
+        );
+        agentVariableService.create(
+                tenantId, agent.getId(), "bookable_services", "Bookable services",
+                "Services the agent is allowed to discuss and book.", String.join(", ", services),
+                agent.isBookingEnabled()
+        );
+        agentVariableService.create(
+                tenantId, agent.getId(), "calendar_provider", "Calendar destination",
+                "Calendar selected during onboarding. Credentials are connected separately.",
+                request.calendarProvider(), false
+        );
+        agentVariableService.create(
+                tenantId, agent.getId(), "routing_policy", "Meeting routing",
+                "How confirmed bookings should be assigned.", request.routingPolicy(), false
+        );
+    }
+
+    private String prompt(CompleteOnboardingRequest request, boolean bookingEnabled) {
+        String bookingRules = bookingEnabled
+                ? """
+                  BOOKING RULES
+                  - Only offer services listed in {{bookable_services}}.
+                  - Check availability before offering a time.
+                  - Confirm the caller's name, phone number, service, date, and time before booking.
+                  - The selected calendar destination is {{calendar_provider}} using {{routing_policy}} routing.
+                  """
+                : """
+                  SCOPE RULES
+                  - Help only with the configured use case and services.
+                  - Do not claim that an appointment has been booked.
+                  """;
+        return """
+                You are {{agent_name}}, a professional AI voice agent.
+
+                BUSINESS TYPE
+                %s
+
+                PRIMARY USE CASE
+                %s
+
+                APPROVED SERVICES
+                {{bookable_services}}
+
+                BUSINESS WEBSITE
+                {{business_website}}
+
+                %s
+
+                CONVERSATION RULES
+                - Be concise, natural, and helpful.
+                - Ask one question at a time.
+                - Confirm important details before taking action.
+                - If a request is outside your scope, explain the limitation and offer human follow-up.
+                - Never invent business information, availability, prices, or policies.
+                """.formatted(request.businessType(), request.primaryUseCase(), bookingRules);
+    }
+
+    private String greeting(String language, String useCase) {
+        boolean booking = "Appointment booking".equals(useCase);
+        return switch (language) {
+            case "fr" -> booking
+                    ? "Bonjour, merci de votre appel. Je peux vous aider à prendre rendez-vous."
+                    : "Bonjour, merci de votre appel. Comment puis-je vous aider ?";
+            case "sw" -> booking
+                    ? "Habari, asante kwa kupiga simu. Ninaweza kukusaidia kupanga miadi."
+                    : "Habari, asante kwa kupiga simu. Ninaweza kukusaidiaje?";
+            case "ar" -> booking
+                    ? "مرحباً، شكراً لاتصالك. يمكنني مساعدتك في حجز موعد."
+                    : "مرحباً، شكراً لاتصالك. كيف يمكنني مساعدتك؟";
+            default -> booking
+                    ? "Hello, thanks for calling. I can help you schedule an appointment."
+                    : "Hello, thanks for calling. How can I help today?";
+        };
+    }
+
+    private void validate(CompleteOnboardingRequest request) {
+        requireAllowed("business type", request.businessType(), BUSINESS_TYPES);
+        requireAllowed("primary use case", request.primaryUseCase(), USE_CASES);
+        requireAllowed("calendar provider", request.calendarProvider(), CALENDAR_PROVIDERS);
+        requireAllowed("routing policy", request.routingPolicy(), ROUTING_POLICIES);
+        requireAllowed("default language", request.defaultLanguage(), LANGUAGES);
+        if (request.supportedLanguages().stream().anyMatch(language -> !LANGUAGES.contains(language))) {
+            throw new IllegalArgumentException("Supported languages are fr, ar, sw, and en");
+        }
+        if (!request.supportedLanguages().contains(request.defaultLanguage())) {
+            throw new IllegalArgumentException("Default language must be included in supported languages");
+        }
+    }
+
+    private void requireAllowed(String label, String value, Set<String> allowed) {
+        if (!allowed.contains(value)) {
+            throw new IllegalArgumentException("Unsupported " + label + ": " + value);
+        }
+    }
+
+    private String normalizeWebsite(String website) {
+        if (website == null || website.isBlank()) return "";
+        try {
+            var uri = URI.create(website.trim());
+            if (!Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null) {
+                throw new IllegalArgumentException("Business website must be an http or https URL");
+            }
+            return uri.toString();
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Business website must be a valid http or https URL");
+        }
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+}

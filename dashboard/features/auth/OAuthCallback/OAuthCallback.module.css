@@ -1,0 +1,41 @@
+.page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: #f6f9fc;
+}
+
+.page section {
+  display: grid;
+  width: min(420px, 100%);
+  justify-items: center;
+  padding: 42px;
+  border: 1px solid #dfe7ee;
+  border-radius: 20px;
+  color: #132238;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(28, 49, 77, 0.08);
+  text-align: center;
+}
+
+.page svg {
+  color: #08a49b;
+}
+
+.page h1 {
+  margin: 18px 0 8px;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.page p {
+  margin: 0;
+  color: #718096;
+  line-height: 1.5;
+}
+
+.page a {
+  margin-top: 20px;
+  color: #087f79;
+}

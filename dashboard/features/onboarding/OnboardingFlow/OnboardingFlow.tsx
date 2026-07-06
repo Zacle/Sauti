@@ -1,0 +1,471 @@
+"use client";
+
+import "./OnboardingFlow.css";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  AudioLines,
+  ArrowRight,
+  Bot,
+  Building2,
+  CalendarCheck,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Globe2,
+  Headphones,
+  PhoneCall,
+  ShieldCheck,
+  Sparkles,
+  Stethoscope,
+  UsersRound,
+  Workflow,
+} from "lucide-react";
+import { completeOnboarding } from "@/lib/api/onboarding";
+import { listVoices } from "@/lib/api/voices";
+import { formatTimezone, TIMEZONE_GROUPS } from "@/lib/timezones";
+import { useAuth } from "@/hooks/useAuth";
+import type { VoiceOption } from "@/types/api";
+
+const businessTypes: Array<[string, string, LucideIcon]> = [
+  ["Local business", "Appointments and customer calls", Building2],
+  ["Healthcare", "Patient access and reminders", Stethoscope],
+  ["Service team", "Support, routing, and follow-up", Headphones],
+  ["Multi-location", "Teams, calendars, and routing", UsersRound],
+];
+
+const calendarOptions: Array<[string, string, LucideIcon]> = [
+  ["Google Calendar", "Save as the target, then connect credentials in the studio", CalendarCheck],
+  ["Calendly", "Save as the target, then connect credentials in the studio", Clock3],
+  ["Custom webhook", "Configure your booking endpoint in the studio", Workflow],
+  ["Set up later", "Use local test availability while designing the draft", Globe2],
+];
+
+const languageOptions = [
+  ["sw", "Swahili"],
+  ["en", "English"],
+  ["fr", "French"],
+  ["ar", "Arabic"],
+] as const;
+
+type SupportedLanguage = typeof languageOptions[number][0];
+
+const stepCopy = [
+  {
+    eyebrow: "Business profile",
+    title: "Tell Sauti what kind of calls to handle.",
+    description: "We will use this to draft the first agent, booking rules, tools, and test scenarios. You can edit everything later.",
+  },
+  {
+    eyebrow: "Calendar and routing",
+    title: "Choose where bookings should go.",
+    description: "Select the calendar connection and routing policy Sauti should use when a caller asks for a time.",
+  },
+  {
+    eyebrow: "Agent identity",
+    title: "Shape how your agent sounds.",
+    description: "Choose the agent name, language behavior, and voice profile. These settings can be refined before launch.",
+  },
+  {
+    eyebrow: "Review setup",
+    title: "Your first agent is ready to generate.",
+    description: "Review the configuration below. Finishing setup creates the draft without activating a live phone number.",
+  },
+] as const;
+
+const actionCopy = [
+  "Next: connect calendar and choose meeting routing.",
+  "Next: choose your agent identity and voice.",
+  "Next: review the generated setup.",
+  "Finish: create the draft agent in your workspace.",
+];
+
+export function OnboardingFlow() {
+  const router = useRouter();
+  const { session } = useAuth();
+  const [step, setStep] = useState(1);
+  const [direction, setDirection] = useState<"forward" | "backward">("forward");
+  const [businessType, setBusinessType] = useState("Service team");
+  const [useCase, setUseCase] = useState("Appointment booking");
+  const [businessWebsite, setBusinessWebsite] = useState("");
+  const [selectedServices, setSelectedServices] = useState(["Consultation", "Follow-up visit", "Product demo", "Callback request"]);
+  const [timezone, setTimezone] = useState("Africa/Nairobi");
+  const [calendar, setCalendar] = useState("Set up later");
+  const [routing, setRouting] = useState("Fixed calendar");
+  const [agentName, setAgentName] = useState("Amina");
+  const [language, setLanguage] = useState<SupportedLanguage>("sw");
+  const [autoDetectLanguages, setAutoDetectLanguages] = useState(true);
+  const [voiceId, setVoiceId] = useState("");
+  const [voices, setVoices] = useState<VoiceOption[]>([]);
+  const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState("");
+
+  const useCases = ["Appointment booking", "Customer support", "Lead qualification", "Call routing", "Reminders"];
+  const services = ["Consultation", "Follow-up visit", "Product demo", "Callback request"];
+  const routingOptions = ["Fixed calendar", "Set up later"];
+  const currentCopy = stepCopy[step - 1];
+  const selectedVoice = voices.find((item) => item.id === voiceId);
+  const voiceName = selectedVoice?.name ?? "Provider default";
+  const languageName = languageOptions.find(([code]) => code === language)?.[1] ?? language;
+  const greeting = greetingFor(language, useCase);
+
+  useEffect(() => {
+    listVoices()
+      .then((catalog) => setVoices(catalog.voices))
+      .catch(() => setVoices([]));
+  }, []);
+
+  function toggleService(service: string) {
+    setSelectedServices((current) =>
+      current.includes(service) ? current.filter((item) => item !== service) : [...current, service],
+    );
+  }
+
+  function changeStep(nextStep: number) {
+    setDirection(nextStep >= step ? "forward" : "backward");
+    setStep(Math.min(4, Math.max(1, nextStep)));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function finishSetup() {
+    setFinishing(true);
+    setFinishError("");
+    try {
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+      if (!selectedServices.length) {
+        throw new Error("Select at least one service before finishing setup.");
+      }
+      const supportedLanguages: SupportedLanguage[] = autoDetectLanguages
+        ? languageOptions.map(([code]) => code)
+        : [language];
+      const agent = await completeOnboarding({
+        businessType,
+        primaryUseCase: useCase,
+        businessWebsite,
+        bookableServices: selectedServices,
+        timezone,
+        calendarProvider: calendar,
+        routingPolicy: routing,
+        agentName: agentName.trim() || "Amina",
+        defaultLanguage: language,
+        supportedLanguages,
+        ttsVoiceId: voiceId || null,
+        voiceProfile: voiceName,
+      });
+      router.replace(`/agents/${agent.id}`);
+    } catch (caught) {
+      setFinishError(caught instanceof Error ? caught.message : "Unable to create the draft agent.");
+      setFinishing(false);
+    }
+  }
+
+  return (
+    <main className="onboarding-clean-page">
+      <header className="onboarding-topbar">
+        <Link className="onboarding-brand" href="/">
+          <span className="brand-mark">S</span>
+          <strong>Sauti</strong>
+        </Link>
+        <div className="onboarding-step">
+          <span>Step {step} of 4</span>
+          <div className="onboarding-step-segments" role="progressbar" aria-label="Onboarding progress" aria-valuemin={1} aria-valuemax={4} aria-valuenow={step}>
+            {[1, 2, 3, 4].map((item) => <i className={item <= step ? "active" : ""} key={item} />)}
+          </div>
+        </div>
+        <Link className="onboarding-skip" href="/dashboard">Skip setup <ChevronRight size={17} /></Link>
+      </header>
+
+      <section className="onboarding-clean-shell">
+        <section className="onboarding-panel">
+          {step > 1 && (
+            <button className="onboarding-back" type="button" onClick={() => changeStep(step - 1)}>
+              <ChevronLeft size={18} /> Back
+            </button>
+          )}
+
+          <div className={`onboarding-heading step-motion step-${direction}`} key={`heading-${step}`}>
+            <span>{currentCopy.eyebrow}</span>
+            <h1>{step === 1 ? <>Tell <em>Sauti</em> what kind of calls to handle.</> : currentCopy.title}</h1>
+            <p>{currentCopy.description}</p>
+          </div>
+
+          <div className={`onboarding-step-content step-${direction}`} key={step} aria-live="polite">
+            {step === 1 && (
+              <>
+                <ChoiceSection title="Business type" note="Choose one">
+                  <div className="business-choice-grid">
+                    {businessTypes.map(([title, detail, Icon]) => (
+                      <button
+                        className={businessType === title ? "selected" : ""}
+                        type="button"
+                        key={title}
+                        onClick={() => setBusinessType(title)}
+                      >
+                        <span className="choice-icon"><Icon size={21} /></span>
+                        <strong>{title}</strong>
+                        <small>{detail}</small>
+                        {businessType === title && <span className="choice-check"><Check size={14} /></span>}
+                      </button>
+                    ))}
+                  </div>
+                </ChoiceSection>
+
+                <ChoiceSection title="Primary use case" note="Multiple allowed later">
+                  <div className="onboarding-pills">
+                    {useCases.map((item) => (
+                      <button
+                        className={useCase === item ? "selected" : ""}
+                        type="button"
+                        key={item}
+                        onClick={() => setUseCase(item)}
+                      >
+                        {useCase === item && <Check size={14} />}
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </ChoiceSection>
+
+                <div className="onboarding-section two-column">
+                  <label>
+                    Business website
+                    <span className="onboarding-input-shell">
+                      <Globe2 size={17} />
+                      <input
+                        inputMode="url"
+                        placeholder="https://yourcompany.com"
+                        value={businessWebsite}
+                        onChange={(event) => setBusinessWebsite(event.target.value)}
+                      />
+                    </span>
+                  </label>
+                  <label>
+                    Default timezone
+                    <span className="onboarding-input-shell">
+                      <Clock3 size={17} />
+                      <select value={timezone} onChange={(event) => setTimezone(event.target.value)}>
+                        {TIMEZONE_GROUPS.map((group) => (
+                          <optgroup label={group.label} key={group.label}>
+                            {group.zones.map((zone) => (
+                              <option value={zone.value} key={zone.value}>{zone.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </span>
+                  </label>
+                </div>
+
+                <ChoiceSection title="Bookable services" note="Select all that apply">
+                  <div className="service-chip-grid">
+                    {services.map((item) => {
+                      const selected = selectedServices.includes(item);
+                      return (
+                        <button
+                          className={selected ? "selected" : ""}
+                          type="button"
+                          key={item}
+                          onClick={() => toggleService(item)}
+                        >
+                          {selected && <Check size={15} />}
+                          {item}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </ChoiceSection>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <ChoiceSection title="Calendar connection" note="Choose one">
+                  <div className="business-choice-grid">
+                    {calendarOptions.map(([title, detail, Icon]) => (
+                      <button
+                        className={calendar === title ? "selected" : ""}
+                        type="button"
+                        key={title}
+                        onClick={() => setCalendar(title)}
+                      >
+                        <span className="choice-icon"><Icon size={21} /></span>
+                        <strong>{title}</strong>
+                        <small>{detail}</small>
+                        {calendar === title && <span className="choice-check"><Check size={14} /></span>}
+                      </button>
+                    ))}
+                  </div>
+                </ChoiceSection>
+                <ChoiceSection title="Meeting routing" note="How bookings are assigned">
+                  <div className="onboarding-pills">
+                    {routingOptions.map((item) => (
+                      <button
+                        className={routing === item ? "selected" : ""}
+                        type="button"
+                        key={item}
+                        onClick={() => setRouting(item)}
+                      >
+                        {routing === item && <Check size={14} />}
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </ChoiceSection>
+              </>
+            )}
+
+            {step === 3 && (
+              <div className="onboarding-section two-column">
+                <label className="onboarding-field-wide">
+                  Agent name
+                  <input value={agentName} onChange={(event) => setAgentName(event.target.value)} placeholder="Amina" />
+                </label>
+                <label>
+                  Primary language
+                  <select value={language} onChange={(event) => setLanguage(event.target.value as SupportedLanguage)}>
+                    {languageOptions.map(([code, label]) => (
+                      <option value={code} key={code}>{label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Voice
+                  <select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
+                    <option value="">Provider default</option>
+                    {voices.map((item) => (
+                      <option value={item.id} key={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="onboarding-field-wide onboarding-detect-field">
+                  <input
+                    checked={autoDetectLanguages}
+                    onChange={(event) => setAutoDetectLanguages(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    Detect supported caller languages automatically
+                    <small>Supports Swahili, English, French, and Arabic. The primary language is used as fallback.</small>
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {step === 4 && (
+              <>
+                <div className="onboarding-review-grid">
+                  <ReviewItem icon={Building2} label="Business" value={businessType} />
+                  <ReviewItem icon={CalendarCheck} label="Use case" value={useCase} />
+                  <ReviewItem icon={Clock3} label="Timezone" value={formatTimezone(timezone)} />
+                  <ReviewItem icon={Sparkles} label="Services" value={selectedServices.length ? selectedServices.join(", ") : "None selected"} />
+                  <ReviewItem icon={CalendarCheck} label="Calendar" value={calendar} />
+                  <ReviewItem icon={Workflow} label="Routing" value={routing} />
+                  <ReviewItem icon={Bot} label="Agent" value={agentName || "Unnamed agent"} />
+                  <ReviewItem
+                    icon={AudioLines}
+                    label="Language and voice"
+                    value={`${languageName}${autoDetectLanguages ? " + auto detect" : ""} / ${voiceName}`}
+                  />
+                </div>
+                <div className="onboarding-ready-card">
+                  <CheckCircle2 size={22} />
+                  <div>
+                    <strong>Ready to create the draft</strong>
+                    <span>You can connect credentials and test calls from the dashboard before activation.</span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="onboarding-actions">
+            <span><Sparkles size={17} /> {finishError || actionCopy[step - 1]}</span>
+            {step < 4 ? (
+              <button className="app-primary-button" type="button" onClick={() => changeStep(step + 1)}>
+                Continue <ArrowRight size={17} />
+              </button>
+            ) : (
+              <button className="app-primary-button" disabled={finishing} type="button" onClick={() => void finishSetup()}>
+                {finishing ? "Creating agent..." : "Finish setup"} <ArrowRight size={17} />
+              </button>
+            )}
+          </div>
+        </section>
+
+        <aside className="onboarding-preview-panel">
+          <div className={`setup-preview-card step-${direction}`} key={`preview-${step}`}>
+            <div className="setup-preview-top">
+              <span><Bot size={18} /> Draft agent</span>
+              <b>{step === 4 ? "Configured" : "Ready"}</b>
+            </div>
+            <div className="setup-agent-title">
+              <span>{(agentName || "A").slice(0, 1).toUpperCase()}</span>
+              <h2>{agentName || "Amina"}, {useCase.toLowerCase()} agent</h2>
+            </div>
+            <p>Answers inbound calls, detects the caller&apos;s language, checks availability, confirms details, and books approved services.</p>
+            <div className="setup-preview-stack">
+              <div><PhoneCall size={17} /><span>Inbound phone calls</span></div>
+              <div><CalendarCheck size={17} /><span>{calendar}</span></div>
+              <div><Globe2 size={17} /><span>{languageName}{autoDetectLanguages ? " + auto detect" : ""}</span></div>
+              <div><Clock3 size={17} /><span>{formatTimezone(timezone)}</span></div>
+            </div>
+            <div className="setup-transcript">
+              <div className="setup-transcript-label"><AudioLines size={18} /><small>Generated greeting</small></div>
+              <p>&quot;{greeting}&quot;</p>
+            </div>
+          </div>
+          <div className="onboarding-preview-note">
+            <ShieldCheck size={18} />
+            <span>Sauti will create the draft prompt, reusable variables, and test-mode tools from this setup.</span>
+          </div>
+          <div className="onboarding-trust-badge">
+            <span><ShieldCheck size={20} /></span>
+            <div><strong>Enterprise grade</strong><small>Secure · Reliable · Trusted</small></div>
+          </div>
+        </aside>
+      </section>
+    </main>
+  );
+}
+
+function ChoiceSection({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
+  return (
+    <div className="onboarding-section">
+      <div className="onboarding-section-head">
+        <h2>{title}</h2>
+        <span>{note}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ReviewItem({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
+  return (
+    <article>
+      <span className="review-item-icon"><Icon size={22} /></span>
+      <div className="review-item-copy">
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+    </article>
+  );
+}
+
+function greetingFor(language: SupportedLanguage, useCase: string) {
+  const booking = useCase === "Appointment booking";
+  const greetings: Record<SupportedLanguage, [string, string]> = {
+    en: ["Hello, thanks for calling. How can I help today?", "Hello, thanks for calling. I can help you schedule an appointment."],
+    fr: ["Bonjour, merci de votre appel. Comment puis-je vous aider ?", "Bonjour, merci de votre appel. Je peux vous aider à prendre rendez-vous."],
+    sw: ["Habari, asante kwa kupiga simu. Ninaweza kukusaidiaje?", "Habari, asante kwa kupiga simu. Ninaweza kukusaidia kupanga miadi."],
+    ar: ["مرحباً، شكراً لاتصالك. كيف يمكنني مساعدتك؟", "مرحباً، شكراً لاتصالك. يمكنني مساعدتك في حجز موعد."],
+  };
+  return greetings[language][booking ? 1 : 0];
+}

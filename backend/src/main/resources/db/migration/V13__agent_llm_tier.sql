@@ -1,0 +1,1 @@
+ALTER TABLE agents ADD COLUMN llm_tier VARCHAR(20) NOT NULL DEFAULT 'standard';

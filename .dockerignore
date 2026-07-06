@@ -1,0 +1,11 @@
+.git
+.gradle
+.env
+.env.*
+!.env.example
+secrets
+backend/build
+dashboard/.next
+dashboard/node_modules
+dashboard/build
+**/.DS_Store

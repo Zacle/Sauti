@@ -1,0 +1,239 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: sauti-backend
+  ai:
+    google:
+      genai:
+        api-key: ${GOOGLE_AI_API_KEY:}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:sauti;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  flyway:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  h2:
+    console:
+      enabled: true
+  servlet:
+    multipart:
+      max-file-size: ${SAUTI_KNOWLEDGE_MAX_FILE_SIZE:10MB}
+      max-request-size: ${SAUTI_KNOWLEDGE_MAX_FILE_SIZE:10MB}
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
+      password: ${SPRING_REDIS_PASSWORD:}
+      ssl:
+        enabled: ${SPRING_REDIS_SSL_ENABLED:false}
+      connect-timeout: 3000ms
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+  mail:
+    host: ${SPRING_MAIL_HOST:localhost}
+    port: ${SPRING_MAIL_PORT:1025}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SPRING_MAIL_SMTP_AUTH:false}
+          connectiontimeout: ${SPRING_MAIL_CONNECTION_TIMEOUT:5000}
+          timeout: ${SPRING_MAIL_TIMEOUT:10000}
+          writetimeout: ${SPRING_MAIL_WRITE_TIMEOUT:5000}
+          ssl:
+            enable: ${SPRING_MAIL_SMTP_SSL_ENABLE:false}
+          starttls:
+            enable: ${SPRING_MAIL_SMTP_STARTTLS_ENABLE:false}
+  thymeleaf:
+    cache: false
+    prefix: classpath:/templates/
+
+sauti:
+  recordings:
+    directory: ${SAUTI_RECORDINGS_DIR:/data/recordings}
+  document-storage:
+    provider: ${SAUTI_DOCUMENT_STORAGE_PROVIDER:database}
+    firebase:
+      project-id: ${FIREBASE_PROJECT_ID:}
+      bucket: ${FIREBASE_STORAGE_BUCKET:}
+  web-voice:
+    token-secret: ${SAUTI_WEB_VOICE_TOKEN_SECRET:${JWT_SECRET:dev-only-change-me-dev-only-change-me}}
+    token-minutes: ${SAUTI_WEB_VOICE_TOKEN_MINUTES:10}
+    public-websocket-base-url: ${SAUTI_WEB_VOICE_WEBSOCKET_URL:ws://localhost:8082}
+  whatsapp:
+    access-token: ${WHATSAPP_ACCESS_TOKEN:}
+    verify-token: ${WHATSAPP_VERIFY_TOKEN:}
+    app-secret: ${WHATSAPP_APP_SECRET:}
+    validate-signature: ${WHATSAPP_VALIDATE_SIGNATURE:true}
+    graph-api-base-url: ${WHATSAPP_GRAPH_API_BASE_URL:https://graph.facebook.com/v23.0}
+  jwt:
+    issuer: sauti
+    secret: ${JWT_SECRET:dev-only-change-me-dev-only-change-me}
+    access-token-minutes: 15
+    refresh-token-days: 30
+  auth:
+    expose-dev-tokens: ${AUTH_EXPOSE_DEV_TOKENS:true}
+    google:
+      client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
+      client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${GOOGLE_OAUTH_REDIRECT_URI:http://localhost:8082/api/v1/auth/oauth/google/callback}
+  dashboard:
+    base-url: ${DASHBOARD_BASE_URL:http://localhost:8088}
+  email:
+    from: ${EMAIL_FROM:noreply@sauti.local}
+    from-name: ${EMAIL_FROM_NAME:Sauti}
+    reply-to: ${EMAIL_REPLY_TO:support@sauti.local}
+  verification:
+    code-expiry-minutes: ${SAUTI_VERIFICATION_CODE_EXPIRY_MINUTES:15}
+    code-length: ${SAUTI_VERIFICATION_CODE_LENGTH:6}
+  cors:
+    allowed-origins: ${SAUTI_CORS_ALLOWED_ORIGINS:http://localhost:8088,http://127.0.0.1:8088}
+  providers:
+    mode: ${PROVIDER_MODE:fake}
+  llm:
+    provider: ${SAUTI_LLM_PROVIDER:heuristic}
+    default-model: ${SAUTI_LLM_DEFAULT_MODEL:gemini-3.1-flash-lite}
+    advanced-model: ${SAUTI_LLM_ADVANCED_MODEL:gpt-5.4-mini}
+    webhook:
+      url: ${SAUTI_LLM_WEBHOOK_URL:http://localhost:8090/agent-turn}
+      draft-url: ${SAUTI_LLM_DRAFT_WEBHOOK_URL:http://localhost:8090/agent-draft}
+      secret: ${SAUTI_LLM_WEBHOOK_SECRET:}
+  rag:
+    embedding-model: ${SAUTI_RAG_EMBEDDING_MODEL:gemini-embedding-2}
+    embedding-dimensions: 768
+    top-k: ${SAUTI_RAG_TOP_K:4}
+    min-similarity: ${SAUTI_RAG_MIN_SIMILARITY:0.30}
+    max-document-characters: ${SAUTI_RAG_MAX_DOCUMENT_CHARACTERS:100000}
+  calendar:
+    provider: ${SAUTI_CALENDAR_PROVIDER:local}
+    google:
+      client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
+      client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${GOOGLE_CALENDAR_REDIRECT_URI:http://localhost:8082/api/v1/integrations/google-calendar/callback}
+    webhook:
+      url: ${SAUTI_CALENDAR_WEBHOOK_URL:http://localhost:8090/calendar-events}
+      secret: ${SAUTI_CALENDAR_WEBHOOK_SECRET:}
+  telephony:
+    provider: ${SAUTI_TELEPHONY_PROVIDER:fake}
+    # Provider-agnostic transfer credentials. Set these instead of provider-specific ones
+    # when you want CallTransferService to use a non-default calls API URL.
+    calls-api-base-url: ${TELEPHONY_CALLS_API_BASE_URL:https://api.twilio.com/2010-04-01/Accounts}
+    account-sid: ${TELEPHONY_ACCOUNT_SID:${TWILIO_ACCOUNT_SID:${SIGNALWIRE_PROJECT_ID:}}}
+    auth-token: ${TELEPHONY_AUTH_TOKEN:${TWILIO_AUTH_TOKEN:${SIGNALWIRE_AUTH_TOKEN:}}}
+    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+    transfer-webhook-path: ${TELEPHONY_TRANSFER_WEBHOOK_PATH:/webhooks/telephony/transfer}
+  webhooks:
+    signing-secret: ${SAUTI_WEBHOOK_SIGNING_SECRET:dev-webhook-secret}
+    retry-delay-ms: ${SAUTI_WEBHOOK_RETRY_DELAY_MS:60000}
+    max-attempts: ${SAUTI_WEBHOOK_MAX_ATTEMPTS:5}
+    retry-window-hours: ${SAUTI_WEBHOOK_RETRY_WINDOW_HOURS:24}
+  integrations:
+    worker-delay-ms: ${SAUTI_INTEGRATIONS_WORKER_DELAY_MS:5000}
+    delivery-delay-ms: ${SAUTI_INTEGRATIONS_DELIVERY_DELAY_MS:5000}
+    whatsapp:
+      app-id: ${WHATSAPP_EMBEDDED_SIGNUP_APP_ID:}
+      app-secret: ${WHATSAPP_EMBEDDED_SIGNUP_APP_SECRET:${WHATSAPP_APP_SECRET:}}
+      configuration-id: ${WHATSAPP_EMBEDDED_SIGNUP_CONFIGURATION_ID:}
+    google-sheets:
+      client-id: ${GOOGLE_SHEETS_OAUTH_CLIENT_ID:}
+      client-secret: ${GOOGLE_SHEETS_OAUTH_CLIENT_SECRET:}
+      redirect-uri: ${GOOGLE_SHEETS_REDIRECT_URI:http://localhost:8082/api/v1/integrations/google_sheets/callback}
+    hubspot:
+      client-id: ${HUBSPOT_CLIENT_ID:}
+      client-secret: ${HUBSPOT_CLIENT_SECRET:}
+      redirect-uri: ${HUBSPOT_REDIRECT_URI:http://localhost:8082/api/v1/integrations/hubspot/callback}
+    salesforce:
+      client-id: ${SALESFORCE_CLIENT_ID:}
+      client-secret: ${SALESFORCE_CLIENT_SECRET:}
+      redirect-uri: ${SALESFORCE_REDIRECT_URI:http://localhost:8082/api/v1/integrations/salesforce/callback}
+  call-session:
+    ttl-seconds: ${SAUTI_CALL_SESSION_TTL_SECONDS:7200}
+  barge-in:
+    confidence-threshold: ${SAUTI_BARGE_IN_CONFIDENCE_THRESHOLD:0.70}
+    min-audio-ms: ${SAUTI_BARGE_IN_MIN_AUDIO_MS:150}
+    grace-ms: ${SAUTI_BARGE_IN_GRACE_MS:300}
+  tools:
+    # Must be exactly 32 UTF-8 bytes. Use a random secret in production.
+    encryption-key: ${SAUTI_TOOLS_ENCRYPTION_KEY:dev-tool-encryption-key-32-bytes}
+  stt:
+    streaming-provider: ${SAUTI_STT_STREAMING_PROVIDER:noop}
+    deepgram:
+      api-key: ${DEEPGRAM_API_KEY:}
+      base-url: ${DEEPGRAM_LISTEN_URL:wss://api.deepgram.com/v1/listen}
+      prerecorded-url: ${DEEPGRAM_PRERECORDED_URL:https://api.deepgram.com/v1/listen}
+      model: ${DEEPGRAM_MODEL:nova-3}
+      endpointing-ms: ${DEEPGRAM_ENDPOINTING_MS:300}
+      utterance-end-ms: ${DEEPGRAM_UTTERANCE_END_MS:1000}
+  tts:
+    streaming-provider: ${SAUTI_TTS_STREAMING_PROVIDER:noop}
+    curated-voice-ids: ${SAUTI_CURATED_VOICE_IDS:}
+    azure:
+      api-key: ${AZURE_SPEECH_KEY:}
+      region: ${AZURE_SPEECH_REGION:}
+      speaking-rate: ${AZURE_SPEAKING_RATE:-2%}
+      pitch: ${AZURE_SPEECH_PITCH:+0%}
+    elevenlabs:
+      api-key: ${ELEVENLABS_API_KEY:}
+      base-url: ${ELEVENLABS_STREAM_URL:wss://api.elevenlabs.io/v1/text-to-speech}
+      voices-url: ${ELEVENLABS_VOICES_URL:https://api.elevenlabs.io/v2/voices?page_size=100}
+      preview-url: ${ELEVENLABS_PREVIEW_URL:https://api.elevenlabs.io/v1/text-to-speech}
+      model-id: ${ELEVENLABS_MODEL_ID:eleven_turbo_v2_5}
+      default-voice-id: ${ELEVENLABS_DEFAULT_VOICE_ID:}
+      stability: ${ELEVENLABS_STABILITY:0.38}
+      similarity-boost: ${ELEVENLABS_SIMILARITY_BOOST:0.78}
+      style: ${ELEVENLABS_STYLE:0.12}
+      speed: ${ELEVENLABS_SPEED:0.98}
+      speaker-boost: ${ELEVENLABS_SPEAKER_BOOST:true}
+  twilio:
+    account-sid: ${TWILIO_ACCOUNT_SID:}
+    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+    auth-token: ${TWILIO_AUTH_TOKEN:dev-token}
+    validate-signature: ${TWILIO_VALIDATE_SIGNATURE:false}
+    outbound:
+      enabled: ${TWILIO_OUTBOUND_ENABLED:false}
+      from-number: ${TWILIO_OUTBOUND_FROM_NUMBER:}
+      poll-delay-ms: ${TWILIO_OUTBOUND_POLL_DELAY_MS:60000}
+    websocket:
+      allowed-origin-patterns: ${TWILIO_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:*}
+  signalwire:
+    project-id: ${SIGNALWIRE_PROJECT_ID:}
+    auth-token: ${SIGNALWIRE_AUTH_TOKEN:dev-token}
+    space-url: ${SIGNALWIRE_SPACE_URL:}
+    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+    validate-signature: ${SIGNALWIRE_VALIDATE_SIGNATURE:false}
+    websocket:
+      allowed-origin-patterns: ${SIGNALWIRE_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:*}
+  telnyx:
+    api-key: ${TELNYX_API_KEY:}
+    public-key: ${TELNYX_PUBLIC_KEY:}
+    connection-id: ${TELNYX_CONNECTION_ID:}
+    api-base-url: ${TELNYX_API_BASE_URL:https://api.telnyx.com/v2}
+    media-websocket-base-url: ${TELNYX_MEDIA_WEBSOCKET_BASE_URL:}
+    requirement-group-id: ${TELNYX_REQUIREMENT_GROUP_ID:}
+    validate-signature: ${TELNYX_VALIDATE_SIGNATURE:true}
+    webhook-tolerance-seconds: ${TELNYX_WEBHOOK_TOLERANCE_SECONDS:300}
+    public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+
+management:
+  server:
+    port: 8081
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus

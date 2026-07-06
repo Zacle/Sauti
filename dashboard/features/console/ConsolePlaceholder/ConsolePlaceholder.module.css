@@ -1,0 +1,40 @@
+.root {
+  display: grid;
+  justify-items: center;
+  min-height: calc(100vh - 136px);
+  align-content: center;
+  text-align: center;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 14px;
+  border-radius: 16px;
+  color: #0b9891;
+  background: #eafbf9;
+}
+
+.eyebrow {
+  color: #0b9891;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 7px 0;
+  color: #101828;
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+.description {
+  max-width: 470px;
+  margin: 0;
+  color: #667085;
+  line-height: 1.55;
+}
