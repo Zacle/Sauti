@@ -31,8 +31,19 @@ public final class WebVoiceDtos {
             String token,
             String websocketUrl,
             String greeting,
+            String greetingAudioBase64,
             int inputSampleRate,
-            String language
+            String language,
+            String mode
+    ) {
+    }
+
+    public record WebVoiceAudioTurnResponse(
+            String callerTranscript,
+            String language,
+            String response,
+            String outcome,
+            String audioBase64
     ) {
     }
 }

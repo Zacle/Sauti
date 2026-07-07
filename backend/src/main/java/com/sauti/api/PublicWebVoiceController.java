@@ -2,14 +2,20 @@ package com.sauti.api;
 
 import com.sauti.agent.Agent;
 import com.sauti.agent.AgentRepository;
+import com.sauti.call.BrowserSpeechToTextService;
 import com.sauti.call.CallPipelineService;
+import com.sauti.call.CallRepository;
 import com.sauti.call.WebVoiceDtos.PublicAgentResponse;
 import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionRequest;
 import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionResponse;
+import com.sauti.call.WebVoiceDtos.WebVoiceAudioTurnResponse;
 import com.sauti.call.WebVoiceTokenService;
+import com.sauti.voice.VoiceCatalogService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Base64;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -24,21 +30,31 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/v1/public/web-voice")
 public class PublicWebVoiceController {
+    private static final Set<String> TURN_BASED_LANGUAGES = Set.of("fr", "sw", "ar");
     private final AgentRepository agentRepository;
+    private final CallRepository callRepository;
     private final CallPipelineService callPipelineService;
     private final WebVoiceTokenService tokenService;
+    private final BrowserSpeechToTextService speechToTextService;
+    private final VoiceCatalogService voiceCatalogService;
     private final String websocketBaseUrl;
     private final Map<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
     public PublicWebVoiceController(
             AgentRepository agentRepository,
+            CallRepository callRepository,
             CallPipelineService callPipelineService,
             WebVoiceTokenService tokenService,
+            BrowserSpeechToTextService speechToTextService,
+            VoiceCatalogService voiceCatalogService,
             @Value("${sauti.web-voice.public-websocket-base-url:ws://localhost:8082}") String websocketBaseUrl
     ) {
         this.agentRepository = agentRepository;
+        this.callRepository = callRepository;
         this.callPipelineService = callPipelineService;
         this.tokenService = tokenService;
+        this.speechToTextService = speechToTextService;
+        this.voiceCatalogService = voiceCatalogService;
         this.websocketBaseUrl = websocketBaseUrl.replaceFirst("/+$", "");
     }
 
@@ -82,15 +98,74 @@ public class PublicWebVoiceController {
         }
         var call = callPipelineService.startWebCall(publicId, preferredLanguage);
         var token = tokenService.issue(call.getTwilioCallSid(), publicId);
+        var language = call.getLanguageDetected();
+        var mode = turnBased(language) ? "turn" : "realtime";
+        var greeting = callPipelineService.resolveGreeting(agent);
         return new StartWebVoiceSessionResponse(
                 call.getId(),
                 call.getTwilioCallSid(),
                 token,
-                websocketBaseUrl + "/ws/web-voice/" + call.getTwilioCallSid() + "?token=" + token,
-                callPipelineService.resolveGreeting(agent),
+                "realtime".equals(mode) ? websocketBaseUrl + "/ws/web-voice/" + call.getTwilioCallSid() + "?token=" + token : "",
+                greeting,
+                "turn".equals(mode) ? encodedAudio(agent, language, greeting) : null,
                 16000,
-                call.getLanguageDetected()
+                language,
+                mode
         );
+    }
+
+    @PostMapping(value = "/sessions/{sessionId}/turn-audio", consumes = {"audio/webm", "application/octet-stream"})
+    WebVoiceAudioTurnResponse turnAudio(
+            @PathVariable String sessionId,
+            @RequestBody byte[] audio,
+            HttpServletRequest request
+    ) {
+        var principal = verifyBearer(request);
+        if (!sessionId.equals(principal.callSid())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Invalid Web Voice session token");
+        }
+        var call = callRepository.findByTwilioCallSid(sessionId)
+                .filter(candidate -> "web".equals(candidate.getDirection()))
+                .filter(com.sauti.call.Call::isActive)
+                .filter(candidate -> principal.publicAgentId().equals(candidate.getAgent().getWebVoicePublicId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Web Voice session is unavailable"));
+        if (!turnBased(call.getLanguageDetected())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This Web Voice session uses realtime audio");
+        }
+        var sttStart = System.nanoTime();
+        var transcript = speechToTextService.transcribe(call.getAgent(), audio);
+        var sttMs = (int) ((System.nanoTime() - sttStart) / 1_000_000L);
+        var turn = callPipelineService.processTextTurn(
+                call.getTenant().getId(),
+                call.getTwilioCallSid(),
+                transcript,
+                sttMs
+        );
+        return new WebVoiceAudioTurnResponse(
+                transcript,
+                turn.language(),
+                turn.response(),
+                turn.outcome(),
+                encodedAudio(call.getAgent(), turn.language(), turn.response())
+        );
+    }
+
+    @PostMapping("/sessions/{sessionId}/complete")
+    void completeSession(
+            @PathVariable String sessionId,
+            HttpServletRequest request
+    ) {
+        var principal = verifyBearer(request);
+        if (!sessionId.equals(principal.callSid())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Invalid Web Voice session token");
+        }
+        var call = callRepository.findByTwilioCallSid(sessionId)
+                .filter(candidate -> "web".equals(candidate.getDirection()))
+                .filter(candidate -> principal.publicAgentId().equals(candidate.getAgent().getWebVoicePublicId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Web Voice session is unavailable"));
+        if (call.isActive()) {
+            callPipelineService.completeActiveCall(sessionId, "completed");
+        }
     }
 
     private Agent publicAgent(String publicId) {
@@ -121,6 +196,44 @@ public class PublicWebVoiceController {
         return forwarded == null || forwarded.isBlank()
                 ? request.getRemoteAddr()
                 : forwarded.split(",")[0].trim();
+    }
+
+    private WebVoiceTokenService.WebVoicePrincipal verifyBearer(HttpServletRequest request) {
+        var authorization = request.getHeader("Authorization");
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Web Voice session token is required");
+        }
+        try {
+            return tokenService.verify(authorization.substring("Bearer ".length()).trim());
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid Web Voice session token");
+        }
+    }
+
+    private boolean turnBased(String language) {
+        return TURN_BASED_LANGUAGES.contains(language == null ? "" : language.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    private String encodedAudio(Agent agent, String language, String text) {
+        if (text == null || text.isBlank()) return null;
+        try {
+            var audio = synthesize(agent, language, text);
+            return audio.length == 0 ? null : Base64.getEncoder().encodeToString(audio);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private byte[] synthesize(Agent agent, String language, String text) {
+        var voiceId = agent.getTtsVoiceId();
+        if (voiceId == null || voiceId.isBlank()) {
+            var match = voiceCatalogService.list().voices().stream()
+                    .filter(voice -> voice.languages().contains(language))
+                    .findFirst();
+            if (match.isEmpty()) return new byte[0];
+            voiceId = match.get().id();
+        }
+        return voiceCatalogService.synthesize(voiceId, language, text);
     }
 
     private record RateWindow(long startedAt, int count) {

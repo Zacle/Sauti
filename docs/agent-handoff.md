@@ -364,6 +364,26 @@ Expected:
 - `docs/analytics-plan.md` may appear as untracked in some working trees. It was used as the plan for analytics. Decide explicitly whether to add it to git before staging.
 - Do not delete server Docker volumes for old Postgres/Redis unless the user explicitly approves. They are rollback safety.
 
+### 2026-07-08 - Turn-based public Web Voice for non-English calls
+
+- Added a turn-based public Web Voice mode for French, Swahili, and Arabic instead of routing those browser calls through Deepgram realtime STT.
+- Public Web Voice session start now returns `mode`; English remains realtime, while non-English sessions return greeting audio and use explicit record/stop audio turns.
+- Added public session endpoints to submit recorded audio turns and complete turn-based sessions with the existing Web Voice token.
+- The backend reuses `BrowserSpeechToTextService`, so non-English public browser turns go through the OpenAI-first prerecorded STT route.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceDtos.java`
+  - `dashboard/lib/api/public-web-voice.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed yet.
+
 ### 2026-07-08 - OpenAI fallback for prerecorded speech recognition
 
 - Added OpenAI transcription as a first-choice prerecorded STT route for non-English or multilingual browser/WhatsApp audio when `OPENAI_API_KEY` is configured.

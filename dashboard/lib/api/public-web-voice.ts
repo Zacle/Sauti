@@ -14,8 +14,18 @@ export type WebVoiceSession = {
   token: string;
   websocketUrl: string;
   greeting: string;
+  greetingAudioBase64: string | null;
   inputSampleRate: number;
   language: string;
+  mode: "realtime" | "turn";
+};
+
+export type WebVoiceAudioTurn = {
+  callerTranscript: string;
+  language: string;
+  response: string;
+  outcome: string;
+  audioBase64: string | null;
 };
 
 export async function getPublicWebVoiceAgent(publicId: string) {
@@ -40,4 +50,29 @@ export async function startPublicWebVoiceSession(
   const payload = await response.json().catch(() => ({})) as { message?: string };
   if (!response.ok) throw new Error(payload.message ?? "Unable to start this voice session.");
   return payload as WebVoiceSession;
+}
+
+export async function sendPublicWebVoiceAudioTurn(sessionId: string, token: string, recording: Blob) {
+  const response = await fetch(`/api/v1/public/web-voice/sessions/${encodeURIComponent(sessionId)}/turn-audio`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": recording.type || "audio/webm",
+    },
+    body: recording,
+  });
+  const payload = await response.json().catch(() => ({})) as { message?: string };
+  if (!response.ok) throw new Error(payload.message ?? "Unable to process your voice message.");
+  return payload as WebVoiceAudioTurn;
+}
+
+export async function completePublicWebVoiceSession(sessionId: string, token: string) {
+  const response = await fetch(`/api/v1/public/web-voice/sessions/${encodeURIComponent(sessionId)}/complete`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { message?: string };
+    throw new Error(payload.message ?? "Unable to end this voice session.");
+  }
 }
