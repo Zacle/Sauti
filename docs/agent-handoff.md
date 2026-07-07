@@ -364,6 +364,25 @@ Expected:
 - `docs/analytics-plan.md` may appear as untracked in some working trees. It was used as the plan for analytics. Decide explicitly whether to add it to git before staging.
 - Do not delete server Docker volumes for old Postgres/Redis unless the user explicitly approves. They are rollback safety.
 
+### 2026-07-08 - OpenAI fallback for prerecorded speech recognition
+
+- Added OpenAI transcription as a first-choice prerecorded STT route for non-English or multilingual browser/WhatsApp audio when `OPENAI_API_KEY` is configured.
+- Kept Deepgram as the fallback provider, and added OpenAI fallback when Deepgram returns no transcript or fails for English-only audio.
+- Added overridable OpenAI transcription model/URL settings with defaults.
+- Why: French browser test calls were producing silence/no-transcript behavior even though the greeting and recording were correct, which points to the prerecorded STT provider route rather than the agent prompt or TTS.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/BrowserSpeechToTextService.java`
+  - `backend/src/test/java/com/sauti/call/BrowserSpeechToTextServiceTest.java`
+  - `backend/src/main/resources/application.yml`
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.BrowserSpeechToTextServiceTest`
+  - `.\gradlew.bat :backend:test`
+- Deployment:
+  - Not deployed yet.
+
 ### 2026-07-07 - Browser test-call manual mic fallback
 
 - Added a manual mic record/stop control to the agent browser test-call panel.
