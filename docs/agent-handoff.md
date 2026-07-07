@@ -381,7 +381,11 @@ Expected:
   - `.\gradlew.bat :backend:test --tests com.sauti.call.BrowserSpeechToTextServiceTest`
   - `.\gradlew.bat :backend:test`
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `bb56c97`.
+  - GitHub Actions CI passed.
+  - Production deploy passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 
 ### 2026-07-07 - Browser test-call manual mic fallback
 
