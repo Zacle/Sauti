@@ -217,8 +217,11 @@ Expected:
 ### 2026-07-07 - Onboarding voice previews
 
 - Added a listen/pause preview control beside the onboarding voice selector.
+- Filtered onboarding voice choices by the selected primary language so Swahili, English, French, and Arabic only show compatible voices.
+- Clear the selected voice when the primary language changes and the previous voice is no longer compatible.
 - Reused the existing `/api/v1/voices/{voiceId}/preview` audio endpoint with the selected primary language.
 - Pauses active previews when the user changes voice or language, leaves provider default unpreviewable, and shows an inline playback error if audio fails.
+- Polished the onboarding primary action button text and arrow icon alignment.
 - Did not deploy.
 - Files touched:
   - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`

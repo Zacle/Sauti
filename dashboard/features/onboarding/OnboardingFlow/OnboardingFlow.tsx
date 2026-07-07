@@ -120,6 +120,7 @@ export function OnboardingFlow() {
   const routingOptions = ["Fixed calendar", "Set up later"];
   const currentCopy = stepCopy[step - 1];
   const selectedVoice = voices.find((item) => item.id === voiceId);
+  const languageVoices = voices.filter((item) => item.languages.includes(language));
   const voiceName = selectedVoice?.name ?? "Provider default";
   const languageName = languageOptions.find(([code]) => code === language)?.[1] ?? language;
   const greeting = greetingFor(language, useCase);
@@ -142,6 +143,12 @@ export function OnboardingFlow() {
     setBufferingVoiceId("");
     setVoicePreviewError("");
   }, [language, voiceId]);
+
+  useEffect(() => {
+    if (voiceId && !selectedVoice?.languages.includes(language)) {
+      setVoiceId("");
+    }
+  }, [language, selectedVoice, voiceId]);
 
   function toggleService(service: string) {
     setSelectedServices((current) =>
@@ -286,7 +293,7 @@ export function OnboardingFlow() {
                   <span className="onboarding-voice-control">
                     <select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
                       <option value="">Provider default</option>
-                      {voices.map((item) => (
+                      {languageVoices.map((item) => (
                         <option value={item.id} key={item.id}>{item.name}</option>
                       ))}
                     </select>
