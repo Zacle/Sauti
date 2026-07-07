@@ -9,6 +9,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -46,9 +48,11 @@ public class BrowserSpeechToTextService {
         }
         var language = agent.getDefaultLanguage();
         var multilingual = agent.getSupportedLanguages().size() > 1;
-        // Nova-3 has poor accuracy for Swahili and Arabic. Whisper models are
-        // multilingual-first and produce far better transcripts for these languages.
-        var model = modelFor(language, agent.getSupportedLanguages(), multilingual);
+        // detect_language=true only works with nova models, not Whisper.
+        // For multilingual agents, use nova-3 so Deepgram can auto-detect.
+        // For single-language non-English agents, use Whisper for better accuracy.
+        var useWhisper = !multilingual && List.of("sw", "fr", "ar").contains(language);
+        var model = useWhisper ? modelFor(language) : defaultModel;
         var uri = URI.create(listenUrl
                 + "?model=" + encode(model)
                 + (multilingual ? "&detect_language=true" : "&language=" + encode(language))
@@ -95,14 +99,10 @@ public class BrowserSpeechToTextService {
                 : "application/octet-stream";
     }
 
-    private String modelFor(String language, java.util.List<String> supportedLanguages, boolean multilingual) {
-        if (multilingual) {
-            return supportedLanguages.contains("ar") ? "whisper-medium" : "whisper-small";
-        }
+    private String modelFor(String language) {
         return switch (language) {
-            case "sw" -> "whisper-small";
             case "ar" -> "whisper-medium";
-            default -> defaultModel;
+            default -> "whisper-small";
         };
     }
 
