@@ -57,6 +57,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
   const recordingChunksRef = useRef<Blob[]>([]);
   const utteranceRecorderRef = useRef<MediaRecorder | null>(null);
   const utteranceChunksRef = useRef<Blob[]>([]);
+  const utteranceStartedAtRef = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const recordingDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -245,9 +246,17 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
     recorder.onstop = () => {
       utteranceRecorderRef.current = null;
       const utterance = new Blob(utteranceChunksRef.current, { type: recorder.mimeType });
+      const durationMs = Date.now() - utteranceStartedAtRef.current;
+      utteranceStartedAtRef.current = 0;
+      if (utterance.size < 1200 || durationMs < 500) {
+        updateStatus("listening");
+        setError("I did not catch enough audio. Speak clearly for a moment, then pause.");
+        return;
+      }
       void submitAudioTurn(utterance);
     };
     utteranceRecorderRef.current = recorder;
+    utteranceStartedAtRef.current = Date.now();
     lastVoiceAtRef.current = performance.now();
     updateStatus("capturing");
     recorder.start(200);
@@ -476,6 +485,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
       utteranceRecorderRef.current.stop();
     }
     utteranceRecorderRef.current = null;
+    utteranceStartedAtRef.current = 0;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();

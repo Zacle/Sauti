@@ -19,6 +19,8 @@ import com.sauti.voice.VoiceCatalogService;
 import java.util.List;
 import java.util.UUID;
 import java.util.Base64;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/calls")
 public class CallController {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CallController.class);
     private final CallQueryService callQueryService;
     private final CallPipelineService callPipelineService;
     private final CallTurnRepository callTurnRepository;
@@ -136,15 +139,13 @@ public class CallController {
         }
         var totalStart = System.nanoTime();
         var sttStart = System.nanoTime();
-        var callerTranscript = browserSpeechToTextService.transcribe(call.getAgent(), audio);
+        var callerTranscript = transcribeTestAudio(call, audio);
         var sttMs = elapsedMs(sttStart);
         var turn = callPipelineService.processTextTurn(
                 user.tenantId(), call.getTwilioCallSid(), callerTranscript, sttMs);
         var persistedTurn = callTurnRepository.findFirstByCall_IdOrderByTurnIndexDesc(id).orElse(null);
         var ttsStart = System.nanoTime();
-        var synthesized = turn.response() == null || turn.response().isBlank()
-                ? new byte[0]
-                : synthesize(call, turn.language(), turn.response());
+        var synthesized = synthesizeTestTurn(call, turn.language(), turn.response());
         var ttsMs = elapsedMs(ttsStart);
         if (persistedTurn != null) {
             persistedTurn.recordTtsLatency(ttsMs);
@@ -201,6 +202,29 @@ public class CallController {
             voiceId = match.get().id();
         }
         return voiceCatalogService.synthesize(voiceId, language, text);
+    }
+
+    private String transcribeTestAudio(com.sauti.call.Call call, byte[] audio) {
+        try {
+            return browserSpeechToTextService.transcribe(call.getAgent(), audio);
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (IllegalStateException exception) {
+            LOGGER.warn("Browser test speech recognition failed callId={}", call.getId(), exception);
+            throw new IllegalArgumentException("Speech recognition is unavailable. Check the speech provider configuration or type a test message instead.");
+        }
+    }
+
+    private byte[] synthesizeTestTurn(com.sauti.call.Call call, String language, String text) {
+        if (text == null || text.isBlank()) {
+            return new byte[0];
+        }
+        try {
+            return synthesize(call, language, text);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Browser test voice synthesis failed callId={}", call.getId(), exception);
+            return new byte[0];
+        }
     }
 
     private int elapsedMs(long startedAt) {

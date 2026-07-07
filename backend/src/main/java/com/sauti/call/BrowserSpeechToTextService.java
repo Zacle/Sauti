@@ -72,7 +72,7 @@ public class BrowserSpeechToTextService {
                     .path("alternatives").path(0)
                     .path("transcript").asText("").trim();
             if (transcript.isBlank()) {
-                throw new IllegalArgumentException("No speech was detected. Hold the microphone button, speak clearly, then stop.");
+                throw new IllegalArgumentException("No speech was detected. Speak clearly for a moment, then pause.");
             }
             return transcript;
         } catch (InterruptedException exception) {
