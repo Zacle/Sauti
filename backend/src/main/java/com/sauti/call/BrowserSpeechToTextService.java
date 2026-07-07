@@ -171,8 +171,10 @@ public class BrowserSpeechToTextService {
             if (language != null) {
                 writeField(output, boundary, "language", language);
             }
+            // OpenAI infers format from filename extension, NOT Content-Type header.
+            var filename = "audio." + extensionFor(contentType);
             writeAscii(output, "--" + boundary + "\r\n");
-            writeAscii(output, "Content-Disposition: form-data; name=\"file\"; filename=\"audio.webm\"\r\n");
+            writeAscii(output, "Content-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n");
             writeAscii(output, "Content-Type: " + contentType + "\r\n\r\n");
             output.write(audio);
             writeAscii(output, "\r\n--" + boundary + "--\r\n");
@@ -180,6 +182,16 @@ public class BrowserSpeechToTextService {
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to prepare audio transcription request", exception);
         }
+    }
+
+    private String extensionFor(String contentType) {
+        return switch (contentType) {
+            case "audio/mp4", "audio/m4a" -> "mp4";
+            case "audio/ogg" -> "ogg";
+            case "audio/mpeg" -> "mp3";
+            case "audio/wav" -> "wav";
+            default -> "webm";
+        };
     }
 
     private void writeField(ByteArrayOutputStream output, String boundary, String name, String value) {
@@ -201,9 +213,10 @@ public class BrowserSpeechToTextService {
     }
 
     private String openAiLanguageHint(Agent agent) {
-        if (agent == null || agent.getSupportedLanguages().size() > 1) {
-            return null;
-        }
+        if (agent == null) return null;
+        // For single-language agents, always hint the language.
+        // For multilingual agents, hint the default language so OpenAI has a starting
+        // point — it still auto-detects and overrides if the audio is clearly different.
         var language = normalizedLanguage(agent);
         return language.isBlank() ? null : language;
     }
