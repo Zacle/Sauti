@@ -16,13 +16,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
+  GraduationCap,
   Globe2,
-  Headphones,
+  Landmark,
   PhoneCall,
+  Rocket,
+  Scissors,
   ShieldCheck,
   Sparkles,
   Stethoscope,
-  UsersRound,
   Workflow,
 } from "lucide-react";
 import { completeOnboarding } from "@/lib/api/onboarding";
@@ -32,10 +34,12 @@ import { useAuth } from "@/hooks/useAuth";
 import type { VoiceOption } from "@/types/api";
 
 const businessTypes: Array<[string, string, LucideIcon]> = [
-  ["Local business", "Appointments and customer calls", Building2],
-  ["Healthcare", "Patient access and reminders", Stethoscope],
-  ["Service team", "Support, routing, and follow-up", Headphones],
-  ["Multi-location", "Teams, calendars, and routing", UsersRound],
+  ["Clinics & healthcare", "Appointments, patient questions, urgent escalations", Stethoscope],
+  ["Salons & beauty", "Bookings, reschedules, service questions", Scissors],
+  ["Real estate", "Buyer qualification, property interest, viewings", Building2],
+  ["Professional services", "Consultations, intake details, call routing", Landmark],
+  ["Education", "Admissions questions, callbacks, department routing", GraduationCap],
+  ["Local services", "After-hours calls, new leads, appointment requests", Rocket],
 ];
 
 const calendarOptions: Array<[string, string, LucideIcon]> = [
@@ -56,19 +60,19 @@ type SupportedLanguage = typeof languageOptions[number][0];
 
 const stepCopy = [
   {
+    eyebrow: "Agent identity",
+    title: "Name your first Sauti agent.",
+    description: "Choose the name, language behavior, and voice profile before Sauti shows a generated agent preview.",
+  },
+  {
     eyebrow: "Business profile",
     title: "Tell Sauti what kind of calls to handle.",
-    description: "We will use this to draft the first agent, booking rules, tools, and test scenarios. You can edit everything later.",
+    description: "We will use this to draft booking rules, tools, and test scenarios. You can edit everything later.",
   },
   {
     eyebrow: "Calendar and routing",
     title: "Choose where bookings should go.",
     description: "Select the calendar connection and routing policy Sauti should use when a caller asks for a time.",
-  },
-  {
-    eyebrow: "Agent identity",
-    title: "Shape how your agent sounds.",
-    description: "Choose the agent name, language behavior, and voice profile. These settings can be refined before launch.",
   },
   {
     eyebrow: "Review setup",
@@ -78,8 +82,8 @@ const stepCopy = [
 ] as const;
 
 const actionCopy = [
+  "Next: tell Sauti what calls to handle.",
   "Next: connect calendar and choose meeting routing.",
-  "Next: choose your agent identity and voice.",
   "Next: review the generated setup.",
   "Finish: create the draft agent in your workspace.",
 ];
@@ -89,14 +93,14 @@ export function OnboardingFlow() {
   const { session } = useAuth();
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState<"forward" | "backward">("forward");
-  const [businessType, setBusinessType] = useState("Service team");
+  const [businessType, setBusinessType] = useState("Clinics & healthcare");
   const [useCase, setUseCase] = useState("Appointment booking");
   const [businessWebsite, setBusinessWebsite] = useState("");
   const [selectedServices, setSelectedServices] = useState(["Consultation", "Follow-up visit", "Product demo", "Callback request"]);
   const [timezone, setTimezone] = useState("Africa/Nairobi");
   const [calendar, setCalendar] = useState("Set up later");
   const [routing, setRouting] = useState("Fixed calendar");
-  const [agentName, setAgentName] = useState("Amina");
+  const [agentName, setAgentName] = useState("");
   const [language, setLanguage] = useState<SupportedLanguage>("sw");
   const [autoDetectLanguages, setAutoDetectLanguages] = useState(true);
   const [voiceId, setVoiceId] = useState("");
@@ -112,6 +116,10 @@ export function OnboardingFlow() {
   const voiceName = selectedVoice?.name ?? "Provider default";
   const languageName = languageOptions.find(([code]) => code === language)?.[1] ?? language;
   const greeting = greetingFor(language, useCase);
+  const trimmedAgentName = agentName.trim();
+  const agentPreviewTitle = trimmedAgentName ? `${trimmedAgentName}, ${useCase.toLowerCase()} agent` : `Your ${useCase.toLowerCase()} agent`;
+  const agentAvatarLabel = trimmedAgentName ? trimmedAgentName.slice(0, 1).toUpperCase() : "AI";
+  const canContinue = step !== 1 || trimmedAgentName.length > 0;
 
   useEffect(() => {
     listVoices()
@@ -142,6 +150,9 @@ export function OnboardingFlow() {
       if (!selectedServices.length) {
         throw new Error("Select at least one service before finishing setup.");
       }
+      if (!trimmedAgentName) {
+        throw new Error("Choose an agent name before finishing setup.");
+      }
       const supportedLanguages: SupportedLanguage[] = autoDetectLanguages
         ? languageOptions.map(([code]) => code)
         : [language];
@@ -153,7 +164,7 @@ export function OnboardingFlow() {
         timezone,
         calendarProvider: calendar,
         routingPolicy: routing,
-        agentName: agentName.trim() || "Amina",
+        agentName: trimmedAgentName,
         defaultLanguage: language,
         supportedLanguages,
         ttsVoiceId: voiceId || null,
@@ -192,12 +203,49 @@ export function OnboardingFlow() {
 
           <div className={`onboarding-heading step-motion step-${direction}`} key={`heading-${step}`}>
             <span>{currentCopy.eyebrow}</span>
-            <h1>{step === 1 ? <>Tell <em>Sauti</em> what kind of calls to handle.</> : currentCopy.title}</h1>
+            <h1>{step === 2 ? <>Tell <em>Sauti</em> what kind of calls to handle.</> : currentCopy.title}</h1>
             <p>{currentCopy.description}</p>
           </div>
 
           <div className={`onboarding-step-content step-${direction}`} key={step} aria-live="polite">
             {step === 1 && (
+              <div className="onboarding-section two-column">
+                <label className="onboarding-field-wide">
+                  Agent name
+                  <input value={agentName} onChange={(event) => setAgentName(event.target.value)} placeholder="Choose a name for your agent" />
+                </label>
+                <label>
+                  Primary language
+                  <select value={language} onChange={(event) => setLanguage(event.target.value as SupportedLanguage)}>
+                    {languageOptions.map(([code, label]) => (
+                      <option value={code} key={code}>{label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Voice
+                  <select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
+                    <option value="">Provider default</option>
+                    {voices.map((item) => (
+                      <option value={item.id} key={item.id}>{item.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="onboarding-field-wide onboarding-detect-field">
+                  <input
+                    checked={autoDetectLanguages}
+                    onChange={(event) => setAutoDetectLanguages(event.target.checked)}
+                    type="checkbox"
+                  />
+                  <span>
+                    Detect supported caller languages automatically
+                    <small>Supports Swahili, English, French, and Arabic. The primary language is used as fallback.</small>
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {step === 2 && (
               <>
                 <ChoiceSection title="Business type" note="Choose one">
                   <div className="business-choice-grid">
@@ -284,7 +332,7 @@ export function OnboardingFlow() {
               </>
             )}
 
-            {step === 2 && (
+            {step === 3 && (
               <>
                 <ChoiceSection title="Calendar connection" note="Choose one">
                   <div className="business-choice-grid">
@@ -321,43 +369,6 @@ export function OnboardingFlow() {
               </>
             )}
 
-            {step === 3 && (
-              <div className="onboarding-section two-column">
-                <label className="onboarding-field-wide">
-                  Agent name
-                  <input value={agentName} onChange={(event) => setAgentName(event.target.value)} placeholder="Amina" />
-                </label>
-                <label>
-                  Primary language
-                  <select value={language} onChange={(event) => setLanguage(event.target.value as SupportedLanguage)}>
-                    {languageOptions.map(([code, label]) => (
-                      <option value={code} key={code}>{label}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Voice
-                  <select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
-                    <option value="">Provider default</option>
-                    {voices.map((item) => (
-                      <option value={item.id} key={item.id}>{item.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="onboarding-field-wide onboarding-detect-field">
-                  <input
-                    checked={autoDetectLanguages}
-                    onChange={(event) => setAutoDetectLanguages(event.target.checked)}
-                    type="checkbox"
-                  />
-                  <span>
-                    Detect supported caller languages automatically
-                    <small>Supports Swahili, English, French, and Arabic. The primary language is used as fallback.</small>
-                  </span>
-                </label>
-              </div>
-            )}
-
             {step === 4 && (
               <>
                 <div className="onboarding-review-grid">
@@ -367,7 +378,7 @@ export function OnboardingFlow() {
                   <ReviewItem icon={Sparkles} label="Services" value={selectedServices.length ? selectedServices.join(", ") : "None selected"} />
                   <ReviewItem icon={CalendarCheck} label="Calendar" value={calendar} />
                   <ReviewItem icon={Workflow} label="Routing" value={routing} />
-                  <ReviewItem icon={Bot} label="Agent" value={agentName || "Unnamed agent"} />
+                  <ReviewItem icon={Bot} label="Agent" value={trimmedAgentName || "Not named yet"} />
                   <ReviewItem
                     icon={AudioLines}
                     label="Language and voice"
@@ -388,7 +399,7 @@ export function OnboardingFlow() {
           <div className="onboarding-actions">
             <span><Sparkles size={17} /> {finishError || actionCopy[step - 1]}</span>
             {step < 4 ? (
-              <button className="app-primary-button" type="button" onClick={() => changeStep(step + 1)}>
+              <button className="app-primary-button" disabled={!canContinue} type="button" onClick={() => changeStep(step + 1)}>
                 Continue <ArrowRight size={17} />
               </button>
             ) : (
@@ -406,8 +417,8 @@ export function OnboardingFlow() {
               <b>{step === 4 ? "Configured" : "Ready"}</b>
             </div>
             <div className="setup-agent-title">
-              <span>{(agentName || "A").slice(0, 1).toUpperCase()}</span>
-              <h2>{agentName || "Amina"}, {useCase.toLowerCase()} agent</h2>
+              <span>{agentAvatarLabel}</span>
+              <h2>{agentPreviewTitle}</h2>
             </div>
             <p>Answers inbound calls, detects the caller&apos;s language, checks availability, confirms details, and books approved services.</p>
             <div className="setup-preview-stack">

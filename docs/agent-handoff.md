@@ -214,6 +214,46 @@ Expected:
 
 ## Change log
 
+### 2026-07-07 - Onboarding agent identity first
+
+- Moved agent identity to the first onboarding step before business profile and calendar setup.
+- Removed the hardcoded `Amina` default and placeholder from onboarding.
+- Kept the preview generic until the user enters a name, then displays the chosen name.
+- Disabled the first-step continue button until an agent name is entered.
+- Did not deploy.
+- Files touched:
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+
+### 2026-07-07 - Onboarding business type suggestions
+
+- Replaced broad onboarding business type choices with industry-specific Sauti starting points.
+- Added choices for clinics and healthcare, salons and beauty, real estate, professional services, education, and local services.
+- Updated the default selected business type so the first onboarding step still starts with a valid selected card.
+- Did not deploy.
+- Files touched:
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+
+### 2026-07-07 - Onboarding continue button hover affordance
+
+- Improved the onboarding action button styling so it reads as clickable.
+- Added onboarding-scoped hover, active, focus-visible, pointer, and disabled cursor states.
+- Did not deploy.
+- Files touched:
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+
 ### 2026-07-07 — Documented agent operating rules and project handoff
 
 - Replaced outdated Flutter-only `AGENTS.md` with accurate Spring Boot + Next.js instructions.

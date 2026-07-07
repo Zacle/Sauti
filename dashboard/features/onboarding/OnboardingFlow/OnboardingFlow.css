@@ -816,10 +816,60 @@
 .onboarding-actions .app-primary-button {
   min-width: 156px;
   min-height: 48px;
+  border: 1px solid rgba(3, 105, 106, 0.36);
   border-radius: 13px;
   color: #ffffff;
-  background: linear-gradient(115deg, #079ca4, #20d4c8 72%, #50ead4);
-  box-shadow: 0 10px 24px rgba(10, 178, 177, 0.25);
+  background: linear-gradient(135deg, #087b84 0%, #0dbfb8 58%, #44e0cc 100%);
+  box-shadow:
+    0 12px 26px rgba(8, 143, 145, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  cursor: pointer;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease,
+    transform 180ms ease;
+}
+
+.onboarding-actions .app-primary-button:hover {
+  border-color: rgba(3, 105, 106, 0.58);
+  box-shadow:
+    0 16px 34px rgba(8, 143, 145, 0.32),
+    0 0 0 3px rgba(35, 213, 201, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+  filter: brightness(1.04);
+  transform: translateY(-2px);
+}
+
+.onboarding-actions .app-primary-button:active {
+  box-shadow:
+    0 7px 18px rgba(8, 143, 145, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  transform: translateY(0) scale(0.99);
+}
+
+.onboarding-actions .app-primary-button:focus-visible {
+  outline: 3px solid rgba(35, 213, 201, 0.28);
+  outline-offset: 3px;
+}
+
+.onboarding-actions .app-primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+.onboarding-actions .app-primary-button:disabled:hover {
+  border-color: rgba(3, 105, 106, 0.36);
+  box-shadow:
+    0 12px 26px rgba(8, 143, 145, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  filter: none;
+  transform: none;
+}
+
+.onboarding-actions .app-primary-button:hover svg {
+  transform: translateX(3px);
 }
 
 .onboarding-review-grid {
