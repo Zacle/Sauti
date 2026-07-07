@@ -31,6 +31,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { completeOnboarding } from "@/lib/api/onboarding";
+import { authorizeGoogleCalendar } from "@/lib/api/integrations";
 import { listVoices } from "@/lib/api/voices";
 import { formatTimezone, TIMEZONE_GROUPS } from "@/lib/timezones";
 import { useAuth } from "@/hooks/useAuth";
@@ -46,10 +47,8 @@ const businessTypes: Array<[string, string, LucideIcon]> = [
 ];
 
 const calendarOptions: Array<[string, string, LucideIcon]> = [
-  ["Google Calendar", "Save as the target, then connect credentials in the studio", CalendarCheck],
-  ["Calendly", "Save as the target, then connect credentials in the studio", Clock3],
-  ["Custom webhook", "Configure your booking endpoint in the studio", Workflow],
-  ["Set up later", "Use local test availability while designing the draft", Globe2],
+  ["Google Calendar", "After creating the draft, Sauti will redirect you to Google to authorize calendar access.", CalendarCheck],
+  ["Set up later", "Keep bookings in draft mode until a calendar is connected from the agent studio.", Globe2],
 ];
 
 const languageOptions = [
@@ -73,9 +72,9 @@ const stepCopy = [
     description: "We will use this to draft booking rules, tools, and test scenarios. You can edit everything later.",
   },
   {
-    eyebrow: "Calendar and routing",
-    title: "Choose where bookings should go.",
-    description: "Select the calendar connection and routing policy Sauti should use when a caller asks for a time.",
+    eyebrow: "Booking setup",
+    title: "Choose the booking path for this draft.",
+    description: "Onboarding creates the agent draft first. If you choose Google Calendar, Sauti redirects you to Google immediately after setup.",
   },
   {
     eyebrow: "Review setup",
@@ -86,7 +85,7 @@ const stepCopy = [
 
 const actionCopy = [
   "Next: tell Sauti what calls to handle.",
-  "Next: connect calendar and choose meeting routing.",
+  "Next: choose the booking setup path.",
   "Next: review the generated setup.",
   "Finish: create the draft agent in your workspace.",
 ];
@@ -117,7 +116,6 @@ export function OnboardingFlow() {
 
   const useCases = ["Appointment booking", "Customer support", "Lead qualification", "Call routing", "Reminders"];
   const services = ["Consultation", "Follow-up visit", "Product demo", "Callback request"];
-  const routingOptions = ["Fixed calendar", "Set up later"];
   const currentCopy = stepCopy[step - 1];
   const selectedVoice = voices.find((item) => item.id === voiceId);
   const languageVoices = voices.filter((item) => item.languages.includes(language));
@@ -149,6 +147,10 @@ export function OnboardingFlow() {
       setVoiceId("");
     }
   }, [language, selectedVoice, voiceId]);
+
+  useEffect(() => {
+    setRouting(calendar === "Google Calendar" ? "Fixed calendar" : "Set up later");
+  }, [calendar]);
 
   function toggleService(service: string) {
     setSelectedServices((current) =>
@@ -193,6 +195,11 @@ export function OnboardingFlow() {
         ttsVoiceId: voiceId || null,
         voiceProfile: voiceName,
       });
+      if (calendar === "Google Calendar") {
+        const { authorizationUrl } = await authorizeGoogleCalendar(agent.id);
+        window.location.assign(authorizationUrl);
+        return;
+      }
       router.replace(`/agents/${agent.id}`);
     } catch (caught) {
       setFinishError(caught instanceof Error ? caught.message : "Unable to create the draft agent.");
@@ -416,7 +423,7 @@ export function OnboardingFlow() {
 
             {step === 3 && (
               <>
-                <ChoiceSection title="Calendar connection" note="Choose one">
+                <ChoiceSection title="Booking calendar" note="Choose one">
                   <div className="business-choice-grid">
                     {calendarOptions.map(([title, detail, Icon]) => (
                       <button
@@ -433,21 +440,10 @@ export function OnboardingFlow() {
                     ))}
                   </div>
                 </ChoiceSection>
-                <ChoiceSection title="Meeting routing" note="How bookings are assigned">
-                  <div className="onboarding-pills">
-                    {routingOptions.map((item) => (
-                      <button
-                        className={routing === item ? "selected" : ""}
-                        type="button"
-                        key={item}
-                        onClick={() => setRouting(item)}
-                      >
-                        {routing === item && <Check size={14} />}
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                </ChoiceSection>
+                <div className="onboarding-calendar-note">
+                  <Workflow size={18} />
+                  <span>Custom webhooks are developer integrations, so they are configured from the studio after the agent exists.</span>
+                </div>
               </>
             )}
 
@@ -459,7 +455,7 @@ export function OnboardingFlow() {
                   <ReviewItem icon={Clock3} label="Timezone" value={formatTimezone(timezone)} />
                   <ReviewItem icon={Sparkles} label="Services" value={selectedServices.length ? selectedServices.join(", ") : "None selected"} />
                   <ReviewItem icon={CalendarCheck} label="Calendar" value={calendar} />
-                  <ReviewItem icon={Workflow} label="Routing" value={routing} />
+                  <ReviewItem icon={Workflow} label="Setup status" value={calendar === "Google Calendar" ? "Redirect to Google after draft creation" : "Calendar setup skipped"} />
                   <ReviewItem icon={Bot} label="Agent" value={trimmedAgentName || "Not named yet"} />
                   <ReviewItem
                     icon={AudioLines}

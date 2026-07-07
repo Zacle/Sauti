@@ -223,6 +223,8 @@ Expected:
 - Added optional preview text support to the voice preview endpoint so onboarding audio speaks the same generated greeting shown in the UI.
 - Pauses active previews when the user changes voice or language, leaves provider default unpreviewable, and shows an inline playback error if audio fails.
 - Polished the onboarding primary action button text and arrow icon alignment.
+- Simplified onboarding booking setup to Google Calendar later or setup later; removed non-actionable Calendly/custom webhook choices from onboarding and clarified that webhooks are configured in the studio after draft creation.
+- When Google Calendar is selected, finishing onboarding now creates the draft agent and immediately redirects to Google Calendar OAuth using the new agent ID.
 - Did not deploy.
 - Files touched:
   - `backend/src/main/java/com/sauti/api/VoiceCatalogController.java`
