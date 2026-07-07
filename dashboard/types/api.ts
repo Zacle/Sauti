@@ -329,20 +329,129 @@ export type Booking = {
 
 export type AnalyticsSummary = {
   totalCalls: number;
+  attemptedCalls: number;
+  connectedCalls: number;
+  completedCalls: number;
   faqAnsweredCalls: number;
   transferredCalls: number;
   voicemailCalls: number;
   bookingCalls: number;
+  totalDurationSeconds: number;
+  connectRate: number;
   averageDurationSeconds: number;
   avgTurnsPerCall: number;
   avgSttLatencyMs: number;
   avgLlmLatencyMs: number;
   avgTtsLatencyMs: number;
+  totalCallsDelta: AnalyticsDelta;
+  connectRateDelta: AnalyticsDelta;
+  totalDurationSecondsDelta: AnalyticsDelta;
+  averageDurationSecondsDelta: AnalyticsDelta;
+  bookingCallsDelta: AnalyticsDelta;
+  transferredCallsDelta: AnalyticsDelta;
+};
+
+export type AnalyticsDelta = {
+  value: number;
+  previousValue: number;
+  percentChange: number;
 };
 
 export type DailyVolume = {
   date: string;
   callCount: number;
+};
+
+export type AnalyticsAgentSummary = {
+  agentId: string;
+  agentName: string;
+  totalCalls: number;
+  connectedCalls: number;
+  bookingCalls: number;
+  connectRate: number;
+  avgDurationSeconds: number;
+};
+
+export type AnalyticsOutcomeByDay = {
+  date: string;
+  completed: number;
+  transferred: number;
+  voicemail: number;
+  noAnswer: number;
+  busy: number;
+  failed: number;
+  afterHours: number;
+};
+
+export type AnalyticsConnectRateByDay = {
+  date: string;
+  attempts: number;
+  connected: number;
+  rate: number;
+};
+
+export type AnalyticsFunnel = {
+  attempted: number;
+  connected: number;
+  completed: number;
+};
+
+export type AnalyticsLanguageBreakdown = {
+  language: string;
+  callCount: number;
+};
+
+export type AnalyticsChannelBreakdown = {
+  channel: string;
+  totalCalls: number;
+  connectedCalls: number;
+  completedCalls: number;
+  bookingCalls: number;
+  connectRate: number;
+};
+
+export type AnalyticsTopIntent = {
+  intent: string;
+  callCount: number;
+};
+
+export type AnalyticsSentimentByDay = {
+  date: string;
+  analysedCalls: number;
+  averageScore: number;
+  positive: number;
+  neutral: number;
+  negative: number;
+  mixed: number;
+};
+
+export type AnalyticsAfterHours = {
+  totalCalls: number;
+  connectedCalls: number;
+  completedCalls: number;
+  behaviors: Array<{ behavior: string; callCount: number }>;
+};
+
+export type AnalyticsIntegrationEvents = {
+  provider: string;
+  attempted: number;
+  delivered: number;
+  failed: number;
+  retrying: number;
+};
+
+export type AnalyticsData = {
+  summary: AnalyticsSummary;
+  outcomesByDay: AnalyticsOutcomeByDay[];
+  connectRateByDay: AnalyticsConnectRateByDay[];
+  funnel: AnalyticsFunnel;
+  languages: AnalyticsLanguageBreakdown[];
+  channels: AnalyticsChannelBreakdown[];
+  topIntents: AnalyticsTopIntent[];
+  sentimentByDay: AnalyticsSentimentByDay[];
+  agents: AnalyticsAgentSummary[];
+  afterHours: AnalyticsAfterHours;
+  integrationEvents: AnalyticsIntegrationEvents[];
 };
 
 export type BillingUsage = {

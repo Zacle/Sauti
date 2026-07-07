@@ -83,6 +83,19 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
 
     List<Call> findAllByTenantIdAndStartedAtAfterOrderByStartedAtAsc(UUID tenantId, OffsetDateTime since);
 
+    List<Call> findAllByTenantIdAndStartedAtBetweenOrderByStartedAtAsc(
+            UUID tenantId,
+            OffsetDateTime from,
+            OffsetDateTime to
+    );
+
+    List<Call> findAllByTenantIdAndAgent_IdAndStartedAtBetweenOrderByStartedAtAsc(
+            UUID tenantId,
+            UUID agentId,
+            OffsetDateTime from,
+            OffsetDateTime to
+    );
+
     interface LanguageStat {
         String getLanguage();
         Long getCallCount();
