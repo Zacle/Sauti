@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class VoiceCatalogService {
+    private static final int MAX_PREVIEW_TEXT_LENGTH = 240;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final ObjectMapper objectMapper;
     private final AzureRealtimeTextToSpeechClient azureClient;
@@ -57,6 +58,10 @@ public class VoiceCatalogService {
     }
 
     public byte[] preview(String voiceId, String language) {
+        return preview(voiceId, language, null);
+    }
+
+    public byte[] preview(String voiceId, String language, String text) {
         var normalizedLanguage = language == null ? "" : language.trim().toLowerCase();
         if (!Set.of("en", "fr", "ar", "sw").contains(normalizedLanguage)) {
             throw new IllegalArgumentException("Preview language must be en, fr, ar, or sw");
@@ -68,9 +73,10 @@ public class VoiceCatalogService {
         if (!voice.languages().contains(normalizedLanguage)) {
             throw new IllegalArgumentException("Voice is not verified for " + normalizedLanguage);
         }
+        var previewText = normalizePreviewText(text, normalizedLanguage);
         return previewCache.computeIfAbsent(
-                new PreviewKey(voiceId, normalizedLanguage),
-                key -> generatePreview(key.voiceId(), key.language())
+                new PreviewKey(voiceId, normalizedLanguage, previewText),
+                key -> generateAudio(key.voiceId(), key.language(), key.text())
         );
     }
 
@@ -220,10 +226,6 @@ public class VoiceCatalogService {
         );
     }
 
-    private byte[] generatePreview(String voiceId, String language) {
-        return generateAudio(voiceId, language, previewText(language));
-    }
-
     private byte[] generateAudio(String voiceId, String language, String text) {
         if (voiceId.startsWith(AzureRealtimeTextToSpeechClient.VOICE_PREFIX)) {
             return azureClient.preview(voiceId, text);
@@ -263,11 +265,22 @@ public class VoiceCatalogService {
         };
     }
 
+    private String normalizePreviewText(String text, String language) {
+        if (text == null || text.isBlank()) {
+            return previewText(language);
+        }
+        var normalized = text.trim().replaceAll("\\s+", " ");
+        if (normalized.length() > MAX_PREVIEW_TEXT_LENGTH) {
+            return normalized.substring(0, MAX_PREVIEW_TEXT_LENGTH).trim();
+        }
+        return normalized;
+    }
+
     private String textOrNull(JsonNode node, String field) {
         String value = node.path(field).asText("");
         return value.isBlank() ? null : value;
     }
 
-    private record PreviewKey(String voiceId, String language) {
+    private record PreviewKey(String voiceId, String language, String text) {
     }
 }

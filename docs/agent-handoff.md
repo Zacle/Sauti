@@ -220,14 +220,18 @@ Expected:
 - Filtered onboarding voice choices by the selected primary language so Swahili, English, French, and Arabic only show compatible voices.
 - Clear the selected voice when the primary language changes and the previous voice is no longer compatible.
 - Reused the existing `/api/v1/voices/{voiceId}/preview` audio endpoint with the selected primary language.
+- Added optional preview text support to the voice preview endpoint so onboarding audio speaks the same generated greeting shown in the UI.
 - Pauses active previews when the user changes voice or language, leaves provider default unpreviewable, and shows an inline playback error if audio fails.
 - Polished the onboarding primary action button text and arrow icon alignment.
 - Did not deploy.
 - Files touched:
+  - `backend/src/main/java/com/sauti/api/VoiceCatalogController.java`
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
   - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
   - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.css`
   - `docs/agent-handoff.md`
 - Verification:
+  - `.\gradlew.bat :backend:test`
   - `npm.cmd run typecheck`
   - `npm.cmd run build`
 

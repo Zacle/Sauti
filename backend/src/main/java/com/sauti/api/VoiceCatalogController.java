@@ -29,11 +29,12 @@ public class VoiceCatalogController {
     @GetMapping(value = "/{voiceId}/preview", produces = "audio/mpeg")
     ResponseEntity<byte[]> preview(
             @PathVariable String voiceId,
-            @RequestParam(defaultValue = "en") String language
+            @RequestParam(defaultValue = "en") String language,
+            @RequestParam(required = false) String text
     ) {
         return ResponseEntity.ok()
                 .contentType(MediaType.valueOf("audio/mpeg"))
                 .cacheControl(CacheControl.maxAge(Duration.ofHours(24)).cachePublic())
-                .body(voiceCatalogService.preview(voiceId, language));
+                .body(voiceCatalogService.preview(voiceId, language, text));
     }
 }

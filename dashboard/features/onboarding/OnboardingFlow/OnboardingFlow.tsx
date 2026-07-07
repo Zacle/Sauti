@@ -216,7 +216,7 @@ export function OnboardingFlow() {
     }
     audioRef.current?.pause();
     const audio = new Audio(
-      `/api/v1/voices/${encodeURIComponent(selectedVoice.id)}/preview?language=${encodeURIComponent(previewLanguage)}`,
+      `/api/v1/voices/${encodeURIComponent(selectedVoice.id)}/preview?language=${encodeURIComponent(previewLanguage)}&text=${encodeURIComponent(greeting)}`,
     );
     audio.preload = "auto";
     audioRef.current = audio;
