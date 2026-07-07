@@ -364,6 +364,31 @@ Expected:
 - `docs/analytics-plan.md` may appear as untracked in some working trees. It was used as the plan for analytics. Decide explicitly whether to add it to git before staging.
 - Do not delete server Docker volumes for old Postgres/Redis unless the user explicitly approves. They are rollback safety.
 
+### 2026-07-08 - OpenAI realtime STT for multilingual Web Voice
+
+- Restored public Web Voice sessions to realtime mode for every language; the turn-based non-English path is no longer selected by session start.
+- Added `OpenAiRealtimeTranscriptionService` using the OpenAI Realtime transcription WebSocket for multilingual or non-English Web Voice agents when `OPENAI_API_KEY` is configured.
+- English-only Web Voice continues to use the configured realtime STT provider, currently Deepgram in production.
+- Added explicit OpenAI realtime transcription config defaults:
+  - `OPENAI_REALTIME_URL`
+  - `OPENAI_REALTIME_TRANSCRIPTION_MODEL`
+  - `OPENAI_REALTIME_TRANSCRIPTION_DELAY`
+- Why: Deepgram streaming treats `language` as a primary-language hint and the prior `language=multi` path was not reliable for hands-free multilingual detection. OpenAI realtime transcription supports streaming audio append events and final transcription events without forcing a language hint.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeTranscriptionService.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
+  - `backend/src/main/resources/application.yml`
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed yet.
+
 ### 2026-07-08 - Turn-based public Web Voice for non-English calls
 
 - Added a turn-based public Web Voice mode for French, Swahili, and Arabic instead of routing those browser calls through Deepgram realtime STT.

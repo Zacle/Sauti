@@ -26,6 +26,7 @@ public class WebVoiceSessionService {
     private final CallRepository callRepository;
     private final CallPipelineService callPipelineService;
     private final RealtimeSpeechToTextProvider sttProvider;
+    private final OpenAiRealtimeTranscriptionService openAiRealtimeTranscriptionService;
     private final RealtimeTextToSpeechProvider ttsProvider;
     private final SentenceChunker sentenceChunker;
     private final ObjectMapper objectMapper;
@@ -40,6 +41,7 @@ public class WebVoiceSessionService {
             CallRepository callRepository,
             CallPipelineService callPipelineService,
             RealtimeSpeechToTextProvider sttProvider,
+            OpenAiRealtimeTranscriptionService openAiRealtimeTranscriptionService,
             RealtimeTextToSpeechProvider ttsProvider,
             SentenceChunker sentenceChunker,
             ObjectMapper objectMapper,
@@ -48,6 +50,7 @@ public class WebVoiceSessionService {
         this.callRepository = callRepository;
         this.callPipelineService = callPipelineService;
         this.sttProvider = sttProvider;
+        this.openAiRealtimeTranscriptionService = openAiRealtimeTranscriptionService;
         this.ttsProvider = ttsProvider;
         this.sentenceChunker = sentenceChunker;
         this.objectMapper = objectMapper;
@@ -64,7 +67,7 @@ public class WebVoiceSessionService {
         var previous = sessions.put(callSid, state);
         if (previous != null) previous.close(false);
         sendJson(state, Map.of("type", "connected", "sessionId", callSid, "sampleRate", 16000));
-        state.sttSession = sttProvider.open(call.getAgent(), new RealtimeTranscriptListener() {
+        state.sttSession = openRealtimeStt(call.getAgent(), new RealtimeTranscriptListener() {
             @Override
             public void onPartialTranscript(String transcript, double confidence) {
                 state.enqueue(() -> onPartial(state, transcript, confidence));
@@ -92,6 +95,18 @@ public class WebVoiceSessionService {
             sendJson(state, Map.of("type", "agent_response", "text", greeting, "language", state.language));
             speak(state, greeting, state.language, false);
         }
+    }
+
+    private CompletableFuture<RealtimeSttSession> openRealtimeStt(
+            com.sauti.agent.Agent agent,
+            RealtimeTranscriptListener listener
+    ) {
+        if (openAiRealtimeTranscriptionService.isConfigured()
+                && agent != null
+                && (agent.getSupportedLanguages().size() > 1 || !"en".equals(agent.getDefaultLanguage()))) {
+            return openAiRealtimeTranscriptionService.open(agent, listener);
+        }
+        return sttProvider.open(agent, listener);
     }
 
     public void acceptAudio(String callSid, byte[] pcm16Audio) {

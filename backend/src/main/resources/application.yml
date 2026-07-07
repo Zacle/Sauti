@@ -183,6 +183,9 @@ sauti:
     openai:
       transcription-url: ${OPENAI_TRANSCRIPTION_URL:https://api.openai.com/v1/audio/transcriptions}
       model: ${OPENAI_TRANSCRIPTION_MODEL:gpt-4o-transcribe}
+      realtime-url: ${OPENAI_REALTIME_URL:wss://api.openai.com/v1/realtime}
+      realtime-model: ${OPENAI_REALTIME_TRANSCRIPTION_MODEL:gpt-realtime-whisper}
+      realtime-delay: ${OPENAI_REALTIME_TRANSCRIPTION_DELAY:low}
   tts:
     streaming-provider: ${SAUTI_TTS_STREAMING_PROVIDER:noop}
     curated-voice-ids: ${SAUTI_CURATED_VOICE_IDS:}

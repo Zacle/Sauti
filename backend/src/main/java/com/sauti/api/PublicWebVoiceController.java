@@ -99,15 +99,15 @@ public class PublicWebVoiceController {
         var call = callPipelineService.startWebCall(publicId, preferredLanguage);
         var token = tokenService.issue(call.getTwilioCallSid(), publicId);
         var language = call.getLanguageDetected();
-        var mode = turnBased(language) ? "turn" : "realtime";
+        var mode = "realtime";
         var greeting = callPipelineService.resolveGreeting(agent);
         return new StartWebVoiceSessionResponse(
                 call.getId(),
                 call.getTwilioCallSid(),
                 token,
-                "realtime".equals(mode) ? websocketBaseUrl + "/ws/web-voice/" + call.getTwilioCallSid() + "?token=" + token : "",
+                websocketBaseUrl + "/ws/web-voice/" + call.getTwilioCallSid() + "?token=" + token,
                 greeting,
-                "turn".equals(mode) ? encodedAudio(agent, language, greeting) : null,
+                null,
                 16000,
                 language,
                 mode
