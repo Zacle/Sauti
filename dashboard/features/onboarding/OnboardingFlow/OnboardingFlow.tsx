@@ -3,7 +3,7 @@
 import "./OnboardingFlow.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   AudioLines,
@@ -19,7 +19,10 @@ import {
   GraduationCap,
   Globe2,
   Landmark,
+  LoaderCircle,
   PhoneCall,
+  Pause,
+  Play,
   Rocket,
   Scissors,
   ShieldCheck,
@@ -105,8 +108,12 @@ export function OnboardingFlow() {
   const [autoDetectLanguages, setAutoDetectLanguages] = useState(true);
   const [voiceId, setVoiceId] = useState("");
   const [voices, setVoices] = useState<VoiceOption[]>([]);
+  const [playingVoiceId, setPlayingVoiceId] = useState("");
+  const [bufferingVoiceId, setBufferingVoiceId] = useState("");
+  const [voicePreviewError, setVoicePreviewError] = useState("");
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const useCases = ["Appointment booking", "Customer support", "Lead qualification", "Call routing", "Reminders"];
   const services = ["Consultation", "Follow-up visit", "Product demo", "Callback request"];
@@ -125,7 +132,16 @@ export function OnboardingFlow() {
     listVoices()
       .then((catalog) => setVoices(catalog.voices))
       .catch(() => setVoices([]));
+
+    return () => audioRef.current?.pause();
   }, []);
+
+  useEffect(() => {
+    audioRef.current?.pause();
+    setPlayingVoiceId("");
+    setBufferingVoiceId("");
+    setVoicePreviewError("");
+  }, [language, voiceId]);
 
   function toggleService(service: string) {
     setSelectedServices((current) =>
@@ -177,6 +193,49 @@ export function OnboardingFlow() {
     }
   }
 
+  async function previewSelectedVoice() {
+    if (!selectedVoice) return;
+    const previewLanguage = previewLanguageFor(selectedVoice, language);
+    if (!previewLanguage) {
+      setVoicePreviewError(`${selectedVoice.name} is not available for ${languageName}.`);
+      return;
+    }
+    setVoicePreviewError("");
+    if (playingVoiceId === selectedVoice.id) {
+      audioRef.current?.pause();
+      setPlayingVoiceId("");
+      setBufferingVoiceId("");
+      return;
+    }
+    audioRef.current?.pause();
+    const audio = new Audio(
+      `/api/v1/voices/${encodeURIComponent(selectedVoice.id)}/preview?language=${encodeURIComponent(previewLanguage)}`,
+    );
+    audio.preload = "auto";
+    audioRef.current = audio;
+    setBufferingVoiceId(selectedVoice.id);
+    audio.addEventListener("playing", () => {
+      setBufferingVoiceId("");
+      setPlayingVoiceId(selectedVoice.id);
+    });
+    audio.addEventListener("waiting", () => setBufferingVoiceId(selectedVoice.id));
+    audio.addEventListener("ended", () => {
+      setPlayingVoiceId("");
+      setBufferingVoiceId("");
+    });
+    audio.addEventListener("error", () => {
+      setPlayingVoiceId("");
+      setBufferingVoiceId("");
+      setVoicePreviewError(`The preview for ${selectedVoice.name} could not be played.`);
+    });
+    try {
+      await audio.play();
+    } catch {
+      setBufferingVoiceId("");
+      setVoicePreviewError(`Your browser blocked the preview for ${selectedVoice.name}. Try again.`);
+    }
+  }
+
   return (
     <main className="onboarding-clean-page">
       <header className="onboarding-topbar">
@@ -224,12 +283,28 @@ export function OnboardingFlow() {
                 </label>
                 <label>
                   Voice
-                  <select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
-                    <option value="">Provider default</option>
-                    {voices.map((item) => (
-                      <option value={item.id} key={item.id}>{item.name}</option>
-                    ))}
-                  </select>
+                  <span className="onboarding-voice-control">
+                    <select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
+                      <option value="">Provider default</option>
+                      {voices.map((item) => (
+                        <option value={item.id} key={item.id}>{item.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      className={playingVoiceId === voiceId ? "playing" : ""}
+                      disabled={!selectedVoice || !previewLanguageFor(selectedVoice, language)}
+                      type="button"
+                      onClick={() => void previewSelectedVoice()}
+                      aria-label={selectedVoice ? `Preview ${selectedVoice.name}` : "Choose a voice to preview"}
+                      title={selectedVoice ? "Listen to this voice" : "Choose a voice to preview"}
+                    >
+                      {bufferingVoiceId === voiceId
+                        ? <LoaderCircle className="spin" size={17} />
+                        : playingVoiceId === voiceId ? <Pause size={17} /> : <Play size={17} />}
+                      <span>{bufferingVoiceId === voiceId ? "Loading" : playingVoiceId === voiceId ? "Pause" : "Listen"}</span>
+                    </button>
+                  </span>
+                  {voicePreviewError && <small className="onboarding-voice-error">{voicePreviewError}</small>}
                 </label>
                 <label className="onboarding-field-wide onboarding-detect-field">
                   <input
@@ -479,4 +554,9 @@ function greetingFor(language: SupportedLanguage, useCase: string) {
     ar: ["مرحباً، شكراً لاتصالك. كيف يمكنني مساعدتك؟", "مرحباً، شكراً لاتصالك. يمكنني مساعدتك في حجز موعد."],
   };
   return greetings[language][booking ? 1 : 0];
+}
+
+function previewLanguageFor(voice: VoiceOption, primaryLanguage: string) {
+  return [primaryLanguage, "en", voice.languages[0]]
+    .find((candidate): candidate is string => Boolean(candidate) && voice.languages.includes(candidate)) ?? null;
 }

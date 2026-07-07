@@ -310,6 +310,57 @@
   background-color: #fbfdff;
 }
 
+.onboarding-voice-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.onboarding-voice-control button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 108px;
+  min-height: 50px;
+  border: 1px solid #c9d7e5;
+  border-radius: 14px;
+  color: #116b73;
+  background: linear-gradient(180deg, #ffffff, #f5fbfc);
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 180ms ease, box-shadow 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.onboarding-voice-control button:hover {
+  border-color: rgba(15, 159, 152, 0.42);
+  box-shadow: 0 8px 18px rgba(29, 77, 94, 0.08);
+  transform: translateY(-1px);
+}
+
+.onboarding-voice-control button.playing {
+  border-color: #19c8c2;
+  color: #ffffff;
+  background: linear-gradient(135deg, #087b84, #0dbfb8);
+}
+
+.onboarding-voice-control button:disabled {
+  color: #94a3b8;
+  background: #f4f7fa;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.onboarding-voice-error {
+  color: #b42318;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
 .onboarding-section input:focus,
 .onboarding-section select:focus {
   border-color: #27d9ca;
