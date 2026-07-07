@@ -225,10 +225,13 @@ Expected:
 - Polished the onboarding primary action button text and arrow icon alignment.
 - Simplified onboarding booking setup to Google Calendar later or setup later; removed non-actionable Calendly/custom webhook choices from onboarding and clarified that webhooks are configured in the studio after draft creation.
 - When Google Calendar is selected, finishing onboarding now creates the draft agent and immediately redirects to Google Calendar OAuth using the new agent ID.
+- Fixed onboarding completion backend validation to accept the current business type cards, including `Clinics & healthcare`, and preserve healthcare-specific draft defaults for that label.
 - Did not deploy.
 - Files touched:
   - `backend/src/main/java/com/sauti/api/VoiceCatalogController.java`
+  - `backend/src/main/java/com/sauti/agent/OnboardingCompletionService.java`
   - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `backend/src/test/java/com/sauti/agent/OnboardingCompletionServiceTest.java`
   - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
   - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.css`
   - `docs/agent-handoff.md`

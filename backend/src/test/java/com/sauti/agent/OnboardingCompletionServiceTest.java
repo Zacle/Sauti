@@ -81,4 +81,46 @@ class OnboardingCompletionServiceTest {
                 eq("Consultation, Follow-up"), eq(true)
         );
     }
+
+    @Test
+    void acceptsCurrentOnboardingHealthcareLabel() {
+        var tenantId = UUID.randomUUID();
+        var tenant = new Tenant("Clinic", "owner@example.com", "KE");
+        when(agentService.create(eq(tenantId), any(AgentRequest.class))).thenAnswer(invocation -> {
+            AgentRequest draft = invocation.getArgument(1);
+            var agent = new Agent(tenant, draft.name(), draft.greetingMessage(), draft.systemPrompt());
+            agent.update(
+                    draft.name(), draft.description(), draft.greetingMessage(), draft.systemPrompt(),
+                    draft.defaultLanguage(), draft.supportedLanguages(), draft.ttsVoiceId(),
+                    draft.humanTransferNumber(), draft.escalationPhrases(), draft.bookingEnabled(),
+                    draft.timezone(), draft.knowledgeBase(), draft.operatingHours(),
+                    draft.maxCallDurationSeconds(), draft.saveTranscript(), draft.recordCalls()
+            );
+            return agent;
+        });
+        var service = new OnboardingCompletionService(
+                agentService, agentRepository, agentVariableService, defaultToolSeeder
+        );
+        var request = new CompleteOnboardingRequest(
+                "Clinics & healthcare",
+                "Appointment booking",
+                "",
+                List.of("Consultation"),
+                "Africa/Nairobi",
+                "Set up later",
+                "Set up later",
+                "Amina",
+                "sw",
+                List.of("sw", "en"),
+                null,
+                "Provider default"
+        );
+
+        var agent = service.complete(tenantId, request);
+
+        assertThat(agent.getBusinessType()).isEqualTo("Clinics & healthcare");
+        var draftCaptor = ArgumentCaptor.forClass(AgentRequest.class);
+        verify(agentService).create(eq(tenantId), draftCaptor.capture());
+        assertThat(draftCaptor.getValue().sttVocabularyDomain()).isEqualTo("medical");
+    }
 }

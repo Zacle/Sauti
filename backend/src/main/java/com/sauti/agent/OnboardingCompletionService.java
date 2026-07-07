@@ -15,7 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class OnboardingCompletionService {
     private static final Set<String> BUSINESS_TYPES = Set.of(
-            "Local business", "Healthcare", "Service team", "Multi-location"
+            "Local business", "Healthcare", "Service team", "Multi-location",
+            "Clinics & healthcare", "Salons & beauty", "Real estate",
+            "Professional services", "Education", "Local services"
     );
     private static final Set<String> USE_CASES = Set.of(
             "Appointment booking", "Customer support", "Lead qualification", "Call routing", "Reminders"
@@ -57,6 +59,7 @@ public class OnboardingCompletionService {
                 ? "Provider default"
                 : request.voiceProfile().trim();
         String prompt = prompt(request, bookingEnabled);
+        boolean healthcare = isHealthcare(request.businessType());
         var draft = new AgentRequest(
                 request.agentName().trim(),
                 request.primaryUseCase() + " agent for " + request.businessType().toLowerCase(Locale.ROOT),
@@ -76,7 +79,7 @@ public class OnboardingCompletionService {
                 300,
                 true,
                 false,
-                "Healthcare".equals(request.businessType()) ? "advanced" : "standard",
+                healthcare ? "advanced" : "standard",
                 0.70,
                 300,
                 600,
@@ -86,9 +89,9 @@ public class OnboardingCompletionService {
                 true,
                 false,
                 300,
-                "Healthcare".equals(request.businessType()) ? "medical" : null,
+                healthcare ? "medical" : null,
                 services.isEmpty() ? null : String.join(",", services),
-                "Healthcare".equals(request.businessType()) ? List.of("medical diagnosis") : List.of(),
+                healthcare ? List.of("medical diagnosis") : List.of(),
                 List.of("summary", "successful", "sentiment", "intent"),
                 "#",
                 5,
@@ -237,5 +240,9 @@ public class OnboardingCompletionService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private boolean isHealthcare(String businessType) {
+        return "Healthcare".equals(businessType) || "Clinics & healthcare".equals(businessType);
     }
 }
