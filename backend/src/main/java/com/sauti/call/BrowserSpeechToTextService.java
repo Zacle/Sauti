@@ -3,9 +3,11 @@ package com.sauti.call;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.Agent;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -43,16 +45,13 @@ public class BrowserSpeechToTextService {
             throw new IllegalArgumentException("No audio was received");
         }
         var language = agent.getDefaultLanguage();
+        var multilingual = agent.getSupportedLanguages().size() > 1;
         // Nova-3 has poor accuracy for Swahili and Arabic. Whisper models are
         // multilingual-first and produce far better transcripts for these languages.
-        var model = switch (language) {
-            case "sw" -> "whisper-small";
-            case "ar" -> "whisper-medium";
-            default -> defaultModel;
-        };
+        var model = modelFor(language, agent.getSupportedLanguages(), multilingual);
         var uri = URI.create(listenUrl
-                + "?model=" + model
-                + "&language=" + language
+                + "?model=" + encode(model)
+                + (multilingual ? "&detect_language=true" : "&language=" + encode(language))
                 + "&smart_format=true"
                 + "&punctuate=true");
         try {
@@ -94,5 +93,20 @@ public class BrowserSpeechToTextService {
                 .contains(normalized)
                 ? normalized
                 : "application/octet-stream";
+    }
+
+    private String modelFor(String language, java.util.List<String> supportedLanguages, boolean multilingual) {
+        if (multilingual) {
+            return supportedLanguages.contains("ar") ? "whisper-medium" : "whisper-small";
+        }
+        return switch (language) {
+            case "sw" -> "whisper-small";
+            case "ar" -> "whisper-medium";
+            default -> defaultModel;
+        };
+    }
+
+    private String encode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

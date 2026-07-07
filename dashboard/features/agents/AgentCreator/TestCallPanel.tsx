@@ -245,6 +245,10 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
     };
     recorder.onstop = () => {
       utteranceRecorderRef.current = null;
+      if (endingRef.current || !callIdRef.current) {
+        utteranceStartedAtRef.current = 0;
+        return;
+      }
       const utterance = new Blob(utteranceChunksRef.current, { type: recorder.mimeType });
       const durationMs = Date.now() - utteranceStartedAtRef.current;
       utteranceStartedAtRef.current = 0;
@@ -344,6 +348,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
       await interruptionPromiseRef.current;
       interruptionPromiseRef.current = null;
       const turn = await sendTestAudioTurn(activeCallId, recording);
+      if (endingRef.current || callIdRef.current !== activeCallId) return;
       lastActivityAtRef.current = Date.now();
       remindersRef.current = 0;
       setMessages((current) => [
@@ -365,8 +370,14 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
       if (turn.outcome) await endCall(turn.outcome);
       else if (!turn.response) updateStatus("listening");
     } catch (caught) {
+      if (endingRef.current || callIdRef.current !== activeCallId) return;
       updateStatus("listening");
-      setError(caught instanceof Error ? caught.message : "Your speech could not be transcribed.");
+      const message = caught instanceof Error ? caught.message : "Your speech could not be transcribed.";
+      if (message.toLowerCase().includes("no speech was detected")) {
+        setError("I did not catch that. Speak clearly for a moment, then pause.");
+        return;
+      }
+      setError(message);
     }
   }
 
@@ -458,6 +469,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
       callIdRef.current = "";
       callSidRef.current = "";
       setCallId("");
+      setError("");
       updateStatus("idle");
     } catch (caught) {
       endingRef.current = false;
