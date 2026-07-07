@@ -51,6 +51,7 @@ jobs:
             deploy/configure-external-services-env.sh \
             deploy/test-external-services.sh \
             deploy/migrate-postgres-to-neon.sh \
+            deploy/update-public-callbacks-env.sh \
             "$VPS_USER@$VPS_HOST:/opt/sauti/"
 
       - name: Check out the verified source on the server
