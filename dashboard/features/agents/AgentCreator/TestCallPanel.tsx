@@ -58,6 +58,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
   const utteranceRecorderRef = useRef<MediaRecorder | null>(null);
   const utteranceChunksRef = useRef<Blob[]>([]);
   const utteranceStartedAtRef = useRef(0);
+  const utteranceModeRef = useRef<"auto" | "manual" | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const recordingDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -186,6 +187,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
         voiceStartedAtRef.current = 0;
         if (
           currentStatus === "capturing"
+          && utteranceModeRef.current === "auto"
           && lastVoiceAtRef.current
           && now - lastVoiceAtRef.current >= Math.max(800, settings.sttEndpointingMs)
         ) {
@@ -228,7 +230,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
     monitorFrameRef.current = requestAnimationFrame(monitor);
   }
 
-  function startUtteranceCapture(interruption: boolean) {
+  function startUtteranceCapture(interruption: boolean, mode: "auto" | "manual" = "auto") {
     if (utteranceRecorderRef.current || !streamRef.current) return;
     const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
@@ -245,6 +247,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
     };
     recorder.onstop = () => {
       utteranceRecorderRef.current = null;
+      utteranceModeRef.current = null;
       if (endingRef.current || !callIdRef.current) {
         utteranceStartedAtRef.current = 0;
         return;
@@ -260,6 +263,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
       void submitAudioTurn(utterance);
     };
     utteranceRecorderRef.current = recorder;
+    utteranceModeRef.current = mode;
     utteranceStartedAtRef.current = Date.now();
     lastVoiceAtRef.current = performance.now();
     updateStatus("capturing");
@@ -275,6 +279,17 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
     if (recorder?.state === "recording") {
       updateStatus("thinking");
       recorder.stop();
+    }
+  }
+
+  function toggleManualCapture() {
+    if (statusRef.current === "capturing" && utteranceModeRef.current === "manual") {
+      stopUtteranceCapture();
+      return;
+    }
+    if (statusRef.current === "listening") {
+      setError("");
+      startUtteranceCapture(false, "manual");
     }
   }
 
@@ -497,6 +512,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
       utteranceRecorderRef.current.stop();
     }
     utteranceRecorderRef.current = null;
+    utteranceModeRef.current = null;
     utteranceStartedAtRef.current = 0;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
@@ -515,6 +531,9 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
   }
 
   const active = Boolean(callId);
+  const manualCaptureActive = status === "capturing" && utteranceModeRef.current === "manual";
+  const manualCaptureDisabled =
+    !["listening", "capturing"].includes(status) || (status === "capturing" && !manualCaptureActive);
 
   return (
     <aside className={`agent-test-panel ${active ? "active" : ""}`}>
@@ -554,7 +573,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
             <span className={status === "capturing" ? "hearing" : ""}><Mic size={15} /></span>
             <div>
               <strong>{status === "capturing" ? "Listening to you…" : status === "listening" ? "Listening automatically" : status === "speaking" ? "You can interrupt the agent" : "Processing the conversation"}</strong>
-              <small>No recording button needed. Pause naturally when you finish.</small>
+              <small>Speak naturally, or tap the mic button to record manually.</small>
             </div>
           </div>
           <div className="test-call-controls">
@@ -570,6 +589,16 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
               placeholder="Or type a message…"
               value={input}
             />
+            <button
+              aria-label={manualCaptureActive ? "Stop recording" : "Record voice turn"}
+              className={`test-call-mic ${manualCaptureActive ? "recording" : ""}`}
+              disabled={manualCaptureDisabled}
+              onClick={toggleManualCapture}
+              title={manualCaptureActive ? "Stop recording" : "Record voice turn"}
+              type="button"
+            >
+              {manualCaptureActive ? <span className="test-call-stop" /> : <Mic size={16} />}
+            </button>
             <button disabled={!input.trim() || status !== "listening"} onClick={() => void submitTranscript(input)} type="button">
               <Send size={16} />
             </button>

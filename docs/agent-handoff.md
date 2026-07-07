@@ -363,3 +363,18 @@ Expected:
 
 - `docs/analytics-plan.md` may appear as untracked in some working trees. It was used as the plan for analytics. Decide explicitly whether to add it to git before staging.
 - Do not delete server Docker volumes for old Postgres/Redis unless the user explicitly approves. They are rollback safety.
+
+### 2026-07-07 - Browser test-call manual mic fallback
+
+- Added a manual mic record/stop control to the agent browser test-call panel.
+- Kept automatic VAD capture, but manual recordings now stay open until the user taps stop so quiet accents, browser input processing, or non-English utterances are not lost before upload.
+- Updated the listening helper copy and control layout for the extra mic button.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed yet.

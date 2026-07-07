@@ -3977,7 +3977,7 @@
 
 .test-call-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 7px;
   margin: 0 12px 12px;
   padding: 6px;
