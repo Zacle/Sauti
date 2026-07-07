@@ -119,7 +119,7 @@ export function AnalyticsPage() {
             </button>
           ))}
         </div>
-        <label>
+        <label className={styles.selectField}>
           Agent
           <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
             <option value="">All agents</option>
@@ -242,18 +242,29 @@ function CallFunnel({ data }: { data: AnalyticsData }) {
     { name: "Connected", value: data.funnel.connected, fill: COLORS.green },
     { name: "Completed", value: data.funnel.completed, fill: COLORS.violet },
   ];
+  if (!items.some((item) => item.value > 0)) {
+    return (
+      <div className={styles.funnelEmpty}>
+        <Route size={28} />
+        <strong>No call funnel yet</strong>
+        <p>The funnel will show how calls move from attempted to connected to completed once your agents start receiving calls.</p>
+      </div>
+    );
+  }
   return (
-    <div className={styles.chart}>
-      <ResponsiveContainer width="100%" height="100%">
-        <FunnelChart margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-          <Tooltip content={<ChartTooltip />} />
-          <Funnel dataKey="value" data={items} isAnimationActive>
-            <LabelList position="right" fill="#0f172a" stroke="none" dataKey="name" />
-          </Funnel>
-        </FunnelChart>
-      </ResponsiveContainer>
+    <>
+      <div className={styles.chart}>
+        <ResponsiveContainer width="100%" height="100%">
+          <FunnelChart margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
+            <Tooltip content={<ChartTooltip />} />
+            <Funnel dataKey="value" data={items} isAnimationActive>
+              <LabelList position="right" fill="#0f172a" stroke="none" dataKey="name" />
+            </Funnel>
+          </FunnelChart>
+        </ResponsiveContainer>
+      </div>
       <Legend items={items.map((item) => ({ label: item.name, value: item.value, color: item.fill }))} />
-    </div>
+    </>
   );
 }
 

@@ -8,8 +8,24 @@
 .filters { display:flex; gap:14px; align-items:center; flex-wrap:wrap; padding:14px; border:1px solid #e2e8f0; border-radius:24px; background:#f8fafc; }
 .rangeButtons { display:flex; gap:8px; flex-wrap:wrap; }
 .filters .activeFilter { background:#0f172a; color:#fff; border-color:#0f172a; }
-.filters label { display:flex; align-items:center; gap:8px; color:#64748b; font-size:13px; font-weight:800; }
-.filters select { min-width:180px; }
+.filters label { display:flex; align-items:center; gap:10px; color:#64748b; font-size:13px; font-weight:800; }
+.selectField select {
+  min-width:220px;
+  height:54px;
+  border-radius:18px;
+  padding:0 44px 0 22px;
+  font-size:16px;
+  font-weight:900;
+  color:#0f172a;
+  border-color:#d7e2ef;
+  box-shadow:0 10px 24px rgba(15,23,42,.035);
+  appearance:none;
+  background:
+    linear-gradient(45deg, transparent 50%, #0f172a 50%) calc(100% - 24px) 23px / 7px 7px no-repeat,
+    linear-gradient(135deg, #0f172a 50%, transparent 50%) calc(100% - 18px) 23px / 7px 7px no-repeat,
+    #fff;
+}
+.selectField select:focus { outline:3px solid rgba(15,94,215,.16); border-color:#8ec5ff; }
 .filterMeta { margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
 .filterMeta strong { color:#0f172a; }
 .filterMeta small { color:#64748b; }
@@ -44,6 +60,22 @@
 .tooltip span { display:flex; align-items:center; gap:7px; }
 .tooltip i { width:9px; height:9px; border-radius:999px; display:inline-block; }
 .empty { margin:0; min-height:180px; display:grid; place-items:center; color:#64748b; line-height:1.6; text-align:center; border:1px dashed #dbe5f0; border-radius:18px; background:#f8fafc; }
+.funnelEmpty {
+  min-height:250px;
+  border:1px dashed #dbe5f0;
+  border-radius:22px;
+  background:linear-gradient(180deg,#f8fbff,#ffffff);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  color:#64748b;
+  padding:28px;
+}
+.funnelEmpty svg { color:#0f5ed7; margin-bottom:12px; }
+.funnelEmpty strong { color:#0f172a; font-size:18px; margin-bottom:6px; }
+.funnelEmpty p { margin:0; max-width:420px; line-height:1.6; }
 .table { overflow:auto; }
 .table table { width:100%; border-collapse:collapse; min-width:680px; }
 .table th { text-align:left; color:#64748b; font-size:12px; text-transform:uppercase; letter-spacing:.08em; padding:10px 8px; border-bottom:1px solid #e2e8f0; }
