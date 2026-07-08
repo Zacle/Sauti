@@ -47,12 +47,11 @@ jobs:
               postgres:18-alpine \
               sh -euc '
                 test -n "${NEON_DATABASE_URL:-}"
-                psql "$NEON_DATABASE_URL" -v ON_ERROR_STOP=1 <<SQL
-DROP SCHEMA IF EXISTS public CASCADE;
-CREATE SCHEMA public;
-GRANT ALL ON SCHEMA public TO CURRENT_USER;
-GRANT ALL ON SCHEMA public TO PUBLIC;
-SQL
+                psql "$NEON_DATABASE_URL" -v ON_ERROR_STOP=1 \
+                  -c "DROP SCHEMA IF EXISTS public CASCADE" \
+                  -c "CREATE SCHEMA public" \
+                  -c "GRANT ALL ON SCHEMA public TO CURRENT_USER" \
+                  -c "GRANT ALL ON SCHEMA public TO PUBLIC"
               '
 
             docker run --rm \
