@@ -230,7 +230,11 @@ Expected:
 - Ignored punctuation-only/no-speech transcripts such as `.` before they reach the LLM, preventing fake filler responses.
 - Why: a French test conversation showed robotic phrasing, language-switch friction, accepted invalid callback details, and unsupported claims about services/follow-up.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `275fe13`.
+  - GitHub Actions CI run `28951904633` passed.
+  - Production deploy run `28952035247` passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
   - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
