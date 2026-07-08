@@ -111,6 +111,31 @@ public class ConversationOrchestrator {
         return new ConversationTurnResult(fallbackText, outcome(allToolResults));
     }
 
+    public String generateOpeningGreeting(Call call, String language, String channel) {
+        var resolvedLanguage = language == null || language.isBlank()
+                ? call.getAgent().getDefaultLanguage()
+                : language.trim().toLowerCase(java.util.Locale.ROOT);
+        try {
+            var response = llmProvider.completeTurn(new LlmToolTurnContext(
+                    AgentContext.from(call.getAgent()),
+                    openingPrompt(call, resolvedLanguage, channel),
+                    resolvedLanguage,
+                    List.of(),
+                    "",
+                    call.getCallerNumber(),
+                    call.getId(),
+                    call.getTwilioCallSid(),
+                    List.of(),
+                    List.of()
+            ));
+            var text = voiceReadyText(response.responseText());
+            return text.isBlank() ? openingFallback(call, resolvedLanguage) : text;
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Opening greeting generation failed for callId={} language={}", call.getId(), resolvedLanguage, exception);
+            return openingFallback(call, resolvedLanguage);
+        }
+    }
+
     private String recoverWithoutTools(Call call, String language, String callerTranscript) {
         try {
             var systemPrompt = systemPrompt(call, language, List.of(), callerTranscript);
@@ -209,6 +234,42 @@ public class ConversationOrchestrator {
         );
     }
 
+    private String openingPrompt(Call call, String language, String channel) {
+        var greetingDirection = resolveAgentText(call, call.getAgent().getGreetingMessage());
+        var basePrompt = agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt());
+        return """
+                %s
+
+                You are starting a live voice conversation.
+                LANGUAGE: Respond in %s only.
+                BUSINESS: You are working for %s.
+                CHANNEL: %s.
+
+                GREETING DIRECTION
+                %s
+
+                Generate only the first thing the agent should say.
+                Requirements:
+                - One short natural spoken sentence, or two very short sentences at most.
+                - Do not use a fixed script unless the greeting direction requires exact wording.
+                - Adapt to the language, channel, business context, whether this is a test or public call, and the agent's role.
+                - Mention the agent name only if it sounds natural.
+                - Do not ask multiple questions.
+                - Do not say "thank you for calling" by default.
+                - Do not output Markdown, quotes, labels, alternatives, or explanations.
+                """.formatted(
+                basePrompt,
+                language,
+                call.getTenant().getBusinessName(),
+                channel == null || channel.isBlank() ? "voice call" : channel,
+                greetingDirection.isBlank() ? "Open warmly and ask how you can help." : greetingDirection
+        );
+    }
+
+    private String resolveAgentText(Call call, String text) {
+        return agentVariableService.resolvePrompt(call.getAgent(), text == null ? "" : text);
+    }
+
     private String afterHoursBlock(Call call) {
         if (!call.isAfterHours()) return "";
         return switch (call.getAgent().getAfterHoursBehavior()) {
@@ -268,6 +329,16 @@ public class ConversationOrchestrator {
             case "sw" -> "Samahani, kuna tatizo dogo. Unaweza kurudia?";
             case "ar" -> "عذراً، هناك مشكلة بسيطة. هل يمكنك الإعادة؟";
             default -> "Sorry, I had a small hiccup there. Could you say that again?";
+        };
+    }
+
+    private String openingFallback(Call call, String language) {
+        var name = call.getAgent().getName();
+        return switch (language == null ? "" : language) {
+            case "fr" -> "Bonjour, c'est " + name + ". Je vous écoute.";
+            case "sw" -> "Habari, hapa ni " + name + ". Naweza kukusaidiaje?";
+            case "ar" -> "مرحبا، معك " + name + ". كيف أستطيع مساعدتك؟";
+            default -> "Hi, this is " + name + ". How can I help today?";
         };
     }
 

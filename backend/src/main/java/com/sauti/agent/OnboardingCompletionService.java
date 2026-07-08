@@ -63,7 +63,7 @@ public class OnboardingCompletionService {
         var draft = new AgentRequest(
                 request.agentName().trim(),
                 request.primaryUseCase() + " agent for " + request.businessType().toLowerCase(Locale.ROOT),
-                greeting(request.defaultLanguage(), request.primaryUseCase()),
+                greetingDirection(request.primaryUseCase()),
                 prompt,
                 request.defaultLanguage(),
                 List.copyOf(new LinkedHashSet<>(request.supportedLanguages())),
@@ -187,22 +187,18 @@ public class OnboardingCompletionService {
                 """.formatted(request.businessType(), request.primaryUseCase(), bookingRules);
     }
 
-    private String greeting(String language, String useCase) {
+    private String greetingDirection(String useCase) {
         boolean booking = "Appointment booking".equals(useCase);
-        return switch (language) {
-            case "fr" -> booking
-                    ? "Bonjour, vous êtes bien avec {{agent_name}}. Quel rendez-vous souhaitez-vous prendre ?"
-                    : "Bonjour, vous êtes bien avec {{agent_name}}. Je vous écoute.";
-            case "sw" -> booking
-                    ? "Habari, hapa ni {{agent_name}}. Ungependa kuweka miadi ya lini?"
-                    : "Habari, hapa ni {{agent_name}}. Naweza kukusaidiaje?";
-            case "ar" -> booking
-                    ? "مرحبا، معك {{agent_name}}. ما الموعد الذي ترغب في حجزه؟"
-                    : "مرحبا، معك {{agent_name}}. كيف أستطيع مساعدتك؟";
-            default -> booking
-                    ? "Hi, this is {{agent_name}}. What would you like to book?"
-                    : "Hi, this is {{agent_name}}. How can I help today?";
-        };
+        return """
+                Generate the opening at call time. Do not use a fixed script.
+                Sound like a warm, capable receptionist for the configured business.
+                Adapt naturally to the caller's language, the channel, and whether this is a test or live visitor.
+                Mention {{agent_name}} only when it sounds natural.
+                %s
+                Ask one simple opening question and then wait.
+                """.formatted(booking
+                ? "If appointment booking is relevant, invite the caller to say what they would like to book."
+                : "Invite the caller to say what they need.");
     }
 
     private void validate(CompleteOnboardingRequest request) {

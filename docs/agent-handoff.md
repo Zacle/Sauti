@@ -214,6 +214,32 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - AI-generated opening greetings from direction
+
+- Changed onboarding, agent-studio templates, system template seeding, and AI draft generation so `greetingMessage` stores opening direction instead of exact words for the agent to say.
+- Added LLM-generated opening creation at browser test-call and public Web Voice call startup. The generated opening is saved as the first call turn.
+- Updated public Web Voice HTTP and WebSocket startup to reuse the saved generated opening instead of re-rendering the agent greeting template.
+- Changed the onboarding preview from a quoted generated greeting to an opening-direction preview, and separated voice-preview sample text from call-opening behavior.
+- Why: hardcoded onboarding greetings do not scale to multiple languages or contexts. The runtime model should decide the actual opening based on language, channel, business context, and call situation.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/AgentDraftGenerationService.java`
+  - `backend/src/main/java/com/sauti/agent/OnboardingCompletionService.java`
+  - `backend/src/main/java/com/sauti/agent/SystemAgentTemplateSeeder.java`
+  - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.CallPipelineServiceTest --tests com.sauti.agent.SystemAgentTemplateSeederTest --tests com.sauti.agent.OnboardingCompletionServiceTest --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - More natural greetings and multilingual voice options
 
 - Replaced onboarding and agent-studio default greetings with shorter, more conversational openings that include `{{agent_name}}`.

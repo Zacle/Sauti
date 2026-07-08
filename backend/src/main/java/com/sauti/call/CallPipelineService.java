@@ -64,11 +64,11 @@ public class CallPipelineService {
         var callSid = "TEST-" + java.util.UUID.randomUUID();
         var call = callRepository.save(new Call(agent.getTenant(), agent, callSid, "Browser test", "test"));
         callSessionStore.createIfAbsent(callSid, CallSession.fromCall(call, ""));
-        var greeting = resolveGreeting(agent);
-        if (!greeting.isBlank()) {
-            call.appendAgentMessage(agent.getDefaultLanguage(), greeting);
+        var opening = conversationOrchestrator.generateOpeningGreeting(call, agent.getDefaultLanguage(), "browser test call");
+        if (!opening.isBlank()) {
+            call.appendAgentMessage(agent.getDefaultLanguage(), opening);
             callTurnRepository.save(new CallTurn(
-                    call, 1, "", greeting, agent.getDefaultLanguage(), 0, 0, 0, false
+                    call, 1, "", opening, agent.getDefaultLanguage(), 0, 0, 0, false
             ));
         }
         dashboardEventPublisher.callStarted(call);
@@ -98,11 +98,11 @@ public class CallPipelineService {
         if (!agent.isAvailableAt(OffsetDateTime.now())) call.markAfterHours();
         call = callRepository.save(call);
         callSessionStore.createIfAbsent(callSid, CallSession.fromCall(call, ""));
-        var greeting = resolveGreeting(agent);
-        if (!greeting.isBlank()) {
-            call.appendAgentMessage(language, greeting);
+        var opening = conversationOrchestrator.generateOpeningGreeting(call, language, "public web voice call");
+        if (!opening.isBlank()) {
+            call.appendAgentMessage(language, opening);
             callTurnRepository.save(new CallTurn(
-                    call, 1, "", greeting, language, 0, 0, 0, false
+                    call, 1, "", opening, language, 0, 0, 0, false
             ));
         }
         dashboardEventPublisher.callStarted(call);
@@ -409,6 +409,15 @@ public class CallPipelineService {
             }
         }
         return result;
+    }
+
+    @Transactional(readOnly = true)
+    public String openingGreeting(Call call) {
+        return callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId()).stream()
+                .map(CallTurn::getAgentResponse)
+                .filter(response -> response != null && !response.isBlank())
+                .findFirst()
+                .orElse("");
     }
 
     private boolean hasNoCallerTurns(Call call) {

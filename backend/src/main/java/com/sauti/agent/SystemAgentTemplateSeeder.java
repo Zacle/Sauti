@@ -88,7 +88,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                     name,
                     idealFor.isBlank() ? "Ready-to-use voice agent for " + industry + "." : "Designed for " + idealFor + ".",
                     industry,
-                    "Hello, thank you for calling. This is {{agent_name}}. How may I help you today?",
+                    openingDirection(capabilities),
                     promptMatcher.group(1).trim(),
                     languages.get(0),
                     languages,
@@ -186,6 +186,21 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize system template configuration", exception);
         }
+    }
+
+    private String openingDirection(List<String> capabilities) {
+        boolean booking = capabilities.stream()
+                .map(value -> value.toLowerCase(Locale.ROOT))
+                .anyMatch(value -> value.contains("book") || value.contains("schedul") || value.contains("reservation"));
+        return """
+                Open naturally in the caller's language.
+                Sound warm, concise, and professional for this business type.
+                Mention {{agent_name}} only if it sounds natural.
+                %s
+                Ask one simple opening question and then wait.
+                """.formatted(booking
+                ? "If appointment booking is relevant, invite the caller to say what they would like to book."
+                : "Invite the caller to say what they need.");
     }
 
     private String groupFor(String industry) {

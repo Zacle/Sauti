@@ -2,6 +2,7 @@ package com.sauti.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -69,6 +70,7 @@ class CallPipelineServiceTest {
         var agentVariableRepository = mock(AgentVariableRepository.class);
         var callSessionStore = mock(CallSessionStore.class);
         var dashboardEventPublisher = mock(DashboardEventPublisher.class);
+        var conversationOrchestrator = mock(ConversationOrchestrator.class);
         var service = new CallPipelineService(
                 callRepository,
                 callTurnRepository,
@@ -76,7 +78,7 @@ class CallPipelineServiceTest {
                 agentVariableRepository,
                 mock(StreamingSttProvider.class),
                 mock(LanguageDetector.class),
-                mock(ConversationOrchestrator.class),
+                conversationOrchestrator,
                 mock(StreamingTtsProvider.class),
                 callSessionStore,
                 dashboardEventPublisher,
@@ -92,14 +94,17 @@ class CallPipelineServiceTest {
         agent.activate();
         when(agentRepository.findByWebVoicePublicId(agent.getWebVoicePublicId())).thenReturn(Optional.of(agent));
         when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(agentVariableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
-                .thenReturn(List.of());
+        when(conversationOrchestrator.generateOpeningGreeting(any(Call.class), eq("sw"), eq("public web voice call")))
+                .thenReturn("Habari, naweza kukusaidiaje?");
 
         var call = service.startWebCall(agent.getWebVoicePublicId(), "sw");
 
         assertThat(call.getDirection()).isEqualTo("web");
         assertThat(call.getLanguageDetected()).isEqualTo("sw");
         verify(callSessionStore).createIfAbsent(org.mockito.ArgumentMatchers.eq(call.getTwilioCallSid()), any(CallSession.class));
+        var turnCaptor = ArgumentCaptor.forClass(CallTurn.class);
+        verify(callTurnRepository).save(turnCaptor.capture());
+        assertThat(turnCaptor.getValue().getAgentResponse()).isEqualTo("Habari, naweza kukusaidiaje?");
         verify(dashboardEventPublisher).callStarted(call);
     }
 

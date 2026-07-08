@@ -85,7 +85,7 @@ public class AgentDraftGenerationService {
                 {
                   "name": "short human-readable agent name",
                   "description": "one concise sentence",
-                  "greetingMessage": "natural opening spoken to a caller",
+                  "greetingMessage": "brief instruction for how the opening should be generated at call time, not exact words to say",
                   "systemPrompt": "a complete Markdown-formatted operating manual for the voice agent",
                   "bookingEnabled": true,
                   "defaultLanguage": "one of sw,en,fr,ar",
@@ -111,6 +111,7 @@ public class AgentDraftGenerationService {
                 Use {{variable_name}} placeholders throughout systemPrompt for business facts the user should provide.
                 Every placeholder except {{agent_name}} and {{timezone}} must have one matching variables entry.
                 Return only variables actually referenced in systemPrompt. Mark facts required when the agent cannot operate correctly without them.
+                The greetingMessage field is direction for the live LLM. It must not be a fixed greeting script, and it must scale across supported languages.
                 Do not assume a city, country, currency, emergency number, business name, or opening hours.
                 Only enable booking if the brief requires appointments, reservations, or scheduling.
                 Keep variables reusable and use lowercase snake_case keys.
@@ -250,7 +251,7 @@ public class AgentDraftGenerationService {
         return new GeneratedAgentDraftResponse(
                 name,
                 normalized.length() <= 500 ? normalized : normalized.substring(0, 500),
-                "Hello, thank you for calling. How may I help you today?",
+                openingDirection(booking),
                 prompt.trim(),
                 booking,
                 "sw",
@@ -324,6 +325,18 @@ public class AgentDraftGenerationService {
                 phrases,
                 variables
         );
+    }
+
+    private String openingDirection(boolean booking) {
+        return """
+                Open naturally in the caller's language.
+                Sound warm, concise, and professional.
+                Mention {{agent_name}} only if it sounds natural.
+                %s
+                Ask one simple opening question and then wait.
+                """.formatted(booking
+                ? "If appointment booking is relevant, invite the caller to say what they would like to book."
+                : "Invite the caller to say what they need.");
     }
 
     private ChatModel createGeminiModel(String apiKey, String model) {

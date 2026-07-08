@@ -90,7 +90,7 @@ public class WebVoiceSessionService {
                 1,
                 TimeUnit.SECONDS
         );
-        var greeting = callPipelineService.resolveGreeting(call.getAgent());
+        var greeting = callPipelineService.openingGreeting(call);
         if (!greeting.isBlank()) {
             sendJson(state, Map.of("type", "agent_response", "text", greeting, "language", state.language));
             speak(state, greeting, state.language, false);

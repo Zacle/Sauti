@@ -111,7 +111,7 @@ const templates: Template[] = [
     group: "Appointments",
     description: "Checks availability, collects caller details, and confirms bookings.",
     icon: CalendarCheck,
-    greeting: "Hi, this is {{agent_name}}. What would you like to book?",
+    greeting: "Open naturally in the caller's language. Sound like a warm receptionist, mention {{agent_name}} only if it sounds natural, and ask one simple question about what the caller wants to book.",
     prompt: `You are a professional appointment booking assistant.
 
 GOALS
@@ -137,7 +137,7 @@ CONVERSATION STYLE
     group: "Support",
     description: "Answers common questions, troubleshoots issues, and escalates safely.",
     icon: Headphones,
-    greeting: "Hi, this is {{agent_name}}. Tell me what you need help with.",
+    greeting: "Open naturally in the caller's language. Sound calm and helpful, mention {{agent_name}} only if it sounds natural, and ask one simple question about what the caller needs help with.",
     prompt: `You are a calm customer support voice agent.
 
 GOALS
@@ -161,7 +161,7 @@ RULES
     group: "Sales",
     description: "Qualifies enquiries and routes promising opportunities to the right team.",
     icon: UsersRound,
-    greeting: "Hi, this is {{agent_name}}. What are you looking for today?",
+    greeting: "Open naturally in the caller's language. Sound curious and helpful, mention {{agent_name}} only if it sounds natural, and ask one simple question about what the caller is looking for.",
     prompt: `You are a helpful lead qualification agent.
 
 GOALS
@@ -185,7 +185,7 @@ RULES
     group: "Support",
     description: "Captures the issue and schedules a callback with the correct specialist.",
     icon: PhoneCall,
-    greeting: "Hi, this is {{agent_name}}. Who should I connect you with?",
+    greeting: "Open naturally in the caller's language. Sound organized and helpful, mention {{agent_name}} only if it sounds natural, and ask one simple question about who or what the caller needs.",
     prompt: `You arrange customer support callbacks.
 
 Collect the caller's name, phone number, issue summary, urgency, and preferred callback time. Confirm every detail before creating the callback. For emergencies or high-risk requests, transfer to a human immediately.`,
@@ -1353,7 +1353,7 @@ function TemplateSelection({
           category: "Custom",
           group: "Custom",
           description: "Start without predefined behavior.",
-          greeting: "Hi, this is {{agent_name}}. How can I help today?",
+          greeting: "Open naturally in the caller's language. Mention {{agent_name}} only if it sounds natural, and ask one simple question about what the caller needs.",
           prompt: "",
           bookingEnabled: false,
           source: "custom",

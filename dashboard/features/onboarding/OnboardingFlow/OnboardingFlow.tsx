@@ -122,7 +122,8 @@ export function OnboardingFlow() {
   const voiceName = selectedVoice?.name ?? "Provider default";
   const languageName = languageOptions.find(([code]) => code === language)?.[1] ?? language;
   const trimmedAgentName = agentName.trim();
-  const greeting = greetingFor(language, useCase, trimmedAgentName);
+  const greetingDirection = greetingDirectionFor(useCase, trimmedAgentName);
+  const voicePreviewText = "This is a short Sauti voice preview.";
   const agentPreviewTitle = trimmedAgentName ? `${trimmedAgentName}, ${useCase.toLowerCase()} agent` : `Your ${useCase.toLowerCase()} agent`;
   const agentAvatarLabel = trimmedAgentName ? trimmedAgentName.slice(0, 1).toUpperCase() : "AI";
   const canContinue = step !== 1 || trimmedAgentName.length > 0;
@@ -223,7 +224,7 @@ export function OnboardingFlow() {
     }
     audioRef.current?.pause();
     const audio = new Audio(
-      `/api/v1/voices/${encodeURIComponent(selectedVoice.id)}/preview?language=${encodeURIComponent(previewLanguage)}&text=${encodeURIComponent(greeting)}`,
+      `/api/v1/voices/${encodeURIComponent(selectedVoice.id)}/preview?language=${encodeURIComponent(previewLanguage)}&text=${encodeURIComponent(voicePreviewText)}`,
     );
     audio.preload = "auto";
     audioRef.current = audio;
@@ -506,8 +507,8 @@ export function OnboardingFlow() {
               <div><Clock3 size={17} /><span>{formatTimezone(timezone)}</span></div>
             </div>
             <div className="setup-transcript">
-              <div className="setup-transcript-label"><AudioLines size={18} /><small>Generated greeting</small></div>
-              <p>&quot;{greeting}&quot;</p>
+              <div className="setup-transcript-label"><AudioLines size={18} /><small>Opening direction</small></div>
+              <p>{greetingDirection}</p>
             </div>
           </div>
           <div className="onboarding-preview-note">
@@ -548,18 +549,13 @@ function ReviewItem({ icon: Icon, label, value }: { icon: LucideIcon; label: str
   );
 }
 
-function greetingFor(language: SupportedLanguage, useCase: string, agentName: string) {
+function greetingDirectionFor(useCase: string, agentName: string) {
   const booking = useCase === "Appointment booking";
   const name = agentName || "Sauti";
-  const greetings: Record<SupportedLanguage, [string, string]> = {
-    en: [`Hi, this is ${name}. How can I help today?`, `Hi, this is ${name}. What would you like to book?`],
-    fr: [`Bonjour, vous êtes bien avec ${name}. Je vous écoute.`, `Bonjour, vous êtes bien avec ${name}. Quel rendez-vous souhaitez-vous prendre ?`],
-    sw: [`Habari, hapa ni ${name}. Naweza kukusaidiaje?`, `Habari, hapa ni ${name}. Ungependa kuweka miadi ya lini?`],
-    ar: [`مرحبا، معك ${name}. كيف أستطيع مساعدتك؟`, `مرحبا، معك ${name}. ما الموعد الذي ترغب في حجزه؟`],
-  };
-  return greetings[language][booking ? 1 : 0];
+  return booking
+    ? `Open naturally in the caller's language, mention ${name} only if it sounds natural, and ask one simple question about what they want to book.`
+    : `Open naturally in the caller's language, mention ${name} only if it sounds natural, and ask one simple question about what they need.`;
 }
-
 function previewLanguageFor(voice: VoiceOption, primaryLanguage: string) {
   return [primaryLanguage, "en", voice.languages[0]]
     .find((candidate): candidate is string => Boolean(candidate) && voice.languages.includes(candidate)) ?? null;

@@ -100,7 +100,7 @@ public class PublicWebVoiceController {
         var token = tokenService.issue(call.getTwilioCallSid(), publicId);
         var language = call.getLanguageDetected();
         var mode = "realtime";
-        var greeting = callPipelineService.resolveGreeting(agent);
+        var greeting = callPipelineService.openingGreeting(call);
         return new StartWebVoiceSessionResponse(
                 call.getId(),
                 call.getTwilioCallSid(),
