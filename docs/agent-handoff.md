@@ -214,6 +214,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-09 - Calls table and transcript drawer UI
+
+- Reworked the `/calls` console page from stacked accordion cards into a denser operations table with segmented filters for all calls, phone calls, and browser tests.
+- Added clearer call-type presentation, distinct phone/test icons, status chips, search, incoming phone number, duration, and routed event visibility.
+- Loaded bookings alongside calls so the routed event column can show the booking service linked to a call, or explicitly show `No booking` when no booking was produced.
+- Added a right-side transcript drawer with details, booked event, recording playback, language/intent metadata, and the caller/agent transcript.
+- Why: user shared a reference call-management UI and asked to improve the Sauti call UI/UX while differentiating call types.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `dashboard/features/calls/CallsPage/CallsPage.tsx`
+  - `dashboard/features/calls/CallsPage/CallsPage.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+- Known follow-ups:
+  - Replace approximate transcript timestamps with persisted per-turn timestamps if/when the backend stores them.
+
 ### 2026-07-09 - Bookings dashboard feature
 
 - Replaced the placeholder `/bookings` console page with a real bookings dashboard backed by the existing tenant-scoped bookings API.
