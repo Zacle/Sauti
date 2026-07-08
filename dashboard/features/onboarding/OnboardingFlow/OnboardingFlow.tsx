@@ -123,7 +123,7 @@ export function OnboardingFlow() {
   const languageName = languageOptions.find(([code]) => code === language)?.[1] ?? language;
   const trimmedAgentName = agentName.trim();
   const greetingDirection = greetingDirectionFor(useCase, trimmedAgentName);
-  const voicePreviewText = "This is a short Sauti voice preview.";
+  const voicePreviewText = voicePreviewTextFor(language);
   const agentPreviewTitle = trimmedAgentName ? `${trimmedAgentName}, ${useCase.toLowerCase()} agent` : `Your ${useCase.toLowerCase()} agent`;
   const agentAvatarLabel = trimmedAgentName ? trimmedAgentName.slice(0, 1).toUpperCase() : "AI";
   const canContinue = step !== 1 || trimmedAgentName.length > 0;
@@ -557,6 +557,18 @@ function greetingDirectionFor(useCase: string, agentName: string) {
     : `Open naturally in the caller's language, mention ${name} only if it sounds natural, and ask one simple question about what they need.`;
 }
 function previewLanguageFor(voice: VoiceOption, primaryLanguage: string) {
-  return [primaryLanguage, "en", voice.languages[0]]
-    .find((candidate): candidate is string => Boolean(candidate) && voice.languages.includes(candidate)) ?? null;
+  return voice.languages.includes(primaryLanguage) ? primaryLanguage : null;
+}
+
+function voicePreviewTextFor(language: SupportedLanguage) {
+  switch (language) {
+    case "fr":
+      return "Bonjour, voici un court aperçu de la voix Sauti.";
+    case "ar":
+      return "مرحبا، هذا مثال قصير على صوت ساوتي.";
+    case "sw":
+      return "Habari, hii ni sampuli fupi ya sauti ya Sauti.";
+    default:
+      return "Hi, this is a short Sauti voice preview.";
+  }
 }

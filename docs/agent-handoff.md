@@ -214,6 +214,20 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Onboarding voice preview language match
+
+- Fixed onboarding voice previews so the preview request only uses the selected primary language for the selected voice.
+- Replaced the fixed English preview sentence with localized preview text for English, French, Swahili, and Arabic.
+- Removed the onboarding preview fallback to English/first voice language, so incompatible voices do not silently preview in the wrong language.
+- Why: selected onboarding languages such as French, Swahili, and Arabic could still play an English sample sentence, making the preview sound mismatched even when the voice itself supported the selected language.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+
 ### 2026-07-08 - AI-generated opening greetings from direction
 
 - Changed onboarding, agent-studio templates, system template seeding, and AI draft generation so `greetingMessage` stores opening direction instead of exact words for the agent to say.
