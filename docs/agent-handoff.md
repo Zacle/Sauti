@@ -221,7 +221,11 @@ Expected:
 - Removed the onboarding preview fallback to English/first voice language, so incompatible voices do not silently preview in the wrong language.
 - Why: selected onboarding languages such as French, Swahili, and Arabic could still play an English sample sentence, making the preview sound mismatched even when the voice itself supported the selected language.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `bbec33f`.
+  - GitHub Actions CI run `28949541469` passed.
+  - Production deploy run `28949665462` passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
   - `docs/agent-handoff.md`
