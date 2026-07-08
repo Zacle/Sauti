@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.chat.messages.AssistantMessage;
 
 @SpringBootTest(properties = {
         "sauti.llm.provider=spring-ai",
@@ -38,5 +39,13 @@ class SpringAiToolCallingLlmProviderContextTest {
         assertThat(callback.call("{}"))
                 .contains("Tool execution is handled by Sauti")
                 .contains("check_availability");
+    }
+
+    @Test
+    void missingToolCallsAreTreatedAsNoToolCalls() {
+        var springProvider = (SpringAiToolCallingLlmProvider) provider;
+        var output = AssistantMessage.builder().content("Bonjour Zachary, comment puis-je vous aider ?").build();
+
+        assertThat(springProvider.toolCalls(output)).isEmpty();
     }
 }

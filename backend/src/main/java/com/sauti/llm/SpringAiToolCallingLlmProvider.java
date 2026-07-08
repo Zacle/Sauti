@@ -89,10 +89,17 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
                 options(modelName, provider, callbacks)
         ));
         var output = response.getResult().getOutput();
-        var toolCalls = output.getToolCalls().stream()
+        return new LlmToolTurnResponse(output.getText() == null ? "" : output.getText(), toolCalls(output));
+    }
+
+    List<LlmToolCall> toolCalls(AssistantMessage output) {
+        var calls = output.getToolCalls();
+        if (calls == null || calls.isEmpty()) {
+            return List.of();
+        }
+        return calls.stream()
                 .map(call -> new LlmToolCall(call.id(), call.name(), parseArguments(call.arguments())))
                 .toList();
-        return new LlmToolTurnResponse(output.getText() == null ? "" : output.getText(), toolCalls);
     }
 
     private List<Message> messages(LlmToolTurnContext context) {

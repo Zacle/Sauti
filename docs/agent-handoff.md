@@ -214,6 +214,21 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Spring AI no-tool response fix
+
+- Fixed the likely cause of repeated French fallback responses after successful transcription.
+- `SpringAiToolCallingLlmProvider` now treats a null `AssistantMessage.getToolCalls()` value as no tool calls instead of throwing.
+- Why: a normal conversational response such as "Bonjour Zachary..." may have text and no tool calls; throwing there caused the localized fallback even though the French transcript was understood.
+- Added a regression test for no-tool Spring AI responses.
+- Did not deploy.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/test/java/com/sauti/llm/SpringAiToolCallingLlmProviderContextTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Spring AI tool callback hardening
 
 - Diagnosed the French browser test issue: speech recognition is working, but the agent reaches the LLM/tool response layer and returns the localized fallback.
