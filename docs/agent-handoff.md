@@ -221,7 +221,11 @@ Expected:
 - The provider now treats Advanced as a preferred model path and falls back to the standard Gemini model if OpenAI is not configured or if the advanced request fails.
 - Why: a missing or failing advanced provider should not make the whole voice turn fail when the standard AI provider is available.
 - Deployment:
-  - Pending push/deploy for this commit.
+  - Deployed commit `1996a22`.
+  - GitHub Actions CI passed.
+  - Production deploy passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
   - `backend/src/test/java/com/sauti/llm/SpringAiToolCallingLlmProviderContextTest.java`
