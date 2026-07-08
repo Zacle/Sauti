@@ -214,6 +214,21 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Spring AI tool callback hardening
+
+- Diagnosed the French browser test issue: speech recognition is working, but the agent reaches the LLM/tool response layer and returns the localized fallback.
+- Hardened Spring AI tool callbacks so unexpected internal callback invocation returns a controlled JSON error instead of throwing an exception.
+- Why: Sauti executes tools through `ToolFulfillmentRouter` after the model returns tool calls. A callback throw can turn a valid French transcript into the generic/fallback agent response.
+- Added a regression test for the Spring AI callback behavior.
+- Did not deploy.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/test/java/com/sauti/llm/SpringAiToolCallingLlmProviderContextTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - French voice turn fallback
 
 - Hardened conversation orchestration so a valid transcribed voice turn returns a localized fallback response if the LLM/tool provider throws.

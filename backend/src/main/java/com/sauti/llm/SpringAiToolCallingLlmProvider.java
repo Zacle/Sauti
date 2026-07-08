@@ -154,9 +154,10 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
 
             @Override
             public String call(String toolInput) {
-                throw new UnsupportedOperationException(
-                        "Sauti executes tools through ToolFulfillmentRouter, not inside Spring AI"
-                );
+                return writeJson(Map.of(
+                        "error", "Tool execution is handled by Sauti after the model returns the tool call.",
+                        "tool", tool.name()
+                ));
             }
         };
     }
