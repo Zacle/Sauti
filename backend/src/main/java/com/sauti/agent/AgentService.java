@@ -240,12 +240,12 @@ public class AgentService {
     }
 
     private void validateLanguages(String defaultLanguage, List<String> supportedLanguages) {
-        var availableLanguages = List.of("fr", "ar", "sw", "en");
+        var availableLanguages = List.of("fr", "ar", "en");
         if (!availableLanguages.contains(defaultLanguage)) {
-            throw new IllegalArgumentException("Supported languages are fr, ar, sw, and en");
+            throw new IllegalArgumentException("Supported languages are fr, ar, and en");
         }
         if (supportedLanguages.stream().anyMatch(language -> !availableLanguages.contains(language))) {
-            throw new IllegalArgumentException("Supported languages are fr, ar, sw, and en");
+            throw new IllegalArgumentException("Supported languages are fr, ar, and en");
         }
         if (!supportedLanguages.contains(defaultLanguage)) {
             throw new IllegalArgumentException("Default language must be supported");

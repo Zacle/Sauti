@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AgentTemplateService {
-    private static final List<String> SUPPORTED_LANGUAGES = List.of("fr", "ar", "sw", "en");
+    private static final List<String> SUPPORTED_LANGUAGES = List.of("fr", "ar", "en");
 
     private final AgentTemplateRepository templateRepository;
     private final TenantRepository tenantRepository;
@@ -143,7 +143,7 @@ public class AgentTemplateService {
             throw new IllegalArgumentException("Unsupported default language");
         }
         if (request.supportedLanguages().stream().anyMatch(language -> !SUPPORTED_LANGUAGES.contains(language))) {
-            throw new IllegalArgumentException("Supported languages are fr, ar, sw, and en");
+            throw new IllegalArgumentException("Supported languages are fr, ar, and en");
         }
         if (!request.supportedLanguages().contains(request.defaultLanguage())) {
             throw new IllegalArgumentException("Default language must be included in supported languages");

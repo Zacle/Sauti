@@ -214,6 +214,43 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Cartesia voice catalog and Azure removal
+
+- Added Cartesia TTS support with a backend client for voice previews and realtime audio routing when the selected voice ID is prefixed with `cartesia:`.
+- Changed the voice catalog to load ElevenLabs and Cartesia only, request Cartesia voices per supported language (`en`, `fr`, `ar`), and rank professional/support/assistant-style voices first.
+- Removed Azure Speech from the voice catalog, realtime TTS routing, environment examples, and tests.
+- Removed Swahili from new agent/onboarding/template language validation and from onboarding/Agent Studio language selectors.
+- Updated onboarding and Agent Studio voice labels so the user sees only ElevenLabs and Cartesia provider choices.
+- Verified the local Cartesia API key by calling `/voices` without printing the secret; Cartesia returned professional candidates including Skylar, Gemma, and Daniel.
+- Why: user wants to prioritize high-quality voices, remove Azure and Swahili from the product setup path, and load professional Cartesia voices after adding the env values.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/CartesiaRealtimeTextToSpeechClient.java`
+  - `backend/src/main/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProvider.java`
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `backend/src/main/java/com/sauti/agent/AgentService.java`
+  - `backend/src/main/java/com/sauti/agent/AgentTemplateService.java`
+  - `backend/src/main/java/com/sauti/agent/AgentDraftGenerationService.java`
+  - `backend/src/main/java/com/sauti/agent/OnboardingCompletionService.java`
+  - `backend/src/main/java/com/sauti/agent/SystemAgentTemplateSeeder.java`
+  - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
+  - `backend/src/main/java/com/sauti/call/BrowserSpeechToTextService.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/types/api.ts`
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `.github/workflows/production-diagnostics.yml`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+- Known follow-ups:
+  - Existing production agents that still store `azure:` or `sw` values should be migrated or edited before live use.
+  - Public marketing/demo copy still mentions Swahili in non-console content; it was not changed in this provider-focused pass.
+
 ### 2026-07-08 - Voice quality and onboarding prompt improvements
 
 - Changed live opening generation and fallback openings so the agent introduces itself by name once at the start of the call.

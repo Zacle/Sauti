@@ -188,11 +188,6 @@ sauti:
       realtime-delay: ${OPENAI_REALTIME_TRANSCRIPTION_DELAY:low}
   tts:
     streaming-provider: ${SAUTI_TTS_STREAMING_PROVIDER:noop}
-    azure:
-      api-key: ${AZURE_SPEECH_KEY:}
-      region: ${AZURE_SPEECH_REGION:}
-      speaking-rate: ${AZURE_SPEAKING_RATE:-2%}
-      pitch: ${AZURE_SPEECH_PITCH:+0%}
     elevenlabs:
       api-key: ${ELEVENLABS_API_KEY:}
       base-url: ${ELEVENLABS_STREAM_URL:wss://api.elevenlabs.io/v1/text-to-speech}
@@ -202,13 +197,25 @@ sauti:
       model-id-en: ${ELEVENLABS_MODEL_ID_EN:}
       model-id-fr: ${ELEVENLABS_MODEL_ID_FR:}
       model-id-ar: ${ELEVENLABS_MODEL_ID_AR:}
-      model-id-sw: ${ELEVENLABS_MODEL_ID_SW:}
       default-voice-id: ${ELEVENLABS_DEFAULT_VOICE_ID:}
       stability: ${ELEVENLABS_STABILITY:0.38}
       similarity-boost: ${ELEVENLABS_SIMILARITY_BOOST:0.78}
       style: ${ELEVENLABS_STYLE:0.12}
       speed: ${ELEVENLABS_SPEED:0.98}
       speaker-boost: ${ELEVENLABS_SPEAKER_BOOST:true}
+    cartesia:
+      api-key: ${CARTESIA_API_KEY:}
+      version: ${CARTESIA_VERSION:2026-03-01}
+      voices-url: ${CARTESIA_VOICES_URL:https://api.cartesia.ai/voices?limit=100}
+      websocket-url: ${CARTESIA_WEBSOCKET_URL:wss://api.cartesia.ai/tts/websocket}
+      bytes-url: ${CARTESIA_BYTES_URL:https://api.cartesia.ai/tts/bytes}
+      model-id: ${CARTESIA_MODEL_ID:sonic-3.5}
+      output-container: ${CARTESIA_OUTPUT_CONTAINER:raw}
+      output-encoding: ${CARTESIA_OUTPUT_ENCODING:pcm_s16le}
+      output-sample-rate: ${CARTESIA_OUTPUT_SAMPLE_RATE:16000}
+      preview-container: ${CARTESIA_PREVIEW_CONTAINER:mp3}
+      preview-encoding: ${CARTESIA_PREVIEW_ENCODING:pcm_s16le}
+      preview-sample-rate: ${CARTESIA_PREVIEW_SAMPLE_RATE:44100}
   twilio:
     account-sid: ${TWILIO_ACCOUNT_SID:}
     public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}

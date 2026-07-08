@@ -5,7 +5,7 @@ import { Check, ChevronDown, CircleAlert, LoaderCircle, Mic2, Pause, Play, Searc
 import { listVoices } from "@/lib/api/voices";
 import type { VoiceOption } from "@/types/api";
 
-const SUPPORTED_VOICE_LANGUAGES = ["sw", "en", "fr", "ar"];
+const SUPPORTED_VOICE_LANGUAGES = ["en", "fr", "ar"];
 
 type VoicePickerProps = {
   value: string;
@@ -203,7 +203,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               {previewError && <div className="voice-preview-error">{previewError}</div>}
               {loading && <div className="voice-picker-state"><LoaderCircle className="spin" size={22} /> Loading available voices...</div>}
               {!loading && error && <div className="voice-picker-state error">{error}<small>Check the configured TTS provider credentials.</small></div>}
-              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure ElevenLabs or Azure Speech in the backend environment.</small></div>}
+              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure ElevenLabs or Cartesia in the backend environment.</small></div>}
               {!loading && !error && providerEnabled && unsupportedLanguage && (
                 <div className="voice-language-unavailable">
                   <CircleAlert aria-hidden="true" size={20} />
@@ -298,7 +298,7 @@ function coverage(voice: VoiceOption, languages: string[]) {
 }
 
 function languageName(code: string) {
-  return ({ sw: "Swahili", fr: "French", en: "English", ar: "Arabic", multilingual: "Multilingual" } as Record<string, string>)[code] ?? code.toUpperCase();
+  return ({ fr: "French", en: "English", ar: "Arabic", multilingual: "Multilingual" } as Record<string, string>)[code] ?? code.toUpperCase();
 }
 
 function titleCase(value: string) {
@@ -306,11 +306,8 @@ function titleCase(value: string) {
 }
 
 function unsupportedLanguageMessage(language: string) {
-  if (language === "sw") {
-    return "Configure Azure Speech for native Kenyan or Tanzanian Swahili voices, or enable ElevenLabs v3 for Swahili previews.";
-  }
   if (language === "fr" || language === "ar") {
-    return `English-origin voices are hidden because their ${languageName(language)} accent is not production quality. Enable ElevenLabs multilingual/v3 voices first; Azure is only a fallback.`;
+    return `No ${languageName(language)} voice was returned by ElevenLabs or Cartesia. Check provider language support and credentials.`;
   }
   return "The current speech model returned no compatible voice for this language.";
 }
@@ -323,7 +320,7 @@ function compareVoiceQuality(left: VoiceOption, right: VoiceOption, languages: s
 }
 
 function providerRank(provider: string) {
-  return provider === "elevenlabs" ? 0 : provider === "azure" ? 1 : 2;
+  return provider === "elevenlabs" ? 0 : provider === "cartesia" ? 1 : 2;
 }
 
 function categoryRank(category: string) {

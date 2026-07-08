@@ -231,8 +231,8 @@ class AgentTemplateApiTest {
                   "category": "Healthcare",
                   "greetingMessage": "%s",
                   "systemPrompt": "Help callers and book appointments. Revision %d.",
-                  "defaultLanguage": "sw",
-                  "supportedLanguages": ["sw", "en"],
+                  "defaultLanguage": "en",
+                  "supportedLanguages": ["en", "fr"],
                   "configurationJson": "{\\"bookingEnabled\\":true,\\"tools\\":[\\"calendar_booking\\"]}",
                   "published": true
                 }

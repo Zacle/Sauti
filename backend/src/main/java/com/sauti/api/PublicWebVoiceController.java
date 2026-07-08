@@ -30,7 +30,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/v1/public/web-voice")
 public class PublicWebVoiceController {
-    private static final Set<String> TURN_BASED_LANGUAGES = Set.of("fr", "sw", "ar");
+    private static final Set<String> TURN_BASED_LANGUAGES = Set.of("fr", "ar");
     private final AgentRepository agentRepository;
     private final CallRepository callRepository;
     private final CallPipelineService callPipelineService;

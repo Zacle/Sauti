@@ -54,7 +54,7 @@ class OnboardingCompletionServiceTest {
                 "Fixed calendar",
                 "Amina",
                 "fr",
-                List.of("fr", "sw", "en"),
+                List.of("fr", "en"),
                 "voice-123",
                 "Aminata"
         );
@@ -110,8 +110,8 @@ class OnboardingCompletionServiceTest {
                 "Set up later",
                 "Set up later",
                 "Amina",
-                "sw",
-                List.of("sw", "en"),
+                "en",
+                List.of("en"),
                 null,
                 "Provider default"
         );

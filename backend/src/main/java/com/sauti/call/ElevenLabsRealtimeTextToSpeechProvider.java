@@ -31,14 +31,13 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
     private final String englishModelId;
     private final String frenchModelId;
     private final String arabicModelId;
-    private final String swahiliModelId;
     private final String defaultVoiceId;
     private final double stability;
     private final double similarityBoost;
     private final double style;
     private final double speed;
     private final boolean speakerBoost;
-    private final AzureRealtimeTextToSpeechClient azureClient;
+    private final CartesiaRealtimeTextToSpeechClient cartesiaClient;
 
     public ElevenLabsRealtimeTextToSpeechProvider(
             ObjectMapper objectMapper,
@@ -48,14 +47,13 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
             @Value("${sauti.tts.elevenlabs.model-id-en:}") String englishModelId,
             @Value("${sauti.tts.elevenlabs.model-id-fr:}") String frenchModelId,
             @Value("${sauti.tts.elevenlabs.model-id-ar:}") String arabicModelId,
-            @Value("${sauti.tts.elevenlabs.model-id-sw:}") String swahiliModelId,
             @Value("${sauti.tts.elevenlabs.default-voice-id}") String defaultVoiceId,
             @Value("${sauti.tts.elevenlabs.stability:0.38}") double stability,
             @Value("${sauti.tts.elevenlabs.similarity-boost:0.78}") double similarityBoost,
             @Value("${sauti.tts.elevenlabs.style:0.12}") double style,
             @Value("${sauti.tts.elevenlabs.speed:0.98}") double speed,
             @Value("${sauti.tts.elevenlabs.speaker-boost:true}") boolean speakerBoost,
-            AzureRealtimeTextToSpeechClient azureClient
+            CartesiaRealtimeTextToSpeechClient cartesiaClient
     ) {
         this.objectMapper = objectMapper;
         this.apiKey = apiKey;
@@ -64,31 +62,30 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
         this.englishModelId = blankToDefault(englishModelId, modelId);
         this.frenchModelId = blankToDefault(frenchModelId, modelId);
         this.arabicModelId = blankToDefault(arabicModelId, modelId);
-        this.swahiliModelId = blankToDefault(swahiliModelId, modelId);
         this.defaultVoiceId = defaultVoiceId;
         this.stability = bounded(stability, 0, 1, "stability");
         this.similarityBoost = bounded(similarityBoost, 0, 1, "similarityBoost");
         this.style = bounded(style, 0, 1, "style");
         this.speed = bounded(speed, 0.7, 1.2, "speed");
         this.speakerBoost = speakerBoost;
-        this.azureClient = azureClient;
+        this.cartesiaClient = cartesiaClient;
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     }
 
     @Override
     public CompletableFuture<RealtimeTtsSession> open(String language, String voiceId, TtsAudioListener listener) {
-        if (voiceId != null && voiceId.startsWith(AzureRealtimeTextToSpeechClient.VOICE_PREFIX)) {
+        if (voiceId != null && voiceId.startsWith(CartesiaRealtimeTextToSpeechClient.VOICE_PREFIX)) {
             LOGGER.info(
-                    "Opening realtime TTS session provider=elevenlabs engine=azure language={} voiceId={} modelId=none azureFallback=true",
+                    "Opening realtime TTS session provider=elevenlabs engine=cartesia language={} voiceId={} modelId=cartesia",
                     safe(language),
                     safe(voiceId)
             );
-            return azureClient.open(voiceId, listener);
+            return cartesiaClient.open(language, voiceId, listener);
         }
         var resolvedVoiceId = voiceId == null || voiceId.isBlank() ? defaultVoiceId : voiceId;
         var resolvedModelId = modelId(language);
         LOGGER.info(
-                "Opening realtime TTS session provider=elevenlabs engine=elevenlabs language={} voiceId={} resolvedVoiceId={} modelId={} azureFallback=false",
+                "Opening realtime TTS session provider=elevenlabs engine=elevenlabs language={} voiceId={} resolvedVoiceId={} modelId={}",
                 safe(language),
                 safe(voiceId),
                 safe(resolvedVoiceId),
@@ -126,7 +123,6 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
             case "en" -> englishModelId;
             case "fr" -> frenchModelId;
             case "ar" -> arabicModelId;
-            case "sw" -> swahiliModelId;
             default -> modelId;
         };
     }

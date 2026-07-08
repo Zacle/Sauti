@@ -27,7 +27,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
     private static final Pattern PROMPT = Pattern.compile(
             "(?ms)### System Prompt\\s*\\R```\\s*\\R(.*?)\\R```"
     );
-    private static final Set<String> ALLOWED_LANGUAGES = Set.of("fr", "ar", "sw", "en");
+    private static final Set<String> ALLOWED_LANGUAGES = Set.of("fr", "ar", "en");
     private static final Set<String> REQUIRED_VARIABLES = Set.of(
             "clinic_name", "salon_name", "firm_name", "agency_name", "gym_name",
             "shop_name", "restaurant_name", "spa_name", "company_name",
@@ -155,7 +155,6 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 case "english" -> "en";
                 case "french" -> "fr";
                 case "arabic" -> "ar";
-                case "swahili" -> "sw";
                 default -> null;
             };
             if (code != null && ALLOWED_LANGUAGES.contains(code) && !languages.contains(code)) {

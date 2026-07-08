@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class BrowserSpeechToTextService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BrowserSpeechToTextService.class);
-    private static final Set<String> OPENAI_FIRST_LANGUAGES = Set.of("fr", "sw", "ar");
+    private static final Set<String> OPENAI_FIRST_LANGUAGES = Set.of("fr", "ar");
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String deepgramApiKey;
@@ -93,7 +93,7 @@ public class BrowserSpeechToTextService {
         // detect_language=true only works with nova models, not Whisper.
         // For multilingual agents, use nova-3 so Deepgram can auto-detect.
         // For single-language non-English agents, use Whisper for better accuracy.
-        var useWhisper = !multilingual && List.of("sw", "fr", "ar").contains(language);
+        var useWhisper = !multilingual && List.of("fr", "ar").contains(language);
         var model = useWhisper ? modelFor(language) : deepgramDefaultModel;
         var uri = URI.create(deepgramListenUrl
                 + "?model=" + encode(model)

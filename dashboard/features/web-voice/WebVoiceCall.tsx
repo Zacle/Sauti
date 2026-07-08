@@ -357,7 +357,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
 }
 
 function languageName(code: string) {
-  return ({ sw: "Swahili", en: "English", fr: "French", ar: "Arabic" } as Record<string, string>)[code] ?? code.toUpperCase();
+  return ({ en: "English", fr: "French", ar: "Arabic" } as Record<string, string>)[code] ?? code.toUpperCase();
 }
 
 function downsample(samples: Float32Array, sourceRate: number, targetRate: number) {

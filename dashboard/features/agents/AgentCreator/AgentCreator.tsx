@@ -1357,8 +1357,8 @@ function TemplateSelection({
           prompt: "",
           bookingEnabled: false,
           source: "custom",
-          defaultLanguage: "sw",
-          supportedLanguages: ["sw", "en"],
+          defaultLanguage: "en",
+          supportedLanguages: ["en"],
           escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
         })}>
           <span className="template-card-top"><span className="template-card-icon"><Bot size={21} /></span><h3>Blank agent</h3><small>Custom</small></span><p>Configure every behavior and tool yourself.</p><i>Start blank <ArrowRight size={15} /></i>
@@ -1369,7 +1369,7 @@ function TemplateSelection({
 }
 
 function languageName(code: string) {
-  return ({ sw: "Swahili", en: "English", fr: "French", ar: "Arabic" } as Record<string, string>)[code] ?? code.toUpperCase();
+  return ({ en: "English", fr: "French", ar: "Arabic" } as Record<string, string>)[code] ?? code.toUpperCase();
 }
 
 function MainSettings(props: {
@@ -1447,7 +1447,7 @@ function MainSettings(props: {
             <ChevronDown size={15} />
           </button>
         </label>
-        <label>Primary language<select value={props.language} onChange={(event) => props.onLanguage(event.target.value)}><option value="sw">Swahili</option><option value="en">English</option><option value="fr">French</option><option value="ar">Arabic</option></select></label>
+        <label>Primary language<select value={props.language} onChange={(event) => props.onLanguage(event.target.value)}><option value="en">English</option><option value="fr">French</option><option value="ar">Arabic</option></select></label>
         <label>
           Timezone
           <select value={props.timezone} onChange={(event) => props.onTimezone(event.target.value)}>
@@ -1563,7 +1563,7 @@ function MainSettings(props: {
         <h3>Supported caller languages</h3>
         <p>The agent detects these languages during a call. The primary language cannot be removed.</p>
         <div className="studio-language-options">
-          {[["sw", "Swahili"], ["en", "English"], ["fr", "French"], ["ar", "Arabic"]].map(([code, label]) => {
+          {[["en", "English"], ["fr", "French"], ["ar", "Arabic"]].map(([code, label]) => {
             const selected = props.supportedLanguages.includes(code);
             return (
               <button

@@ -37,7 +37,7 @@ public class AgentDraftGenerationService {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-z][a-z0-9_]*)}}");
     private static final Pattern MARKDOWN_HEADING = Pattern.compile("(?m)^##\\s+\\S+");
     private static final Pattern NUMBERED_STEP = Pattern.compile("(?m)^1\\.\\s+\\S+");
-    private static final List<String> ALLOWED_LANGUAGES = List.of("sw", "en", "fr", "ar");
+    private static final List<String> ALLOWED_LANGUAGES = List.of("en", "fr", "ar");
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper;
     private final String provider;
@@ -88,8 +88,8 @@ public class AgentDraftGenerationService {
                   "greetingMessage": "brief instruction for how the opening should be generated at call time, not exact words to say",
                   "systemPrompt": "a complete Markdown-formatted operating manual for the voice agent",
                   "bookingEnabled": true,
-                  "defaultLanguage": "one of sw,en,fr,ar",
-                  "supportedLanguages": ["one or more of sw,en,fr,ar"],
+                  "defaultLanguage": "one of en,fr,ar",
+                  "supportedLanguages": ["one or more of en,fr,ar"],
                   "escalationPhrases": ["specific caller phrases"],
                   "variables": [
                     {"key":"business_name","label":"Business name","description":"Official business name","required":true}

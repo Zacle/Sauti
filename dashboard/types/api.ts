@@ -93,8 +93,8 @@ export type CompleteOnboardingRequest = {
   calendarProvider: string;
   routingPolicy: string;
   agentName: string;
-  defaultLanguage: "sw" | "en" | "fr" | "ar";
-  supportedLanguages: Array<"sw" | "en" | "fr" | "ar">;
+  defaultLanguage: "en" | "fr" | "ar";
+  supportedLanguages: Array<"en" | "fr" | "ar">;
   ttsVoiceId: string | null;
   voiceProfile: string;
 };

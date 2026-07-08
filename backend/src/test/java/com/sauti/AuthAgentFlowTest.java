@@ -173,7 +173,7 @@ class AuthAgentFlowTest {
                                   "routingPolicy": "Fixed calendar",
                                   "agentName": "Amina Onboarding",
                                   "defaultLanguage": "fr",
-                                  "supportedLanguages": ["fr", "sw", "en"],
+                                  "supportedLanguages": ["fr", "en"],
                                   "ttsVoiceId": "voice-456",
                                   "voiceProfile": "Aminata"
                                 }

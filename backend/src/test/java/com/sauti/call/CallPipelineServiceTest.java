@@ -88,24 +88,24 @@ class CallPipelineServiceTest {
         var tenant = new Tenant("Demo Clinic", "owner@example.com", "KE");
         var agent = new Agent(tenant, "Amina", "Welcome", "Prompt");
         agent.update(
-                "Amina", "Welcome", "Prompt", "en", List.of("en", "sw"),
+                "Amina", "Welcome", "Prompt", "en", List.of("en", "fr"),
                 null, List.of(), false, "Africa/Nairobi", ""
         );
         agent.configureWebVoice(true, List.of(), true);
         agent.activate();
         when(agentRepository.findByWebVoicePublicId(agent.getWebVoicePublicId())).thenReturn(Optional.of(agent));
         when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(conversationOrchestrator.generateOpeningGreeting(any(Call.class), eq("sw"), eq("public web voice call")))
-                .thenReturn("Habari, naweza kukusaidiaje?");
+        when(conversationOrchestrator.generateOpeningGreeting(any(Call.class), eq("fr"), eq("public web voice call")))
+                .thenReturn("Bonjour, comment puis-je vous aider ?");
 
-        var call = service.startWebCall(agent.getWebVoicePublicId(), "sw");
+        var call = service.startWebCall(agent.getWebVoicePublicId(), "fr");
 
         assertThat(call.getDirection()).isEqualTo("web");
-        assertThat(call.getLanguageDetected()).isEqualTo("sw");
+        assertThat(call.getLanguageDetected()).isEqualTo("fr");
         verify(callSessionStore).createIfAbsent(org.mockito.ArgumentMatchers.eq(call.getTwilioCallSid()), any(CallSession.class));
         var turnCaptor = ArgumentCaptor.forClass(CallTurn.class);
         verify(callTurnRepository).save(turnCaptor.capture());
-        assertThat(turnCaptor.getValue().getAgentResponse()).isEqualTo("Habari, naweza kukusaidiaje?");
+        assertThat(turnCaptor.getValue().getAgentResponse()).isEqualTo("Bonjour, comment puis-je vous aider ?");
         verify(dashboardEventPublisher).callStarted(call);
     }
 

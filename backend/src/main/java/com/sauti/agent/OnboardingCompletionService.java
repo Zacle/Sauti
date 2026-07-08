@@ -26,7 +26,7 @@ public class OnboardingCompletionService {
             "Google Calendar", "Calendly", "Custom webhook", "Set up later"
     );
     private static final Set<String> ROUTING_POLICIES = Set.of("Fixed calendar", "Set up later");
-    private static final Set<String> LANGUAGES = Set.of("sw", "en", "fr", "ar");
+    private static final Set<String> LANGUAGES = Set.of("en", "fr", "ar");
 
     private final AgentService agentService;
     private final AgentRepository agentRepository;
@@ -272,7 +272,7 @@ public class OnboardingCompletionService {
         requireAllowed("routing policy", request.routingPolicy(), ROUTING_POLICIES);
         requireAllowed("default language", request.defaultLanguage(), LANGUAGES);
         if (request.supportedLanguages().stream().anyMatch(language -> !LANGUAGES.contains(language))) {
-            throw new IllegalArgumentException("Supported languages are fr, ar, sw, and en");
+            throw new IllegalArgumentException("Supported languages are fr, ar, and en");
         }
         if (!request.supportedLanguages().contains(request.defaultLanguage())) {
             throw new IllegalArgumentException("Default language must be included in supported languages");

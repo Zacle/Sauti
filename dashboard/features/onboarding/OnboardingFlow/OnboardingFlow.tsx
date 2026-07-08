@@ -55,7 +55,6 @@ const languageOptions = [
   ["en", "English"],
   ["fr", "French"],
   ["ar", "Arabic"],
-  ["sw", "Swahili"],
 ] as const;
 
 type SupportedLanguage = typeof languageOptions[number][0];
@@ -302,7 +301,7 @@ export function OnboardingFlow() {
                     <select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
                       <option value="">Provider default</option>
                       {languageVoices.map((item) => (
-                        <option value={item.id} key={item.id}>{item.name}{item.provider === "elevenlabs" ? " · ElevenLabs" : " · Azure fallback"}</option>
+                        <option value={item.id} key={item.id}>{item.name}{item.provider === "cartesia" ? " - Cartesia" : " - ElevenLabs"}</option>
                       ))}
                     </select>
                     <button
@@ -329,7 +328,7 @@ export function OnboardingFlow() {
                   />
                   <span>
                     Detect supported caller languages automatically
-                    <small>Supports Swahili, English, French, and Arabic. The primary language is used as fallback.</small>
+                    <small>Supports English, French, and Arabic. The primary language is used as fallback.</small>
                   </span>
                 </label>
               </div>
@@ -562,9 +561,7 @@ function previewLanguageFor(voice: VoiceOption, primaryLanguage: string) {
 
 function preferredVoicesForLanguage(voices: VoiceOption[], language: SupportedLanguage) {
   const compatible = voices.filter((item) => item.languages.includes(language));
-  const elevenLabs = compatible.filter((item) => item.provider === "elevenlabs");
-  const fallback = elevenLabs.length > 0 ? elevenLabs : compatible;
-  return [...fallback].sort(compareVoiceQuality);
+  return [...compatible].sort(compareVoiceQuality);
 }
 
 function compareVoiceQuality(left: VoiceOption, right: VoiceOption) {
@@ -574,7 +571,7 @@ function compareVoiceQuality(left: VoiceOption, right: VoiceOption) {
 }
 
 function providerRank(provider: string) {
-  return provider === "elevenlabs" ? 0 : provider === "azure" ? 1 : 2;
+  return provider === "elevenlabs" ? 0 : provider === "cartesia" ? 1 : 2;
 }
 
 function categoryRank(category: string) {
@@ -587,8 +584,6 @@ function voicePreviewTextFor(language: SupportedLanguage) {
       return "Bonjour, voici un court aperçu de la voix Sauti.";
     case "ar":
       return "مرحبا، هذا مثال قصير على صوت ساوتي.";
-    case "sw":
-      return "Habari, hii ni sampuli fupi ya sauti ya Sauti.";
     default:
       return "Hi, this is a short Sauti voice preview.";
   }
