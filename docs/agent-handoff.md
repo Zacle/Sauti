@@ -214,6 +214,27 @@ Expected:
 
 ## Change log
 
+### 2026-07-09 - Agent Studio test-call interruption capture
+
+- Updated the Agent Studio browser test-call panel so caller speech can be captured while the agent is in the `thinking` state, not only while listening or speaking.
+- Queued valid caller interruption audio recorded during an in-flight turn and processes it immediately after the current server turn returns.
+- Skips stale agent audio/text playback when the caller interrupted during processing, so the browser test behaves closer to barge-in on a phone call.
+- Kept manual mic capture available during `thinking` and `speaking`; during speaking it stops the current agent audio and records the caller.
+- Expanded natural call-ending detection to include phrases like `no thank you`, `have a good day`, `non merci`, and `excellente journée`.
+- Why: user tested against another platform and reported Sauti's browser test could not hear input while it displayed `Agent is thinking`, and calls did not end naturally unless the caller said `goodbye`.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.CallPipelineServiceTest`
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `.\gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+
 ### 2026-07-09 - Browser voice latency and template behavior tuning
 
 - Reduced OpenAI realtime transcription commit timing for browser calls so final caller turns are emitted after a shorter silence window.

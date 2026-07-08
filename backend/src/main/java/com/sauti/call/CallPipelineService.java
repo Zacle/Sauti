@@ -514,13 +514,18 @@ public class CallPipelineService {
                 || value.contains("اذكر اسمك");
     }
 
-    private boolean looksLikeConversationEnding(String transcript) {
+    boolean looksLikeConversationEnding(String transcript) {
         if (transcript == null) return false;
         String value = transcript.toLowerCase(java.util.Locale.ROOT).trim();
-        return value.matches(".*\\b(goodbye|bye|nothing else|that is all|that's all)\\b.*")
+        return value.matches(".*\\b(goodbye|bye|no thanks|no thank you|nothing else|that is all|that's all|all good|have a good day|have a nice day)\\b.*")
                 || value.contains("au revoir")
                 || value.contains("c'est tout")
                 || value.contains("rien d'autre")
+                || value.contains("non merci")
+                || value.contains("bonne journee")
+                || value.contains("bonne journée")
+                || value.contains("excellente journee")
+                || value.contains("excellente journée")
                 || value.contains("kwaheri")
                 || value.contains("hayo tu")
                 || value.contains("hamna lingine")

@@ -65,6 +65,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const analyserRef = useRef<AnalyserNode | null>(null);
   const agentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const interruptionPromiseRef = useRef<Promise<void> | null>(null);
+  const processingTurnRef = useRef(false);
+  const queuedInterruptionRef = useRef<Blob | null>(null);
+  const callerInterruptedCurrentTurnRef = useRef(false);
   const monitorFrameRef = useRef(0);
   const voiceStartedAtRef = useRef(0);
   const lastVoiceAtRef = useRef(0);
@@ -181,6 +184,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
 
         if (currentStatus === "listening") {
           startUtteranceCapture(false);
+        } else if (currentStatus === "thinking") {
+          startUtteranceCapture(true);
         } else if (currentStatus === "speaking" && voiceDuration >= settings.bargeInGraceMs) {
           interruptAgentAndCapture();
         }
@@ -261,6 +266,12 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         setError("I did not catch enough audio. Speak clearly for a moment, then pause.");
         return;
       }
+      if (processingTurnRef.current) {
+        queuedInterruptionRef.current = utterance;
+        callerInterruptedCurrentTurnRef.current = true;
+        updateStatus("thinking");
+        return;
+      }
       void submitAudioTurn(utterance);
     };
     utteranceRecorderRef.current = recorder;
@@ -288,9 +299,20 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       stopUtteranceCapture();
       return;
     }
-    if (statusRef.current === "listening") {
+    if (statusRef.current === "speaking") {
       setError("");
-      startUtteranceCapture(false, "manual");
+      try {
+        agentAudioSourceRef.current?.stop();
+      } catch {
+        // The source may have ended between the button click and stop request.
+      }
+      agentAudioSourceRef.current = null;
+      startUtteranceCapture(true, "manual");
+      return;
+    }
+    if (statusRef.current === "listening" || statusRef.current === "thinking") {
+      setError("");
+      startUtteranceCapture(statusRef.current === "thinking", "manual");
     }
   }
 
@@ -358,6 +380,14 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   async function submitAudioTurn(recording: Blob) {
     const activeCallId = callIdRef.current;
     if (!activeCallId || endingRef.current) return;
+    if (processingTurnRef.current) {
+      queuedInterruptionRef.current = recording;
+      callerInterruptedCurrentTurnRef.current = true;
+      updateStatus("thinking");
+      return;
+    }
+    processingTurnRef.current = true;
+    callerInterruptedCurrentTurnRef.current = false;
     updateStatus("thinking");
     setError("");
     try {
@@ -367,12 +397,13 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       if (endingRef.current || callIdRef.current !== activeCallId) return;
       lastActivityAtRef.current = Date.now();
       remindersRef.current = 0;
+      const wasInterrupted = callerInterruptedCurrentTurnRef.current || Boolean(queuedInterruptionRef.current);
       setMessages((current) => [
         ...current,
         { id: crypto.randomUUID(), role: "caller", text: turn.callerTranscript },
-        ...(turn.response ? [{ id: crypto.randomUUID(), role: "agent" as const, text: turn.response }] : []),
+        ...(turn.response && !wasInterrupted ? [{ id: crypto.randomUUID(), role: "agent" as const, text: turn.response }] : []),
       ]);
-      if (turn.response) {
+      if (turn.response && !wasInterrupted) {
         if (turn.audioBase64) await playEncodedAgentAudio(turn.audioBase64);
         else await playLatestAgentAudio(activeCallId);
         console.debug("Browser test turn latency", {
@@ -383,8 +414,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           serverTotalMs: turn.totalLatencyMs,
         });
       }
-      if (turn.outcome) await endCall(turn.outcome);
-      else if (!turn.response) updateStatus("listening");
+      if (turn.outcome && !queuedInterruptionRef.current) await endCall(turn.outcome);
+      else if (!turn.response || wasInterrupted) updateStatus(queuedInterruptionRef.current ? "thinking" : "listening");
     } catch (caught) {
       if (endingRef.current || callIdRef.current !== activeCallId) return;
       updateStatus("listening");
@@ -394,6 +425,14 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         return;
       }
       setError(message);
+    } finally {
+      processingTurnRef.current = false;
+      callerInterruptedCurrentTurnRef.current = false;
+      const queued = queuedInterruptionRef.current;
+      queuedInterruptionRef.current = null;
+      if (queued && !endingRef.current && callIdRef.current === activeCallId) {
+        void submitAudioTurn(queued);
+      }
     }
   }
 
@@ -515,6 +554,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     utteranceRecorderRef.current = null;
     utteranceModeRef.current = null;
     utteranceStartedAtRef.current = 0;
+    processingTurnRef.current = false;
+    queuedInterruptionRef.current = null;
+    callerInterruptedCurrentTurnRef.current = false;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
@@ -534,7 +576,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const active = Boolean(callId);
   const manualCaptureActive = status === "capturing" && utteranceModeRef.current === "manual";
   const manualCaptureDisabled =
-    !["listening", "capturing"].includes(status) || (status === "capturing" && !manualCaptureActive);
+    !["listening", "capturing", "thinking", "speaking"].includes(status) || (status === "capturing" && !manualCaptureActive);
 
   return (
     <aside className={`agent-test-panel ${active ? "active" : ""}`}>

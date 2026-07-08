@@ -219,6 +219,27 @@ class CallPipelineServiceTest {
         verify(callTurnRepository, never()).save(any());
     }
 
+    @Test
+    void recognizesNaturalClosingPhrases() {
+        var service = new CallPipelineService(
+                mock(CallRepository.class),
+                mock(CallTurnRepository.class),
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                mock(LanguageDetector.class),
+                mock(ConversationOrchestrator.class),
+                mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class),
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+
+        assertThat(service.looksLikeConversationEnding("No thank you, have a good day.")).isTrue();
+        assertThat(service.looksLikeConversationEnding("Non merci, excellente journée.")).isTrue();
+        assertThat(service.looksLikeConversationEnding("I want to book tomorrow.")).isFalse();
+    }
+
     private Call activeCall(String callSid) {
         var tenant = new Tenant("Demo Clinic", "owner@example.com", "SN");
         var agent = new Agent(tenant, "Amina", "Bonjour", "Prompt");
