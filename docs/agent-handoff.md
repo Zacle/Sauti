@@ -227,12 +227,19 @@ Expected:
 - Preserves `.env.production`, Caddy TLS/config volumes, Docker images, source checkout, and old local Postgres/Redis rollback volumes.
 - Why: user requested a production restart with all saved app data and other persistent app storage erased.
 - Deployment:
-  - Workflow added locally; reset run pending.
+  - Workflow added and pushed in commit `5bcb1c3`.
+  - Production data reset workflow run `28939910638` passed.
+  - Follow-on production deploy workflow run `28939983064` passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `.github/workflows/production-data-reset.yml`
   - `docs/agent-handoff.md`
 - Verification:
-  - Workflow syntax reviewed locally; production run pending.
+  - `gh run watch 28939910638 --exit-status`
+  - `gh run watch 28939983064 --exit-status`
+  - `curl.exe -i https://sauti.uk/health`
+  - `curl.exe -I https://sauti.uk/analytics`
 
 ### 2026-07-08 - No-tool LLM recovery for static French fallback replies
 
