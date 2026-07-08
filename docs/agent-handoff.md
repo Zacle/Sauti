@@ -221,13 +221,17 @@ Expected:
 - Updated the production diagnostics workflow to include `Generating catalog TTS audio` lines.
 - Why: a production diagnostics run after a user browser test showed no realtime TTS lines, indicating the tested path did not use `RealtimeTextToSpeechProvider`.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `cc01f0c`.
+  - GitHub Actions CI run `28965824605` passed.
+  - GitHub Actions deploy run `28965923246` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
   - `.github/workflows/production-diagnostics.yml`
   - `docs/agent-handoff.md`
 - Verification:
-  - Pending.
+  - `.\gradlew.bat :backend:test`
 
 ### 2026-07-08 - Manual production voice diagnostics workflow
 
