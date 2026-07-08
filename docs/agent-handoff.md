@@ -229,7 +229,11 @@ Expected:
 - Included the local conversation-orchestrator prompt/fallback polish that was already in the working tree, so tool failures are framed more naturally and tests match the new fallback text.
 - Why: the previous greetings sounded like IVR scripts, and non-English voice quality needed better native/provider options without hardcoding one provider for every language.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `7cdfcfd`.
+  - GitHub Actions CI run `28941106228` passed.
+  - Production deploy run `28941211654` passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `.env.example`
   - `deploy/.env.production.example`
