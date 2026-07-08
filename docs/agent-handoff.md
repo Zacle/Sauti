@@ -223,7 +223,11 @@ Expected:
 - Reduced live LLM max output tokens from 220 to 160 and Deepgram realtime `utterance_end_ms` default from 700ms to 500ms.
 - Why: a French test call still surfaced the hard fallback after availability/phone-number turns, offered an impossible May date, and had 2-4 second response delays.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `92ced35`.
+  - GitHub Actions CI run `28962267120` passed.
+  - GitHub Actions deploy run `28962369514` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
   - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
