@@ -188,7 +188,6 @@ sauti:
       realtime-delay: ${OPENAI_REALTIME_TRANSCRIPTION_DELAY:low}
   tts:
     streaming-provider: ${SAUTI_TTS_STREAMING_PROVIDER:noop}
-    curated-voice-ids: ${SAUTI_CURATED_VOICE_IDS:}
     azure:
       api-key: ${AZURE_SPEECH_KEY:}
       region: ${AZURE_SPEECH_REGION:}

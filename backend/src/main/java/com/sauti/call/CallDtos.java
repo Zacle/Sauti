@@ -73,7 +73,7 @@ public final class CallDtos {
     public record SimulatedTurnResponse(String language, String response, String transcript, String outcome) {
     }
 
-    public record StartTestCallRequest(UUID agentId) {
+    public record StartTestCallRequest(UUID agentId, String ttsVoiceId) {
     }
 
     public record CompleteTestCallRequest(String outcome) {

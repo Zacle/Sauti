@@ -75,7 +75,7 @@ public class CallController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody StartTestCallRequest request
     ) {
-        var call = callPipelineService.startTestCall(user.tenantId(), request.agentId());
+        var call = callPipelineService.startTestCall(user.tenantId(), request.agentId(), request.ttsVoiceId());
         var greeting = callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId()).stream()
                 .findFirst().map(turn -> turn.getAgentResponse()).orElse("");
         return new StartTestCallResponse(CallResponse.from(call), greeting, TestCallSettings.from(call.getAgent()));

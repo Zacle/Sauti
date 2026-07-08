@@ -208,7 +208,7 @@ class ConversationOrchestratorTest {
 
         var greeting = orchestrator.generateOpeningGreeting(call, "fr", "voice call");
 
-        assertThat(greeting).isEqualTo("Bonjour, comment puis-je vous aider aujourd'hui ?");
+        assertThat(greeting).isEqualTo("Bonjour, c'est Amina. Comment puis-je vous aider ?");
     }
 
     private Call activeCall() {

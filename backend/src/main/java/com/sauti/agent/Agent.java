@@ -297,6 +297,10 @@ public class Agent extends Auditable {
         return ttsVoiceId;
     }
 
+    public void updateTtsVoiceId(String ttsVoiceId) {
+        this.ttsVoiceId = ttsVoiceId == null || ttsVoiceId.isBlank() ? null : ttsVoiceId.trim();
+    }
+
     public boolean isActive() {
         return isActive;
     }

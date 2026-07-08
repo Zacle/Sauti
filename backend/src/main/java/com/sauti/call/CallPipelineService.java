@@ -59,8 +59,17 @@ public class CallPipelineService {
 
     @Transactional
     public Call startTestCall(java.util.UUID tenantId, java.util.UUID agentId) {
+        return startTestCall(tenantId, agentId, null);
+    }
+
+    @Transactional
+    public Call startTestCall(java.util.UUID tenantId, java.util.UUID agentId, String ttsVoiceId) {
         var agent = agentRepository.findByIdAndTenantId(agentId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
+        if (ttsVoiceId != null) {
+            agent.updateTtsVoiceId(ttsVoiceId);
+            agentRepository.save(agent);
+        }
         var callSid = "TEST-" + java.util.UUID.randomUUID();
         var call = callRepository.save(new Call(agent.getTenant(), agent, callSid, "Browser test", "test"));
         callSessionStore.createIfAbsent(callSid, CallSession.fromCall(call, ""));

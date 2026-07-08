@@ -5,10 +5,10 @@ export function listCalls() {
   return apiRequest<Call[]>("/calls");
 }
 
-export function startTestCall(agentId: string) {
+export function startTestCall(agentId: string, ttsVoiceId?: string) {
   return apiRequest<StartTestCallResponse>("/calls/test", {
     method: "POST",
-    body: JSON.stringify({ agentId }),
+    body: JSON.stringify({ agentId, ttsVoiceId: ttsVoiceId?.trim() ?? "" }),
   });
 }
 

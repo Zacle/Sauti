@@ -38,7 +38,6 @@ public class VoiceCatalogService {
     private final String elevenLabsFrenchModelId;
     private final String elevenLabsArabicModelId;
     private final String elevenLabsSwahiliModelId;
-    private final java.util.Set<String> curatedVoiceIds;
     private final Map<PreviewKey, byte[]> previewCache = new ConcurrentHashMap<>();
     private volatile VoiceCatalogResponse cached;
     private volatile Instant cacheExpiresAt = Instant.EPOCH;
@@ -54,8 +53,7 @@ public class VoiceCatalogService {
             @Value("${sauti.tts.elevenlabs.model-id-en:}") String elevenLabsEnglishModelId,
             @Value("${sauti.tts.elevenlabs.model-id-fr:}") String elevenLabsFrenchModelId,
             @Value("${sauti.tts.elevenlabs.model-id-ar:}") String elevenLabsArabicModelId,
-            @Value("${sauti.tts.elevenlabs.model-id-sw:}") String elevenLabsSwahiliModelId,
-            @Value("${sauti.tts.curated-voice-ids:}") String curatedVoiceIds
+            @Value("${sauti.tts.elevenlabs.model-id-sw:}") String elevenLabsSwahiliModelId
     ) {
         this.objectMapper = objectMapper;
         this.azureClient = azureClient;
@@ -68,8 +66,6 @@ public class VoiceCatalogService {
         this.elevenLabsFrenchModelId = blankToDefault(elevenLabsFrenchModelId, elevenLabsModelId);
         this.elevenLabsArabicModelId = blankToDefault(elevenLabsArabicModelId, elevenLabsModelId);
         this.elevenLabsSwahiliModelId = blankToDefault(elevenLabsSwahiliModelId, elevenLabsModelId);
-        this.curatedVoiceIds = java.util.Arrays.stream(curatedVoiceIds.split(","))
-                .map(String::trim).filter(value -> !value.isBlank()).collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     public byte[] preview(String voiceId, String language) {
@@ -138,9 +134,7 @@ public class VoiceCatalogService {
                 }
                 var root = objectMapper.readTree(response.body());
                 for (var voice : root.withArray("voices")) {
-                    if (curatedVoiceIds.isEmpty() || curatedVoiceIds.contains(voice.path("voice_id").asText())) {
-                        voices.add(mapElevenLabsVoice(voice));
-                    }
+                    voices.add(mapElevenLabsVoice(voice));
                 }
                 providers.add("elevenlabs");
             } catch (InterruptedException exception) {
@@ -164,29 +158,22 @@ public class VoiceCatalogService {
         var traits = new LinkedHashMap<String, String>();
         voice.path("labels").fields().forEachRemaining(entry -> traits.put(entry.getKey(), entry.getValue().asText()));
         var languages = new LinkedHashSet<String>();
-        var category = voice.path("category").asText("voice");
         var nativeLanguage = normalizeLanguageCode(traits.getOrDefault("language", ""));
         if (!nativeLanguage.isBlank()) {
             languages.add(nativeLanguage);
         }
-        // Model compatibility is not enough for production voice selection:
-        // English-origin premade voices retain a foreign accent in French and
-        // Arabic. Only expose their native language. Professional/native voices
-        // may expose every provider-verified language.
-        if (!"premade".equalsIgnoreCase(category)) {
-            voice.withArray("verified_languages").forEach(language -> {
-                String value = normalizeLanguageCode(language.path("language").asText(""));
-                if (!value.isBlank()) {
-                    languages.add(value);
-                }
-            });
-        }
+        voice.withArray("verified_languages").forEach(language -> {
+            String value = normalizeLanguageCode(language.path("language").asText(""));
+            if (!value.isBlank()) {
+                languages.add(value);
+            }
+        });
         return new VoiceOption(
                 "elevenlabs",
                 voice.path("voice_id").asText(),
                 voice.path("name").asText("Unnamed voice"),
                 textOrNull(voice, "description"),
-                category,
+                voice.path("category").asText("voice"),
                 textOrNull(voice, "preview_url"),
                 List.copyOf(languages),
                 Map.copyOf(traits),

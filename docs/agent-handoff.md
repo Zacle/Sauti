@@ -214,6 +214,40 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Voice quality and onboarding prompt improvements
+
+- Changed live opening generation and fallback openings so the agent introduces itself by name once at the start of the call.
+- Reduced browser-test endpointing minimum from 800ms to 450ms and lowered live LLM response token cap from 160 to 120.
+- Expanded onboarding-generated prompts with category-specific workflows for clinics/healthcare, salons, real estate, professional services, education, and local services.
+- Changed generated draft/opening directions and stored template opening directions to introduce `{{agent_name}}` once.
+- Changed local AI draft fallback defaults to English/French/Arabic instead of Swahili/English.
+- Broadened ElevenLabs catalog exposure by using ElevenLabs `verified_languages` for every voice and no longer hiding non-curated ElevenLabs voices.
+- Removed the unused curated voice ID config from example/local configuration because it no longer filters ElevenLabs voices.
+- Browser test calls now send the currently selected voice to the backend and persist it before the first greeting, so the first test call uses the selected voice instead of requiring another call.
+- Why: user reported no agent-name introduction, slow replies, too few French/non-English ElevenLabs choices, shallow category prompts, and selected onboarding/studio voice not being used until a later call.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `backend/src/main/java/com/sauti/agent/Agent.java`
+  - `backend/src/main/java/com/sauti/agent/OnboardingCompletionService.java`
+  - `backend/src/main/java/com/sauti/agent/AgentDraftGenerationService.java`
+  - `backend/src/main/java/com/sauti/agent/SystemAgentTemplateSeeder.java`
+  - `backend/src/main/java/com/sauti/call/CallDtos.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/resources/application.yml`
+  - `dashboard/lib/api/calls.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `.env.example`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+
 ### 2026-07-08 - Prioritize ElevenLabs voice selection
 
 - Reordered the backend voice catalog so ElevenLabs voices are returned before Azure voices when ElevenLabs is configured.

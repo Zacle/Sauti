@@ -34,7 +34,7 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(SpringAiToolCallingLlmProvider.class);
     // Voice turns need fast first-token latency. Do not enable Gemini thinking here.
     private static final int GEMINI_THINKING_BUDGET = 0;
-    private static final int MAX_OUTPUT_TOKENS = 160;
+    private static final int MAX_OUTPUT_TOKENS = 120;
     private static final double VOICE_TEMPERATURE = 0.45;
 
     private final ObjectMapper objectMapper;

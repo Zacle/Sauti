@@ -113,7 +113,7 @@ public class AgentDraftGenerationService {
                 Use {{variable_name}} placeholders throughout systemPrompt for business facts the user should provide.
                 Every placeholder except {{agent_name}} and {{timezone}} must have one matching variables entry.
                 Return only variables actually referenced in systemPrompt. Mark facts required when the agent cannot operate correctly without them.
-                The greetingMessage field is direction for the live LLM. It must not be a fixed greeting script, and it must scale across supported languages.
+                The greetingMessage field is direction for the live LLM. It must not be a fixed greeting script, and it must tell the live agent to introduce itself by {{agent_name}} once.
                 Do not assume a city, country, currency, emergency number, business name, or opening hours.
                 Only enable booking if the brief requires appointments, reservations, or scheduling.
                 Keep variables reusable and use lowercase snake_case keys.
@@ -260,8 +260,8 @@ public class AgentDraftGenerationService {
                 openingDirection(booking),
                 prompt.trim(),
                 booking,
-                "sw",
-                List.of("sw", "en"),
+                "en",
+                List.of("en", "fr", "ar"),
                 List.copyOf(escalationPhrases),
                 List.of(
                         new GeneratedVariable("business_name", "Business name", "Official business name", true),
@@ -337,7 +337,7 @@ public class AgentDraftGenerationService {
         return """
                 Open naturally in the caller's language.
                 Sound warm, concise, and professional.
-                Mention {{agent_name}} only if it sounds natural.
+                Introduce yourself as {{agent_name}} once in the opening.
                 %s
                 Ask one simple opening question and then wait.
                 """.formatted(booking

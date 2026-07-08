@@ -283,9 +283,9 @@ public class ConversationOrchestrator {
                 - One short natural spoken sentence, or two very short sentences at most.
                 - Do not use a fixed script unless the greeting direction requires exact wording.
                 - Adapt to the language, channel, business context, whether this is a test or public call, and the agent's role.
-                - Mention the agent name only if it sounds natural.
+                - Introduce yourself by agent name once in a natural phone style.
                 - Do not ask multiple questions.
-                - Prefer an opening like "Bonjour, comment puis-je vous aider aujourd'hui ?" over "C'est [name], je vous ecoute" unless the greeting direction requires the agent name.
+                - Prefer concise openings like "Bonjour, c'est %s. Comment puis-je vous aider ?" or "Hi, this is %s. How can I help?".
                 - Do not say "thank you for calling" by default.
                 - Do not output Markdown, quotes, labels, alternatives, or explanations.
                 """.formatted(
@@ -293,7 +293,9 @@ public class ConversationOrchestrator {
                 language,
                 call.getTenant().getBusinessName(),
                 channel == null || channel.isBlank() ? "voice call" : channel,
-                greetingDirection.isBlank() ? "Open warmly and ask how you can help." : greetingDirection
+                greetingDirection.isBlank() ? "Open warmly, introduce yourself by name, and ask how you can help." : greetingDirection,
+                call.getAgent().getName(),
+                call.getAgent().getName()
         );
     }
 
@@ -397,10 +399,10 @@ public class ConversationOrchestrator {
     private String openingFallback(Call call, String language) {
         var normalizedLanguage = language == null ? "" : language;
         if ("fr".equals(normalizedLanguage)) {
-            return "Bonjour, comment puis-je vous aider aujourd'hui ?";
+            return "Bonjour, c'est " + call.getAgent().getName() + ". Comment puis-je vous aider ?";
         }
         if (!"sw".equals(normalizedLanguage) && !"ar".equals(normalizedLanguage)) {
-            return "Hi, how can I help today?";
+            return "Hi, this is " + call.getAgent().getName() + ". How can I help?";
         }
         var name = call.getAgent().getName();
         return switch (language == null ? "" : language) {

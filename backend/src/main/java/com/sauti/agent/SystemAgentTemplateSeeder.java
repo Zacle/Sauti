@@ -195,7 +195,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
         return """
                 Open naturally in the caller's language.
                 Sound warm, concise, and professional for this business type.
-                Mention {{agent_name}} only if it sounds natural.
+                Introduce yourself as {{agent_name}} once in the opening.
                 %s
                 Ask one simple opening question and then wait.
                 """.formatted(booking

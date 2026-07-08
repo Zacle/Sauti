@@ -111,7 +111,7 @@ const templates: Template[] = [
     group: "Appointments",
     description: "Checks availability, collects caller details, and confirms bookings.",
     icon: CalendarCheck,
-    greeting: "Open naturally in the caller's language. Sound like a warm receptionist, mention {{agent_name}} only if it sounds natural, and ask one simple question about what the caller wants to book.",
+    greeting: "Open naturally in the caller's language. Introduce yourself as {{agent_name}} once, sound like a warm receptionist, and ask one simple question about what the caller wants to book.",
     prompt: `You are a professional appointment booking assistant.
 
 GOALS
@@ -126,7 +126,7 @@ CONVERSATION STYLE
 • Never invent availability or confirm a booking before the calendar tool succeeds.
 • Offer a human transfer when the request is outside your scope.`,
     bookingEnabled: true,
-    source: "custom", defaultLanguage: "sw", supportedLanguages: ["sw", "en"],
+    source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
   },
@@ -137,7 +137,7 @@ CONVERSATION STYLE
     group: "Support",
     description: "Answers common questions, troubleshoots issues, and escalates safely.",
     icon: Headphones,
-    greeting: "Open naturally in the caller's language. Sound calm and helpful, mention {{agent_name}} only if it sounds natural, and ask one simple question about what the caller needs help with.",
+    greeting: "Open naturally in the caller's language. Introduce yourself as {{agent_name}} once, sound calm and helpful, and ask one simple question about what the caller needs help with.",
     prompt: `You are a calm customer support voice agent.
 
 GOALS
@@ -150,7 +150,7 @@ RULES
 • Never guess when information is missing.
 • Escalate urgent, sensitive, or unresolved requests to a human.`,
     bookingEnabled: false,
-    source: "custom", defaultLanguage: "sw", supportedLanguages: ["sw", "en"],
+    source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
   },
@@ -161,7 +161,7 @@ RULES
     group: "Sales",
     description: "Qualifies enquiries and routes promising opportunities to the right team.",
     icon: UsersRound,
-    greeting: "Open naturally in the caller's language. Sound curious and helpful, mention {{agent_name}} only if it sounds natural, and ask one simple question about what the caller is looking for.",
+    greeting: "Open naturally in the caller's language. Introduce yourself as {{agent_name}} once, sound curious and helpful, and ask one simple question about what the caller is looking for.",
     prompt: `You are a helpful lead qualification agent.
 
 GOALS
@@ -174,7 +174,7 @@ RULES
 • Do not make pricing or delivery promises.
 • Ask permission before collecting contact details.`,
     bookingEnabled: true,
-    source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "sw"],
+    source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
   },
@@ -185,12 +185,12 @@ RULES
     group: "Support",
     description: "Captures the issue and schedules a callback with the correct specialist.",
     icon: PhoneCall,
-    greeting: "Open naturally in the caller's language. Sound organized and helpful, mention {{agent_name}} only if it sounds natural, and ask one simple question about who or what the caller needs.",
+    greeting: "Open naturally in the caller's language. Introduce yourself as {{agent_name}} once, sound organized and helpful, and ask one simple question about who or what the caller needs.",
     prompt: `You arrange customer support callbacks.
 
 Collect the caller's name, phone number, issue summary, urgency, and preferred callback time. Confirm every detail before creating the callback. For emergencies or high-risk requests, transfer to a human immediately.`,
     bookingEnabled: true,
-    source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "sw"],
+    source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
   },
@@ -885,7 +885,7 @@ export function AgentCreator({
               {error && <div className="form-alert error">{error}</div>}
             </section>
 
-            <TestCallPanel agentId={agentId} agentName={name || "your agent"} />
+            <TestCallPanel agentId={agentId} agentName={name || "your agent"} voiceId={voice} />
           </div>
           {showPersonalisation && (
             <PersonalisationDrawer
@@ -1353,7 +1353,7 @@ function TemplateSelection({
           category: "Custom",
           group: "Custom",
           description: "Start without predefined behavior.",
-          greeting: "Open naturally in the caller's language. Mention {{agent_name}} only if it sounds natural, and ask one simple question about what the caller needs.",
+          greeting: "Open naturally in the caller's language. Introduce yourself as {{agent_name}} once, and ask one simple question about what the caller needs.",
           prompt: "",
           bookingEnabled: false,
           source: "custom",

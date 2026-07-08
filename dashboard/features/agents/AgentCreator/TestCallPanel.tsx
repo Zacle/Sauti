@@ -18,6 +18,7 @@ import type { StartTestCallResponse } from "@/types/api";
 type TestCallPanelProps = {
   agentId?: string;
   agentName: string;
+  voiceId?: string;
 };
 
 type Message = {
@@ -41,7 +42,7 @@ const DEFAULT_SETTINGS: TestSettings = {
   handleCallScreening: true,
 };
 
-export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
+export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProps) {
   const [callId, setCallId] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -98,7 +99,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
         },
       });
       await prepareAudio(stream);
-      const started = await startTestCall(agentId);
+      const started = await startTestCall(agentId, voiceId);
       callIdRef.current = started.call.id;
       callSidRef.current = started.call.twilioCallSid;
       settingsRef.current = started.settings;
@@ -189,7 +190,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
           currentStatus === "capturing"
           && utteranceModeRef.current === "auto"
           && lastVoiceAtRef.current
-          && now - lastVoiceAtRef.current >= Math.max(800, settings.sttEndpointingMs)
+          && now - lastVoiceAtRef.current >= Math.max(450, settings.sttEndpointingMs)
         ) {
           stopUtteranceCapture();
         }
@@ -375,7 +376,7 @@ export function TestCallPanel({ agentId, agentName }: TestCallPanelProps) {
         if (turn.audioBase64) await playEncodedAgentAudio(turn.audioBase64);
         else await playLatestAgentAudio(activeCallId);
         console.debug("Browser test turn latency", {
-          endpointingMs: Math.max(800, settingsRef.current.sttEndpointingMs),
+          endpointingMs: Math.max(450, settingsRef.current.sttEndpointingMs),
           sttMs: turn.sttLatencyMs,
           llmMs: turn.llmLatencyMs,
           ttsMs: turn.ttsLatencyMs,
