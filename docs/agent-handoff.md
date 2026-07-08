@@ -222,7 +222,13 @@ Expected:
 - Added Flyway migration `V29__agent_template_live_voice_behavior.sql` to append the same behavior block to existing published system template rows in the database.
 - Why: user asked to make browser calls feel more like real calls and to improve saved template instructions that still sounded scripted or robotic.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `eaf713f`.
+  - GitHub Actions CI run `28978734351` passed.
+  - GitHub Actions deploy run `28978814639` passed.
+  - Deploy log built backend and dashboard images from `eaf713fd0e6fb00f6df778f7d330ef3ae84addc8` and reported the app healthy.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
+  - Flyway migration `V29__agent_template_live_voice_behavior.sql` is included in the deployed backend; startup health passing indicates the migration did not fail.
 - Files touched:
   - `backend/src/main/java/com/sauti/call/OpenAiRealtimeTranscriptionService.java`
   - `backend/src/main/java/com/sauti/call/SentenceChunker.java`
@@ -233,6 +239,8 @@ Expected:
 - Verification:
   - `.\gradlew.bat :backend:test --tests com.sauti.agent.SystemAgentTemplateSeederTest --tests com.sauti.call.SentenceChunkerTest --tests com.sauti.call.DefaultTwilioMediaStreamServiceTest --tests com.sauti.llm.ConversationOrchestratorTest`
   - `.\gradlew.bat :backend:test`
+  - `curl.exe -i https://sauti.uk/health`
+  - `curl.exe -I https://sauti.uk/analytics`
 
 ### 2026-07-09 - Sync Cartesia production secret during deploy
 
