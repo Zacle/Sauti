@@ -137,6 +137,34 @@ class ConversationOrchestratorTest {
         var result = orchestrator.handleUserUtterance(call, "fr", "Bonjour, je voudrais prendre rendez-vous.");
 
         assertThat(result.responseText()).isEqualTo("Je suis desole, je n'ai pas pu terminer cette demande. Pouvez-vous reformuler ?");
+        verify(callSessionStore, never()).appendAssistantMessage(call.getTwilioCallSid(), result.responseText(), List.of());
+    }
+
+    @Test
+    void retriesWithoutToolsBeforeUsingFailureFallback() {
+        var provider = new FailsWithToolsProvider("Pour quelle date souhaitez-vous prendre rendez-vous ?");
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var call = activeCall();
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
+        when(callSessionStore.conversationHistory(call.getTwilioCallSid()))
+                .thenReturn(List.of(new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous.")));
+        when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of(
+                new LlmToolDefinition("check_availability", "Check slots", Map.of("type", "object"))
+        ));
+
+        var result = orchestrator.handleUserUtterance(call, "fr", "Bonjour, je voudrais prendre rendez-vous.");
+
+        assertThat(result.responseText()).isEqualTo("Pour quelle date souhaitez-vous prendre rendez-vous ?");
+        assertThat(provider.contexts).hasSize(2);
+        assertThat(provider.contexts.get(0).tools()).hasSize(1);
+        assertThat(provider.contexts.get(1).tools()).isEmpty();
         verify(callSessionStore).appendAssistantMessage(call.getTwilioCallSid(), result.responseText(), List.of());
     }
 
@@ -194,6 +222,24 @@ class ConversationOrchestratorTest {
         @Override
         public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
             throw new IllegalStateException("Provider unavailable");
+        }
+    }
+
+    private static final class FailsWithToolsProvider implements LlmToolCallingProvider {
+        private final String response;
+        private final List<LlmToolTurnContext> contexts = new ArrayList<>();
+
+        private FailsWithToolsProvider(String response) {
+            this.response = response;
+        }
+
+        @Override
+        public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
+            contexts.add(context);
+            if (!context.tools().isEmpty()) {
+                throw new IllegalStateException("Tool provider unavailable");
+            }
+            return new LlmToolTurnResponse(response, List.of());
         }
     }
 

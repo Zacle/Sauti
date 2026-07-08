@@ -214,6 +214,22 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - No-tool LLM recovery for static French fallback replies
+
+- Added a no-tool retry path in the conversation orchestrator when a tool-enabled LLM turn fails.
+- The first retry asks the configured LLM for a conversational response with tools disabled; the explicit localized technical fallback is now only used if both the tool-enabled request and no-tool retry fail.
+- Stopped writing the final technical fallback into live conversation memory, so later turns are not polluted by repeated apology text.
+- Why: French browser test calls were saving real caller transcripts but repeated the same backend fallback response, making conversations look static/scripted even when speech recognition worked.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Advanced LLM tier fallback for healthcare onboarding agents
 
 - Fixed another cause of French test-call fallback responses after successful transcription.

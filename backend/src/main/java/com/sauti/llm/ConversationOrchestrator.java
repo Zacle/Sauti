@@ -94,9 +94,13 @@ public class ConversationOrchestrator {
                 latestToolResults = List.copyOf(loopResults);
             }
         } catch (RuntimeException exception) {
-            LOGGER.warn("Conversation turn failed for callId={} language={}", call.getId(), language, exception);
+            LOGGER.warn("Conversation turn failed for callId={} language={}; retrying without tools", call.getId(), language, exception);
+            var recoveryText = recoverWithoutTools(call, language, callerTranscript);
+            if (!recoveryText.isBlank()) {
+                callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), recoveryText, List.of());
+                return new ConversationTurnResult(recoveryText, outcome(allToolResults));
+            }
             var fallbackText = fallback(language);
-            callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), fallbackText, List.of());
             return new ConversationTurnResult(fallbackText, outcome(allToolResults));
         }
 
@@ -105,6 +109,28 @@ public class ConversationOrchestrator {
             callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), fallbackText, List.of());
         }
         return new ConversationTurnResult(fallbackText, outcome(allToolResults));
+    }
+
+    private String recoverWithoutTools(Call call, String language, String callerTranscript) {
+        try {
+            var systemPrompt = systemPrompt(call, language, List.of(), callerTranscript);
+            var response = llmProvider.completeTurn(new LlmToolTurnContext(
+                    AgentContext.from(call.getAgent()),
+                    systemPrompt,
+                    language,
+                    List.copyOf(messages(call, callerTranscript)),
+                    callerTranscript,
+                    call.getCallerNumber(),
+                    call.getId(),
+                    call.getTwilioCallSid(),
+                    List.of(),
+                    List.of()
+            ));
+            return voiceReadyText(response.responseText());
+        } catch (RuntimeException recoveryException) {
+            LOGGER.warn("Conversation no-tool recovery failed for callId={} language={}", call.getId(), language, recoveryException);
+            return "";
+        }
     }
 
     private List<ConversationMessage> messages(Call call, String callerTranscript) {
