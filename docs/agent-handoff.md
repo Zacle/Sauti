@@ -221,7 +221,11 @@ Expected:
 - Sanitized Spring AI tool input schemas before provider submission by stripping nested `format` hints such as `phone` and `date-time`.
 - Why: French STT is now producing correct transcripts, so the repeated fallback happens after transcription in the LLM/tool provider path. Unsupported JSON schema `format` hints are a likely provider-side failure point when active tools are attached.
 - Deployment:
-  - Pending push/deploy for this commit.
+  - Deployed commit `5752573`.
+  - GitHub Actions CI passed.
+  - Production deploy passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
   - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
