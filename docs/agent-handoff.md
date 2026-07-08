@@ -222,7 +222,11 @@ Expected:
 - Verified production `GET https://sauti.uk/api/v1/voices` currently returns `enabledProviders:["elevenlabs"]`, so Cartesia credentials are not present in `/opt/sauti/.env.production` even though local `.env` has a working `CARTESIA_API_KEY`.
 - Why: user screenshot showed French/Arabic have zero voices after native-language filtering and the accent control visually leaked the browser dropdown.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `f5c7209`.
+  - GitHub Actions CI run `28976193826` passed.
+  - GitHub Actions deploy run `28976306027` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
   - `dashboard/features/agents/AgentCreator/AgentCreator.css`
