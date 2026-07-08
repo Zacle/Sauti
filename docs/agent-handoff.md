@@ -379,7 +379,11 @@ Expected:
 - Verification:
   - `.\gradlew.bat :backend:test`
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `71b44f8`.
+  - GitHub Actions CI passed.
+  - Production deploy passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 
 ### 2026-07-08 - OpenAI realtime STT for multilingual Web Voice
 
