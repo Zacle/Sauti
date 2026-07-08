@@ -222,7 +222,11 @@ Expected:
 - No API keys, secrets, or spoken text are logged.
 - Why: the user needed to confirm whether live voice calls are actually using ElevenLabs, Azure, or an Azure-prefixed voice inside the ElevenLabs provider path.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `c99f318`.
+  - GitHub Actions CI run `28963358729` passed.
+  - GitHub Actions deploy run `28963466205` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProvider.java`
   - `backend/src/main/java/com/sauti/call/AzureRealtimeTextToSpeechClient.java`
@@ -230,6 +234,7 @@ Expected:
   - `docs/agent-handoff.md`
 - Verification:
   - `.\gradlew.bat :backend:test --tests com.sauti.call.ElevenLabsRealtimeTextToSpeechProviderTest --tests com.sauti.call.AzureRealtimeTextToSpeechClientTest`
+  - `.\gradlew.bat :backend:test`
 
 ### 2026-07-08 - Voice recovery hardening and faster turn timing
 
