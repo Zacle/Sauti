@@ -214,6 +214,28 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Voice recovery hardening and faster turn timing
+
+- Changed no-tool recovery to use plain spoken history only, stripping tool-call and tool-result messages before retrying the LLM. This avoids provider rejection of malformed tool history after a tool/provider failure.
+- Replaced the spoken French hard fallback "petit souci" with phone-native repair prompts, including a specific slow-repeat request for unclear phone numbers.
+- Limited live conversation history sent to the model to the most recent 12 messages to reduce prompt size and turn latency.
+- Added today's date in the agent's business timezone to the live system prompt and instructed the agent not to offer past appointment dates or guess dates when the caller asks generally about availability.
+- Reduced live LLM max output tokens from 220 to 160 and Deepgram realtime `utterance_end_ms` default from 700ms to 500ms.
+- Why: a French test call still surfaced the hard fallback after availability/phone-number turns, offered an impossible May date, and had 2-4 second response delays.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/main/java/com/sauti/call/DeepgramRealtimeSpeechToTextProvider.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `deploy/.env.production.example`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Stronger prompt priority and faster voice turn defaults
 
 - Added a final runtime priority reminder to the live voice system prompt so platform booking/safety rules override conflicting saved agent prompts, templates, examples, and prior assistant messages.

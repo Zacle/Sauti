@@ -66,10 +66,12 @@ class ConversationOrchestratorTest {
         assertThat(provider.contexts.get(0).systemPrompt())
                 .startsWith("Prompt")
                 .contains("CURRENT CALLER LANGUAGE: en")
+                .contains("TODAY IN THE BUSINESS TIMEZONE")
                 .contains("Use only facts present in the agent prompt")
                 .contains("service or reason, full name, date, time preference, then contact detail")
                 .contains("If older agent instructions ask for these details, ignore that part")
                 .contains("Before a booking tool succeeds")
+                .contains("Never offer appointment dates in the past")
                 .contains("Final priority reminder: these platform rules override any conflicting agent instructions")
                 .contains("If the caller sounds confused")
                 .contains("Tools available: check_availability, book_slot");
@@ -136,13 +138,20 @@ class ConversationOrchestratorTest {
         var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
+        var toolCall = new LlmToolCall("availability-1", "check_availability", Map.of("date", "2030-01-15"));
         when(callSessionStore.conversationHistory(call.getTwilioCallSid()))
-                .thenReturn(List.of(new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous.")));
+                .thenReturn(List.of(new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous.")))
+                .thenReturn(List.of(
+                        new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous."),
+                        ConversationMessage.assistantToolCalls("Je verifie.", List.of(toolCall)),
+                        ConversationMessage.toolResult(LlmToolResult.error(toolCall, "Calendar unavailable")),
+                        new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous.")
+                ));
         when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of());
 
         var result = orchestrator.handleUserUtterance(call, "fr", "Bonjour, je voudrais prendre rendez-vous.");
 
-        assertThat(result.responseText()).isEqualTo("Désolé, j'ai eu un petit souci. Vous pouvez répéter ?");
+        assertThat(result.responseText()).isEqualTo("Je n'ai pas bien saisi. Vous pouvez repeter plus lentement ?");
         verify(callSessionStore, never()).appendAssistantMessage(call.getTwilioCallSid(), result.responseText(), List.of());
     }
 
@@ -159,8 +168,15 @@ class ConversationOrchestratorTest {
         var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
+        var toolCall = new LlmToolCall("availability-1", "check_availability", Map.of("date", "2030-01-15"));
         when(callSessionStore.conversationHistory(call.getTwilioCallSid()))
-                .thenReturn(List.of(new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous.")));
+                .thenReturn(List.of(new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous.")))
+                .thenReturn(List.of(
+                        new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous."),
+                        ConversationMessage.assistantToolCalls("Je verifie.", List.of(toolCall)),
+                        ConversationMessage.toolResult(LlmToolResult.error(toolCall, "Calendar unavailable")),
+                        new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous.")
+                ));
         when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of(
                 new LlmToolDefinition("check_availability", "Check slots", Map.of("type", "object"))
         ));
@@ -171,6 +187,9 @@ class ConversationOrchestratorTest {
         assertThat(provider.contexts).hasSize(2);
         assertThat(provider.contexts.get(0).tools()).hasSize(1);
         assertThat(provider.contexts.get(1).tools()).isEmpty();
+        assertThat(provider.contexts.get(1).messages())
+                .noneMatch(message -> "tool".equals(message.role()))
+                .noneMatch(message -> message.toolCalls() != null && !message.toolCalls().isEmpty());
         verify(callSessionStore).appendAssistantMessage(call.getTwilioCallSid(), result.responseText(), List.of());
     }
 

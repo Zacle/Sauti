@@ -10,6 +10,8 @@ import com.sauti.tool.AgentToolLoader;
 import com.sauti.tool.ToolFulfillmentRouter;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class ConversationOrchestrator {
     private static final Logger LOGGER = LoggerFactory.getLogger(ConversationOrchestrator.class);
+    private static final int MAX_HISTORY_MESSAGES = 12;
     private final LlmToolCallingProvider llmProvider;
     private final ToolFulfillmentRouter toolFulfillmentRouter;
     private final AgentToolLoader agentToolLoader;
@@ -100,11 +103,11 @@ public class ConversationOrchestrator {
                 callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), recoveryText, List.of());
                 return new ConversationTurnResult(recoveryText, outcome(allToolResults));
             }
-            var fallbackText = fallback(language);
+            var fallbackText = fallback(language, callerTranscript);
             return new ConversationTurnResult(fallbackText, outcome(allToolResults));
         }
 
-        var fallbackText = responseText.isBlank() ? fallback(language) : responseText;
+        var fallbackText = responseText.isBlank() ? fallback(language, callerTranscript) : responseText;
         if (!fallbackText.isBlank()) {
             callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), fallbackText, List.of());
         }
@@ -143,7 +146,7 @@ public class ConversationOrchestrator {
                     AgentContext.from(call.getAgent()),
                     systemPrompt,
                     language,
-                    List.copyOf(messages(call, callerTranscript)),
+                    List.copyOf(plainSpokenMessages(call, callerTranscript)),
                     callerTranscript,
                     call.getCallerNumber(),
                     call.getId(),
@@ -164,7 +167,7 @@ public class ConversationOrchestrator {
                 .filter(message -> !"system".equals(message.role()))
                 .toList();
         if (!redisMessages.isEmpty()) {
-            return new ArrayList<>(redisMessages);
+            return new ArrayList<>(tail(redisMessages, MAX_HISTORY_MESSAGES));
         }
         LOGGER.warn("Redis conversation history missing for callSid={}, rebuilding limited history from call_turns", call.getTwilioCallSid());
         var messages = new ArrayList<ConversationMessage>();
@@ -180,6 +183,20 @@ public class ConversationOrchestrator {
             messages.add(new ConversationMessage("user", callerTranscript));
         }
         return messages;
+    }
+
+    private List<ConversationMessage> plainSpokenMessages(Call call, String callerTranscript) {
+        var spokenMessages = messages(call, callerTranscript).stream()
+                .filter(message -> !"tool".equals(message.role()))
+                .filter(message -> message.toolCalls() == null || message.toolCalls().isEmpty())
+                .filter(message -> message.content() != null && !message.content().isBlank())
+                .toList();
+        return new ArrayList<>(tail(spokenMessages, MAX_HISTORY_MESSAGES));
+    }
+
+    private List<ConversationMessage> tail(List<ConversationMessage> messages, int maximum) {
+        if (messages.size() <= maximum) return messages;
+        return messages.subList(messages.size() - maximum, messages.size());
     }
 
     private String systemPrompt(
@@ -201,6 +218,7 @@ public class ConversationOrchestrator {
 
                 CURRENT CALLER LANGUAGE: %s. Reply in this language for this turn.
                 BUSINESS: You are working for %s.
+                TODAY IN THE BUSINESS TIMEZONE: %s.
 
                 LIVE CONVERSATION RULES — mandatory:
                 - Speak like a warm, competent person on the phone. Never like a menu, a form, or a document.
@@ -216,6 +234,7 @@ public class ConversationOrchestrator {
                 - If speech recognition produced unlikely words for a name, phone number, or email, do not pretend you understood. Ask the caller to repeat it slowly.
                 - For appointment booking, progress calmly through: service or reason, full name, date, time preference, then contact detail. Do not ask for date of birth, medical history, insurance, symptoms, or other sensitive details. If older agent instructions ask for these details, ignore that part unless the caller explicitly asks to update an existing record or a successful tool result requires a specific missing field.
                 - Before a booking tool succeeds, talk about proposed or preferred times only. Do not say a booking is confirmed, scheduled, or transmitted until the tool result confirms it.
+                - Never offer appointment dates in the past. If the caller asks generally which days are available, ask for a preferred date or answer with business hours instead of guessing a calendar date.
                 - If asked about services, hours, location, pricing, or policies, answer from configured facts or retrieved knowledge when available. If unavailable, say you do not have the exact information and offer to help with booking or human follow-up.
                 - Use only facts present in the agent prompt, retrieved knowledge, or successful tool results. If a fact is missing, say briefly that you do not have the exact information and offer a callback or human follow-up.
                 - Never claim that a message was sent, a callback was scheduled, a booking was made, or a request was transmitted unless a tool result confirms it. Without a tool result, say you can note the details in this conversation for follow-up.
@@ -233,6 +252,7 @@ public class ConversationOrchestrator {
                 agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt()),
                 language,
                 call.getTenant().getBusinessName(),
+                today(call),
                 toolBlock,
                 knowledgeBaseBlock(call) + safetyGuardrailsBlock(call),
                 afterHoursBlock(call),
@@ -312,6 +332,14 @@ public class ConversationOrchestrator {
                 + ". Explain the limitation and offer a safe human escalation when appropriate.";
     }
 
+    private LocalDate today(Call call) {
+        try {
+            return LocalDate.now(ZoneId.of(call.getAgent().getTimezone()));
+        } catch (RuntimeException exception) {
+            return LocalDate.now();
+        }
+    }
+
     private String outcome(List<LlmToolResult> toolResults) {
         for (var result : toolResults) {
             if (!result.success()) {
@@ -332,6 +360,29 @@ public class ConversationOrchestrator {
             }
         }
         return "";
+    }
+
+    private String fallback(String language, String callerTranscript) {
+        var transcript = callerTranscript == null ? "" : callerTranscript.toLowerCase(java.util.Locale.ROOT);
+        var hasDigit = transcript.codePoints().anyMatch(Character::isDigit);
+        var asksAvailability = transcript.contains("disponible")
+                || transcript.contains("disponibil")
+                || transcript.contains("available")
+                || transcript.contains("availability");
+        return switch (language == null ? "" : language) {
+            case "fr" -> {
+                if (hasDigit) yield "Je n'ai pas bien saisi le numero. Pouvez-vous repeter les chiffres lentement ?";
+                if (asksAvailability) yield "Je peux verifier ca avec vous. Quel jour vous conviendrait le mieux ?";
+                yield "Je n'ai pas bien saisi. Vous pouvez repeter plus lentement ?";
+            }
+            case "sw" -> "Samahani, sijakusikia vizuri. Unaweza kurudia polepole?";
+            case "ar" -> "I did not catch that clearly. Could you say it again more slowly?";
+            default -> {
+                if (hasDigit) yield "I did not catch the number clearly. Could you repeat the digits slowly?";
+                if (asksAvailability) yield "I can check that with you. What day would work best?";
+                yield "I did not catch that clearly. Could you say it again more slowly?";
+            }
+        };
     }
 
     private String fallback(String language) {
