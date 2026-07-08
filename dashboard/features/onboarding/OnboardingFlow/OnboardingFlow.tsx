@@ -121,8 +121,8 @@ export function OnboardingFlow() {
   const languageVoices = voices.filter((item) => item.languages.includes(language));
   const voiceName = selectedVoice?.name ?? "Provider default";
   const languageName = languageOptions.find(([code]) => code === language)?.[1] ?? language;
-  const greeting = greetingFor(language, useCase);
   const trimmedAgentName = agentName.trim();
+  const greeting = greetingFor(language, useCase, trimmedAgentName);
   const agentPreviewTitle = trimmedAgentName ? `${trimmedAgentName}, ${useCase.toLowerCase()} agent` : `Your ${useCase.toLowerCase()} agent`;
   const agentAvatarLabel = trimmedAgentName ? trimmedAgentName.slice(0, 1).toUpperCase() : "AI";
   const canContinue = step !== 1 || trimmedAgentName.length > 0;
@@ -548,13 +548,14 @@ function ReviewItem({ icon: Icon, label, value }: { icon: LucideIcon; label: str
   );
 }
 
-function greetingFor(language: SupportedLanguage, useCase: string) {
+function greetingFor(language: SupportedLanguage, useCase: string, agentName: string) {
   const booking = useCase === "Appointment booking";
+  const name = agentName || "Sauti";
   const greetings: Record<SupportedLanguage, [string, string]> = {
-    en: ["Hello, thanks for calling. How can I help today?", "Hello, thanks for calling. I can help you schedule an appointment."],
-    fr: ["Bonjour, merci de votre appel. Comment puis-je vous aider ?", "Bonjour, merci de votre appel. Je peux vous aider à prendre rendez-vous."],
-    sw: ["Habari, asante kwa kupiga simu. Ninaweza kukusaidiaje?", "Habari, asante kwa kupiga simu. Ninaweza kukusaidia kupanga miadi."],
-    ar: ["مرحباً، شكراً لاتصالك. كيف يمكنني مساعدتك؟", "مرحباً، شكراً لاتصالك. يمكنني مساعدتك في حجز موعد."],
+    en: [`Hi, this is ${name}. How can I help today?`, `Hi, this is ${name}. What would you like to book?`],
+    fr: [`Bonjour, vous êtes bien avec ${name}. Je vous écoute.`, `Bonjour, vous êtes bien avec ${name}. Quel rendez-vous souhaitez-vous prendre ?`],
+    sw: [`Habari, hapa ni ${name}. Naweza kukusaidiaje?`, `Habari, hapa ni ${name}. Ungependa kuweka miadi ya lini?`],
+    ar: [`مرحبا، معك ${name}. كيف أستطيع مساعدتك؟`, `مرحبا، معك ${name}. ما الموعد الذي ترغب في حجزه؟`],
   };
   return greetings[language][booking ? 1 : 0];
 }

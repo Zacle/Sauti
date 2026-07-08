@@ -214,6 +214,41 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - More natural greetings and multilingual voice options
+
+- Replaced onboarding and agent-studio default greetings with shorter, more conversational openings that include `{{agent_name}}`.
+- Updated onboarding preview greetings so they use the typed agent name before the draft is created.
+- Expanded the Azure voice catalog with higher-quality French HD/multilingual candidates and kept native Swahili, Arabic, and African English options.
+- Normalized ElevenLabs language labels such as `fra`, `ara`, and `swa` to Sauti's `fr`, `ar`, and `sw` filters.
+- Added per-language ElevenLabs model overrides:
+  - `ELEVENLABS_MODEL_ID_EN`
+  - `ELEVENLABS_MODEL_ID_FR`
+  - `ELEVENLABS_MODEL_ID_AR`
+  - `ELEVENLABS_MODEL_ID_SW`
+- Changed the default ElevenLabs model fallback from deprecated Turbo naming to `eleven_flash_v2_5`; examples suggest `eleven_multilingual_v2` for French/Arabic and `eleven_v3` for Swahili trials.
+- Included the local conversation-orchestrator prompt/fallback polish that was already in the working tree, so tool failures are framed more naturally and tests match the new fallback text.
+- Why: the previous greetings sounded like IVR scripts, and non-English voice quality needed better native/provider options without hardcoding one provider for every language.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/agent/OnboardingCompletionService.java`
+  - `backend/src/main/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProvider.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.agent.OnboardingCompletionServiceTest --tests com.sauti.call.AzureRealtimeTextToSpeechClientTest`
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Manual production app-data reset workflow
 
 - Added a manually dispatched GitHub Actions workflow for destructive production app-data resets.

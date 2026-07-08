@@ -305,10 +305,10 @@ function titleCase(value: string) {
 
 function unsupportedLanguageMessage(language: string) {
   if (language === "sw") {
-    return "The current ElevenLabs model has no production-quality Swahili voice. Configure Azure Speech to use native Kenyan or Tanzanian Swahili voices.";
+    return "Configure Azure Speech for native Kenyan or Tanzanian Swahili voices, or enable ElevenLabs v3 for Swahili previews.";
   }
   if (language === "fr" || language === "ar") {
-    return `English-origin voices are hidden because their ${languageName(language)} accent is not production quality. Configure Azure Speech to use native ${languageName(language)} voices—no voice cloning is required.`;
+    return `English-origin voices are hidden because their ${languageName(language)} accent is not production quality. Use native Azure voices or ElevenLabs multilingual/v3 voices for better delivery.`;
   }
   return "The current speech model returned no compatible voice for this language.";
 }

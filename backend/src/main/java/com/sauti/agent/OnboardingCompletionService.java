@@ -191,17 +191,17 @@ public class OnboardingCompletionService {
         boolean booking = "Appointment booking".equals(useCase);
         return switch (language) {
             case "fr" -> booking
-                    ? "Bonjour, merci de votre appel. Je peux vous aider à prendre rendez-vous."
-                    : "Bonjour, merci de votre appel. Comment puis-je vous aider ?";
+                    ? "Bonjour, vous êtes bien avec {{agent_name}}. Quel rendez-vous souhaitez-vous prendre ?"
+                    : "Bonjour, vous êtes bien avec {{agent_name}}. Je vous écoute.";
             case "sw" -> booking
-                    ? "Habari, asante kwa kupiga simu. Ninaweza kukusaidia kupanga miadi."
-                    : "Habari, asante kwa kupiga simu. Ninaweza kukusaidiaje?";
+                    ? "Habari, hapa ni {{agent_name}}. Ungependa kuweka miadi ya lini?"
+                    : "Habari, hapa ni {{agent_name}}. Naweza kukusaidiaje?";
             case "ar" -> booking
-                    ? "مرحباً، شكراً لاتصالك. يمكنني مساعدتك في حجز موعد."
-                    : "مرحباً، شكراً لاتصالك. كيف يمكنني مساعدتك؟";
+                    ? "مرحبا، معك {{agent_name}}. ما الموعد الذي ترغب في حجزه؟"
+                    : "مرحبا، معك {{agent_name}}. كيف أستطيع مساعدتك؟";
             default -> booking
-                    ? "Hello, thanks for calling. I can help you schedule an appointment."
-                    : "Hello, thanks for calling. How can I help today?";
+                    ? "Hi, this is {{agent_name}}. What would you like to book?"
+                    : "Hi, this is {{agent_name}}. How can I help today?";
         };
     }
 

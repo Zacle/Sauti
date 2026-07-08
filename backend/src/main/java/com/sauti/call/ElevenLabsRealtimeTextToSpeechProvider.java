@@ -24,6 +24,10 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
     private final String apiKey;
     private final String baseUrl;
     private final String modelId;
+    private final String englishModelId;
+    private final String frenchModelId;
+    private final String arabicModelId;
+    private final String swahiliModelId;
     private final String defaultVoiceId;
     private final double stability;
     private final double similarityBoost;
@@ -37,6 +41,10 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
             @Value("${sauti.tts.elevenlabs.api-key}") String apiKey,
             @Value("${sauti.tts.elevenlabs.base-url:wss://api.elevenlabs.io/v1/text-to-speech}") String baseUrl,
             @Value("${sauti.tts.elevenlabs.model-id:eleven_flash_v2_5}") String modelId,
+            @Value("${sauti.tts.elevenlabs.model-id-en:}") String englishModelId,
+            @Value("${sauti.tts.elevenlabs.model-id-fr:}") String frenchModelId,
+            @Value("${sauti.tts.elevenlabs.model-id-ar:}") String arabicModelId,
+            @Value("${sauti.tts.elevenlabs.model-id-sw:}") String swahiliModelId,
             @Value("${sauti.tts.elevenlabs.default-voice-id}") String defaultVoiceId,
             @Value("${sauti.tts.elevenlabs.stability:0.38}") double stability,
             @Value("${sauti.tts.elevenlabs.similarity-boost:0.78}") double similarityBoost,
@@ -49,6 +57,10 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
         this.apiKey = apiKey;
         this.baseUrl = baseUrl;
         this.modelId = modelId;
+        this.englishModelId = blankToDefault(englishModelId, modelId);
+        this.frenchModelId = blankToDefault(frenchModelId, modelId);
+        this.arabicModelId = blankToDefault(arabicModelId, modelId);
+        this.swahiliModelId = blankToDefault(swahiliModelId, modelId);
         this.defaultVoiceId = defaultVoiceId;
         this.stability = bounded(stability, 0, 1, "stability");
         this.similarityBoost = bounded(similarityBoost, 0, 1, "similarityBoost");
@@ -68,7 +80,7 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
         var webSocketListener = new ElevenLabsWebSocketListener(objectMapper, listener);
         return httpClient.newWebSocketBuilder()
                 .header("xi-api-key", apiKey)
-                .buildAsync(uri(resolvedVoiceId), webSocketListener)
+                .buildAsync(uri(resolvedVoiceId, language), webSocketListener)
                 .thenApply(webSocket -> {
                     sendInitialization(webSocket);
                     return new RealtimeTtsSession() {
@@ -88,8 +100,22 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
                 });
     }
 
-    private URI uri(String voiceId) {
-        return URI.create(baseUrl + "/" + voiceId + "/stream-input?model_id=" + modelId + "&output_format=pcm_16000");
+    private URI uri(String voiceId, String language) {
+        return URI.create(baseUrl + "/" + voiceId + "/stream-input?model_id=" + modelId(language) + "&output_format=pcm_16000");
+    }
+
+    private String modelId(String language) {
+        return switch (language == null ? "" : language.trim().toLowerCase()) {
+            case "en" -> englishModelId;
+            case "fr" -> frenchModelId;
+            case "ar" -> arabicModelId;
+            case "sw" -> swahiliModelId;
+            default -> modelId;
+        };
+    }
+
+    private String blankToDefault(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.trim();
     }
 
     private void sendJson(WebSocket webSocket, Map<String, Object> payload) {

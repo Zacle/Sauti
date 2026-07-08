@@ -111,7 +111,7 @@ const templates: Template[] = [
     group: "Appointments",
     description: "Checks availability, collects caller details, and confirms bookings.",
     icon: CalendarCheck,
-    greeting: "Hello, thank you for calling. I can help you schedule or manage an appointment. How may I assist you?",
+    greeting: "Hi, this is {{agent_name}}. What would you like to book?",
     prompt: `You are a professional appointment booking assistant.
 
 GOALS
@@ -137,7 +137,7 @@ CONVERSATION STYLE
     group: "Support",
     description: "Answers common questions, troubleshoots issues, and escalates safely.",
     icon: Headphones,
-    greeting: "Hello, thank you for calling support. Tell me what you need help with and I will guide you.",
+    greeting: "Hi, this is {{agent_name}}. Tell me what you need help with.",
     prompt: `You are a calm customer support voice agent.
 
 GOALS
@@ -161,7 +161,7 @@ RULES
     group: "Sales",
     description: "Qualifies enquiries and routes promising opportunities to the right team.",
     icon: UsersRound,
-    greeting: "Hello, thanks for your interest. I have a few quick questions so I can connect you with the right person.",
+    greeting: "Hi, this is {{agent_name}}. What are you looking for today?",
     prompt: `You are a helpful lead qualification agent.
 
 GOALS
@@ -185,7 +185,7 @@ RULES
     group: "Support",
     description: "Captures the issue and schedules a callback with the correct specialist.",
     icon: PhoneCall,
-    greeting: "Hello, I can arrange a callback with the right member of our team. What can we help you with?",
+    greeting: "Hi, this is {{agent_name}}. Who should I connect you with?",
     prompt: `You arrange customer support callbacks.
 
 Collect the caller's name, phone number, issue summary, urgency, and preferred callback time. Confirm every detail before creating the callback. For emergencies or high-risk requests, transfer to a human immediately.`,
@@ -1353,7 +1353,7 @@ function TemplateSelection({
           category: "Custom",
           group: "Custom",
           description: "Start without predefined behavior.",
-          greeting: "Hello, thank you for calling. How may I help you?",
+          greeting: "Hi, this is {{agent_name}}. How can I help today?",
           prompt: "",
           bookingEnabled: false,
           source: "custom",

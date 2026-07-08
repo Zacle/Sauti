@@ -31,6 +31,10 @@ public class VoiceCatalogService {
     private final String elevenLabsVoicesUrl;
     private final String elevenLabsPreviewUrl;
     private final String elevenLabsModelId;
+    private final String elevenLabsEnglishModelId;
+    private final String elevenLabsFrenchModelId;
+    private final String elevenLabsArabicModelId;
+    private final String elevenLabsSwahiliModelId;
     private final java.util.Set<String> curatedVoiceIds;
     private final Map<PreviewKey, byte[]> previewCache = new ConcurrentHashMap<>();
     private volatile VoiceCatalogResponse cached;
@@ -44,6 +48,10 @@ public class VoiceCatalogService {
             @Value("${sauti.tts.elevenlabs.voices-url:https://api.elevenlabs.io/v2/voices?page_size=100}") String elevenLabsVoicesUrl,
             @Value("${sauti.tts.elevenlabs.preview-url:https://api.elevenlabs.io/v1/text-to-speech}") String elevenLabsPreviewUrl,
             @Value("${sauti.tts.elevenlabs.model-id:eleven_flash_v2_5}") String elevenLabsModelId,
+            @Value("${sauti.tts.elevenlabs.model-id-en:}") String elevenLabsEnglishModelId,
+            @Value("${sauti.tts.elevenlabs.model-id-fr:}") String elevenLabsFrenchModelId,
+            @Value("${sauti.tts.elevenlabs.model-id-ar:}") String elevenLabsArabicModelId,
+            @Value("${sauti.tts.elevenlabs.model-id-sw:}") String elevenLabsSwahiliModelId,
             @Value("${sauti.tts.curated-voice-ids:}") String curatedVoiceIds
     ) {
         this.objectMapper = objectMapper;
@@ -53,6 +61,10 @@ public class VoiceCatalogService {
         this.elevenLabsVoicesUrl = elevenLabsVoicesUrl;
         this.elevenLabsPreviewUrl = elevenLabsPreviewUrl;
         this.elevenLabsModelId = elevenLabsModelId;
+        this.elevenLabsEnglishModelId = blankToDefault(elevenLabsEnglishModelId, elevenLabsModelId);
+        this.elevenLabsFrenchModelId = blankToDefault(elevenLabsFrenchModelId, elevenLabsModelId);
+        this.elevenLabsArabicModelId = blankToDefault(elevenLabsArabicModelId, elevenLabsModelId);
+        this.elevenLabsSwahiliModelId = blankToDefault(elevenLabsSwahiliModelId, elevenLabsModelId);
         this.curatedVoiceIds = java.util.Arrays.stream(curatedVoiceIds.split(","))
                 .map(String::trim).filter(value -> !value.isBlank()).collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
@@ -148,7 +160,7 @@ public class VoiceCatalogService {
         voice.path("labels").fields().forEachRemaining(entry -> traits.put(entry.getKey(), entry.getValue().asText()));
         var languages = new LinkedHashSet<String>();
         var category = voice.path("category").asText("voice");
-        var nativeLanguage = traits.getOrDefault("language", "").trim().toLowerCase();
+        var nativeLanguage = normalizeLanguageCode(traits.getOrDefault("language", ""));
         if (!nativeLanguage.isBlank()) {
             languages.add(nativeLanguage);
         }
@@ -158,7 +170,7 @@ public class VoiceCatalogService {
         // may expose every provider-verified language.
         if (!"premade".equalsIgnoreCase(category)) {
             voice.withArray("verified_languages").forEach(language -> {
-                String value = language.path("language").asText("").trim().toLowerCase();
+                String value = normalizeLanguageCode(language.path("language").asText(""));
                 if (!value.isBlank()) {
                     languages.add(value);
                 }
@@ -183,6 +195,10 @@ public class VoiceCatalogService {
                 azureVoice("sw-KE-RafikiNeural", "Rafiki", "Clear Kenyan Swahili", "sw", "Kenyan", "male"),
                 azureVoice("sw-TZ-RehemaNeural", "Rehema", "Warm Tanzanian Swahili", "sw", "Tanzanian", "female"),
                 azureVoice("sw-TZ-DaudiNeural", "Daudi", "Clear Tanzanian Swahili", "sw", "Tanzanian", "male"),
+                azureVoice("fr-FR-Vivienne:DragonHDLatestNeural", "Vivienne HD", "Expressive French receptionist", "fr", "France", "female"),
+                azureVoice("fr-FR-Remy:DragonHDLatestNeural", "Remy HD", "Expressive French receptionist", "fr", "France", "male"),
+                azureVoice("fr-FR-VivienneMultilingualNeural", "Vivienne", "Natural multilingual French", "fr", "France", "female"),
+                azureVoice("fr-FR-RemyMultilingualNeural", "Remy", "Natural multilingual French", "fr", "France", "male"),
                 azureVoice("fr-FR-DeniseNeural", "Denise", "Warm French professional", "fr", "France", "female"),
                 azureVoice("fr-FR-HenriNeural", "Henri", "Clear French professional", "fr", "France", "male"),
                 azureVoice("fr-CA-SylvieNeural", "Sylvie", "Warm Canadian French", "fr", "Canadian", "female"),
@@ -233,7 +249,7 @@ public class VoiceCatalogService {
         try {
             var body = objectMapper.createObjectNode()
                     .put("text", text)
-                    .put("model_id", elevenLabsModelId)
+                    .put("model_id", elevenLabsModelId(language))
                     .put("language_code", language);
             var request = HttpRequest.newBuilder(URI.create(
                             elevenLabsPreviewUrl + "/" + voiceId + "?output_format=mp3_22050_32"))
@@ -258,10 +274,21 @@ public class VoiceCatalogService {
 
     private String previewText(String language) {
         return switch (language) {
-            case "fr" -> "Bonjour, merci de votre appel. Comment puis-je vous aider aujourd'hui ?";
-            case "ar" -> "مرحبًا، شكرًا لاتصالك. كيف يمكنني مساعدتك اليوم؟";
-            case "sw" -> "Habari, asante kwa kupiga simu. Ninawezaje kukusaidia leo?";
-            default -> "Hello, thank you for calling. How can I help you today?";
+            case "fr" -> "Bonjour, vous êtes bien avec Sylvie. Je vous écoute.";
+            case "ar" -> "مرحبا، معك سيلفي. كيف أستطيع مساعدتك؟";
+            case "sw" -> "Habari, hapa ni Sylvie. Naweza kukusaidiaje?";
+            default -> "Hi, this is Sylvie. How can I help today?";
+        };
+    }
+
+    private String normalizeLanguageCode(String value) {
+        var normalized = value == null ? "" : value.trim().toLowerCase();
+        return switch (normalized) {
+            case "eng", "en-us", "en-gb", "en-au", "en-ca" -> "en";
+            case "fra", "fre", "fr-fr", "fr-ca" -> "fr";
+            case "ara", "ar-eg", "ar-sa", "ar-ma", "ar-ae" -> "ar";
+            case "swa", "sw-ke", "sw-tz" -> "sw";
+            default -> normalized;
         };
     }
 
@@ -274,6 +301,20 @@ public class VoiceCatalogService {
             return normalized.substring(0, MAX_PREVIEW_TEXT_LENGTH).trim();
         }
         return normalized;
+    }
+
+    private String elevenLabsModelId(String language) {
+        return switch (language == null ? "" : language.trim().toLowerCase()) {
+            case "en" -> elevenLabsEnglishModelId;
+            case "fr" -> elevenLabsFrenchModelId;
+            case "ar" -> elevenLabsArabicModelId;
+            case "sw" -> elevenLabsSwahiliModelId;
+            default -> elevenLabsModelId;
+        };
+    }
+
+    private String blankToDefault(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.trim();
     }
 
     private String textOrNull(JsonNode node, String field) {
