@@ -222,7 +222,11 @@ Expected:
 - Changed the onboarding preview from a quoted generated greeting to an opening-direction preview, and separated voice-preview sample text from call-opening behavior.
 - Why: hardcoded onboarding greetings do not scale to multiple languages or contexts. The runtime model should decide the actual opening based on language, channel, business context, and call situation.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `e2fe57a`.
+  - GitHub Actions CI run `28942549653` passed.
+  - Production deploy run `28942648365` passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/agent/AgentDraftGenerationService.java`
   - `backend/src/main/java/com/sauti/agent/OnboardingCompletionService.java`
