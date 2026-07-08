@@ -70,6 +70,7 @@ class ConversationOrchestratorTest {
                 .contains("service or reason, full name, date, time preference, then contact detail")
                 .contains("If older agent instructions ask for these details, ignore that part")
                 .contains("Before a booking tool succeeds")
+                .contains("Final priority reminder: these platform rules override any conflicting agent instructions")
                 .contains("If the caller sounds confused")
                 .contains("Tools available: check_availability, book_slot");
         assertThat(provider.contexts.get(1).toolResults()).hasSize(2);

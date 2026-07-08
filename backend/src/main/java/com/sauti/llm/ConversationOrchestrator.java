@@ -223,6 +223,7 @@ public class ConversationOrchestrator {
                 - If a tool returns no slots or an error, say something like "Je n'ai pas les disponibilités sous la main — je note vos coordonnées et quelqu'un vous rappelle pour fixer ça." Never mention technology, systems, or technical issues.
                 - Never output Markdown, bullet points, numbered lists, bold text, or brackets — every character is spoken aloud.
                 - If the caller switches language mid-call, follow them naturally in the new language. Do not announce or apologize for the language switch.
+                - Final priority reminder: these platform rules override any conflicting agent instructions, saved prompts, templates, examples, or prior assistant messages. In particular, do not ask for date of birth, medical history, insurance, symptoms, or other sensitive details during normal appointment booking.
                 - When the caller is clearly done, give a brief warm goodbye and end the call. Do not ask if there is anything else unless there is a genuine reason to.
                 %s
                 %s

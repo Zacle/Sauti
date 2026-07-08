@@ -214,6 +214,27 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Stronger prompt priority and faster voice turn defaults
+
+- Added a final runtime priority reminder to the live voice system prompt so platform booking/safety rules override conflicting saved agent prompts, templates, examples, and prior assistant messages.
+- This specifically blocks normal booking calls from collecting date of birth, medical history, insurance, symptoms, or other sensitive fields even when an older saved healthcare prompt asks for them.
+- Reduced live LLM max output tokens from 384 to 220 because phone replies should be short and lower token caps reduce worst-case response time.
+- Reduced Deepgram realtime `utterance_end_ms` default from 1000ms to 700ms and exposed `DEEPGRAM_UTTERANCE_END_MS=700` in the production env example.
+- Why: a new French test call still asked for DOB, showing the saved agent prompt could still win. The user also reported slow agent replies.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/main/java/com/sauti/call/DeepgramRealtimeSpeechToTextProvider.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `deploy/.env.production.example`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Runtime booking prompt override and French fallback greeting
 
 - Strengthened the live voice system prompt so platform booking policy overrides older saved agent prompts that ask for date of birth, medical history, insurance, symptoms, or other sensitive fields.

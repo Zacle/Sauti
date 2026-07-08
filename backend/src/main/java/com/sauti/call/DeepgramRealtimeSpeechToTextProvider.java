@@ -40,7 +40,7 @@ public class DeepgramRealtimeSpeechToTextProvider implements RealtimeSpeechToTex
             @Value("${sauti.stt.deepgram.base-url:wss://api.deepgram.com/v1/listen}") String baseUrl,
             @Value("${sauti.stt.deepgram.model:nova-3}") String model,
             @Value("${sauti.stt.deepgram.endpointing-ms:300}") int endpointingMs,
-            @Value("${sauti.stt.deepgram.utterance-end-ms:1000}") int utteranceEndMs
+            @Value("${sauti.stt.deepgram.utterance-end-ms:700}") int utteranceEndMs
     ) {
         this.objectMapper = objectMapper;
         this.apiKey = apiKey;
