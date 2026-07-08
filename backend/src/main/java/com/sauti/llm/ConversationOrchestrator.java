@@ -60,37 +60,44 @@ public class ConversationOrchestrator {
         var messages = messages(call, callerTranscript);
         var responseText = "";
 
-        for (int loop = 0; loop < maxToolLoops; loop++) {
-            var response = llmProvider.completeTurn(new LlmToolTurnContext(
-                    AgentContext.from(call.getAgent()),
-                    systemPrompt,
-                    language,
-                    List.copyOf(messages),
-                    callerTranscript,
-                    call.getCallerNumber(),
-                    call.getId(),
-                    call.getTwilioCallSid(),
-                    tools,
-                    latestToolResults
-            ));
-            responseText = voiceReadyText(response.responseText());
-            if (response.toolCalls().isEmpty()) {
-                if (!responseText.isBlank()) {
-                    callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, List.of());
+        try {
+            for (int loop = 0; loop < maxToolLoops; loop++) {
+                var response = llmProvider.completeTurn(new LlmToolTurnContext(
+                        AgentContext.from(call.getAgent()),
+                        systemPrompt,
+                        language,
+                        List.copyOf(messages),
+                        callerTranscript,
+                        call.getCallerNumber(),
+                        call.getId(),
+                        call.getTwilioCallSid(),
+                        tools,
+                        latestToolResults
+                ));
+                responseText = voiceReadyText(response.responseText());
+                if (response.toolCalls().isEmpty()) {
+                    if (!responseText.isBlank()) {
+                        callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, List.of());
+                    }
+                    return new ConversationTurnResult(responseText, outcome(allToolResults));
                 }
-                return new ConversationTurnResult(responseText, outcome(allToolResults));
+                messages.add(ConversationMessage.assistantToolCalls(responseText, response.toolCalls()));
+                callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, response.toolCalls());
+                var loopResults = new ArrayList<LlmToolResult>();
+                for (var toolCall : response.toolCalls()) {
+                    var result = toolFulfillmentRouter.route(call, toolCall);
+                    loopResults.add(result);
+                    allToolResults.add(result);
+                    messages.add(ConversationMessage.toolResult(result));
+                    callSessionStore.appendToolResult(call.getTwilioCallSid(), result);
+                }
+                latestToolResults = List.copyOf(loopResults);
             }
-            messages.add(ConversationMessage.assistantToolCalls(responseText, response.toolCalls()));
-            callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, response.toolCalls());
-            var loopResults = new ArrayList<LlmToolResult>();
-            for (var toolCall : response.toolCalls()) {
-                var result = toolFulfillmentRouter.route(call, toolCall);
-                loopResults.add(result);
-                allToolResults.add(result);
-                messages.add(ConversationMessage.toolResult(result));
-                callSessionStore.appendToolResult(call.getTwilioCallSid(), result);
-            }
-            latestToolResults = List.copyOf(loopResults);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Conversation turn failed for callId={} language={}", call.getId(), language, exception);
+            var fallbackText = fallback(language);
+            callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), fallbackText, List.of());
+            return new ConversationTurnResult(fallbackText, outcome(allToolResults));
         }
 
         var fallbackText = responseText.isBlank() ? fallback(language) : responseText;

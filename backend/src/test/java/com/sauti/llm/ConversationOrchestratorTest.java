@@ -117,6 +117,29 @@ class ConversationOrchestratorTest {
                 );
     }
 
+    @Test
+    void returnsLocalizedFallbackWhenProviderFails() {
+        var provider = new FailingProvider();
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var call = activeCall();
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
+        when(callSessionStore.conversationHistory(call.getTwilioCallSid()))
+                .thenReturn(List.of(new ConversationMessage("user", "Bonjour, je voudrais prendre rendez-vous.")));
+        when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of());
+
+        var result = orchestrator.handleUserUtterance(call, "fr", "Bonjour, je voudrais prendre rendez-vous.");
+
+        assertThat(result.responseText()).isEqualTo("Je suis desole, je n'ai pas pu terminer cette demande. Pouvez-vous reformuler ?");
+        verify(callSessionStore).appendAssistantMessage(call.getTwilioCallSid(), result.responseText(), List.of());
+    }
+
     private Call activeCall() {
         var tenant = new Tenant("Demo Clinic", "owner@example.com", "SN");
         var agent = new Agent(tenant, "Amina", "Bonjour", "Prompt");
@@ -164,6 +187,13 @@ class ConversationOrchestratorTest {
         public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
             contexts.add(context);
             return new LlmToolTurnResponse(response, List.of());
+        }
+    }
+
+    private static final class FailingProvider implements LlmToolCallingProvider {
+        @Override
+        public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
+            throw new IllegalStateException("Provider unavailable");
         }
     }
 

@@ -214,6 +214,20 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - French voice turn fallback
+
+- Hardened conversation orchestration so a valid transcribed voice turn returns a localized fallback response if the LLM/tool provider throws.
+- This prevents browser test calls from showing the generic "agent could not respond" error after successful French speech recognition.
+- Added a regression test covering a French turn where the LLM provider fails.
+- Did not deploy.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-07 - Onboarding voice previews
 
 - Added a listen/pause preview control beside the onboarding voice selector.
