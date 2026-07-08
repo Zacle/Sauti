@@ -223,7 +223,11 @@ Expected:
 - Expanded natural call-ending detection to include phrases like `no thank you`, `have a good day`, `non merci`, and `excellente journée`.
 - Why: user tested against another platform and reported Sauti's browser test could not hear input while it displayed `Agent is thinking`, and calls did not end naturally unless the caller said `goodbye`.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `f051702`.
+  - GitHub Actions CI run `28980623157` passed.
+  - GitHub Actions deploy run `28980709667` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
   - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
