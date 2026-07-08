@@ -214,6 +214,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Restore AI-driven French turns and sanitize tool schemas
+
+- Removed the scripted/context-aware French fallback that tried to answer appointment, verification, and introduction turns without a successful LLM response.
+- Restored the transparent localized fallback for actual LLM/provider failures so failed turns do not pretend to be AI-driven.
+- Sanitized Spring AI tool input schemas before provider submission by stripping nested `format` hints such as `phone` and `date-time`.
+- Why: French STT is now producing correct transcripts, so the repeated fallback happens after transcription in the LLM/tool provider path. Unsupported JSON schema `format` hints are a likely provider-side failure point when active tools are attached.
+- Deployment:
+  - Pending push/deploy for this commit.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/llm/SpringAiToolCallingLlmProviderContextTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Conversational fallback for French LLM failures
 
 - Replaced the repeated French apology fallback path with a context-aware recovery response.

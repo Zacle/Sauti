@@ -95,12 +95,12 @@ public class ConversationOrchestrator {
             }
         } catch (RuntimeException exception) {
             LOGGER.warn("Conversation turn failed for callId={} language={}", call.getId(), language, exception);
-            var fallbackText = fallback(language, callerTranscript, call.getAgent().getName());
+            var fallbackText = fallback(language);
             callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), fallbackText, List.of());
             return new ConversationTurnResult(fallbackText, outcome(allToolResults));
         }
 
-        var fallbackText = responseText.isBlank() ? fallback(language, callerTranscript, call.getAgent().getName()) : responseText;
+        var fallbackText = responseText.isBlank() ? fallback(language) : responseText;
         if (!fallbackText.isBlank()) {
             callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), fallbackText, List.of());
         }
@@ -240,51 +240,6 @@ public class ConversationOrchestrator {
             case "ar" -> "عذرا، لم أتمكن من إكمال هذا الطلب. هل يمكنك إعادة صياغته؟";
             default -> "I am sorry, I could not complete that request. Could you rephrase?";
         };
-    }
-
-    private String fallback(String language, String callerTranscript, String agentName) {
-        var transcript = callerTranscript == null ? "" : java.text.Normalizer
-                .normalize(callerTranscript.toLowerCase(java.util.Locale.ROOT), java.text.Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "");
-        var name = callerName(transcript);
-        return switch (language == null ? "" : language) {
-            case "fr" -> frenchFallback(transcript, name, agentName);
-            case "sw" -> "Nimekupata. Ninaweza kukusaidiaje leo?";
-            case "ar" -> "I understand. How can I help today?";
-            default -> name.isBlank()
-                    ? "I understand. How can I help today?"
-                    : "Thanks, " + name + ". How can I help today?";
-        };
-    }
-
-    private String frenchFallback(String transcript, String callerName, String agentName) {
-        if (transcript.contains("rendez-vous")) {
-            return "Bien sur. Quelle date et quelle heure souhaitez-vous pour ce rendez-vous ?";
-        }
-        if (transcript.contains("verifier")) {
-            return "Bien sur. Que souhaitez-vous verifier exactement ?";
-        }
-        if (!callerName.isBlank()) {
-            return "Merci, " + callerName + ". Comment puis-je vous aider aujourd'hui ?";
-        }
-        var resolvedAgentName = agentName == null || agentName.isBlank() ? "votre agent" : agentName;
-        return "J'ai bien compris. Je suis " + resolvedAgentName + ". Comment puis-je vous aider aujourd'hui ?";
-    }
-
-    private String callerName(String transcript) {
-        var patterns = List.of(
-                "\\b(?:my name is|i am|i'm)\\s+([a-z][a-z\\-']{1,40})\\b",
-                "\\b(?:je m appelle|je mappelle|mon nom c est|moi c est)\\s+([a-z][a-z\\-']{1,40})\\b"
-        );
-        for (var pattern : patterns) {
-            var matcher = java.util.regex.Pattern.compile(pattern, java.util.regex.Pattern.CASE_INSENSITIVE)
-                    .matcher(transcript);
-            if (matcher.find()) {
-                var name = matcher.group(1);
-                return name.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + name.substring(1);
-            }
-        }
-        return "";
     }
 
     static String voiceReadyText(String text) {

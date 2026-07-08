@@ -136,7 +136,7 @@ class ConversationOrchestratorTest {
 
         var result = orchestrator.handleUserUtterance(call, "fr", "Bonjour, je voudrais prendre rendez-vous.");
 
-        assertThat(result.responseText()).isEqualTo("Bien sur. Quelle date et quelle heure souhaitez-vous pour ce rendez-vous ?");
+        assertThat(result.responseText()).isEqualTo("Je suis desole, je n'ai pas pu terminer cette demande. Pouvez-vous reformuler ?");
         verify(callSessionStore).appendAssistantMessage(call.getTwilioCallSid(), result.responseText(), List.of());
     }
 

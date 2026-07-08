@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -151,7 +152,7 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
         var definition = ToolDefinition.builder()
                 .name(tool.name())
                 .description(tool.description())
-                .inputSchema(writeJson(tool.inputSchema()))
+                .inputSchema(writeJson(sanitizeSchema(tool.inputSchema())))
                 .build();
         return new ToolCallback() {
             @Override
@@ -237,6 +238,28 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize Spring AI tool data", exception);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> sanitizeSchema(Map<String, Object> schema) {
+        return (Map<String, Object>) sanitizeValue(schema);
+    }
+
+    private Object sanitizeValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            var sanitized = new LinkedHashMap<String, Object>();
+            map.forEach((key, nestedValue) -> {
+                if (key == null || "format".equals(key.toString())) {
+                    return;
+                }
+                sanitized.put(key.toString(), sanitizeValue(nestedValue));
+            });
+            return sanitized;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(this::sanitizeValue).toList();
+        }
+        return value;
     }
 
     private static String requireModel(String value, String environmentVariable) {

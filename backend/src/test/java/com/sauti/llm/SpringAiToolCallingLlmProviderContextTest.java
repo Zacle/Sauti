@@ -48,4 +48,28 @@ class SpringAiToolCallingLlmProviderContextTest {
 
         assertThat(springProvider.toolCalls(output)).isEmpty();
     }
+
+    @Test
+    void toolSchemasStripFormatHintsBeforeProviderSubmission() {
+        var springProvider = (SpringAiToolCallingLlmProvider) provider;
+
+        var schema = springProvider.sanitizeSchema(Map.of(
+                "type", "object",
+                "properties", Map.of(
+                        "caller_phone", Map.of(
+                                "type", "string",
+                                "description", "Caller phone",
+                                "format", "phone"
+                        ),
+                        "appointment_at", Map.of(
+                                "type", "string",
+                                "description", "Appointment time",
+                                "format", "date-time"
+                        )
+                )
+        ));
+
+        assertThat(schema.toString()).doesNotContain("format");
+        assertThat(schema.toString()).contains("caller_phone", "appointment_at");
+    }
 }
