@@ -214,6 +214,27 @@ Expected:
 
 ## Change log
 
+### 2026-07-09 - STT language drift guard for long French calls
+
+- Added the agent default language as an OpenAI prerecorded transcription hint for browser/test audio so French calls are less likely to drift into English, Arabic-script, or Portuguese artifacts.
+- Added a conservative call-pipeline guard that locks onto a non-English call language after two caller turns and intercepts short obvious cross-language STT drift before it reaches the LLM.
+- Drift recovery now responds in the locked call language with a brief clarification, or a localized goodbye if the noisy transcript looks like a closing phrase.
+- Tightened live prompt rules so the model does not switch language for one unclear fragment and does not convert unclear name audio into a plausible-looking name.
+- Why: user shared a French call transcript where late-call STT drift produced Arabic/English/Portuguese caller text even though the caller stayed in French, and the agent followed the bad transcript.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/BrowserSpeechToTextService.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/call/BrowserSpeechToTextServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.BrowserSpeechToTextServiceTest --tests com.sauti.call.CallPipelineServiceTest --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-09 - Agent Studio test-call interruption capture
 
 - Updated the Agent Studio browser test-call panel so caller speech can be captured while the agent is in the `thinking` state, not only while listening or speaking.

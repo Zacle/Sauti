@@ -240,6 +240,44 @@ class CallPipelineServiceTest {
         assertThat(service.looksLikeConversationEnding("I want to book tomorrow.")).isFalse();
     }
 
+    @Test
+    void recoversFromShortCrossLanguageTranscriptDriftAfterLanguageIsStable() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var languageDetector = mock(LanguageDetector.class);
+        var conversationOrchestrator = mock(ConversationOrchestrator.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                languageDetector,
+                conversationOrchestrator,
+                mock(StreamingTtsProvider.class),
+                callSessionStore,
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var call = activeCall("CA123");
+        call.selectLanguage("fr");
+        when(callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId())).thenReturn(List.of(
+                new CallTurn(call, 1, "Bonjour", "Bonjour.", "fr", 0, 0, 0, false),
+                new CallTurn(call, 2, "Je veux un rendez-vous", "Bien sûr.", "fr", 0, 0, 0, false)
+        ));
+        when(callTurnRepository.countByCall_Id(call.getId())).thenReturn(2);
+
+        var result = service.processLiveTranscriptTurn(call, "اسیورکو۔");
+
+        assertThat(result.language()).isEqualTo("fr");
+        assertThat(result.text()).contains("Je n'ai pas bien saisi");
+        assertThat(result.outcome()).isBlank();
+        verify(languageDetector, never()).detect(any(), any(), any());
+        verify(conversationOrchestrator, never()).handleUserUtterance(any(), any(), any());
+        verify(callTurnRepository).save(any(CallTurn.class));
+    }
+
     private Call activeCall(String callSid) {
         var tenant = new Tenant("Demo Clinic", "owner@example.com", "SN");
         var agent = new Agent(tenant, "Amina", "Bonjour", "Prompt");

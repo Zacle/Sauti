@@ -349,6 +349,9 @@ public class CallPipelineService {
                     ""
             );
         }
+        if (looksLikeTranscriptDrift(call, callerTranscript)) {
+            return recoverFromTranscriptDrift(call, callerTranscript, sttMs, synthesizeAudio);
+        }
 
         if (call.getAgent().isDetectVoicemail()
                 && hasNoCallerTurns(call)
@@ -416,6 +419,35 @@ public class CallPipelineService {
         return new TurnResult(language, response, audio, outcome == null ? "" : outcome);
     }
 
+    private TurnResult recoverFromTranscriptDrift(Call call, String callerTranscript, int sttMs, boolean synthesizeAudio) {
+        var language = call.getLanguageDetected() == null || call.getLanguageDetected().isBlank()
+                ? call.getAgent().getDefaultLanguage()
+                : call.getLanguageDetected();
+        var outcome = looksLikeConversationEnding(callerTranscript) ? "completed" : "";
+        var response = outcome.isBlank()
+                ? localizedClarification(language)
+                : localizedGoodbye(language);
+        long ttsStart = System.nanoTime();
+        byte[] audio = synthesizeAudio ? ttsProvider.synthesize(language, response) : new byte[0];
+        int ttsMs = elapsedMs(ttsStart);
+        var interrupted = callSessionStore.consumeInterrupted(call.getTwilioCallSid());
+        if (call.getAgent().isSaveTranscript() || "test".equals(call.getDirection())) {
+            call.appendTurn(language, callerTranscript, response);
+            int turnIndex = callTurnRepository.countByCall_Id(call.getId()) + 1;
+            callTurnRepository.save(new CallTurn(call, turnIndex, callerTranscript, response, language, sttMs, 0, ttsMs, interrupted));
+        }
+        if (!outcome.isBlank()) {
+            call.complete(outcome);
+            analyzePostCall(call);
+            if (synthesizeAudio) {
+                archiveSession(call);
+            }
+            callRepository.save(call);
+            dashboardEventPublisher.callEnded(call);
+        }
+        return new TurnResult(language, response, audio, outcome);
+    }
+
     public String resolveGreeting(Agent agent) {
         var result = agent.getGreetingMessage()
                 .replace("{{agent_name}}", agent.getName())
@@ -440,6 +472,13 @@ public class CallPipelineService {
     private boolean hasNoCallerTurns(Call call) {
         return callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId()).stream()
                 .noneMatch(turn -> turn.getCallerTranscript() != null && !turn.getCallerTranscript().isBlank());
+    }
+
+    private boolean hasEnoughCallerHistoryForLanguageLock(Call call) {
+        return callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId()).stream()
+                .filter(turn -> turn.getCallerTranscript() != null && !turn.getCallerTranscript().isBlank())
+                .limit(2)
+                .count() >= 2;
     }
 
     private void archiveSession(Call call) {
@@ -531,6 +570,46 @@ public class CallPipelineService {
                 || value.contains("hamna lingine")
                 || value.contains("مع السلامة")
                 || value.contains("هذا كل شيء");
+    }
+
+    boolean looksLikeTranscriptDrift(Call call, String transcript) {
+        if (call == null || transcript == null || transcript.isBlank()) return false;
+        var lockedLanguage = call.getLanguageDetected();
+        if (lockedLanguage == null || lockedLanguage.isBlank() || "en".equals(lockedLanguage)) return false;
+        if (!hasEnoughCallerHistoryForLanguageLock(call)) return false;
+
+        var value = transcript.trim();
+        var wordCount = value.replaceAll("[^\\p{L}\\p{N}]+", " ").trim().split("\\s+").length;
+        if (wordCount > 5) return false;
+        var lower = value.toLowerCase(java.util.Locale.ROOT);
+        if (!"ar".equals(lockedLanguage) && containsArabicScript(value)) return true;
+        if ("fr".equals(lockedLanguage) && lower.matches(".*\\b(thank you|thanks|bye|hello|yes it is|good day)\\b.*")) return true;
+        if ("fr".equals(lockedLanguage) && lower.matches(".*\\b(s[eé]rio|nao|não|obrigado|obrigada)\\b.*")) return true;
+        return false;
+    }
+
+    private boolean containsArabicScript(String value) {
+        return value.codePoints().anyMatch(codePoint ->
+                (codePoint >= 0x0600 && codePoint <= 0x06FF)
+                        || (codePoint >= 0x0750 && codePoint <= 0x077F)
+                        || (codePoint >= 0x08A0 && codePoint <= 0x08FF)
+        );
+    }
+
+    private String localizedClarification(String language) {
+        return switch (language == null ? "" : language) {
+            case "fr" -> "Je n'ai pas bien saisi. Vous pouvez répéter ça en français, s'il vous plaît ?";
+            case "ar" -> "I did not catch that clearly. Could you repeat it, please?";
+            default -> "I did not catch that clearly. Could you repeat that, please?";
+        };
+    }
+
+    private String localizedGoodbye(String language) {
+        return switch (language == null ? "" : language) {
+            case "fr" -> "Je vous en prie. Bonne journée, au revoir.";
+            case "ar" -> "Thank you for calling. Goodbye.";
+            default -> "You're welcome. Goodbye.";
+        };
     }
 
     private boolean isNonSpeechTranscript(String transcript) {

@@ -32,6 +32,8 @@ class BrowserSpeechToTextServiceTest {
             openAiRequests.incrementAndGet();
             assertThat(body).contains("name=\"model\"");
             assertThat(body).contains("gpt-4o-transcribe");
+            assertThat(body).contains("name=\"language\"");
+            assertThat(body).contains("fr");
             return """
                     {"text":"Bonjour, je voudrais prendre rendez-vous."}
                     """;

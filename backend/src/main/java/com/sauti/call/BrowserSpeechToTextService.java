@@ -169,6 +169,10 @@ public class BrowserSpeechToTextService {
             var output = new ByteArrayOutputStream();
             writeField(output, boundary, "model", openAiModel);
             writeField(output, boundary, "response_format", "json");
+            var languageHint = openAiLanguageHint(agent);
+            if (languageHint != null && !languageHint.isBlank()) {
+                writeField(output, boundary, "language", languageHint);
+            }
             // OpenAI infers format from filename extension, NOT Content-Type header.
             var filename = "audio." + extensionFor(contentType);
             writeAscii(output, "--" + boundary + "\r\n");
