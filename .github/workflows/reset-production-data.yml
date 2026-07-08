@@ -1,11 +1,14 @@
 name: Reset production app data
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       confirmation:
         description: 'Type RESET PRODUCTION APP DATA to wipe production app data'
         required: true
+  push:
+    branches-ignore:
+      - "**"
 
 concurrency:
   group: production-reset
