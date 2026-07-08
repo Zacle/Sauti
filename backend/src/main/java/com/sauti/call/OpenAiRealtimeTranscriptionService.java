@@ -22,8 +22,8 @@ import org.springframework.stereotype.Service;
 public class OpenAiRealtimeTranscriptionService {
     private static final int INPUT_SAMPLE_RATE = 16_000;
     private static final int SPEECH_RMS_THRESHOLD = 450;
-    private static final long MIN_COMMIT_AUDIO_MS = 400;
-    private static final long SILENCE_COMMIT_MS = 700;
+    private static final long MIN_COMMIT_AUDIO_MS = 280;
+    private static final long SILENCE_COMMIT_MS = 500;
     private static final long MAX_COMMIT_AUDIO_MS = 15_000;
 
     private final ObjectMapper objectMapper;

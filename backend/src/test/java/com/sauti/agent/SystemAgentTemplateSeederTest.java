@@ -36,5 +36,9 @@ class SystemAgentTemplateSeederTest {
                 )
                 .doesNotContain("\"key\":\"agent_name\"", "\"key\":\"timezone\"");
         assertThat(dental.systemPrompt()).contains("Dental Emergency", "{{dentist_names}}");
+        assertThat(dental.systemPrompt())
+                .contains("## Live Voice Behavior")
+                .contains("Sound like a capable phone receptionist")
+                .contains("Ask one question at a time");
     }
 }

@@ -214,6 +214,26 @@ Expected:
 
 ## Change log
 
+### 2026-07-09 - Browser voice latency and template behavior tuning
+
+- Reduced OpenAI realtime transcription commit timing for browser calls so final caller turns are emitted after a shorter silence window.
+- Reduced spoken TTS chunk sizes so browser and phone TTS providers can start returning audio from shorter phrases.
+- Added a shared `Live Voice Behavior` instruction block to all system templates through the system template seeder.
+- Added Flyway migration `V29__agent_template_live_voice_behavior.sql` to append the same behavior block to existing published system template rows in the database.
+- Why: user asked to make browser calls feel more like real calls and to improve saved template instructions that still sounded scripted or robotic.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeTranscriptionService.java`
+  - `backend/src/main/java/com/sauti/call/SentenceChunker.java`
+  - `backend/src/main/java/com/sauti/agent/SystemAgentTemplateSeeder.java`
+  - `backend/src/main/resources/db/migration/V29__agent_template_live_voice_behavior.sql`
+  - `backend/src/test/java/com/sauti/agent/SystemAgentTemplateSeederTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.agent.SystemAgentTemplateSeederTest --tests com.sauti.call.SentenceChunkerTest --tests com.sauti.call.DefaultTwilioMediaStreamServiceTest --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-09 - Sync Cartesia production secret during deploy
 
 - Added `CARTESIA_API_KEY` to the repository's GitHub Actions secrets from local `.env` without printing the key.

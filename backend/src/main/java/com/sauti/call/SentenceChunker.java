@@ -8,9 +8,9 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class SentenceChunker {
-    private static final int MIN_CLAUSE_LENGTH = 55;
-    private static final int TARGET_CHUNK_LENGTH = 180;
-    private static final int EMERGENCY_CHUNK_LENGTH = 240;
+    private static final int MIN_CLAUSE_LENGTH = 34;
+    private static final int TARGET_CHUNK_LENGTH = 110;
+    private static final int EMERGENCY_CHUNK_LENGTH = 160;
     private static final Set<String> ABBREVIATIONS = Set.of(
             "mr", "mrs", "ms", "dr", "prof", "sr", "jr",
             "m", "mme", "mlle", "no", "tel", "tél", "st"
