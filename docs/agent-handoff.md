@@ -214,6 +214,30 @@ Expected:
 
 ## Change log
 
+### 2026-07-09 - Bookings dashboard feature
+
+- Replaced the placeholder `/bookings` console page with a real bookings dashboard backed by the existing tenant-scoped bookings API.
+- Added summary metrics for upcoming, today, and cancelled bookings; search; status/time filters; timeline preview; booking source labels; calendar sync badges; and a cancel action that calls the existing `DELETE /api/v1/bookings/{id}` endpoint.
+- Added booking domain helpers for view-model mapping, filtering, summaries, and date/time formatting.
+- Exposed `externalEventId` in the dashboard `Booking` type so the UI can show where a booking was synced or created from.
+- Why: user asked to implement the bookings feature with modern UI/UX and visibility into where bookings were created.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `dashboard/app/(console)/bookings/page.tsx`
+  - `dashboard/features/bookings/domain/bookings.ts`
+  - `dashboard/features/bookings/presentation/BookingsPage.tsx`
+  - `dashboard/features/bookings/presentation/BookingsPage.module.css`
+  - `dashboard/features/dashboard/data/preview-data.ts`
+  - `dashboard/lib/api/bookings.ts`
+  - `dashboard/types/api.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+- Known follow-ups:
+  - Add backend pagination/date filters before the bookings table grows large.
+  - Add a booking detail drawer with the linked call transcript once product scope is confirmed.
+
 ### 2026-07-09 - STT language drift guard for long French calls
 
 - Added the agent default language as an OpenAI prerecorded transcription hint for browser/test audio so French calls are less likely to drift into English, Arabic-script, or Portuguese artifacts.

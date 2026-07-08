@@ -1,6 +1,5 @@
-import { CalendarDays } from "lucide-react";
-import { ConsolePlaceholder } from "@/features/console/ConsolePlaceholder/ConsolePlaceholder";
+import { BookingsPage as BookingsPageFeature } from "@/features/bookings/presentation/BookingsPage";
 
 export default function BookingsPage() {
-  return <ConsolePlaceholder icon={CalendarDays} eyebrow="Calendar" title="Bookings" description="Review upcoming appointments and booking outcomes." />;
+  return <BookingsPageFeature />;
 }

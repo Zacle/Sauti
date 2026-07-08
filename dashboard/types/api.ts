@@ -323,6 +323,7 @@ export type Booking = {
   serviceType: string;
   bookedAt: string;
   appointmentAt: string;
+  externalEventId: string | null;
   status: string;
   confirmationSent: boolean;
 };
