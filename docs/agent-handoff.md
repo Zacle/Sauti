@@ -222,7 +222,11 @@ Expected:
 - Changed the agent-studio voice picker ranking so ElevenLabs voices sort above Azure voices, with Azure treated as a fallback provider.
 - Why: production diagnostics showed the French browser test was using Azure `fr-FR-VivienneMultilingualNeural`; the product should prioritize voice quality through ElevenLabs, with Swahili less important than high-quality English/French/Arabic.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `af6d2cc`.
+  - GitHub Actions CI run `28968030066` passed.
+  - GitHub Actions deploy run `28968128673` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
   - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
