@@ -214,6 +214,26 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Manual production app-data reset workflow
+
+- Added a manually dispatched GitHub Actions workflow for destructive production app-data resets.
+- The workflow requires the exact confirmation string `RESET PRODUCTION APP DATA`.
+- Reset scope:
+  - Drops and recreates Neon PostgreSQL `public` schema.
+  - Flushes the configured Upstash Redis database.
+  - Removes and recreates Docker volume `sauti_recordings-data`.
+  - Deletes `/opt/sauti/backups/sauti-*.dump` database backup files.
+  - Restarts production Compose services and verifies `https://sauti.uk/health` through the VPS.
+- Preserves `.env.production`, Caddy TLS/config volumes, Docker images, source checkout, and old local Postgres/Redis rollback volumes.
+- Why: user requested a production restart with all saved app data and other persistent app storage erased.
+- Deployment:
+  - Workflow added locally; reset run pending.
+- Files touched:
+  - `.github/workflows/reset-production-data.yml`
+  - `docs/agent-handoff.md`
+- Verification:
+  - Workflow syntax reviewed locally; production run pending.
+
 ### 2026-07-08 - No-tool LLM recovery for static French fallback replies
 
 - Added a no-tool retry path in the conversation orchestrator when a tool-enabled LLM turn fails.

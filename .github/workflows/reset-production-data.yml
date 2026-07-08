@@ -1,0 +1,94 @@
+name: Reset production app data
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type RESET PRODUCTION APP DATA to wipe production app data'
+        required: true
+
+concurrency:
+  group: production-reset
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  reset:
+    if: ${{ github.event.inputs.confirmation == 'RESET PRODUCTION APP DATA' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Reset production persistence
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" 'bash -se' <<'REMOTE'
+            set -Eeuo pipefail
+            cd /opt/sauti
+
+            compose=(docker compose --env-file .env.production -f docker-compose.prod.yml)
+
+            "${compose[@]}" stop backend dashboard
+
+            docker run --rm \
+              --env-file .env.production \
+              postgres:18-alpine \
+              sh -euc '
+                test -n "${NEON_DATABASE_URL:-}"
+                psql "$NEON_DATABASE_URL" -v ON_ERROR_STOP=1 <<SQL
+DROP SCHEMA IF EXISTS public CASCADE;
+CREATE SCHEMA public;
+GRANT ALL ON SCHEMA public TO CURRENT_USER;
+GRANT ALL ON SCHEMA public TO PUBLIC;
+SQL
+              '
+
+            docker run --rm \
+              --env-file .env.production \
+              redis:7-alpine \
+              sh -euc '
+                test -n "${SPRING_REDIS_HOST:-}"
+                test -n "${SPRING_REDIS_PASSWORD:-}"
+                redis-cli --tls -h "$SPRING_REDIS_HOST" -p "${SPRING_REDIS_PORT:-6379}" -a "$SPRING_REDIS_PASSWORD" FLUSHDB
+              '
+
+            "${compose[@]}" rm -fsv backend dashboard
+            docker volume rm sauti_recordings-data >/dev/null 2>&1 || true
+            docker volume create sauti_recordings-data >/dev/null
+
+            find /opt/sauti/backups -type f -name 'sauti-*.dump' -delete 2>/dev/null || true
+
+            "${compose[@]}" up -d --remove-orphans
+
+            domain="$(grep -E '^SAUTI_DOMAIN=' .env.production | tail -1 | cut -d= -f2-)"
+            domain="${domain:-sauti.uk}"
+            healthy=false
+            for _ in {1..36}; do
+              if curl --fail --silent --show-error \
+                --resolve "${domain}:443:127.0.0.1" \
+                "https://${domain}/health" >/dev/null; then
+                healthy=true
+                break
+              fi
+              sleep 5
+            done
+
+            if [[ "${healthy}" != "true" ]]; then
+              "${compose[@]}" logs --tail=150 backend dashboard caddy
+              exit 1
+            fi
+
+            echo "Production app data reset completed and ${domain} is healthy."
+          REMOTE
