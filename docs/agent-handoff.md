@@ -229,7 +229,7 @@ Expected:
 - Deployment:
   - Workflow added locally; reset run pending.
 - Files touched:
-  - `.github/workflows/reset-production-data.yml`
+  - `.github/workflows/production-data-reset.yml`
   - `docs/agent-handoff.md`
 - Verification:
   - Workflow syntax reviewed locally; production run pending.

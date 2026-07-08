@@ -1,4 +1,4 @@
-name: Reset production app data
+name: Production data reset
 
 on:
   workflow_dispatch:
