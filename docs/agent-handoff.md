@@ -364,6 +364,23 @@ Expected:
 - `docs/analytics-plan.md` may appear as untracked in some working trees. It was used as the plan for analytics. Decide explicitly whether to add it to git before staging.
 - Do not delete server Docker volumes for old Postgres/Redis unless the user explicitly approves. They are rollback safety.
 
+### 2026-07-08 - Multilingual browser speech auto-detect fixes
+
+- Added server-side speech/silence commit logic for OpenAI realtime transcription so public Web Voice can stream continuously but still manually commit caller turns after a pause, as required by `gpt-realtime-whisper`.
+- Serialized OpenAI realtime WebSocket send events to keep `input_audio_buffer.append` and `input_audio_buffer.commit` in order.
+- Removed the forced OpenAI prerecorded transcription language hint for browser test/onboarding audio uploads so OpenAI can auto-detect spoken language instead of being biased by the agent default.
+- Improved STT provider failure logs with response snippets for non-2xx responses.
+- Wrapped the onboarding browser test turn after transcription so LLM/tool failures return a controlled API error instead of generic `Internal Server Error`.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeTranscriptionService.java`
+  - `backend/src/main/java/com/sauti/call/BrowserSpeechToTextService.java`
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+- Deployment:
+  - Not deployed yet.
+
 ### 2026-07-08 - OpenAI realtime STT for multilingual Web Voice
 
 - Restored public Web Voice sessions to realtime mode for every language; the turn-based non-English path is no longer selected by session start.

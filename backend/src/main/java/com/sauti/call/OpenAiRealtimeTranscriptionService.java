@@ -20,6 +20,12 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class OpenAiRealtimeTranscriptionService {
+    private static final int INPUT_SAMPLE_RATE = 16_000;
+    private static final int SPEECH_RMS_THRESHOLD = 450;
+    private static final long MIN_COMMIT_AUDIO_MS = 400;
+    private static final long SILENCE_COMMIT_MS = 700;
+    private static final long MAX_COMMIT_AUDIO_MS = 15_000;
+
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String apiKey;
@@ -151,7 +157,10 @@ public class OpenAiRealtimeTranscriptionService {
                     return;
                 }
                 if ("error".equals(type)) {
-                    listener.onError(new IllegalStateException(node.path("error").path("message").asText("OpenAI realtime transcription failed")));
+                    var error = node.path("error");
+                    var code = error.path("code").asText("");
+                    var message = error.path("message").asText("OpenAI realtime transcription failed");
+                    listener.onError(new IllegalStateException(code.isBlank() ? message : code + ": " + message));
                 }
             } catch (Exception exception) {
                 listener.onError(exception);
@@ -163,6 +172,10 @@ public class OpenAiRealtimeTranscriptionService {
         private final WebSocket webSocket;
         private final ObjectMapper objectMapper;
         private final ScheduledFuture<?> keepAliveTask;
+        private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
+        private long pendingAudioMillis;
+        private long trailingSilenceMillis;
+        private boolean pendingSpeech;
 
         private OpenAiRealtimeSttSession(
                 WebSocket webSocket,
@@ -183,12 +196,23 @@ public class OpenAiRealtimeTranscriptionService {
         public void sendPcmAudio(byte[] pcm16kAudio) {
             if (pcm16kAudio == null || pcm16kAudio.length == 0) return;
             try {
-                var pcm24k = pcm16kToPcm24k(pcm16kAudio);
-                var event = objectMapper.writeValueAsString(Map.of(
-                        "type", "input_audio_buffer.append",
-                        "audio", Base64.getEncoder().encodeToString(pcm24k)
-                ));
-                webSocket.sendText(event, true);
+                var durationMillis = audioDurationMillis(pcm16kAudio);
+                var speech = rms(pcm16kAudio) >= SPEECH_RMS_THRESHOLD;
+                if (!speech && !pendingSpeech) return;
+
+                appendAudio(pcm16kToPcm24k(pcm16kAudio));
+                pendingAudioMillis += durationMillis;
+                if (speech) {
+                    pendingSpeech = true;
+                    trailingSilenceMillis = 0;
+                } else {
+                    trailingSilenceMillis += durationMillis;
+                }
+                if (pendingSpeech
+                        && pendingAudioMillis >= MIN_COMMIT_AUDIO_MS
+                        && (trailingSilenceMillis >= SILENCE_COMMIT_MS || pendingAudioMillis >= MAX_COMMIT_AUDIO_MS)) {
+                    commitAudio();
+                }
             } catch (Exception exception) {
                 throw new IllegalStateException("Unable to send OpenAI realtime audio", exception);
             }
@@ -197,7 +221,50 @@ public class OpenAiRealtimeTranscriptionService {
         @Override
         public void close() {
             keepAliveTask.cancel(false);
+            if (pendingSpeech) {
+                try {
+                    commitAudio();
+                } catch (Exception ignored) {
+                }
+            }
             webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "call ended");
+        }
+
+        private void appendAudio(byte[] pcm24k) throws Exception {
+            var event = objectMapper.writeValueAsString(Map.of(
+                    "type", "input_audio_buffer.append",
+                    "audio", Base64.getEncoder().encodeToString(pcm24k)
+            ));
+            sendEvent(event);
+        }
+
+        private void commitAudio() throws Exception {
+            var event = objectMapper.writeValueAsString(Map.of("type", "input_audio_buffer.commit"));
+            sendEvent(event);
+            pendingAudioMillis = 0;
+            trailingSilenceMillis = 0;
+            pendingSpeech = false;
+        }
+
+        private synchronized void sendEvent(String event) {
+            sendChain = sendChain.handle((ignored, error) -> null)
+                    .thenCompose(ignored -> webSocket.sendText(event, true))
+                    .thenApply(ignored -> null);
+        }
+
+        private long audioDurationMillis(byte[] input) {
+            return (input.length / 2L) * 1000L / INPUT_SAMPLE_RATE;
+        }
+
+        private int rms(byte[] input) {
+            var samples = input.length / 2;
+            if (samples == 0) return 0;
+            double sum = 0;
+            for (var index = 0; index < samples; index++) {
+                var value = sample(input, index);
+                sum += value * (double) value;
+            }
+            return (int) Math.sqrt(sum / samples);
         }
 
         private byte[] pcm16kToPcm24k(byte[] input) {

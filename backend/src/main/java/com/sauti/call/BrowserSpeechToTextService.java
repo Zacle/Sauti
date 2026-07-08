@@ -109,7 +109,8 @@ public class BrowserSpeechToTextService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("Speech recognition failed with HTTP " + response.statusCode());
+                throw new IllegalStateException("Speech recognition failed with HTTP "
+                        + response.statusCode() + ": " + responseSnippet(response.body()));
             }
             var root = objectMapper.readTree(response.body());
             var transcript = root.path("results")
@@ -145,7 +146,8 @@ public class BrowserSpeechToTextService {
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("Speech recognition failed with HTTP " + response.statusCode());
+                throw new IllegalStateException("Speech recognition failed with HTTP "
+                        + response.statusCode() + ": " + responseSnippet(response.body()));
             }
             var transcript = objectMapper.readTree(response.body()).path("text").asText("").trim();
             if (transcript.isBlank()) {
@@ -167,10 +169,6 @@ public class BrowserSpeechToTextService {
             var output = new ByteArrayOutputStream();
             writeField(output, boundary, "model", openAiModel);
             writeField(output, boundary, "response_format", "json");
-            var language = openAiLanguageHint(agent);
-            if (language != null) {
-                writeField(output, boundary, "language", language);
-            }
             // OpenAI infers format from filename extension, NOT Content-Type header.
             var filename = "audio." + extensionFor(contentType);
             writeAscii(output, "--" + boundary + "\r\n");
@@ -236,6 +234,14 @@ public class BrowserSpeechToTextService {
                 .contains(normalized)
                 ? normalized
                 : "application/octet-stream";
+    }
+
+    private String responseSnippet(byte[] body) {
+        if (body == null || body.length == 0) return "";
+        var text = new String(body, StandardCharsets.UTF_8)
+                .replaceAll("\\s+", " ")
+                .trim();
+        return text.length() <= 300 ? text : text.substring(0, 300);
     }
 
     private String modelFor(String language) {

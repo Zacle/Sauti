@@ -141,8 +141,7 @@ public class CallController {
         var sttStart = System.nanoTime();
         var callerTranscript = transcribeTestAudio(call, audio);
         var sttMs = elapsedMs(sttStart);
-        var turn = callPipelineService.processTextTurn(
-                user.tenantId(), call.getTwilioCallSid(), callerTranscript, sttMs);
+        var turn = processTestTranscriptTurn(user.tenantId(), call, callerTranscript, sttMs);
         var persistedTurn = callTurnRepository.findFirstByCall_IdOrderByTurnIndexDesc(id).orElse(null);
         var ttsStart = System.nanoTime();
         var synthesized = synthesizeTestTurn(call, turn.language(), turn.response());
@@ -212,6 +211,21 @@ public class CallController {
         } catch (IllegalStateException exception) {
             LOGGER.warn("Browser test speech recognition failed callId={}", call.getId(), exception);
             throw new IllegalArgumentException("Speech recognition is unavailable. Check the speech provider configuration or type a test message instead.");
+        }
+    }
+
+    private SimulatedTurnResponse processTestTranscriptTurn(
+            UUID tenantId,
+            com.sauti.call.Call call,
+            String callerTranscript,
+            int sttMs
+    ) {
+        try {
+            return callPipelineService.processTextTurn(
+                    tenantId, call.getTwilioCallSid(), callerTranscript, sttMs);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Browser test turn failed after transcription callId={}", call.getId(), exception);
+            throw new IllegalArgumentException("The agent could not respond to that voice turn. Check the agent tools, prompt, and LLM configuration, or type a test message instead.");
         }
     }
 
