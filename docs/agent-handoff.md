@@ -214,6 +214,20 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Conversational fallback for French LLM failures
+
+- Replaced the repeated French apology fallback path with a context-aware recovery response.
+- If the LLM/tool layer still fails after successful French transcription, the agent now asks a useful follow-up for appointment, verification, or introduction turns instead of saying it could not complete the request.
+- This does not remove the server-side `Conversation turn failed` log; the root provider/tool issue remains diagnosable while the browser test call remains usable.
+- Did not deploy.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Spring AI no-tool response fix
 
 - Fixed the likely cause of repeated French fallback responses after successful transcription.
