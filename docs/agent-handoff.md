@@ -223,7 +223,11 @@ Expected:
 - Updated draft-generation prompt requirements and local fallback prompts with the same booking-order and sensitive-information rules.
 - Why: user compared Sauti against a more natural appointment-booking call and asked to proceed with improving toward that target style.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `6b70e92`.
+  - GitHub Actions CI run `28954910896` passed.
+  - GitHub Actions deploy run `28955044727` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/agent/AgentDraftGenerationService.java`
   - `backend/src/main/java/com/sauti/agent/OnboardingCompletionService.java`
