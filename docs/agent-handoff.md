@@ -214,6 +214,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-09 - Voice picker empty-state clarity and accent menu fix
+
+- Replaced the native browser accent `<select>` in Agent Studio with an in-app accent menu so the dropdown no longer renders as a blue browser overlay on Windows.
+- Kept accent options scoped to the currently visible language set and the current filter state.
+- Updated the French/Arabic empty-state copy to identify the real provider condition when Cartesia is not enabled in the backend environment.
+- Verified production `GET https://sauti.uk/api/v1/voices` currently returns `enabledProviders:["elevenlabs"]`, so Cartesia credentials are not present in `/opt/sauti/.env.production` even though local `.env` has a working `CARTESIA_API_KEY`.
+- Why: user screenshot showed French/Arabic have zero voices after native-language filtering and the accent control visually leaked the browser dropdown.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+- Known follow-up:
+  - Add `CARTESIA_API_KEY` to production `/opt/sauti/.env.production` and redeploy/restart backend so French and Arabic Cartesia voices appear.
+
 ### 2026-07-08 - Strict native-language voice filtering and accent picker polish
 
 - Changed ElevenLabs catalog mapping so English-origin voices no longer appear as French or Arabic choices merely because the provider marks them multilingual.

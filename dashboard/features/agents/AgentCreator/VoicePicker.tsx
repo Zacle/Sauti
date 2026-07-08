@@ -17,6 +17,7 @@ type VoicePickerProps = {
 export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChange }: VoicePickerProps) {
   const [open, setOpen] = useState(false);
   const [voices, setVoices] = useState<VoiceOption[]>([]);
+  const [enabledProviders, setEnabledProviders] = useState<string[]>([]);
   const [providerEnabled, setProviderEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -27,12 +28,14 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   const [previewError, setPreviewError] = useState("");
   const [languageFilter, setLanguageFilter] = useState("recommended");
   const [accentFilter, setAccentFilter] = useState("all");
+  const [accentOpen, setAccentOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     listVoices()
       .then((catalog) => {
         setVoices(catalog.voices);
+        setEnabledProviders(catalog.enabledProviders);
         setProviderEnabled(catalog.enabledProviders.length > 0);
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load voices."))
@@ -148,6 +151,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
     setPlayingId("");
     setBufferingId("");
     setPreviewError("");
+    setAccentOpen(false);
     setOpen(false);
   }
 
@@ -183,15 +187,32 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
 
             <div className="voice-picker-filters">
               <label className="voice-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search voices, accents, or styles..." /></label>
-              <label className="voice-accent-filter">
+              <div className={`voice-accent-filter ${accentOpen ? "open" : ""}`}>
                 <span>Accent</span>
                 <b>{accentFilter === "all" ? "All accents" : titleCase(accentFilter)}</b>
-                <select value={accentFilter} onChange={(event) => setAccentFilter(event.target.value)}>
-                  <option value="all">All accents</option>
-                  {accents.map((accent) => <option key={accent} value={accent}>{titleCase(accent)}</option>)}
-                </select>
+                <button type="button" aria-label="Filter by accent" onClick={() => setAccentOpen((current) => !current)} />
                 <ChevronDown aria-hidden="true" size={15} />
-              </label>
+                {accentOpen && (
+                  <div className="voice-accent-menu" role="menu">
+                    {[["all", "All accents"], ...accents.map((accent) => [accent, titleCase(accent)] as [string, string])].map(([value, label]) => (
+                      <button
+                        className={accentFilter === value ? "selected" : ""}
+                        key={value}
+                        role="menuitemradio"
+                        aria-checked={accentFilter === value}
+                        type="button"
+                        onClick={() => {
+                          setAccentFilter(value);
+                          setAccentOpen(false);
+                        }}
+                      >
+                        {label}
+                        {accentFilter === value && <Check size={14} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="voice-language-tabs" aria-label="Voice language">
@@ -221,7 +242,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
                   <CircleAlert aria-hidden="true" size={20} />
                   <div>
                     <strong>No compatible {languageName(languageFilter)} voice is available</strong>
-                    <p>{unsupportedLanguageMessage(languageFilter)}</p>
+                    <p>{unsupportedLanguageMessage(languageFilter, enabledProviders)}</p>
                   </div>
                 </div>
               )}
@@ -317,8 +338,11 @@ function titleCase(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function unsupportedLanguageMessage(language: string) {
+function unsupportedLanguageMessage(language: string, enabledProviders: string[]) {
   if (language === "fr" || language === "ar") {
+    if (!enabledProviders.includes("cartesia")) {
+      return "Cartesia is not enabled in the backend environment. Add CARTESIA_API_KEY to production so native non-English voices can load.";
+    }
     return `No ${languageName(language)} voice was returned by ElevenLabs or Cartesia. Check provider language support and credentials.`;
   }
   return "The current speech model returned no compatible voice for this language.";
