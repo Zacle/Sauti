@@ -332,6 +332,14 @@ public class CallPipelineService {
                     ""
             );
         }
+        if (isNonSpeechTranscript(callerTranscript)) {
+            return new TurnResult(
+                    call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected(),
+                    "",
+                    new byte[0],
+                    ""
+            );
+        }
 
         if (call.getAgent().isDetectVoicemail()
                 && hasNoCallerTurns(call)
@@ -509,6 +517,13 @@ public class CallPipelineService {
                 || value.contains("hamna lingine")
                 || value.contains("مع السلامة")
                 || value.contains("هذا كل شيء");
+    }
+
+    private boolean isNonSpeechTranscript(String transcript) {
+        if (transcript == null || transcript.isBlank()) {
+            return true;
+        }
+        return transcript.codePoints().noneMatch(Character::isLetterOrDigit);
     }
 
     private void analyzePostCall(Call call) {

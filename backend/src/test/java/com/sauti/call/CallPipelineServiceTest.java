@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 import com.sauti.agent.Agent;
@@ -183,6 +184,39 @@ class CallPipelineServiceTest {
         var captor = ArgumentCaptor.forClass(CallTurn.class);
         org.mockito.Mockito.verify(callTurnRepository).save(captor.capture());
         assertThat(captor.getValue().isInterrupted()).isTrue();
+    }
+
+    @Test
+    void ignoresPunctuationOnlyLiveTranscript() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var agentRepository = mock(AgentRepository.class);
+        var agentVariableRepository = mock(AgentVariableRepository.class);
+        var languageDetector = mock(LanguageDetector.class);
+        var conversationOrchestrator = mock(ConversationOrchestrator.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                agentRepository,
+                agentVariableRepository,
+                mock(StreamingSttProvider.class),
+                languageDetector,
+                conversationOrchestrator,
+                mock(StreamingTtsProvider.class),
+                callSessionStore,
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var call = activeCall("CA123");
+
+        var result = service.processLiveTranscriptTurn(call, ".");
+
+        assertThat(result.text()).isBlank();
+        assertThat(result.outcome()).isBlank();
+        verify(languageDetector, never()).detect(any(), any(), any());
+        verify(conversationOrchestrator, never()).handleUserUtterance(any(), any(), any());
+        verify(callTurnRepository, never()).save(any());
     }
 
     private Call activeCall(String callSid) {

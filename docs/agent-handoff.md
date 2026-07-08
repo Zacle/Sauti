@@ -214,6 +214,36 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Conversation quality guardrails for live voice turns
+
+- Documented and confirmed current LLM routing:
+  - Standard voice turns use `SAUTI_LLM_DEFAULT_MODEL`, default `gemini-2.5-flash`.
+  - Advanced agents use `SAUTI_LLM_ADVANCED_MODEL`, default `gpt-4o-mini`, when `OPENAI_API_KEY` is configured, then fall back to the standard Gemini model if advanced is unavailable.
+- Lowered live voice-turn temperature from `0.65` to `0.45` to reduce decorative phrasing and unsupported improvisation.
+- Removed the prompt contradiction that told the agent not to switch languages while also telling it to follow language switches.
+- Added stricter prompt rules:
+  - do not invent business facts,
+  - do not claim callbacks/bookings/messages/transfers were completed without tool confirmation,
+  - validate phone numbers instead of accepting unclear sequences,
+  - avoid pretending to have personal feelings or a human day.
+- Added `hi` and `hey` to English language detection so short English switches in a French call are recognized.
+- Ignored punctuation-only/no-speech transcripts such as `.` before they reach the LLM, preventing fake filler responses.
+- Why: a French test conversation showed robotic phrasing, language-switch friction, accepted invalid callback details, and unsupported claims about services/follow-up.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/main/java/com/sauti/nlp/SimpleLanguageDetector.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/nlp/SimpleLanguageDetectorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest --tests com.sauti.call.CallPipelineServiceTest --tests com.sauti.nlp.SimpleLanguageDetectorTest --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Onboarding voice preview language match
 
 - Fixed onboarding voice previews so the preview request only uses the selected primary language for the selected voice.

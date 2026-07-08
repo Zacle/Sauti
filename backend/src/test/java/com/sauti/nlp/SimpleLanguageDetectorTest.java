@@ -37,4 +37,10 @@ class SimpleLanguageDetectorTest {
         assertThat(detector.detect("D'accord", "fr", List.of("en", "fr")))
                 .isEqualTo("fr");
     }
+
+    @Test
+    void detectsShortEnglishGreetingWhenSupported() {
+        assertThat(detector.detect("Hi", "fr", List.of("en", "fr")))
+                .isEqualTo("en");
+    }
 }

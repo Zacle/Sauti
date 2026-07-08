@@ -65,7 +65,8 @@ class ConversationOrchestratorTest {
         assertThat(provider.contexts.get(0).toolResults()).isEmpty();
         assertThat(provider.contexts.get(0).systemPrompt())
                 .startsWith("Prompt")
-                .contains("LANGUAGE: Respond in en only")
+                .contains("CURRENT CALLER LANGUAGE: en")
+                .contains("Use only facts present in the agent prompt")
                 .contains("Tools available: check_availability, book_slot");
         assertThat(provider.contexts.get(1).toolResults()).hasSize(2);
         assertThat(provider.contexts.get(1).messages())

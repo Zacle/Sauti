@@ -15,7 +15,7 @@ public class SimpleLanguageDetector implements LanguageDetector {
             "wangu", "gani", "lini", "wapi", "kwa", "lakini", "pia", "sana"
     );
     private static final Set<String> ENGLISH_MARKERS = Set.of(
-            "hello", "please", "thanks", "appointment", "tomorrow", "help", "yes", "no",
+            "hello", "hi", "hey", "please", "thanks", "appointment", "tomorrow", "help", "yes", "no",
             "want", "speak", "human", "book", "schedule", "exactly", "absolutely",
             "today", "yesterday", "when", "where", "would", "could", "need", "my",
             "your", "the", "and", "but", "also"
