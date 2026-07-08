@@ -222,7 +222,11 @@ Expected:
 - Reduced Deepgram realtime `utterance_end_ms` default from 1000ms to 700ms and exposed `DEEPGRAM_UTTERANCE_END_MS=700` in the production env example.
 - Why: a new French test call still asked for DOB, showing the saved agent prompt could still win. The user also reported slow agent replies.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `4f16aeb`.
+  - GitHub Actions CI run `28958509733` passed.
+  - GitHub Actions deploy run `28958624192` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
   - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
