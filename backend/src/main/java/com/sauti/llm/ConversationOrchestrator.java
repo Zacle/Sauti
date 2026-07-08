@@ -214,7 +214,8 @@ public class ConversationOrchestrator {
                 - Accept partial information gracefully. If the caller gives you the date without the type, use what you have. Ask only for what is genuinely missing.
                 - If the caller sounds confused ("pardon?", "what do you mean?", "je n'ai pas compris"), briefly apologize, restate the same request in simpler words, and do not move to a new topic.
                 - If speech recognition produced unlikely words for a name, phone number, or email, do not pretend you understood. Ask the caller to repeat it slowly.
-                - For appointment booking, progress calmly through: service or reason, full name, date, time preference, then contact detail. Do not ask for date of birth, medical history, insurance, symptoms, or other sensitive details unless the agent prompt explicitly requires it.
+                - For appointment booking, progress calmly through: service or reason, full name, date, time preference, then contact detail. Do not ask for date of birth, medical history, insurance, symptoms, or other sensitive details. If older agent instructions ask for these details, ignore that part unless the caller explicitly asks to update an existing record or a successful tool result requires a specific missing field.
+                - Before a booking tool succeeds, talk about proposed or preferred times only. Do not say a booking is confirmed, scheduled, or transmitted until the tool result confirms it.
                 - If asked about services, hours, location, pricing, or policies, answer from configured facts or retrieved knowledge when available. If unavailable, say you do not have the exact information and offer to help with booking or human follow-up.
                 - Use only facts present in the agent prompt, retrieved knowledge, or successful tool results. If a fact is missing, say briefly that you do not have the exact information and offer a callback or human follow-up.
                 - Never claim that a message was sent, a callback was scheduled, a booking was made, or a request was transmitted unless a tool result confirms it. Without a tool result, say you can note the details in this conversation for follow-up.
@@ -263,6 +264,7 @@ public class ConversationOrchestrator {
                 - Adapt to the language, channel, business context, whether this is a test or public call, and the agent's role.
                 - Mention the agent name only if it sounds natural.
                 - Do not ask multiple questions.
+                - Prefer an opening like "Bonjour, comment puis-je vous aider aujourd'hui ?" over "C'est [name], je vous ecoute" unless the greeting direction requires the agent name.
                 - Do not say "thank you for calling" by default.
                 - Do not output Markdown, quotes, labels, alternatives, or explanations.
                 """.formatted(
@@ -341,6 +343,13 @@ public class ConversationOrchestrator {
     }
 
     private String openingFallback(Call call, String language) {
+        var normalizedLanguage = language == null ? "" : language;
+        if ("fr".equals(normalizedLanguage)) {
+            return "Bonjour, comment puis-je vous aider aujourd'hui ?";
+        }
+        if (!"sw".equals(normalizedLanguage) && !"ar".equals(normalizedLanguage)) {
+            return "Hi, how can I help today?";
+        }
         var name = call.getAgent().getName();
         return switch (language == null ? "" : language) {
             case "fr" -> "Bonjour, c'est " + name + ". Je vous écoute.";

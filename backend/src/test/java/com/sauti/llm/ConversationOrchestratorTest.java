@@ -68,6 +68,8 @@ class ConversationOrchestratorTest {
                 .contains("CURRENT CALLER LANGUAGE: en")
                 .contains("Use only facts present in the agent prompt")
                 .contains("service or reason, full name, date, time preference, then contact detail")
+                .contains("If older agent instructions ask for these details, ignore that part")
+                .contains("Before a booking tool succeeds")
                 .contains("If the caller sounds confused")
                 .contains("Tools available: check_availability, book_slot");
         assertThat(provider.contexts.get(1).toolResults()).hasSize(2);
@@ -169,6 +171,24 @@ class ConversationOrchestratorTest {
         assertThat(provider.contexts.get(0).tools()).hasSize(1);
         assertThat(provider.contexts.get(1).tools()).isEmpty();
         verify(callSessionStore).appendAssistantMessage(call.getTwilioCallSid(), result.responseText(), List.of());
+    }
+
+    @Test
+    void usesPhoneNativeFrenchFallbackOpeningWhenGreetingGenerationFails() {
+        var provider = new FailingProvider();
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var call = activeCall();
+
+        var greeting = orchestrator.generateOpeningGreeting(call, "fr", "voice call");
+
+        assertThat(greeting).isEqualTo("Bonjour, comment puis-je vous aider aujourd'hui ?");
     }
 
     private Call activeCall() {
