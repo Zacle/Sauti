@@ -387,7 +387,11 @@ Expected:
   - `npm.cmd run typecheck`
   - `npm.cmd run build`
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `181082e`.
+  - GitHub Actions CI passed.
+  - Production deploy passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 
 ### 2026-07-08 - Turn-based public Web Voice for non-English calls
 
