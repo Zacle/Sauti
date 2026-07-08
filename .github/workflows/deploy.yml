@@ -68,6 +68,28 @@ jobs:
             git -C /opt/sauti/source checkout --force '$IMAGE_TAG'
           "
 
+      - name: Sync optional provider secrets
+        env:
+          CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          if [ -n "$CARTESIA_API_KEY" ]; then
+            key_file="$(mktemp)"
+            printf 'CARTESIA_API_KEY=%s\n' "$CARTESIA_API_KEY" > "$key_file"
+            scp -i ~/.ssh/deploy_key "$key_file" "$VPS_USER@$VPS_HOST:/tmp/sauti_cartesia_env"
+            rm -f "$key_file"
+            ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" "
+              cd /opt/sauti
+              touch .env.production
+              grep -v '^CARTESIA_API_KEY=' .env.production > .env.production.tmp || true
+              cat /tmp/sauti_cartesia_env >> .env.production.tmp
+              mv .env.production.tmp .env.production
+              chmod 600 .env.production
+              rm -f /tmp/sauti_cartesia_env
+            "
+          fi
+
       - name: Deploy verified images
         env:
           IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}

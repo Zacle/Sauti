@@ -214,6 +214,19 @@ Expected:
 
 ## Change log
 
+### 2026-07-09 - Sync Cartesia production secret during deploy
+
+- Added `CARTESIA_API_KEY` to the repository's GitHub Actions secrets from local `.env` without printing the key.
+- Updated the production deploy workflow to copy that secret into `/opt/sauti/.env.production` as `CARTESIA_API_KEY` before running Docker Compose.
+- Why: production `/api/v1/voices` showed only `enabledProviders:["elevenlabs"]`; Cartesia was working locally but was missing from the VPS environment.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `.github/workflows/deploy.yml`
+  - `docs/agent-handoff.md`
+- Verification:
+  - Workflow-only change; no local build required.
+
 ### 2026-07-09 - Voice picker empty-state clarity and accent menu fix
 
 - Replaced the native browser accent `<select>` in Agent Studio with an in-app accent menu so the dropdown no longer renders as a blue browser overlay on Windows.
