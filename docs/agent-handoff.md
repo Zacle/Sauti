@@ -214,6 +214,22 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Advanced LLM tier fallback for healthcare onboarding agents
+
+- Fixed another cause of French test-call fallback responses after successful transcription.
+- Healthcare onboarding drafts are created with `llmTier=advanced`; `SpringAiToolCallingLlmProvider` previously threw when the advanced OpenAI model was unavailable.
+- The provider now treats Advanced as a preferred model path and falls back to the standard Gemini model if OpenAI is not configured or if the advanced request fails.
+- Why: a missing or failing advanced provider should not make the whole voice turn fail when the standard AI provider is available.
+- Deployment:
+  - Pending push/deploy for this commit.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/test/java/com/sauti/llm/SpringAiToolCallingLlmProviderContextTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Restore AI-driven French turns and sanitize tool schemas
 
 - Removed the scripted/context-aware French fallback that tried to answer appointment, verification, and introduction turns without a successful LLM response.

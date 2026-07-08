@@ -2,7 +2,10 @@ package com.sauti.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -71,5 +74,28 @@ class SpringAiToolCallingLlmProviderContextTest {
 
         assertThat(schema.toString()).doesNotContain("format");
         assertThat(schema.toString()).contains("caller_phone", "appointment_at");
+    }
+
+    @Test
+    void advancedAgentsUseStandardModelWhenOpenAiIsUnavailable() {
+        var providerWithoutOpenAi = new SpringAiToolCallingLlmProvider(
+                new ObjectMapper(),
+                "gemini-3.1-flash-lite",
+                "gpt-5.4-mini",
+                "test-google-key",
+                ""
+        );
+
+        var agent = new AgentContext(
+                UUID.randomUUID(),
+                "Sylvie",
+                true,
+                "UTC",
+                null,
+                List.of(),
+                "advanced"
+        );
+
+        assertThat(providerWithoutOpenAi.shouldTryAdvanced(agent)).isFalse();
     }
 }

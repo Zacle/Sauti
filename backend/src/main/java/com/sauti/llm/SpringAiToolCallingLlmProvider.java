@@ -64,18 +64,37 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
 
     @Override
     public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
-        var advanced = "advanced".equalsIgnoreCase(context.agent().llmTier());
-        if (advanced && advancedChatModel == null) {
-            throw new IllegalStateException(
-                    "OPENAI_API_KEY is required when an agent uses the Advanced LLM tier"
+        if (shouldTryAdvanced(context.agent())) {
+            try {
+                return request(
+                        context,
+                        advancedChatModel,
+                        advancedModel,
+                        ModelProvider.OPENAI
+                );
+            } catch (RuntimeException exception) {
+                LOGGER.warn(
+                        "Advanced LLM turn failed for callId={}; retrying with the standard model",
+                        context.callId(),
+                        exception
+                );
+            }
+        } else if ("advanced".equalsIgnoreCase(context.agent().llmTier())) {
+            LOGGER.warn(
+                    "Advanced LLM tier requested for callId={} but OPENAI_API_KEY is not configured; using the standard model",
+                    context.callId()
             );
         }
         return request(
                 context,
-                advanced ? advancedChatModel : defaultChatModel,
-                advanced ? advancedModel : defaultModel,
-                advanced ? ModelProvider.OPENAI : ModelProvider.GOOGLE
+                defaultChatModel,
+                defaultModel,
+                ModelProvider.GOOGLE
         );
+    }
+
+    boolean shouldTryAdvanced(AgentContext agent) {
+        return "advanced".equalsIgnoreCase(agent.llmTier()) && advancedChatModel != null;
     }
 
     private LlmToolTurnResponse request(
