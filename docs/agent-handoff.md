@@ -224,7 +224,11 @@ Expected:
 - Verified the local Cartesia API key by calling `/voices` without printing the secret; Cartesia returned professional candidates including Skylar, Gemma, and Daniel.
 - Why: user wants to prioritize high-quality voices, remove Azure and Swahili from the product setup path, and load professional Cartesia voices after adding the env values.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `8b53ce5`.
+  - GitHub Actions CI run `28973540075` passed.
+  - GitHub Actions deploy run `28973644535` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/call/CartesiaRealtimeTextToSpeechClient.java`
   - `backend/src/main/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProvider.java`
