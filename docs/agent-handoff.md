@@ -220,12 +220,20 @@ Expected:
 - Updated the production deploy workflow to copy that secret into `/opt/sauti/.env.production` as `CARTESIA_API_KEY` before running Docker Compose.
 - Why: production `/api/v1/voices` showed only `enabledProviders:["elevenlabs"]`; Cartesia was working locally but was missing from the VPS environment.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `953d95a`.
+  - GitHub Actions CI run `28977239109` passed.
+  - GitHub Actions deploy run `28977325184` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
+  - `https://sauti.uk/api/v1/voices` returned `enabledProviders:["elevenlabs","cartesia"]`, with 351 Cartesia voices including 36 French and 15 Arabic voices.
 - Files touched:
   - `.github/workflows/deploy.yml`
   - `docs/agent-handoff.md`
 - Verification:
-  - Workflow-only change; no local build required.
+  - Workflow-only code change; no local build required.
+  - `curl.exe -i https://sauti.uk/health`
+  - `curl.exe -I https://sauti.uk/analytics`
+  - `curl.exe -s https://sauti.uk/api/v1/voices -o D:\tmp\sauti-voices.json`, then parsed provider/language counts locally.
 
 ### 2026-07-09 - Voice picker empty-state clarity and accent menu fix
 
