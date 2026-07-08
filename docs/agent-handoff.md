@@ -214,6 +214,23 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Realtime TTS diagnostics
+
+- Added safe realtime TTS diagnostics at the provider boundary.
+- ElevenLabs sessions now log the selected provider, actual speech engine, language, requested/resolved voice ID, resolved ElevenLabs model ID, and whether an Azure-prefixed voice routed through Azure.
+- Azure Speech sessions now log the provider voice ID plus speaking-rate and pitch metadata.
+- No API keys, secrets, or spoken text are logged.
+- Why: the user needed to confirm whether live voice calls are actually using ElevenLabs, Azure, or an Azure-prefixed voice inside the ElevenLabs provider path.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProvider.java`
+  - `backend/src/main/java/com/sauti/call/AzureRealtimeTextToSpeechClient.java`
+  - `backend/src/test/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.ElevenLabsRealtimeTextToSpeechProviderTest --tests com.sauti.call.AzureRealtimeTextToSpeechClientTest`
+
 ### 2026-07-08 - Voice recovery hardening and faster turn timing
 
 - Changed no-tool recovery to use plain spoken history only, stripping tool-call and tool-result messages before retrying the LLM. This avoids provider rejection of malformed tool history after a tool/provider failure.

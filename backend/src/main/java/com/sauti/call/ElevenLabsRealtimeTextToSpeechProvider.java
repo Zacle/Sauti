@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -19,6 +21,8 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "sauti.tts.streaming-provider", havingValue = "elevenlabs")
 public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpeechProvider {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ElevenLabsRealtimeTextToSpeechProvider.class);
+
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String apiKey;
@@ -74,13 +78,26 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
     @Override
     public CompletableFuture<RealtimeTtsSession> open(String language, String voiceId, TtsAudioListener listener) {
         if (voiceId != null && voiceId.startsWith(AzureRealtimeTextToSpeechClient.VOICE_PREFIX)) {
+            LOGGER.info(
+                    "Opening realtime TTS session provider=elevenlabs engine=azure language={} voiceId={} modelId=none azureFallback=true",
+                    safe(language),
+                    safe(voiceId)
+            );
             return azureClient.open(voiceId, listener);
         }
         var resolvedVoiceId = voiceId == null || voiceId.isBlank() ? defaultVoiceId : voiceId;
+        var resolvedModelId = modelId(language);
+        LOGGER.info(
+                "Opening realtime TTS session provider=elevenlabs engine=elevenlabs language={} voiceId={} resolvedVoiceId={} modelId={} azureFallback=false",
+                safe(language),
+                safe(voiceId),
+                safe(resolvedVoiceId),
+                safe(resolvedModelId)
+        );
         var webSocketListener = new ElevenLabsWebSocketListener(objectMapper, listener);
         return httpClient.newWebSocketBuilder()
                 .header("xi-api-key", apiKey)
-                .buildAsync(uri(resolvedVoiceId, language), webSocketListener)
+                .buildAsync(uri(resolvedVoiceId, resolvedModelId), webSocketListener)
                 .thenApply(webSocket -> {
                     sendInitialization(webSocket);
                     return new RealtimeTtsSession() {
@@ -100,11 +117,11 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
                 });
     }
 
-    private URI uri(String voiceId, String language) {
-        return URI.create(baseUrl + "/" + voiceId + "/stream-input?model_id=" + modelId(language) + "&output_format=pcm_16000");
+    private URI uri(String voiceId, String modelId) {
+        return URI.create(baseUrl + "/" + voiceId + "/stream-input?model_id=" + modelId + "&output_format=pcm_16000");
     }
 
-    private String modelId(String language) {
+    String modelId(String language) {
         return switch (language == null ? "" : language.trim().toLowerCase()) {
             case "en" -> englishModelId;
             case "fr" -> frenchModelId;
@@ -112,6 +129,10 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
             case "sw" -> swahiliModelId;
             default -> modelId;
         };
+    }
+
+    private String safe(String value) {
+        return value == null || value.isBlank() ? "default" : value.trim();
     }
 
     private String blankToDefault(String value, String fallback) {

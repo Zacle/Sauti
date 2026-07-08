@@ -8,11 +8,15 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AzureRealtimeTextToSpeechClient {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AzureRealtimeTextToSpeechClient.class);
+
     public static final String VOICE_PREFIX = "azure:";
     private static final String PCM_16K_FORMAT = "raw-16khz-16bit-mono-pcm";
     private static final String MP3_PREVIEW_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
@@ -43,6 +47,13 @@ public class AzureRealtimeTextToSpeechClient {
     public CompletableFuture<RealtimeTtsSession> open(String voiceId, TtsAudioListener listener) {
         requireConfigured();
         var providerVoiceId = providerVoiceId(voiceId);
+        LOGGER.info(
+                "Opening realtime TTS session provider=azure engine=azure voiceId={} providerVoiceId={} speakingRate={} pitch={}",
+                safe(voiceId),
+                safe(providerVoiceId),
+                speakingRate,
+                pitch
+        );
         var closed = new AtomicBoolean(false);
         return CompletableFuture.completedFuture(new RealtimeTtsSession() {
             private CompletableFuture<Void> tail = CompletableFuture.completedFuture(null);
@@ -125,6 +136,10 @@ public class AzureRealtimeTextToSpeechClient {
             throw new IllegalArgumentException("Azure voice ID is invalid");
         }
         return resolved;
+    }
+
+    private String safe(String value) {
+        return value == null || value.isBlank() ? "default" : value.trim();
     }
 
     private String escapeXml(String value) {
