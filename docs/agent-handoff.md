@@ -221,7 +221,11 @@ Expected:
 - Changed French and English opening fallback greetings to shorter phone-native openings instead of "this is [agent], I am listening" style fallbacks.
 - Why: a fresh French test call still asked for date of birth and confirmed an appointment without visible tool confirmation, indicating older saved agent instructions could still override the newer onboarding prompt. The greeting also sounded less natural than the target call style.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `2d22c24`.
+  - GitHub Actions CI run `28956344509` passed.
+  - GitHub Actions deploy run `28956446759` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
   - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
