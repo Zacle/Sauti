@@ -221,7 +221,11 @@ Expected:
 - Updated the Agent Studio voice picker so the accent selector shows accents for the currently visible language set, resets invalid accent filters, and makes the whole accent control clickable with clearer alignment.
 - Why: user reported French/Arabic tabs were filled with English-accent voices speaking French/Arabic and that the accent control looked misaligned and did not respond clearly.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `495250b`.
+  - GitHub Actions CI run `28975050216` passed.
+  - GitHub Actions deploy run `28975131811` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
   - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
