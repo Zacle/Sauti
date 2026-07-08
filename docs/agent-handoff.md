@@ -219,7 +219,12 @@ Expected:
 - Replaced the repeated French apology fallback path with a context-aware recovery response.
 - If the LLM/tool layer still fails after successful French transcription, the agent now asks a useful follow-up for appointment, verification, or introduction turns instead of saying it could not complete the request.
 - This does not remove the server-side `Conversation turn failed` log; the root provider/tool issue remains diagnosable while the browser test call remains usable.
-- Did not deploy.
+- Deployment:
+  - Deployed commit `2a373f4`.
+  - GitHub Actions CI passed.
+  - Production deploy passed.
+  - `https://sauti.uk/health` returned `UP`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
   - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
