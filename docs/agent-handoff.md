@@ -214,6 +214,23 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Strict native-language voice filtering and accent picker polish
+
+- Changed ElevenLabs catalog mapping so English-origin voices no longer appear as French or Arabic choices merely because the provider marks them multilingual.
+- French and Arabic voice tabs now require native/origin language alignment for ElevenLabs; Cartesia voices continue to come from per-language Cartesia catalog requests.
+- Updated the Agent Studio voice picker so the accent selector shows accents for the currently visible language set, resets invalid accent filters, and makes the whole accent control clickable with clearer alignment.
+- Why: user reported French/Arabic tabs were filled with English-accent voices speaking French/Arabic and that the accent control looked misaligned and did not respond clearly.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+
 ### 2026-07-08 - Cartesia voice catalog and Azure removal
 
 - Added Cartesia TTS support with a backend client for voice previews and realtime audio routing when the selected voice ID is prefixed with `cartesia:`.

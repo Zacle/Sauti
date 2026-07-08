@@ -243,7 +243,7 @@ public class VoiceCatalogService {
         }
         voice.withArray("verified_languages").forEach(language -> {
             var value = normalizeLanguageCode(language.path("language").asText(""));
-            if (!value.isBlank()) {
+            if (!value.isBlank() && includeElevenLabsVerifiedLanguage(nativeLanguage, value)) {
                 languages.add(value);
             }
         });
@@ -354,6 +354,16 @@ public class VoiceCatalogService {
             case "ara", "ar-eg", "ar-sa", "ar-ma", "ar-ae" -> "ar";
             default -> normalized;
         };
+    }
+
+    private boolean includeElevenLabsVerifiedLanguage(String nativeLanguage, String verifiedLanguage) {
+        if (nativeLanguage == null || nativeLanguage.isBlank()) {
+            return true;
+        }
+        if ("en".equals(nativeLanguage)) {
+            return "en".equals(verifiedLanguage);
+        }
+        return verifiedLanguage.equals(nativeLanguage) || "en".equals(verifiedLanguage);
     }
 
     private String normalizePreviewText(String text, String language) {

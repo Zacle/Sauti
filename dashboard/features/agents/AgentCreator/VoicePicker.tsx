@@ -44,12 +44,39 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
     if (open) setPendingVoiceId(value);
   }, [open, value]);
 
+  const configuredLanguages = useMemo(
+    () => Array.from(new Set([primaryLanguage, ...supportedLanguages])),
+    [primaryLanguage, supportedLanguages],
+  );
   const selectedVoice = voices.find((voice) => voice.id === value);
+  const visibleLanguages = useMemo(
+    () => Array.from(new Set([...SUPPORTED_VOICE_LANGUAGES, ...configuredLanguages])),
+    [configuredLanguages],
+  );
+  const accentBaseVoices = useMemo(
+    () => voices.filter((voice) => languageFilter === "recommended"
+      ? coverage(voice, configuredLanguages) > 0
+      : voice.languages.includes(languageFilter)),
+    [configuredLanguages, languageFilter, voices],
+  );
+  const accents = useMemo(
+    () => Array.from(new Set(
+      accentBaseVoices
+        .map((voice) => voice.traits.accent?.trim().toLowerCase())
+        .filter((accent): accent is string => Boolean(accent)),
+    )).sort(),
+    [accentBaseVoices],
+  );
+  useEffect(() => {
+    if (accentFilter !== "all" && !accents.includes(accentFilter)) {
+      setAccentFilter("all");
+    }
+  }, [accentFilter, accents]);
   const filteredVoices = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return voices.filter((voice) => {
       const matchesAccent = accentFilter === "all"
-        || voice.traits.accent?.toLowerCase() === accentFilter;
+        || voice.traits.accent?.trim().toLowerCase() === accentFilter;
       const matchesQuery = !normalizedQuery
         || `${voice.name} ${voice.description ?? ""} ${Object.values(voice.traits).join(" ")}`
           .toLowerCase()
@@ -57,22 +84,6 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
       return matchesAccent && matchesQuery;
     });
   }, [accentFilter, query, voices]);
-  const configuredLanguages = useMemo(
-    () => Array.from(new Set([primaryLanguage, ...supportedLanguages])),
-    [primaryLanguage, supportedLanguages],
-  );
-  const visibleLanguages = useMemo(
-    () => Array.from(new Set([...SUPPORTED_VOICE_LANGUAGES, ...configuredLanguages])),
-    [configuredLanguages],
-  );
-  const accents = useMemo(
-    () => Array.from(new Set(
-      voices
-        .map((voice) => voice.traits.accent?.trim().toLowerCase())
-        .filter((accent): accent is string => Boolean(accent)),
-    )).sort(),
-    [voices],
-  );
   const voiceCoverage = useMemo(
     () => Object.fromEntries(visibleLanguages.map((language) => [
       language,
@@ -174,6 +185,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               <label className="voice-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search voices, accents, or styles..." /></label>
               <label className="voice-accent-filter">
                 <span>Accent</span>
+                <b>{accentFilter === "all" ? "All accents" : titleCase(accentFilter)}</b>
                 <select value={accentFilter} onChange={(event) => setAccentFilter(event.target.value)}>
                   <option value="all">All accents</option>
                   {accents.map((accent) => <option key={accent} value={accent}>{titleCase(accent)}</option>)}

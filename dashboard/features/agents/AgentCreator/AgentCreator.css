@@ -1189,8 +1189,8 @@
 
 .voice-picker-filters {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 190px;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 12px;
   padding: 16px 24px 12px;
 }
 
@@ -1218,40 +1218,55 @@
 }
 
 .voice-accent-filter {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 44px;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
+  gap: 10px;
+  padding: 0 36px 0 14px;
   border: 1px solid #dce4ec;
   border-radius: 11px;
   color: #98a2b3;
   background: #fbfcfd;
+  cursor: pointer;
 }
 
 .voice-accent-filter > span {
+  min-width: max-content;
   font-size: 0.6rem;
   font-weight: 500;
   text-transform: uppercase;
 }
 
-.voice-accent-filter select {
+.voice-accent-filter > b {
   min-width: 0;
+  overflow: hidden;
+  color: #475467;
+  font-size: 0.75rem;
+  font-weight: 450;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-accent-filter select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
   padding: 0;
   border: 0;
   outline: 0;
-  color: #475467;
-  background: transparent;
+  opacity: 0;
   font: inherit;
-  font-size: 0.75rem;
   appearance: none;
   cursor: pointer;
 }
 
 .voice-accent-filter > svg {
+  position: absolute;
+  right: 13px;
   pointer-events: none;
 }
 
@@ -4606,7 +4621,7 @@
   }
 
   .voice-picker-filters {
-    grid-template-columns: minmax(0, 1fr) 170px;
+    grid-template-columns: minmax(0, 1fr) 220px;
   }
 
   .voice-picker-results {
