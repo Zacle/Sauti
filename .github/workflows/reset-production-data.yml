@@ -1,14 +1,11 @@
 name: Reset production app data
 
-"on":
+on:
   workflow_dispatch:
     inputs:
       confirmation:
         description: 'Type RESET PRODUCTION APP DATA to wipe production app data'
         required: true
-  push:
-    branches-ignore:
-      - "**"
 
 concurrency:
   group: production-reset
@@ -19,7 +16,7 @@ permissions:
 
 jobs:
   reset:
-    if: ${{ github.event.inputs.confirmation == 'RESET PRODUCTION APP DATA' }}
+    if: github.event.inputs.confirmation == 'RESET PRODUCTION APP DATA'
     runs-on: ubuntu-latest
     steps:
       - name: Configure SSH
