@@ -226,7 +226,11 @@ Expected:
 - Browser test calls now send the currently selected voice to the backend and persist it before the first greeting, so the first test call uses the selected voice instead of requiring another call.
 - Why: user reported no agent-name introduction, slow replies, too few French/non-English ElevenLabs choices, shallow category prompts, and selected onboarding/studio voice not being used until a later call.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `923cd2e`.
+  - GitHub Actions CI run `28969972797` passed.
+  - GitHub Actions deploy run `28970080318` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
   - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
