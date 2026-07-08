@@ -67,6 +67,8 @@ class ConversationOrchestratorTest {
                 .startsWith("Prompt")
                 .contains("CURRENT CALLER LANGUAGE: en")
                 .contains("Use only facts present in the agent prompt")
+                .contains("service or reason, full name, date, time preference, then contact detail")
+                .contains("If the caller sounds confused")
                 .contains("Tools available: check_availability, book_slot");
         assertThat(provider.contexts.get(1).toolResults()).hasSize(2);
         assertThat(provider.contexts.get(1).messages())

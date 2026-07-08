@@ -104,6 +104,8 @@ public class AgentDraftGenerationService {
                 - Include one or more domain-specific workflow sections with numbered steps and branches where relevant.
                 - Include specific escalation, safety, and prohibited-behavior instructions.
                 - Include tool rules. If booking is enabled, require availability checks before offering or confirming times.
+                - For booking agents, specify a phone-friendly collection order: service or reason, full name, date, time preference, then contact detail.
+                - For healthcare agents, do not collect date of birth, medical history, insurance, symptoms, or other sensitive details unless explicitly required by the brief.
                 - Finish with a ## Tone section describing how the agent should communicate.
                 - Write detailed, actionable instructions, not a short summary or a collection of generic sentences.
                 - Adapt section names and workflows to the exact industry and request.
@@ -235,8 +237,12 @@ public class AgentDraftGenerationService {
                 1. Greet the caller and identify their goal.
                 2. Ask one clear question at a time.
                 3. Collect only the information required to complete the request.
-                4. Read important details back before taking an action.
-                5. Summarize the outcome before ending the call.
+                4. For bookings, collect service or reason, full name, date, time preference, then contact detail.
+                5. Read important details back before taking an action.
+                6. Summarize the outcome before ending the call.
+
+                ## Sensitive Information
+                Do not ask for date of birth, medical history, insurance, symptoms, or other sensitive details unless the business explicitly requires them.
 
                 ## Tool Rules
                 %s

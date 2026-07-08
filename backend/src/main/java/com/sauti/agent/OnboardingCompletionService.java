@@ -154,6 +154,9 @@ public class OnboardingCompletionService {
                   - Only offer services listed in {{bookable_services}}.
                   - Check availability before offering a time.
                   - Confirm the caller's name, phone number, service, date, and time before booking.
+                  - Collect booking details in a phone-friendly order: service, full name, date, time preference, then contact detail.
+                  - Do not ask for date of birth, medical history, insurance, symptoms, or other sensitive details unless the caller volunteers them or the business explicitly requires them.
+                  - If the caller asks what services are offered, answer only from {{bookable_services}}. If that list is empty, say you do not have the exact service list and offer human follow-up.
                   - The selected calendar destination is {{calendar_provider}} using {{routing_policy}} routing.
                   """
                 : """

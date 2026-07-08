@@ -214,6 +214,27 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Voice-agent target style evaluation and booking flow prompt
+
+- Added `docs/voice-agent-evaluation.md` with a target French appointment-booking scenario, scoring rubric, release bar, and regression prompts based on the natural call style the user wants Sauti to match.
+- Tightened the live conversation prompt so confused callers are repaired gently, unclear names/phones/emails are repeated slowly, service/hour questions are grounded in configured facts, and appointment booking follows a predictable phone-native order.
+- Tightened onboarding-generated booking prompts so new agents collect service, full name, date, time preference, then contact detail.
+- Explicitly prevents default healthcare onboarding agents from asking for date of birth, medical history, insurance, symptoms, or other sensitive details unless configured.
+- Updated draft-generation prompt requirements and local fallback prompts with the same booking-order and sensitive-information rules.
+- Why: user compared Sauti against a more natural appointment-booking call and asked to proceed with improving toward that target style.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/AgentDraftGenerationService.java`
+  - `backend/src/main/java/com/sauti/agent/OnboardingCompletionService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/voice-agent-evaluation.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest --tests com.sauti.agent.OnboardingCompletionServiceTest`
+  - `.\gradlew.bat :backend:test`
+
 ### 2026-07-08 - Conversation quality guardrails for live voice turns
 
 - Documented and confirmed current LLM routing:
