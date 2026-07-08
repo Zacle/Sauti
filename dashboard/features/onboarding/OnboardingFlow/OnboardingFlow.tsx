@@ -52,10 +52,10 @@ const calendarOptions: Array<[string, string, LucideIcon]> = [
 ];
 
 const languageOptions = [
-  ["sw", "Swahili"],
   ["en", "English"],
   ["fr", "French"],
   ["ar", "Arabic"],
+  ["sw", "Swahili"],
 ] as const;
 
 type SupportedLanguage = typeof languageOptions[number][0];
@@ -103,7 +103,7 @@ export function OnboardingFlow() {
   const [calendar, setCalendar] = useState("Set up later");
   const [routing, setRouting] = useState("Fixed calendar");
   const [agentName, setAgentName] = useState("");
-  const [language, setLanguage] = useState<SupportedLanguage>("sw");
+  const [language, setLanguage] = useState<SupportedLanguage>("en");
   const [autoDetectLanguages, setAutoDetectLanguages] = useState(true);
   const [voiceId, setVoiceId] = useState("");
   const [voices, setVoices] = useState<VoiceOption[]>([]);
@@ -118,7 +118,7 @@ export function OnboardingFlow() {
   const services = ["Consultation", "Follow-up visit", "Product demo", "Callback request"];
   const currentCopy = stepCopy[step - 1];
   const selectedVoice = voices.find((item) => item.id === voiceId);
-  const languageVoices = voices.filter((item) => item.languages.includes(language));
+  const languageVoices = preferredVoicesForLanguage(voices, language);
   const voiceName = selectedVoice?.name ?? "Provider default";
   const languageName = languageOptions.find(([code]) => code === language)?.[1] ?? language;
   const trimmedAgentName = agentName.trim();
@@ -302,7 +302,7 @@ export function OnboardingFlow() {
                     <select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
                       <option value="">Provider default</option>
                       {languageVoices.map((item) => (
-                        <option value={item.id} key={item.id}>{item.name}</option>
+                        <option value={item.id} key={item.id}>{item.name}{item.provider === "elevenlabs" ? " · ElevenLabs" : " · Azure fallback"}</option>
                       ))}
                     </select>
                     <button
@@ -558,6 +558,27 @@ function greetingDirectionFor(useCase: string, agentName: string) {
 }
 function previewLanguageFor(voice: VoiceOption, primaryLanguage: string) {
   return voice.languages.includes(primaryLanguage) ? primaryLanguage : null;
+}
+
+function preferredVoicesForLanguage(voices: VoiceOption[], language: SupportedLanguage) {
+  const compatible = voices.filter((item) => item.languages.includes(language));
+  const elevenLabs = compatible.filter((item) => item.provider === "elevenlabs");
+  const fallback = elevenLabs.length > 0 ? elevenLabs : compatible;
+  return [...fallback].sort(compareVoiceQuality);
+}
+
+function compareVoiceQuality(left: VoiceOption, right: VoiceOption) {
+  return providerRank(left.provider) - providerRank(right.provider)
+    || categoryRank(left.category) - categoryRank(right.category)
+    || left.name.localeCompare(right.name);
+}
+
+function providerRank(provider: string) {
+  return provider === "elevenlabs" ? 0 : provider === "azure" ? 1 : 2;
+}
+
+function categoryRank(category: string) {
+  return category === "professional" ? 0 : category === "generated" ? 1 : category === "native" ? 2 : 3;
 }
 
 function voicePreviewTextFor(language: SupportedLanguage) {

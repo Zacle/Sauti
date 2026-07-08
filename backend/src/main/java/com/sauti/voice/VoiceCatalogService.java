@@ -125,37 +125,39 @@ public class VoiceCatalogService {
     private VoiceCatalogResponse load() {
         var providers = new java.util.ArrayList<String>();
         var voices = new java.util.ArrayList<VoiceOption>();
+        if ("elevenlabs".equalsIgnoreCase(streamingProvider) && !elevenLabsApiKey.isBlank()) {
+            try {
+                var request = HttpRequest.newBuilder(URI.create(elevenLabsVoicesUrl))
+                        .header("Accept", "application/json")
+                        .header("xi-api-key", elevenLabsApiKey)
+                        .GET()
+                        .build();
+                var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new IllegalStateException("ElevenLabs voice catalog failed with status " + response.statusCode());
+                }
+                var root = objectMapper.readTree(response.body());
+                for (var voice : root.withArray("voices")) {
+                    if (curatedVoiceIds.isEmpty() || curatedVoiceIds.contains(voice.path("voice_id").asText())) {
+                        voices.add(mapElevenLabsVoice(voice));
+                    }
+                }
+                providers.add("elevenlabs");
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Voice catalog request was interrupted", exception);
+            } catch (Exception exception) {
+                throw new IllegalStateException("Unable to load the ElevenLabs voice catalog", exception);
+            }
+        }
         if (azureClient.isConfigured()) {
             providers.add("azure");
             voices.addAll(azureVoices());
         }
-        if (!"elevenlabs".equalsIgnoreCase(streamingProvider) || elevenLabsApiKey.isBlank()) {
+        if (voices.isEmpty()) {
             return new VoiceCatalogResponse(List.copyOf(providers), List.copyOf(voices));
         }
-        try {
-            var request = HttpRequest.newBuilder(URI.create(elevenLabsVoicesUrl))
-                    .header("Accept", "application/json")
-                    .header("xi-api-key", elevenLabsApiKey)
-                    .GET()
-                    .build();
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("ElevenLabs voice catalog failed with status " + response.statusCode());
-            }
-            var root = objectMapper.readTree(response.body());
-            for (var voice : root.withArray("voices")) {
-                if (curatedVoiceIds.isEmpty() || curatedVoiceIds.contains(voice.path("voice_id").asText())) {
-                    voices.add(mapElevenLabsVoice(voice));
-                }
-            }
-            providers.add("elevenlabs");
-            return new VoiceCatalogResponse(List.copyOf(providers), List.copyOf(voices));
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Voice catalog request was interrupted", exception);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Unable to load the ElevenLabs voice catalog", exception);
-        }
+        return new VoiceCatalogResponse(List.copyOf(providers), List.copyOf(voices));
     }
 
     private VoiceOption mapElevenLabsVoice(JsonNode voice) {

@@ -82,13 +82,15 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   );
   const recommendedVoices = useMemo(
     () => [...filteredVoices]
-      .sort((left, right) => coverage(right, configuredLanguages) - coverage(left, configuredLanguages))
+      .sort((left, right) => compareVoiceQuality(left, right, configuredLanguages))
       .filter((voice) => coverage(voice, configuredLanguages) > 0),
     [configuredLanguages, filteredVoices],
   );
   const visibleLanguageVoices = languageFilter === "recommended"
     ? recommendedVoices
-    : filteredVoices.filter((voice) => voice.languages.includes(languageFilter));
+    : [...filteredVoices]
+      .filter((voice) => voice.languages.includes(languageFilter))
+      .sort((left, right) => compareVoiceQuality(left, right, [languageFilter]));
   const unsupportedLanguage = languageFilter !== "recommended" && voiceCoverage[languageFilter] === 0;
 
   async function preview(voice: VoiceOption) {
@@ -308,7 +310,22 @@ function unsupportedLanguageMessage(language: string) {
     return "Configure Azure Speech for native Kenyan or Tanzanian Swahili voices, or enable ElevenLabs v3 for Swahili previews.";
   }
   if (language === "fr" || language === "ar") {
-    return `English-origin voices are hidden because their ${languageName(language)} accent is not production quality. Use native Azure voices or ElevenLabs multilingual/v3 voices for better delivery.`;
+    return `English-origin voices are hidden because their ${languageName(language)} accent is not production quality. Enable ElevenLabs multilingual/v3 voices first; Azure is only a fallback.`;
   }
   return "The current speech model returned no compatible voice for this language.";
+}
+
+function compareVoiceQuality(left: VoiceOption, right: VoiceOption, languages: string[]) {
+  return providerRank(left.provider) - providerRank(right.provider)
+    || coverage(right, languages) - coverage(left, languages)
+    || categoryRank(left.category) - categoryRank(right.category)
+    || left.name.localeCompare(right.name);
+}
+
+function providerRank(provider: string) {
+  return provider === "elevenlabs" ? 0 : provider === "azure" ? 1 : 2;
+}
+
+function categoryRank(category: string) {
+  return category === "professional" ? 0 : category === "generated" ? 1 : category === "native" ? 2 : 3;
 }

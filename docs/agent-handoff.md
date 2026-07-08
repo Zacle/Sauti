@@ -214,6 +214,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Prioritize ElevenLabs voice selection
+
+- Reordered the backend voice catalog so ElevenLabs voices are returned before Azure voices when ElevenLabs is configured.
+- Changed onboarding's default primary language from Swahili to English and reordered the language choices to English, French, Arabic, Swahili.
+- Changed onboarding voice selection to prefer ElevenLabs-compatible voices for the selected language and only show Azure voices as fallback when no ElevenLabs voices are available for that language.
+- Changed the agent-studio voice picker ranking so ElevenLabs voices sort above Azure voices, with Azure treated as a fallback provider.
+- Why: production diagnostics showed the French browser test was using Azure `fr-FR-VivienneMultilingualNeural`; the product should prioritize voice quality through ElevenLabs, with Swahili less important than high-quality English/French/Arabic.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+
 ### 2026-07-08 - Catalog/browser-test TTS diagnostics
 
 - Added safe TTS diagnostics for `VoiceCatalogService.generateAudio`, which is used by dashboard browser test-call audio, voice previews, WhatsApp audio synthesis, and turn-based public Web Voice responses.
