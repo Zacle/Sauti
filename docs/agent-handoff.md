@@ -222,7 +222,11 @@ Expected:
 - Tightened live prompt rules so the model does not switch language for one unclear fragment and does not convert unclear name audio into a plausible-looking name.
 - Why: user shared a French call transcript where late-call STT drift produced Arabic/English/Portuguese caller text even though the caller stayed in French, and the agent followed the bad transcript.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `442b2bb` to production.
+  - CI run `28982714803` passed.
+  - Deploy production run `28982793365` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/call/BrowserSpeechToTextService.java`
   - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
