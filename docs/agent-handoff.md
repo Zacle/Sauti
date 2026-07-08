@@ -214,6 +214,19 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Manual production voice diagnostics workflow
+
+- Added a manually dispatched production diagnostics workflow that SSHes to the VPS with existing GitHub deploy secrets and reads filtered backend logs.
+- The workflow only prints selected voice-agent diagnostic patterns, including realtime TTS provider/model lines and common STT/TTS/conversation failure markers.
+- Why: after a real test call, local SSH access was unavailable from the agent sandbox, so production log inspection needed a controlled GitHub Actions path.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `.github/workflows/production-diagnostics.yml`
+  - `docs/agent-handoff.md`
+- Verification:
+  - Workflow-only change; pending GitHub Actions execution.
+
 ### 2026-07-08 - Realtime TTS diagnostics
 
 - Added safe realtime TTS diagnostics at the provider boundary.

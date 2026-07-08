@@ -1,0 +1,42 @@
+name: Production diagnostics
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: 'Docker logs --since value, for example 20m, 1h, or 2026-07-08T17:00:00Z'
+        required: false
+        default: '30m'
+      tail:
+        description: 'Maximum backend log lines to inspect before filtering'
+        required: false
+        default: '2000'
+
+permissions:
+  contents: read
+
+jobs:
+  backend-voice-diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Read filtered backend voice diagnostics
+        env:
+          SINCE: ${{ inputs.since }}
+          TAIL: ${{ inputs.tail }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+            "cd /opt/sauti && docker compose --env-file .env.production -f docker-compose.prod.yml logs --since '${SINCE}' --tail '${TAIL}' backend" \
+            | grep -E 'Opening realtime TTS session|Conversation turn failed|Realtime TTS|TTS failed|Azure Speech synthesis failed|Deepgram realtime|OpenAI realtime|transcription failed' \
+            | tail -200 || true
