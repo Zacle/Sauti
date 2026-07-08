@@ -220,12 +220,17 @@ Expected:
 - The workflow only prints selected voice-agent diagnostic patterns, including realtime TTS provider/model lines and common STT/TTS/conversation failure markers.
 - Why: after a real test call, local SSH access was unavailable from the agent sandbox, so production log inspection needed a controlled GitHub Actions path.
 - Deployment:
-  - Not deployed yet.
+  - Deployed commit `91ad69b`.
+  - GitHub Actions CI run `28964193674` passed.
+  - GitHub Actions deploy run `28964289061` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `.github/workflows/production-diagnostics.yml`
   - `docs/agent-handoff.md`
 - Verification:
-  - Workflow-only change; pending GitHub Actions execution.
+  - Manual diagnostics workflow run `28964379588` passed for `since=1h`, `tail=4000`.
+  - The first diagnostics run printed no matching TTS lines, likely because the test call happened before the workflow deployment and the subsequent deploy restarted the backend container.
 
 ### 2026-07-08 - Realtime TTS diagnostics
 
