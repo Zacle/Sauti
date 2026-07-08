@@ -214,6 +214,21 @@ Expected:
 
 ## Change log
 
+### 2026-07-08 - Catalog/browser-test TTS diagnostics
+
+- Added safe TTS diagnostics for `VoiceCatalogService.generateAudio`, which is used by dashboard browser test-call audio, voice previews, WhatsApp audio synthesis, and turn-based public Web Voice responses.
+- The log reports catalog TTS engine, language, voice ID, resolved ElevenLabs model ID, and whether the voice is Azure-prefixed.
+- Updated the production diagnostics workflow to include `Generating catalog TTS audio` lines.
+- Why: a production diagnostics run after a user browser test showed no realtime TTS lines, indicating the tested path did not use `RealtimeTextToSpeechProvider`.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `.github/workflows/production-diagnostics.yml`
+  - `docs/agent-handoff.md`
+- Verification:
+  - Pending.
+
 ### 2026-07-08 - Manual production voice diagnostics workflow
 
 - Added a manually dispatched production diagnostics workflow that SSHes to the VPS with existing GitHub deploy secrets and reads filtered backend logs.

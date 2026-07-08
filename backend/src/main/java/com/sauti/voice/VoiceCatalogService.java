@@ -17,11 +17,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class VoiceCatalogService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(VoiceCatalogService.class);
     private static final int MAX_PREVIEW_TEXT_LENGTH = 240;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final ObjectMapper objectMapper;
@@ -244,12 +247,24 @@ public class VoiceCatalogService {
 
     private byte[] generateAudio(String voiceId, String language, String text) {
         if (voiceId.startsWith(AzureRealtimeTextToSpeechClient.VOICE_PREFIX)) {
+            LOGGER.info(
+                    "Generating catalog TTS audio provider=voice-catalog engine=azure language={} voiceId={} modelId=none azureFallback=true",
+                    safe(language),
+                    safe(voiceId)
+            );
             return azureClient.preview(voiceId, text);
         }
+        var resolvedModelId = elevenLabsModelId(language);
+        LOGGER.info(
+                "Generating catalog TTS audio provider=voice-catalog engine=elevenlabs language={} voiceId={} modelId={} azureFallback=false",
+                safe(language),
+                safe(voiceId),
+                safe(resolvedModelId)
+        );
         try {
             var body = objectMapper.createObjectNode()
                     .put("text", text)
-                    .put("model_id", elevenLabsModelId(language))
+                    .put("model_id", resolvedModelId)
                     .put("language_code", language);
             var request = HttpRequest.newBuilder(URI.create(
                             elevenLabsPreviewUrl + "/" + voiceId + "?output_format=mp3_22050_32"))
@@ -315,6 +330,10 @@ public class VoiceCatalogService {
 
     private String blankToDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
+    }
+
+    private String safe(String value) {
+        return value == null || value.isBlank() ? "default" : value.trim();
     }
 
     private String textOrNull(JsonNode node, String field) {

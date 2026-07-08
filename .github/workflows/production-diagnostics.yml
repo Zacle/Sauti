@@ -38,5 +38,5 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
             "cd /opt/sauti && docker compose --env-file .env.production -f docker-compose.prod.yml logs --since '${SINCE}' --tail '${TAIL}' backend" \
-            | grep -E 'Opening realtime TTS session|Conversation turn failed|Realtime TTS|TTS failed|Azure Speech synthesis failed|Deepgram realtime|OpenAI realtime|transcription failed' \
+            | grep -E 'Opening realtime TTS session|Generating catalog TTS audio|Conversation turn failed|Realtime TTS|TTS failed|Azure Speech synthesis failed|Deepgram realtime|OpenAI realtime|transcription failed' \
             | tail -200 || true
