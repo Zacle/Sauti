@@ -4,8 +4,8 @@ import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Bot, Check, ChevronDown, CircleAlert, LoaderCircle, Plug, Settings2, ShieldCheck, TestTube2,
-  Trash2, X,
+  Bot, CalendarDays, Check, ChevronDown, CircleAlert, Database, LoaderCircle, MessageSquare,
+  Plug, Search, Settings2, ShieldCheck, TestTube2, Trash2, WalletCards, X,
 } from "lucide-react";
 import { listAgents } from "@/lib/api/agents";
 import {
@@ -31,7 +31,7 @@ import {
 import type { Agent } from "@/types/api";
 import styles from "./IntegrationsPage.module.css";
 
-type Filter = "during" | "post" | "connected" | "all";
+type Filter = "all" | "calendar" | "messaging" | "crm" | "data" | "notifications" | "payments" | "developer" | "during" | "post" | "connected";
 const oauthProviders = ["google_sheets", "hubspot", "salesforce"];
 
 const logos: Record<string, string> = {
@@ -51,7 +51,23 @@ const labels: Record<string, string> = {
   appendColumns: "Append columns", shortcode: "Shortcode", environment: "Environment",
   minimumAmount: "Minimum amount", maximumAmount: "Maximum amount",
   consumerKey: "Consumer key", consumerSecret: "Consumer secret", passkey: "Passkey",
+  eventTypeId: "Event type ID", eventTypeUri: "Event type URI",
+  bookingTitle: "Booking title", personalAccessToken: "Personal access token",
 };
+
+const filterOptions: Array<{ value: Filter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "calendar", label: "Calendar" },
+  { value: "messaging", label: "Messaging" },
+  { value: "crm", label: "CRM" },
+  { value: "data", label: "Data" },
+  { value: "notifications", label: "Notifications" },
+  { value: "payments", label: "Payments" },
+  { value: "developer", label: "Developer" },
+  { value: "during", label: "During call" },
+  { value: "post", label: "Post call" },
+  { value: "connected", label: "Connected" },
+];
 
 export function IntegrationsPage() {
   const searchParams = useSearchParams();
@@ -61,6 +77,7 @@ export function IntegrationsPage() {
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
   const [bindings, setBindings] = useState<AgentIntegration[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<IntegrationCatalogEntry | null>(null);
   const [whatsappEditing, setWhatsappEditing] = useState(false);
   const [busy, setBusy] = useState("");
@@ -98,11 +115,28 @@ export function IntegrationsPage() {
 
   const visible = useMemo(() => catalog.filter((entry) => {
     const binding = bindings.find((item) => item.provider === entry.provider);
+    const normalized = query.trim().toLowerCase();
+    if (normalized && ![
+      entry.name,
+      entry.category,
+      entry.description,
+      entry.provider,
+    ].some((value) => value.toLowerCase().includes(normalized))) return false;
     if (filter === "during") return entry.duringCall;
     if (filter === "post") return entry.postCall;
     if (filter === "connected") return binding?.connectionStatus === "connected" || binding?.connectionStatus === "built_in";
+    if (filter !== "all") return categoryKey(entry.category) === filter;
     return true;
-  }), [bindings, catalog, filter]);
+  }), [bindings, catalog, filter, query]);
+
+  const grouped = useMemo(() => {
+    const groups = new Map<string, IntegrationCatalogEntry[]>();
+    visible.forEach((entry) => {
+      const group = displayCategory(entry.category);
+      groups.set(group, [...(groups.get(group) ?? []), entry]);
+    });
+    return Array.from(groups.entries());
+  }, [visible]);
 
   async function toggle(entry: IntegrationCatalogEntry, enabled: boolean) {
     if (!agentId) return;
@@ -175,17 +209,34 @@ export function IntegrationsPage() {
       {searchParams.get("oauth") === "cancelled" && <div className={styles.error}><CircleAlert size={17} /> Provider authorization was cancelled.</div>}
       {error && <div className={styles.error}><CircleAlert size={17} /> {error}<button onClick={() => setError("")}><X size={14} /></button></div>}
 
-      <nav className={styles.filters} aria-label="Integration filters">
-        {(["during", "post", "connected", "all"] as Filter[]).map((value) => (
-          <button className={filter === value ? styles.activeFilter : ""} key={value} onClick={() => setFilter(value)}>
-            {value === "during" ? "During call" : value === "post" ? "Post call" : value[0].toUpperCase() + value.slice(1)}
-          </button>
-        ))}
-      </nav>
+      <section className={styles.controls}>
+        <label className={styles.search}>
+          <Search size={17} />
+          <input
+            aria-label="Search integrations"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search providers, categories, or workflows..."
+            value={query}
+          />
+        </label>
+        <nav className={styles.filters} aria-label="Integration filters">
+          {filterOptions.map(({ value, label }) => (
+            <button className={filter === value ? styles.activeFilter : ""} key={value} onClick={() => setFilter(value)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+      </section>
 
       {loading ? <div className={styles.loading}><LoaderCircle className="spin" /> Loading integrations…</div> : (
-        <section className={styles.grid}>
-          {visible.map((entry) => {
+        grouped.length === 0 ? <div className={styles.empty}>No integrations match this filter.</div> : <section className={styles.groups}>
+          {grouped.map(([category, entries]) => <section className={styles.group} key={category}>
+            <header className={styles.groupHeader}>
+              <span>{categoryIcon(category)}</span>
+              <div><h2>{category}</h2><p>{entries.length} provider{entries.length === 1 ? "" : "s"}</p></div>
+            </header>
+            <div className={styles.grid}>
+          {entries.map((entry) => {
             const binding = bindings.find((item) => item.provider === entry.provider);
             const connection = connections.find((item) => item.provider === entry.provider);
             const connected = binding?.connectionStatus === "connected" || binding?.connectionStatus === "built_in";
@@ -233,6 +284,8 @@ export function IntegrationsPage() {
               </footer>
             </article>;
           })}
+            </div>
+          </section>)}
         </section>
       )}
       {editing && <ConnectionDialog agentId={agentId} connection={connections.find((item) => item.provider === editing.provider)}
@@ -539,9 +592,10 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
         </div> : <input required={
           (entry.provider === "google_sheets" && ["spreadsheetId", "range"].includes(field))
           || (!connection && entry.credentialFields.includes(field)
-            && !["authToken", "apiKey", "hmacSecret"].includes(field))
+            && (entry.provider !== "custom_webhook" || !["authToken", "apiKey", "hmacSecret"].includes(field)))
         }
           type={entry.credentialFields.includes(field) ? "password" : "text"} value={values[field] ?? ""}
+          placeholder={placeholderFor(entry.provider, field)}
           onChange={(event) => setValues({ ...values, [field]: event.target.value })} />}
       </label>)}
       </div>
@@ -550,4 +604,38 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
         <button className={styles.primary} disabled={saving || fields.length === 0}>{saving ? "Saving…" : "Save connection"}</button></footer>
     </form>
   </div>;
+}
+
+function categoryKey(category: string): Filter {
+  const normalized = category.toLowerCase();
+  if (normalized.includes("calendar")) return "calendar";
+  if (normalized.includes("messaging")) return "messaging";
+  if (normalized.includes("crm")) return "crm";
+  if (normalized.includes("data")) return "data";
+  if (normalized.includes("notification")) return "notifications";
+  if (normalized.includes("payment")) return "payments";
+  if (normalized.includes("developer")) return "developer";
+  return "all";
+}
+
+function displayCategory(category: string) {
+  return category.toLowerCase().includes("calendar") ? "Calendar" : category;
+}
+
+function categoryIcon(category: string) {
+  const key = categoryKey(category);
+  if (key === "calendar") return <CalendarDays size={18} />;
+  if (key === "messaging") return <MessageSquare size={18} />;
+  if (key === "crm") return <Bot size={18} />;
+  if (key === "data") return <Database size={18} />;
+  if (key === "payments") return <WalletCards size={18} />;
+  return <Plug size={18} />;
+}
+
+function placeholderFor(provider: string, field: string) {
+  if (provider === "cal_com" && field === "eventTypeId") return "123456";
+  if (provider === "cal_com" && field === "bookingTitle") return "Appointment with {{caller_name}}";
+  if (provider === "calendly" && field === "eventTypeUri") return "https://api.calendly.com/event_types/...";
+  if (provider === "calendly" && field === "bookingTitle") return "Appointment with {{caller_name}}";
+  return "";
 }

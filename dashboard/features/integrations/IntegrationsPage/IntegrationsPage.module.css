@@ -12,10 +12,21 @@
 .success { border: 1px solid #b9e8df; color: #08766f; background: #effbf8; }
 .error { border: 1px solid #f1c6c1; color: #a43f35; background: #fff6f5; }
 .error button { margin-left: auto; border: 0; color: inherit; background: transparent; cursor: pointer; }
-.filters { display: flex; gap: 7px; margin-bottom: 20px; padding: 5px; width: fit-content; border: 1px solid #e0e8ee; border-radius: 12px; background: #f7f9fa; }
+.controls { display: grid; gap: 12px; margin-bottom: 20px; }
+.search { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; border: 1px solid #d8e2eb; border-radius: 12px; color: #7d8999; background: #fff; }
+.search input { width: 100%; border: 0; outline: 0; color: #1f3047; background: transparent; font: inherit; font-size: .82rem; }
+.search input::placeholder { color: #9aa7b6; }
+.filters { display: flex; flex-wrap: wrap; gap: 7px; padding: 5px; width: fit-content; border: 1px solid #e0e8ee; border-radius: 12px; background: #f7f9fa; }
 .filters button { padding: 8px 13px; border: 0; border-radius: 8px; color: #69788c; background: transparent; font: inherit; font-size: .75rem; cursor: pointer; }
 .filters .activeFilter { color: #075d59; background: #fff; box-shadow: 0 1px 5px rgba(27, 48, 66, .1); }
 .loading { display: flex; min-height: 280px; align-items: center; justify-content: center; gap: 10px; color: #7c899a; }
+.empty { display: grid; min-height: 260px; place-items: center; border: 1px dashed #d8e2eb; border-radius: 16px; color: #7d8999; background: #fbfcfd; font-size: .82rem; }
+.groups { display: grid; gap: 26px; }
+.group { display: grid; gap: 12px; }
+.groupHeader { display: flex; align-items: center; gap: 11px; }
+.groupHeader > span { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; color: #078d86; background: #e8f9f7; }
+.groupHeader h2 { margin: 0; color: #16243a; font-size: .92rem; font-weight: 650; }
+.groupHeader p { margin: 2px 0 0; color: #8995a5; font-size: .68rem; }
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .card { display: flex; min-height: 275px; flex-direction: column; padding: 20px; border: 1px solid #dfe7ee; border-radius: 17px; background: #fff; box-shadow: 0 10px 30px rgba(30, 53, 79, .04); }
 .cardTop { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; }

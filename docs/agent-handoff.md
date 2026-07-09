@@ -214,6 +214,28 @@ Expected:
 
 ## Change log
 
+### 2026-07-09 - Integration marketplace calendar providers and grouping
+
+- Added Cal.com and Calendly to the backend integration catalog as encrypted API-token based calendar connections.
+- Normalized Google Calendar into the `Calendar` catalog category so Google Calendar, Cal.com, and Calendly appear together.
+- Added integration marketplace search, category filters, and grouped provider sections.
+- Added Calendar, Messaging, CRM, Data, Notifications, Payments, Developer, During call, Post call, and Connected filters.
+- Added connection form labels/placeholders for Cal.com event type IDs and Calendly event type URIs.
+- Why: user asked to improve integrations by adding Cal.com and Calendly, grouping calendar integrations, and adding filters.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/integration/IntegrationCatalog.java`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+  - `.\gradlew.bat :backend:test`
+- Known follow-ups:
+  - Wire Cal.com and Calendly connections into the live calendar fulfillment path. The current change adds secure configuration and per-agent enablement in the marketplace, but booking execution still needs provider adapters before these can create live bookings.
+
 ### 2026-07-09 - Calls table and transcript drawer UI
 
 - Reworked the `/calls` console page from stacked accordion cards into a denser operations table with segmented filters for all calls, phone calls, and browser tests.

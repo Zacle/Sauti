@@ -7,9 +7,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class IntegrationCatalog {
     private final List<Entry> entries = List.of(
-            new Entry("google_calendar", "Google Calendar", "Calendar and scheduling",
+            new Entry("google_calendar", "Google Calendar", "Calendar",
                     "Check availability and create bookings during calls.", true, false, true,
                     List.of(), List.of()),
+            new Entry("cal_com", "Cal.com", "Calendar",
+                    "Use Cal.com event types as a booking destination for appointment agents.", true, false, true,
+                    List.of("eventTypeId", "bookingTitle"), List.of("apiKey")),
+            new Entry("calendly", "Calendly", "Calendar",
+                    "Use Calendly event types as a booking destination for appointment agents.", true, false, true,
+                    List.of("eventTypeUri", "bookingTitle"), List.of("personalAccessToken")),
             new Entry("telnyx_sms", "SMS", "Messaging",
                     "Send SMS using Sauti's configured Telnyx account.", true, false, false,
                     List.of(), List.of()),
