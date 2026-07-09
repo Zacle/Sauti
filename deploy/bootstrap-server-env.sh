@@ -39,6 +39,8 @@ docker exec sauti-postgres-1 psql -U sauti -d sauti \
   echo "GOOGLE_SHEETS_REDIRECT_URI=https://sauti.uk/api/v1/integrations/google_sheets/callback"
   echo "HUBSPOT_REDIRECT_URI=https://sauti.uk/api/v1/integrations/hubspot/callback"
   echo "SALESFORCE_REDIRECT_URI=https://sauti.uk/api/v1/integrations/salesforce/callback"
+  echo "CAL_COM_REDIRECT_URI=https://sauti.uk/api/v1/integrations/cal_com/callback"
+  echo "CALENDLY_REDIRECT_URI=https://sauti.uk/api/v1/integrations/calendly/callback"
 } >> .env.production
 
 chmod 600 .env.production

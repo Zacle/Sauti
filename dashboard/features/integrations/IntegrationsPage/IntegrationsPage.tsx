@@ -32,7 +32,7 @@ import type { Agent } from "@/types/api";
 import styles from "./IntegrationsPage.module.css";
 
 type Filter = "all" | "calendar" | "messaging" | "crm" | "data" | "notifications" | "payments" | "developer" | "during" | "post" | "connected";
-const oauthProviders = ["google_sheets", "hubspot", "salesforce"];
+const oauthProviders = ["google_sheets", "hubspot", "salesforce", "cal_com", "calendly"];
 
 const logos: Record<string, string> = {
   google_calendar: "/logos/google-calendar.svg",
@@ -52,7 +52,7 @@ const labels: Record<string, string> = {
   minimumAmount: "Minimum amount", maximumAmount: "Maximum amount",
   consumerKey: "Consumer key", consumerSecret: "Consumer secret", passkey: "Passkey",
   eventTypeId: "Event type ID", eventTypeUri: "Event type URI",
-  bookingTitle: "Booking title", personalAccessToken: "Personal access token",
+  bookingTitle: "Booking title",
 };
 
 const filterOptions: Array<{ value: Filter; label: string }> = [
@@ -271,8 +271,7 @@ export function IntegrationsPage() {
                     onClick={() => {
                     if (entry.provider === "whatsapp") {
                       setWhatsappEditing(true);
-                    } else if (oauthProviders.includes(entry.provider)
-                        && (!connection || entry.configurationFields.length === 0)) {
+                    } else if (oauthProviders.includes(entry.provider) && !connection) {
                       void startOAuth(entry);
                     } else {
                       setEditing(entry);

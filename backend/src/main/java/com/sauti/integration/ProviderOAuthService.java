@@ -43,7 +43,19 @@ public class ProviderOAuthService {
             @Value("${sauti.integrations.hubspot.redirect-uri:}") String hubspotRedirectUri,
             @Value("${sauti.integrations.salesforce.client-id:}") String salesforceClientId,
             @Value("${sauti.integrations.salesforce.client-secret:}") String salesforceClientSecret,
-            @Value("${sauti.integrations.salesforce.redirect-uri:}") String salesforceRedirectUri
+            @Value("${sauti.integrations.salesforce.redirect-uri:}") String salesforceRedirectUri,
+            @Value("${sauti.integrations.cal-com.client-id:}") String calComClientId,
+            @Value("${sauti.integrations.cal-com.client-secret:}") String calComClientSecret,
+            @Value("${sauti.integrations.cal-com.redirect-uri:}") String calComRedirectUri,
+            @Value("${sauti.integrations.cal-com.authorize-url:}") String calComAuthorizeUrl,
+            @Value("${sauti.integrations.cal-com.token-url:}") String calComTokenUrl,
+            @Value("${sauti.integrations.cal-com.scope:}") String calComScope,
+            @Value("${sauti.integrations.calendly.client-id:}") String calendlyClientId,
+            @Value("${sauti.integrations.calendly.client-secret:}") String calendlyClientSecret,
+            @Value("${sauti.integrations.calendly.redirect-uri:}") String calendlyRedirectUri,
+            @Value("${sauti.integrations.calendly.authorize-url:https://auth.calendly.com/oauth/authorize}") String calendlyAuthorizeUrl,
+            @Value("${sauti.integrations.calendly.token-url:https://auth.calendly.com/oauth/token}") String calendlyTokenUrl,
+            @Value("${sauti.integrations.calendly.scope:}") String calendlyScope
     ) {
         this.objectMapper = objectMapper;
         this.agents = agents;
@@ -59,7 +71,11 @@ public class ProviderOAuthService {
                 "salesforce", new Provider(salesforceClientId, salesforceClientSecret, salesforceRedirectUri,
                         "https://login.salesforce.com/services/oauth2/authorize",
                         "https://login.salesforce.com/services/oauth2/token",
-                        "api refresh_token", false)
+                        "api refresh_token", false),
+                "cal_com", new Provider(calComClientId, calComClientSecret, calComRedirectUri,
+                        calComAuthorizeUrl, calComTokenUrl, calComScope, false),
+                "calendly", new Provider(calendlyClientId, calendlyClientSecret, calendlyRedirectUri,
+                        calendlyAuthorizeUrl, calendlyTokenUrl, calendlyScope, false)
         );
     }
 
@@ -69,7 +85,8 @@ public class ProviderOAuthService {
         var provider = requireConfigured(providerName);
         return provider.authorizeUrl() + "?client_id=" + encode(provider.clientId())
                 + "&redirect_uri=" + encode(provider.redirectUri())
-                + "&response_type=code&scope=" + encode(provider.scope())
+                + "&response_type=code"
+                + (provider.scope().isBlank() ? "" : "&scope=" + encode(provider.scope()))
                 + (provider.google() ? "&access_type=offline&prompt=consent" : "")
                 + "&state=" + encode(state(providerName, tenantId, agentId));
     }
@@ -112,7 +129,8 @@ public class ProviderOAuthService {
     public boolean configured(String providerName) {
         var provider = providers.get(providerName);
         return provider != null && !provider.clientId().isBlank()
-                && !provider.clientSecret().isBlank() && !provider.redirectUri().isBlank();
+                && !provider.clientSecret().isBlank() && !provider.redirectUri().isBlank()
+                && !provider.authorizeUrl().isBlank() && !provider.tokenUrl().isBlank();
     }
 
     public synchronized String accessToken(UUID tenantId, UUID agentId, String providerName) {

@@ -82,6 +82,8 @@ GOOGLE_CALENDAR_REDIRECT_URI=https://sauti.uk/api/v1/integrations/google-calenda
 GOOGLE_SHEETS_REDIRECT_URI=https://sauti.uk/api/v1/integrations/google_sheets/callback
 HUBSPOT_REDIRECT_URI=https://sauti.uk/api/v1/integrations/hubspot/callback
 SALESFORCE_REDIRECT_URI=https://sauti.uk/api/v1/integrations/salesforce/callback
+CAL_COM_REDIRECT_URI=https://sauti.uk/api/v1/integrations/cal_com/callback
+CALENDLY_REDIRECT_URI=https://sauti.uk/api/v1/integrations/calendly/callback
 ```
 
 Telnyx:
@@ -216,7 +218,7 @@ Expected:
 
 ### 2026-07-09 - Integration marketplace calendar providers and grouping
 
-- Added Cal.com and Calendly to the backend integration catalog as encrypted API-token based calendar connections.
+- Added Cal.com and Calendly to the backend integration catalog as OAuth-based calendar connections.
 - Normalized Google Calendar into the `Calendar` catalog category so Google Calendar, Cal.com, and Calendly appear together.
 - Added integration marketplace search, category filters, and grouped provider sections.
 - Added Calendar, Messaging, CRM, Data, Notifications, Payments, Developer, During call, Post call, and Connected filters.
@@ -235,6 +237,30 @@ Expected:
   - `.\gradlew.bat :backend:test`
 - Known follow-ups:
   - Wire Cal.com and Calendly connections into the live calendar fulfillment path. The current change adds secure configuration and per-agent enablement in the marketplace, but booking execution still needs provider adapters before these can create live bookings.
+
+### 2026-07-09 - Cal.com and Calendly OAuth configuration
+
+- Switched Cal.com and Calendly from per-workspace API-token credentials to the generic provider OAuth flow.
+- Added backend OAuth configuration for both providers, including client ID, client secret, redirect URI, authorization URL, token URL, and optional scope.
+- Added production/local env example variables and public callback URL update helpers for both providers.
+- Cal.com authorization and token URLs are intentionally env-driven without defaults because Cal.com deployments and API versions can vary; Calendly has defaults for `https://auth.calendly.com/oauth/authorize` and `https://auth.calendly.com/oauth/token`.
+- Why: user decided to use OAuth for Cal.com and Calendly.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `.env.example`
+  - `backend/src/main/java/com/sauti/api/IntegrationController.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationCatalog.java`
+  - `backend/src/main/java/com/sauti/integration/ProviderOAuthService.java`
+  - `backend/src/main/resources/application.yml`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `deploy/.env.production.example`
+  - `deploy/bootstrap-server-env.sh`
+  - `deploy/update-public-callbacks-env.sh`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+  - `.\gradlew.bat :backend:test`
 
 ### 2026-07-09 - Calls table and transcript drawer UI
 

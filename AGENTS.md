@@ -115,6 +115,8 @@ OAuth/callback URLs:
 - Google Sheets: `https://sauti.uk/api/v1/integrations/google_sheets/callback`
 - HubSpot: `https://sauti.uk/api/v1/integrations/hubspot/callback`
 - Salesforce: `https://sauti.uk/api/v1/integrations/salesforce/callback`
+- Cal.com: `https://sauti.uk/api/v1/integrations/cal_com/callback`
+- Calendly: `https://sauti.uk/api/v1/integrations/calendly/callback`
 
 Telnyx:
 

@@ -54,7 +54,7 @@ public class IntegrationController {
                 entry.provider(), entry.name(), entry.category(), entry.description(),
                 entry.duringCall(), entry.postCall(), entry.requiresConnection(),
                 entry.configurationFields(), entry.credentialFields(),
-                !java.util.Set.of("google_sheets", "hubspot", "salesforce").contains(entry.provider())
+                !java.util.Set.of("google_sheets", "hubspot", "salesforce", "cal_com", "calendly").contains(entry.provider())
                         || oauth.configured(entry.provider())
         )).toList();
     }
