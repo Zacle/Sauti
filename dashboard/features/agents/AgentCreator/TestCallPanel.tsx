@@ -71,7 +71,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const monitorFrameRef = useRef(0);
   const voiceStartedAtRef = useRef(0);
   const lastVoiceAtRef = useRef(0);
-  const noiseFloorRef = useRef(0.015);
+  const noiseFloorRef = useRef(0.012);
   const utterancePeakRmsRef = useRef(0);
   const utteranceVoicedMsRef = useRef(0);
   const callStartedAtRef = useRef(0);
@@ -178,7 +178,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       const wallClock = Date.now();
       const settings = settingsRef.current;
       const baseThreshold = 0.075 - settings.bargeInSensitivity * 0.055;
-      const voiceThreshold = Math.max(0.045, baseThreshold, noiseFloorRef.current * 3.2);
+      const voiceThreshold = Math.max(0.026, baseThreshold * 0.72, noiseFloorRef.current * 2.4);
       const voiceDetected = rms >= voiceThreshold;
       const currentStatus = statusRef.current;
 
@@ -192,9 +192,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           utteranceVoicedMsRef.current += 16;
         }
 
-        if (currentStatus === "listening" && voiceDuration >= 260) {
+        if (currentStatus === "listening" && voiceDuration >= 180) {
           startUtteranceCapture(false);
-        } else if (currentStatus === "thinking" && voiceDuration >= 260) {
+        } else if (currentStatus === "thinking" && voiceDuration >= 180) {
           startUtteranceCapture(true);
         } else if (currentStatus === "speaking" && voiceDuration >= settings.bargeInGraceMs) {
           interruptAgentAndCapture();
@@ -208,7 +208,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           currentStatus === "capturing"
           && utteranceModeRef.current === "auto"
           && lastVoiceAtRef.current
-          && now - lastVoiceAtRef.current >= Math.max(450, settings.sttEndpointingMs)
+          && now - lastVoiceAtRef.current >= Math.max(1200, settings.sttEndpointingMs)
         ) {
           stopUtteranceCapture();
         }
@@ -282,7 +282,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       utteranceStartedAtRef.current = 0;
       utterancePeakRmsRef.current = 0;
       utteranceVoicedMsRef.current = 0;
-      if (utterance.size < 1200 || durationMs < 650 || (mode === "auto" && (peakRms < 0.055 || voicedMs < 220))) {
+      if (utterance.size < 1200 || durationMs < 900 || (mode === "auto" && (peakRms < 0.03 || voicedMs < 180))) {
         updateStatus("listening");
         setError("I did not catch clear speech. Move closer to the mic or reduce background noise, then try again.");
         return;

@@ -215,6 +215,29 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Browser test VAD and information-first call flow
+
+- Lowered the browser test voice threshold so quieter speech is detected without forcing the tester to speak loudly.
+- Increased auto endpointing from a 450 ms floor to a 1200 ms floor so natural pauses inside longer sentences are less likely to split the caller's utterance.
+- Reduced the sustained-voice and voiced-audio requirements slightly to make normal conversational speech easier to capture.
+- Updated the conversation prompt so information requests about hours, services, availability, location, pricing, or policies are answered before collecting personal details.
+- Clarified that name/contact collection should start only after a clear booking, callback, transfer, or message-taking intent, and that the agent must not invent a name from an availability/information request.
+- Why: user reported that the browser test kept cutting them off during longer French sentences, required speaking too loudly, and the agent jumped to name/contact collection while the caller was only asking for availability information.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `.\gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Known follow-ups:
+  - If users still pause longer than 1.2 seconds mid-sentence, consider making endpointing a visible test-call setting or moving browser tests to a streaming VAD/STT path.
+
 ### 2026-07-10 - Business-aware opening greetings and voice fallback
 
 - Opening greeting generation now requires both the agent name and the represented institution/business name.
