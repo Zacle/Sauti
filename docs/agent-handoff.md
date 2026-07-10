@@ -235,7 +235,12 @@ Expected:
   - `./gradlew.bat :backend:test`
   - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
   - `Push-Location dashboard; npm.cmd run build; Pop-Location`
-- Deployment: not deployed.
+- Deployment:
+  - Deployed in commit `efd7206`.
+  - GitHub Actions CI run `29107957259` passed.
+  - GitHub Actions deploy run `29108052599` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Known follow-up: this focuses on browser test calls. If the same pauses occur on Telnyx calls, make the realtime STT commit window similarly context-aware.
 
 ### 2026-07-10 - Browser test VAD and information-first call flow
