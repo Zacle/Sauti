@@ -231,7 +231,12 @@ Expected:
 - Verification:
   - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
   - `Push-Location dashboard; npm.cmd run build; Pop-Location`
-- Deployment: not deployed.
+- Deployment:
+  - Deployed in commit `e494434`.
+  - GitHub Actions CI run `29116374162` passed.
+  - GitHub Actions deploy run `29116469192` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/dashboard` redirected unauthenticated users to `/login?next=%2Fdashboard`.
 - Known follow-up: the appointments-by-day panel groups the bookings currently returned by the dashboard endpoint; a dedicated date-range aggregation endpoint would support richer trend selection later.
 
 ### 2026-07-10 - Dark agent studio redesign
