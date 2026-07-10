@@ -143,6 +143,9 @@ public class CallController {
         var sttMs = elapsedMs(sttStart);
         var turn = processTestTranscriptTurn(user.tenantId(), call, callerTranscript, sttMs);
         var persistedTurn = callTurnRepository.findFirstByCall_IdOrderByTurnIndexDesc(id).orElse(null);
+        var acceptedTranscript = persistedTurn == null && turn.response().isBlank() && turn.outcome().isBlank()
+                ? ""
+                : callerTranscript;
         var ttsStart = System.nanoTime();
         var synthesized = synthesizeTestTurn(call, turn.language(), turn.response());
         var ttsMs = elapsedMs(ttsStart);
@@ -151,7 +154,7 @@ public class CallController {
             callTurnRepository.save(persistedTurn);
         }
         return new TestAudioTurnResponse(
-                callerTranscript,
+                acceptedTranscript,
                 turn.language(),
                 turn.response(),
                 turn.outcome(),

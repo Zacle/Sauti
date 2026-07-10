@@ -220,6 +220,76 @@ class CallPipelineServiceTest {
     }
 
     @Test
+    void ignoresShortEnglishNoiseOnFrenchBrowserCallBeforeLanguageDetection() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var languageDetector = mock(LanguageDetector.class);
+        var conversationOrchestrator = mock(ConversationOrchestrator.class);
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                languageDetector,
+                conversationOrchestrator,
+                mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class),
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var call = activeCall("TEST-123");
+        call.selectLanguage("fr");
+        when(callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId())).thenReturn(List.of());
+
+        var result = service.processLiveTranscriptTurn(call, "Hello");
+
+        assertThat(result.language()).isEqualTo("fr");
+        assertThat(result.text()).isBlank();
+        assertThat(result.outcome()).isBlank();
+        verify(languageDetector, never()).detect(any(), any(), any());
+        verify(conversationOrchestrator, never()).handleUserUtterance(any(), any(), any());
+        verify(callTurnRepository, never()).save(any());
+    }
+
+    @Test
+    void acceptsNormalFrenchTurnOnFrenchBrowserCall() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var languageDetector = mock(LanguageDetector.class);
+        var conversationOrchestrator = mock(ConversationOrchestrator.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                languageDetector,
+                conversationOrchestrator,
+                mock(StreamingTtsProvider.class),
+                callSessionStore,
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var call = activeCall("TEST-123");
+        call.selectLanguage("fr");
+        when(callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId())).thenReturn(List.of());
+        when(languageDetector.detect("Bonjour", "fr", List.of("en", "fr"))).thenReturn("fr");
+        when(conversationOrchestrator.handleUserUtterance(call, "fr", "Bonjour"))
+                .thenReturn(new ConversationTurnResult("Bonjour, comment puis-je vous aider ?", ""));
+        when(callTurnRepository.countByCall_Id(call.getId())).thenReturn(1);
+
+        var result = service.processLiveTranscriptTurn(call, "Bonjour");
+
+        assertThat(result.language()).isEqualTo("fr");
+        assertThat(result.text()).contains("Bonjour");
+        verify(languageDetector).detect("Bonjour", "fr", List.of("en", "fr"));
+        verify(conversationOrchestrator).handleUserUtterance(call, "fr", "Bonjour");
+        verify(callTurnRepository).save(any(CallTurn.class));
+    }
+
+    @Test
     void recognizesNaturalClosingPhrases() {
         var service = new CallPipelineService(
                 mock(CallRepository.class),

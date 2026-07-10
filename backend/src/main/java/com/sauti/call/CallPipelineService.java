@@ -349,6 +349,14 @@ public class CallPipelineService {
                     ""
             );
         }
+        if (looksLikeShortOffLanguageNoise(call, callerTranscript)) {
+            return new TurnResult(
+                    call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected(),
+                    "",
+                    new byte[0],
+                    ""
+            );
+        }
         if (looksLikeTranscriptDrift(call, callerTranscript)) {
             return recoverFromTranscriptDrift(call, callerTranscript, sttMs, synthesizeAudio);
         }
@@ -586,6 +594,34 @@ public class CallPipelineService {
         if ("fr".equals(lockedLanguage) && lower.matches(".*\\b(thank you|thanks|bye|hello|yes it is|good day)\\b.*")) return true;
         if ("fr".equals(lockedLanguage) && lower.matches(".*\\b(s[eé]rio|nao|não|obrigado|obrigada)\\b.*")) return true;
         return false;
+    }
+
+    boolean looksLikeShortOffLanguageNoise(Call call, String transcript) {
+        if (call == null || transcript == null || transcript.isBlank()) return false;
+        var language = call.getLanguageDetected() == null || call.getLanguageDetected().isBlank()
+                ? call.getAgent().getDefaultLanguage()
+                : call.getLanguageDetected();
+        if (language == null || language.isBlank() || "en".equals(language)) return false;
+        var normalized = transcript.trim().toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}' ]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (normalized.isBlank()) return true;
+        if (normalized.split("\\s+").length > 2) return false;
+        if (!hasNoCallerTurns(call) && hasEnoughCallerHistoryForLanguageLock(call)) return false;
+        return java.util.Set.of(
+                "hi",
+                "hello",
+                "yes",
+                "yeah",
+                "yep",
+                "ok",
+                "okay",
+                "finally",
+                "version",
+                "thanks",
+                "thank you"
+        ).contains(normalized);
     }
 
     private boolean containsArabicScript(String value) {

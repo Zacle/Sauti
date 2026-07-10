@@ -215,6 +215,29 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Browser test noise and off-language transcript guard
+
+- Added browser test microphone noise-floor tracking and sustained-speech requirements so background noise such as a fan is less likely to trigger auto capture.
+- Added final auto-capture quality checks for minimum duration, voiced time, and peak RMS before audio is submitted to speech recognition.
+- Added a backend guard that ignores one- or two-word off-language noise transcripts like `hi`, `hello`, `yes`, `finally`, and `version` on non-English calls before they reach language detection or the LLM.
+- Browser audio test responses now return an empty caller transcript when the backend rejected an audio turn as noise, so false words are not displayed in the transcript.
+- Why: user reported French browser tests producing English caller transcripts even though they did not speak English, likely from background fan noise.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.CallPipelineServiceTest`
+  - `.\gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Known follow-ups:
+  - Consider surfacing a live microphone level/noise warning in Agent Studio if users continue to test in noisy rooms.
+
 ### 2026-07-10 - Remove Cal.com integration
 
 - Removed Cal.com from the active integration catalog, OAuth provider map, env examples, production callback helpers, dashboard OAuth provider list, and current callback documentation.

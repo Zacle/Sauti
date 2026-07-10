@@ -71,6 +71,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const monitorFrameRef = useRef(0);
   const voiceStartedAtRef = useRef(0);
   const lastVoiceAtRef = useRef(0);
+  const noiseFloorRef = useRef(0.015);
+  const utterancePeakRmsRef = useRef(0);
+  const utteranceVoicedMsRef = useRef(0);
   const callStartedAtRef = useRef(0);
   const lastActivityAtRef = useRef(0);
   const remindersRef = useRef(0);
@@ -172,7 +175,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       const now = performance.now();
       const wallClock = Date.now();
       const settings = settingsRef.current;
-      const voiceThreshold = 0.075 - settings.bargeInSensitivity * 0.055;
+      const baseThreshold = 0.075 - settings.bargeInSensitivity * 0.055;
+      const voiceThreshold = Math.max(0.045, baseThreshold, noiseFloorRef.current * 3.2);
       const voiceDetected = rms >= voiceThreshold;
       const currentStatus = statusRef.current;
 
@@ -181,15 +185,22 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         lastVoiceAtRef.current = now;
         if (!voiceStartedAtRef.current) voiceStartedAtRef.current = now;
         const voiceDuration = now - voiceStartedAtRef.current;
+        if (currentStatus === "capturing") {
+          utterancePeakRmsRef.current = Math.max(utterancePeakRmsRef.current, rms);
+          utteranceVoicedMsRef.current += 16;
+        }
 
-        if (currentStatus === "listening") {
+        if (currentStatus === "listening" && voiceDuration >= 260) {
           startUtteranceCapture(false);
-        } else if (currentStatus === "thinking") {
+        } else if (currentStatus === "thinking" && voiceDuration >= 260) {
           startUtteranceCapture(true);
         } else if (currentStatus === "speaking" && voiceDuration >= settings.bargeInGraceMs) {
           interruptAgentAndCapture();
         }
       } else {
+        if (currentStatus === "listening") {
+          noiseFloorRef.current = noiseFloorRef.current * 0.96 + rms * 0.04;
+        }
         voiceStartedAtRef.current = 0;
         if (
           currentStatus === "capturing"
@@ -260,10 +271,14 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       }
       const utterance = new Blob(utteranceChunksRef.current, { type: recorder.mimeType });
       const durationMs = Date.now() - utteranceStartedAtRef.current;
+      const peakRms = utterancePeakRmsRef.current;
+      const voicedMs = utteranceVoicedMsRef.current;
       utteranceStartedAtRef.current = 0;
-      if (utterance.size < 1200 || durationMs < 500) {
+      utterancePeakRmsRef.current = 0;
+      utteranceVoicedMsRef.current = 0;
+      if (utterance.size < 1200 || durationMs < 650 || (mode === "auto" && (peakRms < 0.055 || voicedMs < 220))) {
         updateStatus("listening");
-        setError("I did not catch enough audio. Speak clearly for a moment, then pause.");
+        setError("I did not catch clear speech. Move closer to the mic or reduce background noise, then try again.");
         return;
       }
       if (processingTurnRef.current) {
@@ -277,6 +292,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     utteranceRecorderRef.current = recorder;
     utteranceModeRef.current = mode;
     utteranceStartedAtRef.current = Date.now();
+    utterancePeakRmsRef.current = 0;
+    utteranceVoicedMsRef.current = 0;
     lastVoiceAtRef.current = performance.now();
     updateStatus("capturing");
     recorder.start(200);
@@ -400,7 +417,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       const wasInterrupted = callerInterruptedCurrentTurnRef.current || Boolean(queuedInterruptionRef.current);
       setMessages((current) => [
         ...current,
-        { id: crypto.randomUUID(), role: "caller", text: turn.callerTranscript },
+        ...(turn.callerTranscript ? [{ id: crypto.randomUUID(), role: "caller" as const, text: turn.callerTranscript }] : []),
         ...(turn.response && !wasInterrupted ? [{ id: crypto.randomUUID(), role: "agent" as const, text: turn.response }] : []),
       ]);
       if (turn.response && !wasInterrupted) {
