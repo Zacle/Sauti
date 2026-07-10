@@ -231,7 +231,12 @@ Expected:
 - Verification:
   - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
   - `Push-Location dashboard; npm.cmd run build; Pop-Location`
-- Deployment: not deployed.
+- Deployment:
+  - Deployed in commit `f0aa206`.
+  - GitHub Actions CI run `29110744275` passed.
+  - GitHub Actions deploy run `29110860245` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/agents` redirected unauthenticated users to `/login?next=%2Fagents`.
 - Known follow-up: validate the information density with a workspace containing many agents; the layout currently shows all matching agents and does not paginate.
 
 ### 2026-07-10 - Adaptive browser test turn-taking and stronger detail guardrails
