@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
+import * as Popover from "@radix-ui/react-popover";
+import * as Select from "@radix-ui/react-select";
+import { DayPicker, type DateRange } from "react-day-picker";
+import { endOfDay, format, isAfter, isBefore, startOfDay, subDays } from "date-fns";
 import {
   Activity,
   ArrowLeft,
@@ -10,6 +14,7 @@ import {
   CalendarDays,
   CalendarCheck2,
   CheckCircle2,
+  Check,
   ChevronDown,
   Clock3,
   FileText,
@@ -48,8 +53,7 @@ export function CallsPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [agentFilter, setAgentFilter] = useState("all");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange>();
   const [page, setPage] = useState(1);
 
   useEffect(() => {
@@ -58,6 +62,13 @@ export function CallsPage() {
         setCalls(callItems);
         setAgents(agentItems);
         setBookings(bookingItems);
+        if (callItems.length) {
+          const latestCallDate = new Date(Math.max(...callItems.map((call) => new Date(call.startedAt).getTime())));
+          setDateRange({ from: subDays(latestCallDate, 13), to: latestCallDate });
+        } else {
+          const today = new Date();
+          setDateRange({ from: subDays(today, 13), to: today });
+        }
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load calls."))
       .finally(() => setLoading(false));
@@ -86,9 +97,9 @@ export function CallsPage() {
       if (statusFilter === "missed" && SUCCESSFUL_OUTCOMES.has(call.outcome)) return false;
       if (statusFilter === "active" && call.outcome !== "active") return false;
       if (agentFilter !== "all" && call.agentId !== agentFilter) return false;
-      const callDate = localDateKey(call.startedAt);
-      if (fromDate && callDate < fromDate) return false;
-      if (toDate && callDate > toDate) return false;
+      const callDate = new Date(call.startedAt);
+      if (dateRange?.from && isBefore(callDate, startOfDay(dateRange.from))) return false;
+      if (dateRange?.to && isAfter(callDate, endOfDay(dateRange.to))) return false;
       if (!normalized) return true;
       const booking = bookingsByCall.get(call.id);
       return [
@@ -102,9 +113,9 @@ export function CallsPage() {
         booking?.callerName ?? "",
       ].some((value) => value.toLowerCase().includes(normalized));
     });
-  }, [agentFilter, agentNames, bookingsByCall, calls, filter, fromDate, query, statusFilter, toDate]);
+  }, [agentFilter, agentNames, bookingsByCall, calls, dateRange, filter, query, statusFilter]);
 
-  useEffect(() => setPage(1), [agentFilter, filter, fromDate, query, statusFilter, toDate]);
+  useEffect(() => setPage(1), [agentFilter, dateRange, filter, query, statusFilter]);
 
   const pageCount = Math.max(1, Math.ceil(filteredCalls.length / ROWS_PER_PAGE));
   const pagedCalls = filteredCalls.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE);
@@ -141,16 +152,6 @@ export function CallsPage() {
     }
   }
 
-  function updateFromDate(value: string) {
-    setFromDate(value);
-    if (value && toDate && value > toDate) setToDate(value);
-  }
-
-  function updateToDate(value: string) {
-    setToDate(value);
-    if (value && fromDate && value < fromDate) setFromDate(value);
-  }
-
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -185,9 +186,9 @@ export function CallsPage() {
             <PlayCircle size={16} /> Tests
           </button>
         </div>
-        <div className={`${styles.dateRange} ${fromDate || toDate ? styles.activeDateRange : ""}`}><CalendarDays size={15} /><label><span>From</span><input aria-label="Calls from date" type="date" value={fromDate} onChange={(event) => updateFromDate(event.target.value)} /></label><i>–</i><label><span>To</span><input aria-label="Calls to date" type="date" value={toDate} onChange={(event) => updateToDate(event.target.value)} /></label>{(fromDate || toDate) && <button aria-label="Clear date range" onClick={() => { setFromDate(""); setToDate(""); }} type="button"><X size={13} /></button>}</div>
-        <label className={styles.selectControl}><Activity size={15} /><select aria-label="Filter calls by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All status</option><option value="answered">Answered</option><option value="missed">Missed</option><option value="active">Active</option></select><ChevronDown size={14} /></label>
-        <label className={styles.selectControl}><Bot size={15} /><select aria-label="Filter calls by agent" value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)}><option value="all">All agents</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select><ChevronDown size={14} /></label>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
+        <FilterSelect icon={<Activity size={15} />} label="Status" value={statusFilter} onChange={setStatusFilter} options={[{ value: "all", label: "All status" }, { value: "answered", label: "Answered" }, { value: "missed", label: "Missed" }, { value: "active", label: "Active" }]} />
+        <FilterSelect icon={<Bot size={15} />} label="Agent" value={agentFilter} onChange={setAgentFilter} options={[{ value: "all", label: "All agents" }, ...agents.map((agent) => ({ value: agent.id, label: agent.name }))]} />
         <label className={styles.search}>
           <Search size={17} />
           <input
@@ -310,6 +311,31 @@ export function CallsPage() {
       )}
     </main>
   );
+}
+
+function DateRangeFilter({ value, onChange }: { value: DateRange | undefined; onChange: (range: DateRange | undefined) => void }) {
+  const label = value?.from
+    ? `${format(value.from, "MMM d, yyyy")} – ${format(value.to ?? value.from, "MMM d, yyyy")}`
+    : "All dates";
+  const setRecentRange = (days: number) => {
+    const to = new Date();
+    onChange({ from: subDays(to, days - 1), to });
+  };
+  return <Popover.Root>
+    <Popover.Trigger asChild><button className={`${styles.dateTrigger} ${value?.from ? styles.activeDateRange : ""}`} type="button"><CalendarDays size={16} /><span>{label}</span><ChevronDown size={14} /></button></Popover.Trigger>
+    <Popover.Portal><Popover.Content className={styles.datePopover} sideOffset={8} align="start">
+      <DayPicker mode="range" selected={value} onSelect={onChange} defaultMonth={value?.from} numberOfMonths={2} resetOnSelect />
+      <footer><div><button onClick={() => setRecentRange(7)} type="button">Last 7 days</button><button onClick={() => setRecentRange(14)} type="button">Last 14 days</button><button onClick={() => setRecentRange(30)} type="button">Last 30 days</button></div><button onClick={() => onChange(undefined)} type="button">All time</button></footer>
+      <Popover.Arrow className={styles.popoverArrow} />
+    </Popover.Content></Popover.Portal>
+  </Popover.Root>;
+}
+
+function FilterSelect({ icon, label, value, onChange, options }: { icon: React.ReactNode; label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) {
+  return <Select.Root value={value} onValueChange={onChange}>
+    <Select.Trigger className={styles.selectTrigger} aria-label={label}><span className={styles.selectIcon}>{icon}</span><Select.Value /><Select.Icon><ChevronDown size={14} /></Select.Icon></Select.Trigger>
+    <Select.Portal><Select.Content className={styles.selectContent} position="popper" sideOffset={7} align="start"><Select.ScrollUpButton className={styles.selectScroll}><ChevronDown size={14} /></Select.ScrollUpButton><Select.Viewport className={styles.selectViewport}>{options.map((option) => <Select.Item className={styles.selectItem} value={option.value} key={option.value}><Select.ItemIndicator><Check size={13} /></Select.ItemIndicator><Select.ItemText>{option.label}</Select.ItemText></Select.Item>)}</Select.Viewport><Select.ScrollDownButton className={styles.selectScroll}><ChevronDown size={14} /></Select.ScrollDownButton></Select.Content></Select.Portal>
+  </Select.Root>;
 }
 
 function CallMetric({ tone, icon, label, value, detail, values, ring }: { tone: string; icon: React.ReactNode; label: string; value: string; detail: string; values: number[]; ring?: number }) {
@@ -480,14 +506,6 @@ function formatTurnTime(turnIndex: number) {
 
 function humanize(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function localDateKey(value: string) {
-  const date = new Date(value);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function formatAudioTime(value: number) {

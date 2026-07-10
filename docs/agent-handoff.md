@@ -221,6 +221,25 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Accessible call date and option filters
+
+- Replaced the Calls page native date inputs with a React DayPicker range popover, including visible default dates, two-month navigation, range highlighting, and 7/14/30-day and all-time shortcuts.
+- The initial range covers 14 days ending at the newest loaded call date, so seeded or historical call data remains visible while both range endpoints filter inclusively.
+- Replaced the native status and agent selects with keyboard-accessible Radix Select controls styled to match the dark console, including selected-item indicators and proper overlay positioning.
+- Why: the browser-native date fields were not opening reliably and the native status/agent menus did not match the Calls interface.
+- Files touched:
+  - `dashboard/app/globals.css`
+  - `dashboard/features/calls/CallsPage/CallsPage.tsx`
+  - `dashboard/features/calls/CallsPage/CallsPage.module.css`
+  - `dashboard/package.json`
+  - `dashboard/package-lock.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted under the maintainer-owned source-control policy.
+- Known follow-up: the Calls route now carries the calendar/select UI bundle; monitor route size if more filter primitives are added.
+
 ### 2026-07-10 - Working call date range, readable typography, and waveform audio
 
 - Fixed the Calls date filter to compare inclusive normalized local calendar dates instead of timestamp boundaries, keep the range ordered, expose active styling, reset pagination, and provide a clear-range action.
