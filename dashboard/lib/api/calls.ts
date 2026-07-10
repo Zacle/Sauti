@@ -13,7 +13,7 @@ export function startTestCall(agentId: string, ttsVoiceId?: string) {
 }
 
 export function sendTestTurn(callSid: string, transcript: string) {
-  return apiRequest<{ language: string; response: string; transcript: string; outcome: string }>(
+  return apiRequest<{ language: string; response: string; transcript: string; outcome: string; acceptedTranscript: boolean }>(
     `/calls/${encodeURIComponent(callSid)}/simulate-turn`,
     { method: "POST", body: JSON.stringify({ transcript }) },
   );

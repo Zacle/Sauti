@@ -76,6 +76,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const utteranceVoicedMsRef = useRef(0);
   const callStartedAtRef = useRef(0);
   const lastActivityAtRef = useRef(0);
+  const acceptedCallerTurnsRef = useRef(0);
   const remindersRef = useRef(0);
   const endingRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -111,6 +112,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       settingsRef.current = started.settings;
       callStartedAtRef.current = Date.now();
       lastActivityAtRef.current = Date.now();
+      acceptedCallerTurnsRef.current = 0;
       remindersRef.current = 0;
       endingRef.current = false;
       setCallId(started.call.id);
@@ -219,10 +221,14 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
 
       if (currentStatus === "listening") {
         const silentFor = wallClock - lastActivityAtRef.current;
+        const reminderDelayMs = Math.max(
+          settings.reminderAfterSilenceSeconds * 1000,
+          acceptedCallerTurnsRef.current === 0 ? 25000 : 15000,
+        );
         if (
           settings.maxReminders > 0
           && remindersRef.current >= settings.maxReminders
-          && silentFor >= settings.reminderAfterSilenceSeconds * 1000
+          && silentFor >= reminderDelayMs
         ) {
           void endCall("no-response", true);
           return;
@@ -233,7 +239,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         }
         if (
           remindersRef.current < settings.maxReminders
-          && silentFor >= settings.reminderAfterSilenceSeconds * 1000
+          && silentFor >= reminderDelayMs
         ) {
           lastActivityAtRef.current = wallClock;
           remindersRef.current += 1;
@@ -415,14 +421,17 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       lastActivityAtRef.current = Date.now();
       remindersRef.current = 0;
       const wasInterrupted = callerInterruptedCurrentTurnRef.current || Boolean(queuedInterruptionRef.current);
+      if (turn.callerTranscript) acceptedCallerTurnsRef.current += 1;
       setMessages((current) => [
         ...current,
         ...(turn.callerTranscript ? [{ id: crypto.randomUUID(), role: "caller" as const, text: turn.callerTranscript }] : []),
         ...(turn.response && !wasInterrupted ? [{ id: crypto.randomUUID(), role: "agent" as const, text: turn.response }] : []),
       ]);
+      let playedAgentAudio = false;
       if (turn.response && !wasInterrupted) {
         if (turn.audioBase64) await playEncodedAgentAudio(turn.audioBase64);
-        else await playLatestAgentAudio(activeCallId);
+        else if (turn.callerTranscript) await playLatestAgentAudio(activeCallId);
+        playedAgentAudio = Boolean(turn.audioBase64 || turn.callerTranscript);
         console.debug("Browser test turn latency", {
           endpointingMs: Math.max(450, settingsRef.current.sttEndpointingMs),
           sttMs: turn.sttLatencyMs,
@@ -432,7 +441,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         });
       }
       if (turn.outcome && !queuedInterruptionRef.current) await endCall(turn.outcome);
-      else if (!turn.response || wasInterrupted) updateStatus(queuedInterruptionRef.current ? "thinking" : "listening");
+      else if (!turn.response || wasInterrupted || !playedAgentAudio) updateStatus(queuedInterruptionRef.current ? "thinking" : "listening");
     } catch (caught) {
       if (endingRef.current || callIdRef.current !== activeCallId) return;
       updateStatus("listening");
@@ -471,6 +480,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       const turn = await sendTestTurn(activeCallSid, transcript);
       lastActivityAtRef.current = Date.now();
       remindersRef.current = 0;
+      acceptedCallerTurnsRef.current += 1;
       if (turn.response) {
         setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text: turn.response }]);
         await playLatestAgentAudio(activeCallId);

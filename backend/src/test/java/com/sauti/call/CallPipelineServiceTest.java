@@ -247,9 +247,82 @@ class CallPipelineServiceTest {
         assertThat(result.language()).isEqualTo("fr");
         assertThat(result.text()).isBlank();
         assertThat(result.outcome()).isBlank();
+        assertThat(result.acceptedTranscript()).isFalse();
         verify(languageDetector, never()).detect(any(), any(), any());
         verify(conversationOrchestrator, never()).handleUserUtterance(any(), any(), any());
         verify(callTurnRepository, never()).save(any());
+    }
+
+    @Test
+    void asksForRepeatOnMangledFirstFrenchCallerTranscript() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var languageDetector = mock(LanguageDetector.class);
+        var conversationOrchestrator = mock(ConversationOrchestrator.class);
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                languageDetector,
+                conversationOrchestrator,
+                mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class),
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var call = activeCall("TEST-123");
+        call.selectLanguage("fr");
+        when(callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId())).thenReturn(List.of(
+                new CallTurn(call, 1, "", "Bonjour, c'est Amelie. Comment puis-je vous aider ?", "fr", 0, 0, 0, false)
+        ));
+
+        var result = service.processLiveTranscriptTurn(call, "Meli seza kare");
+
+        assertThat(result.language()).isEqualTo("fr");
+        assertThat(result.text()).contains("Je n'ai pas bien saisi");
+        assertThat(result.acceptedTranscript()).isFalse();
+        verify(languageDetector, never()).detect(any(), any(), any());
+        verify(conversationOrchestrator, never()).handleUserUtterance(any(), any(), any());
+        verify(callTurnRepository, never()).save(any());
+    }
+
+    @Test
+    void acceptsClearShortFrenchFirstCallerTranscript() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var languageDetector = mock(LanguageDetector.class);
+        var conversationOrchestrator = mock(ConversationOrchestrator.class);
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                languageDetector,
+                conversationOrchestrator,
+                mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class),
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var call = activeCall("TEST-123");
+        call.selectLanguage("fr");
+        when(callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId())).thenReturn(List.of(
+                new CallTurn(call, 1, "", "Bonjour, c'est Amelie. Comment puis-je vous aider ?", "fr", 0, 0, 0, false)
+        ));
+        when(languageDetector.detect("Bonjour Amelie", "fr", List.of("en", "fr"))).thenReturn("fr");
+        when(conversationOrchestrator.handleUserUtterance(call, "fr", "Bonjour Amelie"))
+                .thenReturn(new ConversationTurnResult("Bonjour, comment puis-je vous aider ?", ""));
+
+        var result = service.processLiveTranscriptTurn(call, "Bonjour Amelie");
+
+        assertThat(result.language()).isEqualTo("fr");
+        assertThat(result.acceptedTranscript()).isTrue();
+        verify(languageDetector).detect("Bonjour Amelie", "fr", List.of("en", "fr"));
+        verify(conversationOrchestrator).handleUserUtterance(call, "fr", "Bonjour Amelie");
+        verify(callTurnRepository).save(any(CallTurn.class));
     }
 
     @Test

@@ -181,7 +181,13 @@ public class CallPipelineService {
         Call call = callRepository.findByTwilioCallSidAndTenantId(twilioCallSid, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Call not found"));
         var response = processTranscriptTurn(call, transcript, Math.max(0, sttLatencyMs), false);
-        return new SimulatedTurnResponse(response.language(), response.text(), call.getTranscript(), response.outcome());
+        return new SimulatedTurnResponse(
+                response.language(),
+                response.text(),
+                call.getTranscript(),
+                response.outcome(),
+                response.acceptedTranscript()
+        );
     }
 
     @Transactional
@@ -338,7 +344,8 @@ public class CallPipelineService {
                     call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected(),
                     "",
                     new byte[0],
-                    ""
+                    "",
+                    false
             );
         }
         if (isNonSpeechTranscript(callerTranscript)) {
@@ -346,7 +353,8 @@ public class CallPipelineService {
                     call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected(),
                     "",
                     new byte[0],
-                    ""
+                    "",
+                    false
             );
         }
         if (looksLikeShortOffLanguageNoise(call, callerTranscript)) {
@@ -354,8 +362,15 @@ public class CallPipelineService {
                     call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected(),
                     "",
                     new byte[0],
-                    ""
+                    "",
+                    false
             );
+        }
+        if (looksLikeUnreliableFirstCallerTranscript(call, callerTranscript)) {
+            var language = call.getLanguageDetected() == null || call.getLanguageDetected().isBlank()
+                    ? call.getAgent().getDefaultLanguage()
+                    : call.getLanguageDetected();
+            return new TurnResult(language, localizedClarification(language), new byte[0], "", false);
         }
         if (looksLikeTranscriptDrift(call, callerTranscript)) {
             return recoverFromTranscriptDrift(call, callerTranscript, sttMs, synthesizeAudio);
@@ -624,6 +639,33 @@ public class CallPipelineService {
         ).contains(normalized);
     }
 
+    boolean looksLikeUnreliableFirstCallerTranscript(Call call, String transcript) {
+        if (call == null || transcript == null || transcript.isBlank()) return false;
+        if (!hasNoCallerTurns(call)) return false;
+        var language = call.getLanguageDetected() == null || call.getLanguageDetected().isBlank()
+                ? call.getAgent().getDefaultLanguage()
+                : call.getLanguageDetected();
+        if (language == null || language.isBlank() || "en".equals(language)) return false;
+
+        var normalized = transcript.trim().toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}' ]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (normalized.isBlank()) return true;
+        var words = normalized.split("\\s+");
+        if ("ar".equals(language)) {
+            return !containsArabicScript(transcript) && words.length <= 4;
+        }
+        if (!"fr".equals(language)) return false;
+        if (containsArabicScript(transcript)) return true;
+        if (words.length > 4) return false;
+        return !hasFrenchCue(normalized);
+    }
+
+    private boolean hasFrenchCue(String normalized) {
+        return normalized.matches(".*\\b(bonjour|salut|merci|oui|non|je|j|me|m|mon|ma|moi|vous|votre|est|ce|que|comment|allez|appelle|rendez|information|informations|disponible|disponibilite|disponibilites|consultation|prendre|verifier|v[eé]rifier|savoir|ouvert|heure|jour|nom|zacharie|zakari)\\b.*");
+    }
+
     private boolean containsArabicScript(String value) {
         return value.codePoints().anyMatch(codePoint ->
                 (codePoint >= 0x0600 && codePoint <= 0x06FF)
@@ -663,7 +705,10 @@ public class CallPipelineService {
         return (int) ((System.nanoTime() - startNanos) / 1_000_000);
     }
 
-    public record TurnResult(String language, String text, byte[] audio, String outcome) {
+    public record TurnResult(String language, String text, byte[] audio, String outcome, boolean acceptedTranscript) {
+        public TurnResult(String language, String text, byte[] audio, String outcome) {
+            this(language, text, audio, outcome, true);
+        }
     }
 
     public record ReminderResult(String language, String text) {

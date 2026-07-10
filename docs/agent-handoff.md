@@ -215,6 +215,32 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Reject corrupted first browser-test transcripts
+
+- Carried an explicit `acceptedTranscript` flag from `CallPipelineService` through simulated/test turn responses so the browser UI no longer infers transcript acceptance from the latest persisted row.
+- Added a first-caller-turn reliability guard for non-English calls. Short mangled first transcripts like `Meli seza kare` now produce a localized repeat request without sending the false text to language detection or the LLM.
+- Kept clear short French first turns, such as `Bonjour Amelie`, accepted and processed normally.
+- Delayed browser test silence reminders before the first accepted caller turn so the agent does not say `Êtes-vous toujours là ?` immediately after the greeting while the mic/noise floor is settling.
+- Prevented rejected-transcript clarification turns from falling back to replaying the latest saved agent audio when inline TTS is unavailable.
+- Why: user reported French browser tests getting worse, including false English/Arabic caller transcripts, early reminders, and the LLM treating corrupted STT as names or facts.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/call/CallDtos.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/lib/api/calls.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.CallPipelineServiceTest`
+  - `.\gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location`
+- Known follow-ups:
+  - Browser tests still depend on prerecorded STT quality. If false long transcripts continue, add an explicit test-call language selector and pass the selected language as a hard transcription hint.
+
 ### 2026-07-10 - Browser test noise and off-language transcript guard
 
 - Added browser test microphone noise-floor tracking and sustained-speech requirements so background noise such as a fan is less likely to trigger auto capture.
