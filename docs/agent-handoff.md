@@ -221,6 +221,21 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Booking row alignment
+
+- Replaced the independent sticky booking date rail with a row-coupled layout where each date marker and appointment card share the same grid row.
+- Increased and normalized the appointment card date/time columns, card minimum height, row spacing, and tablet/mobile column behavior.
+- Why: the separate rail and card lists drifted vertically as cards grew, making dates appear associated with the wrong appointment.
+- Files touched:
+  - `dashboard/features/bookings/presentation/BookingsPage.tsx`
+  - `dashboard/features/bookings/presentation/BookingsPage.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: none.
+
 ### 2026-07-10 - Dark bookings workspace redesign
 
 - Rebuilt `/bookings` around the supplied dark calendar-operations reference and brought the route into the same dark console shell as Overview, Agents, and Calls.

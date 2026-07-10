@@ -22,7 +22,6 @@ import type { Agent, Booking } from "@/types/api";
 import {
   filterBookings,
   formatAppointment,
-  formatShortDate,
   formatTime,
   summarizeBookings,
   toBookingViewModels,
@@ -145,24 +144,19 @@ export function BookingsPage() {
         </section>
       ) : (
         <section className={styles.content}>
-          <div className={styles.timeline} aria-hidden="true">
-            {visibleBookings.slice(0, 6).map((booking) => (
-              <div className={styles.timelineItem} key={booking.id}>
-                <span>{formatShortDate(booking.appointmentDate)}</span>
+          {visibleBookings.map((booking) => (
+            <div className={styles.bookingRow} key={booking.id}>
+              <div className={styles.timelineItem} aria-hidden="true">
+                <span>{booking.appointmentDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
                 <strong>{formatTime(booking.appointmentDate)}</strong>
               </div>
-            ))}
-          </div>
-          <div className={styles.list}>
-            {visibleBookings.map((booking) => (
               <BookingCard
                 booking={booking}
                 cancelling={cancellingId === booking.id}
-                key={booking.id}
                 onCancel={() => void onCancel(booking)}
               />
-            ))}
-          </div>
+            </div>
+          ))}
         </section>
       )}
     </main>
