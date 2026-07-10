@@ -221,7 +221,11 @@ Expected:
 - Kept Calendly as the non-Google calendar OAuth integration.
 - Why: user decided to keep Calendly and remove Cal.com.
 - Deployment:
-  - Not deployed yet.
+  - Deployed in commit `f3c401a`.
+  - GitHub Actions CI run `29094043361` passed.
+  - GitHub Actions deploy run `29094134110` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `.env.example`
   - `AGENTS.md`
@@ -247,7 +251,11 @@ Expected:
 - Added connection form labels/placeholders for Calendly event type URIs.
 - Why: user asked to improve integrations by adding calendar integrations, grouping calendar integrations, and adding filters.
 - Deployment:
-  - Not deployed yet.
+  - Deployed in commit `f3c401a`.
+  - GitHub Actions CI run `29094043361` passed.
+  - GitHub Actions deploy run `29094134110` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/integration/IntegrationCatalog.java`
   - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
@@ -268,7 +276,11 @@ Expected:
 - Calendly has defaults for `https://auth.calendly.com/oauth/authorize` and `https://auth.calendly.com/oauth/token`.
 - Why: user decided to use OAuth for Calendly.
 - Deployment:
-  - Not deployed yet.
+  - Deployed in commit `f3c401a`.
+  - GitHub Actions CI run `29094043361` passed.
+  - GitHub Actions deploy run `29094134110` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `.env.example`
   - `backend/src/main/java/com/sauti/api/IntegrationController.java`
@@ -292,7 +304,11 @@ Expected:
 - Added a right-side transcript drawer with details, booked event, recording playback, language/intent metadata, and the caller/agent transcript.
 - Why: user shared a reference call-management UI and asked to improve the Sauti call UI/UX while differentiating call types.
 - Deployment:
-  - Not deployed yet.
+  - Deployed in commit `f3c401a`.
+  - GitHub Actions CI run `29094043361` passed.
+  - GitHub Actions deploy run `29094134110` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `dashboard/features/calls/CallsPage/CallsPage.tsx`
   - `dashboard/features/calls/CallsPage/CallsPage.module.css`
@@ -310,7 +326,11 @@ Expected:
 - Exposed `externalEventId` in the dashboard `Booking` type so the UI can show where a booking was synced or created from.
 - Why: user asked to implement the bookings feature with modern UI/UX and visibility into where bookings were created.
 - Deployment:
-  - Not deployed yet.
+  - Deployed in commit `f3c401a`.
+  - GitHub Actions CI run `29094043361` passed.
+  - GitHub Actions deploy run `29094134110` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `dashboard/app/(console)/bookings/page.tsx`
   - `dashboard/features/bookings/domain/bookings.ts`
