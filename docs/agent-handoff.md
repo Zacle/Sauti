@@ -223,7 +223,11 @@ Expected:
 - Browser audio test responses now return an empty caller transcript when the backend rejected an audio turn as noise, so false words are not displayed in the transcript.
 - Why: user reported French browser tests producing English caller transcripts even though they did not speak English, likely from background fan noise.
 - Deployment:
-  - Not deployed yet.
+  - Deployed in commit `c7a4afa`.
+  - GitHub Actions CI run `29097488320` passed.
+  - GitHub Actions deploy run `29097579244` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/api/CallController.java`
   - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
