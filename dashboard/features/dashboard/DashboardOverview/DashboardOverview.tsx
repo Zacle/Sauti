@@ -1,28 +1,31 @@
 "use client";
 
+import styles from "./DashboardOverview.module.css";
 import Link from "next/link";
 import { useMemo } from "react";
 import {
+  ArrowDown,
   ArrowRight,
-  Bot,
+  ArrowUp,
   CalendarCheck,
   Check,
   ChevronRight,
   CircleAlert,
   Clock3,
+  CreditCard,
   Headphones,
   LoaderCircle,
   PhoneCall,
   RefreshCw,
   Sparkles,
   TrendingUp,
-  UsersRound,
-  WalletCards,
 } from "lucide-react";
 import type { Call, DashboardData } from "@/types/api";
 import { useAuth } from "@/hooks/useAuth";
 import { useDashboard } from "@/hooks/useDashboard";
 import { formatDate, formatDuration } from "@/lib/utils";
+
+const numberFormat = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
 
 function prettyOutcome(outcome: string) {
   return outcome?.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "In progress";
@@ -40,17 +43,13 @@ export function DashboardOverview() {
     [data],
   );
 
-  if (loading && !data) {
-    return <DashboardSkeleton />;
-  }
+  if (loading && !data) return <DashboardSkeleton />;
 
   if (error && !data) {
     return (
-      <section className="dashboard-error-state">
-        <span><CircleAlert size={24} /></span>
-        <h1>We couldn&apos;t load your workspace</h1>
-        <p>{error}</p>
-        <button className="console-primary-button" onClick={() => void refresh()}><RefreshCw size={17} /> Try again</button>
+      <section className={styles["error-state"]}>
+        <span><CircleAlert size={24} /></span><h1>We couldn&apos;t load your workspace</h1><p>{error}</p>
+        <button onClick={() => void refresh()}><RefreshCw size={17} /> Try again</button>
       </section>
     );
   }
@@ -58,11 +57,10 @@ export function DashboardOverview() {
   if (!data) return null;
   const tenant = session?.tenant;
   const initialAgent = data.agents.find((agent) => agent.active) ?? data.agents.at(-1);
-  const activeAgent = data.agents.find((agent) => agent.active) ?? initialAgent;
   const initialReadiness = data.readiness.find((item) => item.agentId === initialAgent?.id);
   const setupItems = initialAgent && initialReadiness
     ? [
-        { label: "Business details complete", done: initialReadiness.businessDetailsComplete },
+        { label: "Business details completed", done: initialReadiness.businessDetailsComplete },
         { label: "Calendar connected", done: initialReadiness.calendarConfigured },
         { label: "Live channel enabled", done: initialReadiness.channelConfigured },
         { label: "Agent activated", done: initialReadiness.active },
@@ -71,153 +69,143 @@ export function DashboardOverview() {
         { label: "Email verified", done: data.onboarding.emailVerified },
         { label: "Create your first agent", done: false },
       ];
-  const setupComplete = data.onboarding.hasActiveAgent;
+  const setupProgress = Math.round((setupItems.filter((item) => item.done).length / setupItems.length) * 100);
   const setupHref = initialAgent ? `/agents/${initialAgent.id}` : "/onboarding";
 
   return (
-    <>
-      <div className="dashboard-page-head">
-        <div>
-          <span className="page-eyebrow">Workspace overview</span>
-          <h1>Good day, {tenant?.businessName ?? "Sauti"}.</h1>
-          <p>Monitor your agents, calls, bookings, and usage from one place.</p>
-        </div>
-        <div className="page-head-actions">
-          <button className="console-secondary-button" onClick={() => void refresh()} disabled={loading}>
-            {loading ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />} Refresh
-          </button>
-          <Link className="console-primary-button" href="/agents/new"><Sparkles size={16} /> Create agent</Link>
-        </div>
-      </div>
+    <div className={styles["dashboard-page"]}>
+      <header className={styles.hero}>
+        <div><h1>Good day, {tenant?.businessName ?? "Sauti"} <span>👋</span></h1><p>Monitor your agents, calls, bookings, and usage from one place.</p></div>
+        <div className={styles["hero-wave"]} aria-hidden="true"><span>S</span></div>
+        <button className={styles.refresh} onClick={() => void refresh()} disabled={loading} aria-label="Refresh dashboard">
+          {loading ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}
+        </button>
+      </header>
 
-      {!setupComplete && (
-        <section className="setup-progress-card">
-          <div className="setup-progress-copy">
-            <span><Sparkles size={17} /> {initialAgent ? `Finish setting up ${initialAgent.name}` : "Create your first agent"}</span>
-            <h2>{initialAgent ? `${initialAgent.name} is` : "Your workspace is"} {Math.round((setupItems.filter((item) => item.done).length / setupItems.length) * 100)}% ready</h2>
-            <p>{initialAgent ? "Complete this agent’s remaining requirements before activating it." : "Create the first agent for your workspace."}</p>
-            <Link href={setupHref}>{initialAgent ? "Continue agent setup" : "Start onboarding"} <ArrowRight size={16} /></Link>
-          </div>
-          <div className="setup-progress-list">
-            {setupItems.map((item) => <div className={item.done ? "done" : ""} key={item.label}><span>{item.done ? <Check size={14} /> : null}</span>{item.label}</div>)}
-          </div>
-        </section>
-      )}
-
-      <section className="overview-metrics">
-        <MetricCard icon={PhoneCall} label="Total calls" value={String(data.analytics.totalCalls)} detail="All recorded calls" />
-        <MetricCard icon={CalendarCheck} label="Bookings" value={String(data.analytics.bookingCalls)} detail="Created from calls" />
-        <MetricCard icon={Clock3} label="Avg. duration" value={formatDuration(data.analytics.averageDurationSeconds)} detail="Across completed calls" />
-        <MetricCard icon={WalletCards} label="Minutes remaining" value={String(data.usage.remainingMinutes)} detail={`${data.usage.usagePercent}% of plan used`} warning={data.usage.usagePercent >= 80} />
+      <section className={styles["setup-card"]}>
+        <div className={styles["progress-ring"]} style={{ background: `conic-gradient(#20e1d1 ${setupProgress}%, rgba(112,145,173,.18) 0)` }}>
+          <div><strong>{setupProgress}%</strong><small>Setup progress</small></div>
+        </div>
+        <div className={styles["setup-copy"]}>
+          <span><Sparkles size={14} /> {setupProgress === 100 ? "Workspace ready" : "Complete your setup"}</span>
+          <h2>{setupProgress === 100 ? "You’re ready to serve callers" : "You’re almost ready to launch"}</h2>
+          <p>{setupProgress === 100 ? "Your active channels and agents are ready for customer conversations." : "Finish the remaining steps to activate your agent and start delivering value."}</p>
+          <Link href={setupHref}>{setupProgress === 100 ? "Open agent studio" : "Continue setup"} <ArrowRight size={15} /></Link>
+        </div>
+        <div className={styles["setup-list"]}>
+          {setupItems.map((item) => <div className={item.done ? styles.done : ""} key={item.label}><span>{item.done && <Check size={12} />}</span>{item.label}</div>)}
+        </div>
+        <div className={styles["setup-visual"]} aria-hidden="true">
+          <span><CalendarCheck size={25} /></span><i /><span><Headphones size={25} /></span>
+        </div>
       </section>
 
-      <section className="dashboard-primary-grid">
-        <article className="console-card call-volume-card">
-          <div className="console-card-head">
-            <div><span>Call activity</span><h2>Last 14 days</h2></div>
-            <Link href="/analytics">View analytics <ChevronRight size={15} /></Link>
-          </div>
-          <CallVolumeChart daily={data.daily} />
+      <section className={styles.metrics} aria-label="Workspace metrics">
+        <MetricCard tone="teal" icon={<PhoneCall size={20} />} label="Total calls" value={numberFormat.format(data.analytics.totalCalls)} delta={data.analytics.totalCallsDelta.percentChange} />
+        <MetricCard tone="violet" icon={<CalendarCheck size={20} />} label="Bookings" value={numberFormat.format(data.analytics.bookingCalls)} delta={data.analytics.bookingCallsDelta.percentChange} />
+        <MetricCard tone="blue" icon={<Clock3 size={20} />} label="Avg. call duration" value={formatDuration(data.analytics.averageDurationSeconds)} delta={data.analytics.averageDurationSecondsDelta.percentChange} inverse />
+        <MetricCard tone="amber" icon={<TrendingUp size={20} />} label="Answer rate" value={`${data.analytics.connectRate}%`} delta={data.analytics.connectRateDelta.percentChange} />
+        <MetricCard tone="cyan" icon={<CreditCard size={20} />} label="Minutes remaining" value={numberFormat.format(data.usage.remainingMinutes)} detail={`${data.usage.usagePercent}% of plan used`} />
+      </section>
+
+      <section className={styles["primary-grid"]}>
+        <article className={`${styles.panel} ${styles["activity-chart"]}`}>
+          <PanelHead title="Call activity" action="View analytics" href="/analytics" note="Last 14 days" />
+          <CallActivityChart daily={data.daily} />
         </article>
-        <article className="console-card agent-status-card">
-          <div className="console-card-head">
-            <div><span>Agent status</span><h2>{activeAgent?.name ?? "No agent yet"}</h2></div>
-            {activeAgent && <i className={activeAgent.active ? "live" : "draft"}>{activeAgent.active ? "Live" : "Draft"}</i>}
-          </div>
-          {activeAgent ? (
-            <>
-              <div className="agent-avatar-large">{activeAgent.name.slice(0, 1).toUpperCase()}</div>
-              <div className="agent-detail-row"><PhoneCall size={17} /><span>Phone number</span><strong>{activeAgent.twilioPhoneNumber ?? "Not assigned"}</strong></div>
-              <div className="agent-detail-row"><Headphones size={17} /><span>Languages</span><strong>{activeAgent.supportedLanguages.join(", ")}</strong></div>
-              <Link className="card-text-link" href={`/agents/${activeAgent.id}`}>Open agent studio <ArrowRight size={15} /></Link>
-            </>
-          ) : (
-            <EmptyCompact icon={Bot} title="Create your first agent" detail="Build a multilingual agent for calls and bookings." href="/onboarding" action="Start setup" />
-          )}
+        <article className={`${styles.panel} ${styles.operations}`}>
+          <PanelHead title="Operations summary" action="View all" href="/calls" note="Recent activity" />
+          {data.calls.length ? <RecentOperations calls={data.calls.slice(0, 5)} /> : <CompactEmpty icon={<PhoneCall size={21} />} title="No call activity yet" />}
         </article>
       </section>
 
-      <section className="dashboard-secondary-grid">
-        <article className="console-card recent-calls-card">
-          <div className="console-card-head">
-            <div><span>Operations</span><h2>Recent calls</h2></div>
-            <Link href="/calls">View all <ChevronRight size={15} /></Link>
-          </div>
-          {data.calls.length ? <RecentCalls calls={data.calls.slice(0, 5)} /> : <EmptyCompact icon={PhoneCall} title="No calls yet" detail="Calls will appear here once an agent receives traffic." />}
+      <section className={styles["secondary-grid"]}>
+        <article className={`${styles.panel} ${styles.funnel}`}>
+          <PanelHead title="Bookings funnel" note="All time" />
+          <BookingFunnel data={data} />
         </article>
-        <article className="console-card upcoming-card">
-          <div className="console-card-head">
-            <div><span>Calendar</span><h2>Upcoming bookings</h2></div>
-            <Link href="/bookings">View all <ChevronRight size={15} /></Link>
-          </div>
-          {upcomingBookings.length ? (
-            <div className="booking-list">
-              {upcomingBookings.map((booking) => (
-                <div key={booking.id}>
-                  <span className="booking-date"><strong>{new Date(booking.appointmentAt).getDate()}</strong><small>{new Intl.DateTimeFormat("en", { month: "short" }).format(new Date(booking.appointmentAt))}</small></span>
-                  <div><strong>{booking.callerName}</strong><small>{booking.serviceType} · {formatDate(booking.appointmentAt)}</small></div>
-                  <ChevronRight size={16} />
-                </div>
-              ))}
+        <article className={`${styles.panel} ${styles.appointments}`}>
+          <PanelHead title="Appointments by day" note="Current data" />
+          <AppointmentBars data={data} />
+        </article>
+        <article className={`${styles.panel} ${styles.upcoming}`}>
+          <PanelHead title="Upcoming bookings" action="View calendar" href="/bookings" />
+          {upcomingBookings.length ? <div className={styles["booking-list"]}>{upcomingBookings.map((booking) => (
+            <div key={booking.id}>
+              <span><strong>{new Date(booking.appointmentAt).getDate()}</strong><small>{new Intl.DateTimeFormat("en", { month: "short" }).format(new Date(booking.appointmentAt))}</small></span>
+              <div><strong>{booking.serviceType}</strong><small>{booking.callerName} · {formatDate(booking.appointmentAt)}</small></div>
+              <ChevronRight size={14} />
             </div>
-          ) : <EmptyCompact icon={CalendarCheck} title="No upcoming bookings" detail="New appointments will be listed here." />}
+          ))}</div> : <CompactEmpty icon={<CalendarCheck size={21} />} title="No upcoming bookings" />}
+        </article>
+        <article className={`${styles.panel} ${styles.usage}`}>
+          <PanelHead title="Plan usage" note={titleCase(data.usage.plan)} />
+          <small>Minutes used</small><div><strong>{numberFormat.format(data.usage.minutesUsedThisCycle)}</strong><span>/ {numberFormat.format(data.usage.monthlyMinutesLimit)} mins</span><em>{data.usage.usagePercent}%</em></div>
+          <progress max="100" value={data.usage.usagePercent} />
+          <p><Clock3 size={13} /> Usage resets with your billing cycle</p>
+          <Link href="/billing">Manage plan <ArrowRight size={13} /></Link>
+          <footer><span>System status</span><strong><i /> All systems operational</strong></footer>
         </article>
       </section>
-    </>
-  );
-}
-
-function MetricCard({ icon: Icon, label, value, detail, warning = false }: {
-  icon: typeof PhoneCall;
-  label: string;
-  value: string;
-  detail: string;
-  warning?: boolean;
-}) {
-  return <article className={`metric-card ${warning ? "warning" : ""}`}><span><Icon size={19} /></span><div><small>{label}</small><strong>{value}</strong><p>{detail}</p></div></article>;
-}
-
-function CallVolumeChart({ daily }: { daily: DashboardData["daily"] }) {
-  const values = daily.length ? daily.map((item) => item.callCount) : Array.from({ length: 14 }, () => 0);
-  const maximum = Math.max(...values, 1);
-  return (
-    <div className="volume-chart" aria-label="Calls per day">
-      {values.map((value, index) => (
-        <div className="volume-column" key={`${daily[index]?.date ?? "empty"}-${index}`}>
-          <span title={`${value} calls`} style={{ height: `${Math.max(6, (value / maximum) * 100)}%` }} />
-          <small>{index % 3 === 0 ? new Intl.DateTimeFormat("en", { weekday: "short" }).format(new Date(daily[index]?.date ?? Date.now() - (13 - index) * 86400000)) : ""}</small>
-        </div>
-      ))}
     </div>
   );
 }
 
-function RecentCalls({ calls }: { calls: Call[] }) {
-  return (
-    <div className="recent-call-list">
-      {calls.map((call) => (
-        <Link href={`/calls/${call.id}`} key={call.id}>
-          <span className="caller-avatar"><UsersRound size={16} /></span>
-          <div><strong>{call.callerNumber || "Unknown caller"}</strong><small>{formatDate(call.startedAt)} · {call.languageDetected?.toUpperCase() ?? "Detecting"}</small></div>
-          <span className={`outcome-pill ${call.outcome}`}>{prettyOutcome(call.outcome)}</span>
-          <strong className="call-duration">{formatDuration(call.durationSeconds ?? 0)}</strong>
-          <ChevronRight size={15} />
-        </Link>
-      ))}
-    </div>
-  );
+function MetricCard({ icon, label, value, delta, detail, tone, inverse = false }: { icon: React.ReactNode; label: string; value: string; delta?: number; detail?: string; tone: string; inverse?: boolean }) {
+  const positive = (delta ?? 0) >= 0;
+  const good = inverse ? !positive : positive;
+  return <article className={styles["metric-card"]}><span className={styles[`tone-${tone}`]}>{icon}</span><div><small>{label}</small><strong>{value}</strong>{detail ? <p>{detail}</p> : <p className={good ? styles.good : styles.bad}>{positive ? <ArrowUp size={12} /> : <ArrowDown size={12} />}{Math.abs(delta ?? 0)}% <em>vs previous period</em></p>}</div></article>;
 }
 
-function EmptyCompact({ icon: Icon, title, detail, href, action }: {
-  icon: typeof Bot;
-  title: string;
-  detail: string;
-  href?: string;
-  action?: string;
-}) {
-  return <div className="empty-compact"><span><Icon size={21} /></span><strong>{title}</strong><p>{detail}</p>{href && action && <Link href={href}>{action} <ArrowRight size={14} /></Link>}</div>;
+function PanelHead({ title, note, action, href }: { title: string; note?: string; action?: string; href?: string }) {
+  return <div className={styles["panel-head"]}><div><strong>{title}</strong>{note && <small>{note}</small>}</div>{action && href && <Link href={href}>{action} <ArrowRight size={13} /></Link>}</div>;
 }
 
-function DashboardSkeleton() {
-  return <div className="dashboard-skeleton"><div /><div className="skeleton-row">{[1, 2, 3, 4].map((item) => <span key={item} />)}</div><section><div /><div /></section><section><div /><div /></section></div>;
+function CallActivityChart({ daily }: { daily: DashboardData["daily"] }) {
+  const values = daily.length ? daily : Array.from({ length: 14 }, (_, index) => ({ date: new Date(Date.now() - (13 - index) * 86400000).toISOString(), callCount: 0 }));
+  const max = Math.max(...values.map((item) => item.callCount), 1);
+  const points = values.map((item, index) => `${index * (680 / Math.max(1, values.length - 1))},${150 - (item.callCount / max) * 118}`).join(" ");
+  return <div className={styles["line-chart"]}>
+    <svg viewBox="0 0 680 174" preserveAspectRatio="none" role="img" aria-label="Daily calls">
+      <defs><linearGradient id="dashboardCallFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#22e2d3" stopOpacity=".36"/><stop offset="1" stopColor="#22e2d3" stopOpacity="0"/></linearGradient></defs>
+      <g className={styles.gridlines}><line x1="0" x2="680" y1="32" y2="32"/><line x1="0" x2="680" y1="71" y2="71"/><line x1="0" x2="680" y1="110" y2="110"/><line x1="0" x2="680" y1="150" y2="150"/></g>
+      <polygon points={`0,160 ${points} 680,160`} fill="url(#dashboardCallFill)" />
+      <polyline points={points} fill="none" stroke="#23e1d3" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
+      {values.map((item, index) => <circle key={item.date} cx={index * (680 / Math.max(1, values.length - 1))} cy={150 - (item.callCount / max) * 118} r="3.5" fill="#5ffff1"><title>{item.callCount} calls</title></circle>)}
+    </svg>
+    <div>{values.map((item, index) => <span key={item.date}>{index % 2 === 0 ? new Intl.DateTimeFormat("en", { month: "short", day: "2-digit" }).format(new Date(item.date)) : ""}</span>)}</div>
+  </div>;
 }
+
+function RecentOperations({ calls }: { calls: Call[] }) {
+  return <div className={styles["operations-list"]}>{calls.map((call) => {
+    const completed = ["completed", "booking", "booked", "transferred", "faq_answered"].includes(call.outcome);
+    return <Link href={`/calls/${call.id}`} key={call.id}>
+      <span className={completed ? styles.success : styles.warning}><PhoneCall size={14} /></span>
+      <div><strong>{call.outcome === "booking" || call.outcome === "booked" ? "Booking created" : prettyOutcome(call.outcome)}</strong><small>{call.callerNumber || "Unknown caller"}</small></div>
+      <time>{formatDate(call.startedAt)}</time><em className={completed ? styles.completed : styles.missed}>{completed ? "Completed" : prettyOutcome(call.outcome)}</em>
+    </Link>;
+  })}</div>;
+}
+
+function BookingFunnel({ data }: { data: DashboardData }) {
+  const rows = [
+    ["Calls handled", data.analytics.attemptedCalls],
+    ["Connected", data.analytics.connectedCalls],
+    ["Bookings made", data.analytics.bookingCalls],
+    ["Completed", data.analytics.completedCalls],
+  ] as const;
+  const max = Math.max(data.analytics.attemptedCalls, 1);
+  return <div className={styles["funnel-list"]}>{rows.map(([label, value]) => <div key={label}><span>{label}</span><i><b style={{ width: `${Math.max(5, value / max * 100)}%` }} /></i><strong>{numberFormat.format(value)}</strong><small>{Math.round(value / max * 1000) / 10}%</small></div>)}<footer><span>Conversion rate</span><strong>{data.analytics.attemptedCalls ? Math.round(data.analytics.bookingCalls / data.analytics.attemptedCalls * 1000) / 10 : 0}%</strong></footer></div>;
+}
+
+function AppointmentBars({ data }: { data: DashboardData }) {
+  const counts = Array.from({ length: 7 }, () => 0);
+  data.bookings.forEach((booking) => { counts[(new Date(booking.appointmentAt).getDay() + 6) % 7] += 1; });
+  const max = Math.max(...counts, 1);
+  return <div className={styles["bar-chart"]}>{counts.map((value, index) => <div key={index}><span><i style={{ height: `${Math.max(4, value / max * 100)}%` }} title={`${value} bookings`} /></span><small>{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][index]}</small></div>)}</div>;
+}
+
+function CompactEmpty({ icon, title }: { icon: React.ReactNode; title: string }) { return <div className={styles["compact-empty"]}><span>{icon}</span><p>{title}</p></div>; }
+function titleCase(value: string) { return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Plan"; }
+function DashboardSkeleton() { return <div className={styles.skeleton}><div/><section>{[1,2,3,4,5].map((item) => <span key={item}/>)}</section><main><div/><div/></main></div>; }

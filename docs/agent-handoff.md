@@ -215,6 +215,25 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Dark operations dashboard redesign
+
+- Rebuilt `/dashboard` around the supplied dark command-center reference while keeping every figure tied to the existing tenant-scoped dashboard response.
+- Added a responsive readiness panel with progress ring, five KPI cards with real period deltas, a daily-call line visualization, recent operations, booking funnel, appointments-by-day distribution, upcoming bookings, plan usage, and system-status presentation.
+- Reused the established dark console shell on the overview route while preserving the dashboard reference's workspace switcher position and scoping the new dashboard content styles to a CSS module.
+- Preserved refresh, loading, error, empty-state, call-detail, analytics, bookings, billing, agent-setup, and mobile behaviors.
+- Why: user requested that the main overview dashboard be improved to match the supplied high-fidelity dark operational dashboard reference.
+- Files touched:
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `dashboard/features/dashboard/DashboardOverview/DashboardOverview.tsx`
+  - `dashboard/features/dashboard/DashboardOverview/DashboardOverview.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed.
+- Known follow-up: the appointments-by-day panel groups the bookings currently returned by the dashboard endpoint; a dedicated date-range aggregation endpoint would support richer trend selection later.
+
 ### 2026-07-10 - Dark agent studio redesign
 
 - Rebuilt the `/agents` index to match the supplied dark voice-agent dashboard reference while retaining Sauti's real agent, call, booking-rate, language, status, and channel data.
