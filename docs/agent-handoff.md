@@ -221,6 +221,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Dark integration marketplace
+
+- Brought `/dashboard/integrations` into the shared dark console shell and redesigned the marketplace header, agent selector, provider search, category/workflow filters, category headings, and responsive provider grid around the supplied reference.
+- Restyled provider cards with clearer logos, connection states, capabilities, enablement toggles, delivery feedback, and configuration/test/disconnect actions while preserving all existing OAuth, Meta Embedded Signup, credential, and agent-binding behavior.
+- Converted connection and WhatsApp setup dialogs to the same dark interface, including inputs, selects, summaries, validation feedback, and actions.
+- Reused the existing component and icon dependencies; no new package was required.
+- Why: the integration marketplace still used the older light card system and did not match the upgraded console routes.
+- Files touched:
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: validate long provider descriptions and configuration warnings with every server-side authorization configuration state.
+
 ### 2026-07-11 - Dark analytics command center
 
 - Brought `/analytics` into the shared dark console shell and redesigned its header, date/agent controls, six KPI cards, tabs, chart cards, legends, tooltips, empty states, latency summaries, and agent table around the supplied analytics reference.
