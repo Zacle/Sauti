@@ -36,9 +36,16 @@ const oauthProviders = ["google_sheets", "hubspot", "salesforce", "calendly"];
 
 const logos: Record<string, string> = {
   google_calendar: "/logos/google-calendar.svg",
+  calendly: "/logos/calendly.svg",
+  telnyx_sms: "/logos/telnyx.svg",
+  custom_webhook: "/logos/webhook.svg",
+  whatsapp: "/logos/whatsapp.svg",
+  email: "/logos/email.svg",
   slack: "/logos/slack.svg",
+  google_sheets: "/logos/google-sheets.svg",
   hubspot: "/logos/hubspot.svg",
   salesforce: "/logos/salesforce.svg",
+  mpesa: "/logos/mpesa.svg",
 };
 
 const labels: Record<string, string> = {
@@ -242,9 +249,7 @@ export function IntegrationsPage() {
             const connected = binding?.connectionStatus === "connected" || binding?.connectionStatus === "built_in";
             return <article className={styles.card} key={entry.provider}>
               <div className={styles.cardTop}>
-                <span className={styles.logo}>{logos[entry.provider]
-                  ? <Image alt="" height={28} src={logos[entry.provider]} width={28} />
-                  : <Plug size={21} />}</span>
+                <span className={styles.logo}><Image alt={`${entry.name} logo`} height={28} src={logos[entry.provider]} width={28} /></span>
                 <div><h2>{entry.name}</h2><p>{entry.category}</p></div>
                 <span className={`${styles.status} ${connected ? styles.connected : ""}`}>
                   {connected && <Check size={12} />}{connected ? binding?.connectionStatus === "built_in" ? "Built in" : "Connected" : "Not connected"}

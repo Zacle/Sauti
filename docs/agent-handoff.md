@@ -221,6 +221,28 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Dedicated integration provider icons
+
+- Removed the generic plug fallback from integration marketplace cards and mapped every current catalog provider to a dedicated local SVG asset.
+- Added distinct marks for Calendly, Telnyx SMS, Custom Webhook, WhatsApp, Email Alerts, Google Sheets, and M-Pesa; retained the existing Google Calendar, Slack, HubSpot, and Salesforce assets.
+- Added descriptive image alt text using each provider name.
+- Why: provider cards should be immediately recognizable and must not reuse a default integration icon.
+- Files touched:
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `dashboard/public/logos/calendly.svg`
+  - `dashboard/public/logos/telnyx.svg`
+  - `dashboard/public/logos/webhook.svg`
+  - `dashboard/public/logos/whatsapp.svg`
+  - `dashboard/public/logos/email.svg`
+  - `dashboard/public/logos/google-sheets.svg`
+  - `dashboard/public/logos/mpesa.svg`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: any newly added catalog provider must add its logo to the explicit `logos` map before release.
+
 ### 2026-07-11 - Dark integration marketplace
 
 - Brought `/dashboard/integrations` into the shared dark console shell and redesigned the marketplace header, agent selector, provider search, category/workflow filters, category headings, and responsive provider grid around the supplied reference.
