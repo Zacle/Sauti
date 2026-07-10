@@ -223,7 +223,11 @@ Expected:
 - Added compatible-voice fallback for browser test and turn-based public web voice audio. If the configured voice cannot synthesize the call language, the backend tries the first compatible catalog voice instead of returning silence.
 - Why: user reported greetings that did not identify the institution, and a Sarah agent that did not speak the greeting.
 - Deployment:
-  - Not deployed yet.
+  - Deployed in commit `59bf4a7`.
+  - GitHub Actions CI run `29101917921` passed.
+  - GitHub Actions deploy run `29102046761` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/api/CallController.java`
   - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
@@ -246,7 +250,11 @@ Expected:
 - Prevented rejected-transcript clarification turns from falling back to replaying the latest saved agent audio when inline TTS is unavailable.
 - Why: user reported French browser tests getting worse, including false English/Arabic caller transcripts, early reminders, and the LLM treating corrupted STT as names or facts.
 - Deployment:
-  - Not deployed yet.
+  - Deployed in commit `59bf4a7`.
+  - GitHub Actions CI run `29101917921` passed.
+  - GitHub Actions deploy run `29102046761` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/api/CallController.java`
   - `backend/src/main/java/com/sauti/call/CallDtos.java`
