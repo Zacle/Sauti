@@ -221,6 +221,21 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Routing and numeric hover-state correction
+
+- Added explicit dark default, hover, focus, disabled, and browser-control styling for numeric inputs and suffix fields used by silence reminders, reminder limits, timeouts, and similar configuration values.
+- Fully darkened the Routing operating-hours editor: mode tabs, schedule container, day rows, checkboxes, time inputs, closed states, and row hover behavior.
+- Fully darkened outside-hours behavior cards with distinct default, hover, selected, radio-indicator, description, and message-field states.
+- Why: these wrapper components had independent light backgrounds that were not covered by the generic field theme and reverted to white on interaction.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: none.
+
 ### 2026-07-11 - Complete Agent Studio surface audit and Radix sliders
 
 - Audited the supplied screenshots across Behavior, Speech, Routing, Integrations, Knowledge, and Post-call and explicitly replaced the remaining light nested surfaces with dark component states.
