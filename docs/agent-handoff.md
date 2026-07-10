@@ -221,6 +221,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Dark analytics command center
+
+- Brought `/analytics` into the shared dark console shell and redesigned its header, date/agent controls, six KPI cards, tabs, chart cards, legends, tooltips, empty states, latency summaries, and agent table around the supplied analytics reference.
+- Retuned all Recharts grids, axis labels, data labels, funnel labels, and series colors for the navy/cyan interface while preserving existing analytics data and interactions.
+- Reused the existing route-scoped Recharts dependency; no new package was required and the analytics bundle remains isolated to `/analytics`.
+- Why: the Analytics route still used the older light card system and its chart styling did not match the upgraded Overview, Agents, Calls, and Bookings workspaces.
+- Files touched:
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `dashboard/features/analytics/presentation/AnalyticsPage.tsx`
+  - `dashboard/features/analytics/presentation/AnalyticsPage.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: validate chart density with a high-volume workspace, especially 90-day labels and long intent names.
+
 ### 2026-07-11 - Booking row alignment
 
 - Replaced the independent sticky booking date rail with a row-coupled layout where each date marker and appointment card share the same grid row.

@@ -454,6 +454,11 @@
 .bookings-console-shell .console-sidebar-footer { order: 0; }
 .bookings-console-shell .console-content { width: min(1580px, 100%); padding-top: 22px; }
 
+.analytics-console-shell .workspace-switcher { order: 0; margin: 20px 0 24px; }
+.analytics-console-shell .console-nav { order: 0; }
+.analytics-console-shell .console-sidebar-footer { order: 0; }
+.analytics-console-shell .console-content { width: min(1580px, 100%); padding-top: 20px; }
+
 .dashboard-page-head {
   display: flex;
   align-items: flex-start;
