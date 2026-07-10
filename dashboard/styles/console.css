@@ -343,6 +343,86 @@
   padding: 32px;
 }
 
+/* Agent studio index: dark, high-focus workspace inspired by the voice console visual language. */
+.console-shell.agents-console-shell {
+  color: #eef7ff;
+  background:
+    radial-gradient(circle at 70% 4%, rgba(16, 131, 170, 0.10), transparent 31rem),
+    radial-gradient(circle at 28% 92%, rgba(18, 217, 197, 0.045), transparent 28rem),
+    #020b18;
+}
+
+.agents-console-shell .console-main {
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(34, 87, 130, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 87, 130, 0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.agents-console-shell .console-sidebar {
+  border-right-color: rgba(116, 171, 220, 0.12);
+  background:
+    radial-gradient(circle at 20% 5%, rgba(17, 213, 197, 0.09), transparent 18rem),
+    linear-gradient(180deg, #041120 0%, #061528 100%);
+}
+
+.agents-console-shell .workspace-switcher {
+  order: 4;
+  margin: 14px 0 0;
+  border-color: rgba(118, 171, 219, 0.15);
+  background: rgba(8, 29, 51, 0.86);
+}
+
+.agents-console-shell .console-nav { order: 1; }
+.agents-console-shell .console-sidebar-footer { order: 3; }
+
+.agents-console-shell .console-nav > span { display: none; }
+
+.agents-console-shell .console-nav a,
+.agents-console-shell .console-sidebar-footer a,
+.agents-console-shell .console-sidebar-footer button {
+  min-height: 45px;
+  border-radius: 11px;
+  color: #9db0c5;
+}
+
+.agents-console-shell .console-nav a.active {
+  color: #f6ffff;
+  background: linear-gradient(90deg, rgba(20, 191, 176, 0.42), rgba(28, 91, 137, 0.43));
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18), inset 2px 0 #23e2d5;
+}
+
+.agents-console-shell .console-topbar {
+  min-height: 76px;
+  border-bottom-color: rgba(111, 163, 210, 0.10);
+  background: rgba(2, 12, 26, 0.80);
+  backdrop-filter: blur(22px) saturate(125%);
+}
+
+.agents-console-shell .console-search {
+  border-color: rgba(116, 168, 216, 0.18);
+  color: #738aa2;
+  background: rgba(9, 27, 49, 0.78);
+}
+
+.agents-console-shell .console-search:focus-within {
+  border-color: rgba(35, 225, 211, 0.52);
+  background: rgba(10, 31, 54, 0.96);
+  box-shadow: 0 0 0 3px rgba(31, 220, 207, 0.08);
+}
+
+.agents-console-shell .console-search input { color: #dbe9f5; }
+.agents-console-shell .console-search kbd { border-color: rgba(125, 166, 204, 0.17); color: #71869d; background: rgba(255, 255, 255, 0.025); }
+.agents-console-shell .top-icon-button { border-color: rgba(116, 168, 216, 0.16); color: #a6b9cc; background: rgba(9, 27, 49, 0.78); }
+.agents-console-shell .test-agent-button { border: 1px solid rgba(116, 168, 216, 0.22); color: #e9f5ff; background: rgba(9, 27, 49, 0.8); box-shadow: none; }
+.agents-console-shell .profile-avatar { color: #00211f; background: linear-gradient(145deg, #24e4d6, #37d8ee); }
+
+.agents-console-shell .console-content {
+  width: min(1540px, 100%);
+  padding: 18px 30px 34px;
+}
+
 .dashboard-page-head {
   display: flex;
   align-items: flex-start;

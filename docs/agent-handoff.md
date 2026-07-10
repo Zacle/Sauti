@@ -215,6 +215,25 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Dark agent studio redesign
+
+- Rebuilt the `/agents` index to match the supplied dark voice-agent dashboard reference while retaining Sauti's real agent, call, booking-rate, language, status, and channel data.
+- Added a voice-focused hero, four workspace KPI cards, filter/search controls, grid/list switching, richer agent cards, a calls-distribution visualization, ranked agent activity, and a compact creation prompt.
+- Scoped the dark navy/cyan shell treatment to the agents index so the rest of the console keeps its existing visual system.
+- Preserved agent search, live/draft filtering, configuration links, creation, deletion, preview-mode data, loading states, empty states, and responsive behavior.
+- Why: user requested that the agents UI be upgraded to resemble the supplied high-fidelity dark dashboard reference.
+- Files touched:
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `dashboard/features/agents/AgentList/AgentList.tsx`
+  - `dashboard/features/agents/AgentList/AgentList.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed.
+- Known follow-up: validate the information density with a workspace containing many agents; the layout currently shows all matching agents and does not paginate.
+
 ### 2026-07-10 - Adaptive browser test turn-taking and stronger detail guardrails
 
 - Made browser test endpointing adaptive: ordinary replies now finalize after 650 ms of silence, while replies to requests for a name, phone number, address, email, spelling, or digits retain a 1300 ms pause so callers can dictate naturally.
