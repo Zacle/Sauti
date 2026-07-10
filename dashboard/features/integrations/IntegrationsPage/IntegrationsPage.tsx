@@ -29,6 +29,7 @@ import {
   type WhatsAppTemplate,
 } from "@/lib/api/integrations";
 import type { Agent } from "@/types/api";
+import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
 import styles from "./IntegrationsPage.module.css";
 
 type Filter = "all" | "calendar" | "messaging" | "crm" | "data" | "notifications" | "payments" | "developer" | "during" | "post" | "connected";
@@ -204,11 +205,11 @@ export function IntegrationsPage() {
       <header className={styles.heading}>
         <div><span><Plug size={15} /> Integrations</span><h1>Integration marketplace</h1>
           <p>Connect an account once, then control what each agent can use.</p></div>
-        <label><span>Configure for agent</span><div><Bot size={16} />
-          <select value={agentId} onChange={(event) => setAgentId(event.target.value)} disabled={!agents.length}>
-            {!agents.length && <option value="">No agents available</option>}
-            {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-          </select><ChevronDown size={15} /></div></label>
+        <label><span>Configure for agent</span>
+          <DarkSelect ariaLabel="Configure integrations for agent" icon={<Bot size={16} />} value={agentId || "none"}
+            onValueChange={(value) => value !== "none" && setAgentId(value)}
+            options={agents.length ? agents.map((agent) => ({ value: agent.id, label: agent.name })) : [{ value: "none", label: "No agents available" }]} />
+        </label>
       </header>
 
       {searchParams.get("calendar") === "connected" && <div className={styles.success}><Check size={17} /> Google Calendar connected.</div>}

@@ -221,6 +221,44 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Unified dark agent configuration studio
+
+- Extended the shared dark console shell to `/agents/new` and `/agents/[id]`, then redesigned the full editing workspace around the supplied Agent Configuration reference.
+- Updated the sticky studio header, agent identity, setup/save actions, section navigation, prompt-variable card, scrollable form canvas, inputs, selects, textareas, warnings, toggles, language chips, tier/voice options, knowledge documents, integration cards, operating hours, DTMF controls, and post-call fields.
+- Applied the same design system across Main Settings, Behavior & Prompt, Speech & Transcription, Call Behaviour, Routing, Integrations, Knowledge, and Post-call rather than limiting it to the initial tab.
+- Rebuilt the idle browser test panel with animated voice-wave contours, drifting cyan/indigo lighting, a pulsing microphone orb, expanding rings, and a stronger test-call action. Active call transcript and controls now use the same dark treatment.
+- Added reduced-motion handling that disables all decorative browser-test animation when requested by the operating system.
+- Added responsive studio behavior: the preview hides at intermediate widths and the section navigation becomes a sticky horizontal rail on small screens.
+- Why: agent editing was still using the older light workspace and the browser test panel lacked the dynamic voice-focused presentation of the supplied reference.
+- Files touched:
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: visually validate very long knowledge/document lists and dense DTMF mappings at the 1080–1280 px transition where the live preview is hidden.
+
+### 2026-07-11 - Shared dark agent dropdowns
+
+- Replaced the native agent selects on Analytics and the Integration Marketplace with a reusable Radix Select component matching the Calls status dropdown.
+- Added a custom dark trigger and portal-positioned menu with provider/agent icons, chevrons, selected checkmarks, hover/highlight states, keyboard navigation, focus-visible treatment, and long-label truncation.
+- Why: native operating-system menus rendered bright blue/gray dropdowns that broke the dark console design and differed between browsers.
+- Files touched:
+  - `dashboard/components/DarkSelect/DarkSelect.tsx`
+  - `dashboard/components/DarkSelect/DarkSelect.module.css`
+  - `dashboard/features/analytics/presentation/AnalyticsPage.tsx`
+  - `dashboard/features/analytics/presentation/AnalyticsPage.module.css`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: Analytics and Integration Marketplace now carry the Radix Select route bundle, consistent with Calls; reuse this shared component for future dark-console selects.
+
 ### 2026-07-11 - Dedicated integration provider icons
 
 - Removed the generic plug fallback from integration marketplace cards and mapped every current catalog provider to a dedicated local SVG asset.

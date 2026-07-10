@@ -45,6 +45,7 @@ import type {
   AnalyticsOutcomeByDay,
 } from "@/types/api";
 import { formatDuration } from "@/lib/utils";
+import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
 import { analyticsRange, analyticsRangeOptions, type AnalyticsRangeKey } from "../domain/date-ranges";
 import styles from "./AnalyticsPage.module.css";
 
@@ -119,13 +120,12 @@ export function AnalyticsPage() {
             </button>
           ))}
         </div>
-        <label className={styles.selectField}>
-          Agent
-          <select value={agentId} onChange={(event) => setAgentId(event.target.value)}>
-            <option value="">All agents</option>
-            {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-          </select>
-        </label>
+        <div className={styles.selectField}>
+          <span>Agent</span>
+          <DarkSelect ariaLabel="Filter analytics by agent" icon={<UsersRound size={16} />} value={agentId || "all"}
+            onValueChange={(value) => setAgentId(value === "all" ? "" : value)}
+            options={[{ value: "all", label: "All agents" }, ...agents.map((agent) => ({ value: agent.id, label: agent.name }))]} />
+        </div>
         <div className={styles.filterMeta}>
           <strong>{range.label}</strong>
           <small>{selectedAgentName}</small>
