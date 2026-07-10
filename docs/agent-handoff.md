@@ -224,7 +224,11 @@ Expected:
 - Clarified that name/contact collection should start only after a clear booking, callback, transfer, or message-taking intent, and that the agent must not invent a name from an availability/information request.
 - Why: user reported that the browser test kept cutting them off during longer French sentences, required speaking too loudly, and the agent jumped to name/contact collection while the caller was only asking for availability information.
 - Deployment:
-  - Not deployed yet.
+  - Deployed in commit `e3eb115`.
+  - GitHub Actions CI run `29103169348` passed.
+  - GitHub Actions deploy run `29103292431` passed.
+  - `https://sauti.uk/health` returned `{"status":"UP"}`.
+  - `https://sauti.uk/analytics` redirected unauthenticated users to `/login?next=%2Fanalytics`.
 - Files touched:
   - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
   - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
