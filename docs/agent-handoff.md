@@ -221,6 +221,29 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Working call date range, readable typography, and waveform audio
+
+- Fixed the Calls date filter to compare inclusive normalized local calendar dates instead of timestamp boundaries, keep the range ordered, expose active styling, reset pagination, and provide a clear-range action.
+- Increased undersized typography across the Calls table, filters, KPI cards, transcript drawer, details, summaries, pagination, and empty/error states.
+- Increased the smallest text across the Overview readiness card, metrics, panel headings, operations, funnel, charts, bookings, usage, and empty states while retaining the compact dashboard layout.
+- Replaced the native recording control with WaveSurfer.js, providing an interactive waveform, seeking, progress visualization, play/pause, and elapsed/total duration.
+- Why: user reported that the date range did not filter calls and that Calls/Overview text and the recording display were too small/basic.
+- Files touched:
+  - `dashboard/features/calls/CallsPage/CallsPage.tsx`
+  - `dashboard/features/calls/CallsPage/CallsPage.module.css`
+  - `dashboard/features/dashboard/DashboardOverview/DashboardOverview.module.css`
+  - `dashboard/package.json`
+  - `dashboard/package-lock.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+  - `Push-Location dashboard; npm.cmd audit --audit-level=high; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted under the maintainer-owned source-control policy.
+- Known follow-ups:
+  - WaveSurfer decodes the recording client-side to render the waveform, so unusually long recordings should be watched for browser memory pressure.
+  - `npm audit --audit-level=high` passes but reports two moderate PostCSS findings inherited through Next.js; the suggested forced fix would downgrade Next.js and was not applied.
+
 ### 2026-07-10 - Dark calls workspace and transcript drawer redesign
 
 - Rebuilt `/calls` to match the supplied dark call-operations references while retaining the existing calls, agents, bookings, call-turn, and recording APIs.

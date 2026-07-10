@@ -101,3 +101,12 @@
 @media(max-width:900px){.setup-card{grid-template-columns:120px 1fr}.setup-list{grid-column:1/-1;grid-template-columns:repeat(2,1fr)}.primary-grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:620px){.hero-wave{display:none}.setup-card{grid-template-columns:1fr}.progress-ring{margin:auto}.setup-copy{text-align:center}.setup-copy>span,.setup-copy a{justify-content:center}.setup-list{grid-template-columns:1fr}.metrics,.secondary-grid{grid-template-columns:1fr}.operations-list>a{grid-template-columns:auto minmax(0,1fr) auto}.operations-list time{display:none}.panel-head>div{gap:6px}.line-chart>div{font-size:.45rem}}
 @media(prefers-reduced-motion:reduce){.skeleton>div,.skeleton span,.skeleton main>div{animation:none}}
+
+/* Increase dashboard readability without losing the compact command-center layout. */
+.progress-ring small { font-size:.72rem; }.setup-copy > span { font-size:.8rem; }.setup-copy h2 { font-size:1.25rem; }.setup-copy p { font-size:.82rem; }.setup-copy a { font-size:.78rem; }.setup-list > div { font-size:.75rem; }
+.metric-card small { font-size:.76rem; }.metric-card strong { font-size:1.38rem; }.metric-card p { font-size:.67rem; }
+.panel-head strong { font-size:.88rem; }.panel-head small { font-size:.66rem; }.panel-head a { font-size:.68rem; }.line-chart > div { font-size:.63rem; }
+.operations-list strong { font-size:.74rem; }.operations-list small { font-size:.65rem; }.operations-list time { font-size:.65rem; }.operations-list em { font-size:.64rem; }
+.funnel-list > div { grid-template-columns:86px minmax(55px,1fr) 42px 42px; font-size:.66rem; }.funnel-list > div > strong { font-size:.68rem; }.funnel-list > div > small { font-size:.62rem; }.funnel-list footer { font-size:.75rem; }
+.bar-chart small { font-size:.62rem; }.booking-list > div > span strong { font-size:.82rem; }.booking-list > div > span small { font-size:.57rem; }.booking-list > div > div strong { font-size:.72rem; }.booking-list > div > div small { font-size:.62rem; }
+.usage > small { font-size:.64rem; }.usage > div strong { font-size:1.18rem; }.usage > div span,.usage > div em { font-size:.7rem; }.usage > p,.usage > a,.usage footer { font-size:.64rem; }.compact-empty p { font-size:.72rem; }

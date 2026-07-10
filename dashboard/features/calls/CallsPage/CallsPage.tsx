@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import WaveSurfer from "wavesurfer.js";
 import {
   Activity,
   ArrowLeft,
@@ -14,9 +15,10 @@ import {
   FileText,
   Headphones,
   LoaderCircle,
-  Mic2,
+  Pause,
   PhoneCall,
   PhoneIncoming,
+  Play,
   PlayCircle,
   Search,
   Sparkles,
@@ -84,9 +86,9 @@ export function CallsPage() {
       if (statusFilter === "missed" && SUCCESSFUL_OUTCOMES.has(call.outcome)) return false;
       if (statusFilter === "active" && call.outcome !== "active") return false;
       if (agentFilter !== "all" && call.agentId !== agentFilter) return false;
-      const startedAt = new Date(call.startedAt).getTime();
-      if (fromDate && startedAt < new Date(`${fromDate}T00:00:00`).getTime()) return false;
-      if (toDate && startedAt > new Date(`${toDate}T23:59:59`).getTime()) return false;
+      const callDate = localDateKey(call.startedAt);
+      if (fromDate && callDate < fromDate) return false;
+      if (toDate && callDate > toDate) return false;
       if (!normalized) return true;
       const booking = bookingsByCall.get(call.id);
       return [
@@ -139,6 +141,16 @@ export function CallsPage() {
     }
   }
 
+  function updateFromDate(value: string) {
+    setFromDate(value);
+    if (value && toDate && value > toDate) setToDate(value);
+  }
+
+  function updateToDate(value: string) {
+    setToDate(value);
+    if (value && fromDate && value < fromDate) setFromDate(value);
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -173,7 +185,7 @@ export function CallsPage() {
             <PlayCircle size={16} /> Tests
           </button>
         </div>
-        <label className={styles.dateRange}><CalendarDays size={15} /><input aria-label="Calls from date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /><span>–</span><input aria-label="Calls to date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+        <div className={`${styles.dateRange} ${fromDate || toDate ? styles.activeDateRange : ""}`}><CalendarDays size={15} /><label><span>From</span><input aria-label="Calls from date" type="date" value={fromDate} onChange={(event) => updateFromDate(event.target.value)} /></label><i>–</i><label><span>To</span><input aria-label="Calls to date" type="date" value={toDate} onChange={(event) => updateToDate(event.target.value)} /></label>{(fromDate || toDate) && <button aria-label="Clear date range" onClick={() => { setFromDate(""); setToDate(""); }} type="button"><X size={13} /></button>}</div>
         <label className={styles.selectControl}><Activity size={15} /><select aria-label="Filter calls by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All status</option><option value="answered">Answered</option><option value="missed">Missed</option><option value="active">Active</option></select><ChevronDown size={14} /></label>
         <label className={styles.selectControl}><Bot size={15} /><select aria-label="Filter calls by agent" value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)}><option value="all">All agents</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select><ChevronDown size={14} /></label>
         <label className={styles.search}>
@@ -377,28 +389,63 @@ function TranscriptLine({ role, text, time }: { role: "Agent" | "Caller"; text: 
 }
 
 function RecordingPlayer({ callId }: { callId: string }) {
-  const [url, setUrl] = useState("");
+  const waveformRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<WaveSurfer | null>(null);
+  const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
     let currentUrl = "";
+    setReady(false);
+    setFailed(false);
+    setPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
     getCallRecording(callId)
       .then((blob) => {
+        if (cancelled || !waveformRef.current) return;
         currentUrl = URL.createObjectURL(blob);
-        setUrl(currentUrl);
+        const player = WaveSurfer.create({
+          container: waveformRef.current,
+          url: currentUrl,
+          height: 48,
+          waveColor: "#3a657b",
+          progressColor: "#22dfd1",
+          cursorColor: "#75fff4",
+          cursorWidth: 1,
+          barWidth: 2,
+          barGap: 2,
+          barRadius: 2,
+          normalize: true,
+        });
+        playerRef.current = player;
+        player.on("ready", (length) => { setDuration(length); setReady(true); });
+        player.on("timeupdate", setCurrentTime);
+        player.on("play", () => setPlaying(true));
+        player.on("pause", () => setPlaying(false));
+        player.on("finish", () => setPlaying(false));
+        player.on("error", () => setFailed(true));
       })
       .catch(() => setFailed(true));
     return () => {
+      cancelled = true;
+      playerRef.current?.destroy();
+      playerRef.current = null;
       if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
   }, [callId]);
 
   if (failed) return <span className={styles.unavailable}>Could not load recording</span>;
-  if (!url) return <LoaderCircle className="spin" size={17} />;
   return (
-    <div className={styles.audioShell}>
-      <Mic2 size={17} />
-      <audio controls preload="metadata" src={url}>Your browser does not support audio playback.</audio>
+    <div className={styles.wavePlayer}>
+      <button disabled={!ready} onClick={() => void playerRef.current?.playPause()} aria-label={playing ? "Pause recording" : "Play recording"} type="button">{!ready ? <LoaderCircle className="spin" size={16} /> : playing ? <Pause size={15} /> : <Play size={15} />}</button>
+      <span>{formatAudioTime(currentTime)}</span>
+      <div className={styles.waveform} ref={waveformRef} />
+      <span>{formatAudioTime(duration)}</span>
     </div>
   );
 }
@@ -433,6 +480,20 @@ function formatTurnTime(turnIndex: number) {
 
 function humanize(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function localDateKey(value: string) {
+  const date = new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatAudioTime(value: number) {
+  if (!Number.isFinite(value)) return "0:00";
+  const seconds = Math.max(0, Math.floor(value));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
 function summaryFallback(call: Call, booking: Booking | null) {

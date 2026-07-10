@@ -16,7 +16,8 @@
     "next": "^15.1.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^3.9.2"
+    "recharts": "^3.9.2",
+    "wavesurfer.js": "^7.12.10"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
