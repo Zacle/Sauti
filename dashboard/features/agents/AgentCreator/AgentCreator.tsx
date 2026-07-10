@@ -70,6 +70,7 @@ import { TestCallPanel } from "./TestCallPanel";
 import { AddVariableForm } from "../AgentVariables/AddVariableForm";
 import { getGoogleCalendarStatus, type GoogleCalendarStatus } from "@/lib/api/integrations";
 import { DeleteAgentDialog } from "@/features/agents/DeleteAgentDialog/DeleteAgentDialog";
+import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
 
 type Template = {
   id: string;
@@ -1447,18 +1448,12 @@ function MainSettings(props: {
             <ChevronDown size={15} />
           </button>
         </label>
-        <label>Primary language<select value={props.language} onChange={(event) => props.onLanguage(event.target.value)}><option value="en">English</option><option value="fr">French</option><option value="ar">Arabic</option></select></label>
+        <label>Primary language<DarkSelect ariaLabel="Primary language" icon={<Languages size={16} />} value={props.language} onValueChange={props.onLanguage}
+          options={[{ value: "en", label: "English" }, { value: "fr", label: "French" }, { value: "ar", label: "Arabic" }]} /></label>
         <label>
           Timezone
-          <select value={props.timezone} onChange={(event) => props.onTimezone(event.target.value)}>
-            {TIMEZONE_GROUPS.map((group) => (
-              <optgroup label={group.label} key={group.label}>
-                {group.zones.map((zone) => (
-                  <option value={zone.value} key={zone.value}>{zone.label}</option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          <DarkSelect ariaLabel="Agent timezone" icon={<Clock3 size={16} />} value={props.timezone} onValueChange={props.onTimezone}
+            options={TIMEZONE_GROUPS.flatMap((group) => group.zones.map((zone) => ({ value: zone.value, label: zone.label })))} />
         </label>
       </div>
       <div
@@ -1489,9 +1484,8 @@ function MainSettings(props: {
                   </label>
                   <label>
                     Language
-                    <select value={widgetLanguage} onChange={(event) => setWidgetLanguage(event.target.value)}>
-                      {props.supportedLanguages.map((code) => <option value={code} key={code}>{languageName(code)}</option>)}
-                    </select>
+                    <DarkSelect ariaLabel="Widget language" value={widgetLanguage} onValueChange={setWidgetLanguage}
+                      options={props.supportedLanguages.map((code) => ({ value: code, label: languageName(code) }))} />
                   </label>
                   <label>
                     Accent color
@@ -1499,10 +1493,8 @@ function MainSettings(props: {
                   </label>
                   <label>
                     Position
-                    <select value={widgetPosition} onChange={(event) => setWidgetPosition(event.target.value as "right" | "left")}>
-                      <option value="right">Bottom right</option>
-                      <option value="left">Bottom left</option>
-                    </select>
+                    <DarkSelect ariaLabel="Widget position" value={widgetPosition} onValueChange={(value) => setWidgetPosition(value as "right" | "left")}
+                      options={[{ value: "right", label: "Bottom right" }, { value: "left", label: "Bottom left" }]} />
                   </label>
                 </div>
                 <div className="web-voice-embed">
@@ -1693,7 +1685,8 @@ function SpeechSettings(props: {
       <RangeSetting label="Interruption grace period" detail="Minimum caller speech before an interruption is accepted." value={props.bargeInGraceMs} min={0} max={1500} step={50} suffix={`${props.bargeInGraceMs} ms`} onChange={props.onBargeInGraceMs} />
       <RangeSetting label="Response latency" detail="Silence Deepgram waits before finalizing the caller's turn." value={props.sttEndpointingMs} min={100} max={1500} step={50} suffix={`${props.sttEndpointingMs} ms`} onChange={props.onSttEndpointingMs} />
       <div className="studio-form-grid advanced-grid">
-        <label>Vocabulary specialization<select value={props.vocabularyDomain} onChange={(event) => props.onVocabularyDomain(event.target.value)}><option value="general">General</option><option value="medical">Medical</option></select></label>
+        <label>Vocabulary specialization<DarkSelect ariaLabel="Vocabulary specialization" value={props.vocabularyDomain} onValueChange={props.onVocabularyDomain}
+          options={[{ value: "general", label: "General" }, { value: "medical", label: "Medical" }]} /></label>
         <label>Boosted keyterms<input value={props.boostedKeywords} onChange={(event) => props.onBoostedKeywords(event.target.value)} placeholder="Kibera, Ouagadougou, Thiong'o" /></label>
       </div>
     </>
@@ -1750,10 +1743,8 @@ function CallBehaviorSettings(props: {
           <div className="studio-form-grid advanced-grid">
             <label>
               Completion key
-              <select value={props.dtmfTerminationKey} onChange={(event) => props.onDtmfTerminationKey(event.target.value as "#" | "*")}>
-                <option value="#"># Hash</option>
-                <option value="*">* Star</option>
-              </select>
+              <DarkSelect ariaLabel="DTMF completion key" value={props.dtmfTerminationKey} onValueChange={(value) => props.onDtmfTerminationKey(value as "#" | "*")}
+                options={[{ value: "#", label: "# Hash" }, { value: "*", label: "* Star" }]} />
               <small>Submits the digits immediately and is not included in the value.</small>
             </label>
             <label>

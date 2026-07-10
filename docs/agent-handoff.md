@@ -221,6 +221,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Agent Studio dark-surface correction
+
+- Replaced all six remaining native Agent Studio selects with the shared Radix dark selector: primary language, timezone, Web Voice widget language, widget position, vocabulary specialization, and DTMF completion key.
+- Added explicit high-specificity dark states for the phone-number selector and voice selector, including default, hover, focus-visible, open, and disabled behavior.
+- Fully restyled the phone-number dialog: backdrop, container, header, country selector/menu/search, refresh action, number results, hover/selected rows, radio state, recommendation badge, pricing, empty/error/warning states, footer, and assignment actions.
+- Added explicit dark treatment for the voice picker modal and its filters, results, selected voice, inputs, footer, and buttons.
+- Corrected the setup/next-step action so its default and hover states no longer render as a white card.
+- Why: the initial dark studio pass did not override several older high-specificity light rules, and native selects still opened operating-system menus inconsistent with the console.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: the Radix selector adds its route-local UI bundle to Agent Studio, consistent with Calls, Analytics, and Integration Marketplace.
+
 ### 2026-07-11 - Unified dark agent configuration studio
 
 - Extended the shared dark console shell to `/agents/new` and `/agents/[id]`, then redesigned the full editing workspace around the supplied Agent Configuration reference.
