@@ -227,13 +227,24 @@ public class PublicWebVoiceController {
     private byte[] synthesize(Agent agent, String language, String text) {
         var voiceId = agent.getTtsVoiceId();
         if (voiceId == null || voiceId.isBlank()) {
-            var match = voiceCatalogService.list().voices().stream()
-                    .filter(voice -> voice.languages().contains(language))
-                    .findFirst();
-            if (match.isEmpty()) return new byte[0];
-            voiceId = match.get().id();
+            voiceId = compatibleVoiceId(language);
+            if (voiceId.isBlank()) return new byte[0];
         }
-        return voiceCatalogService.synthesize(voiceId, language, text);
+        try {
+            return voiceCatalogService.synthesize(voiceId, language, text);
+        } catch (RuntimeException exception) {
+            var fallbackVoiceId = compatibleVoiceId(language);
+            if (fallbackVoiceId.isBlank() || fallbackVoiceId.equals(voiceId)) return new byte[0];
+            return voiceCatalogService.synthesize(fallbackVoiceId, language, text);
+        }
+    }
+
+    private String compatibleVoiceId(String language) {
+        return voiceCatalogService.list().voices().stream()
+                .filter(voice -> voice.languages().contains(language))
+                .map(com.sauti.voice.VoiceCatalogDtos.VoiceOption::id)
+                .findFirst()
+                .orElse("");
     }
 
     private record RateWindow(long startedAt, int count) {

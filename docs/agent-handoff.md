@@ -215,6 +215,28 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Business-aware opening greetings and voice fallback
+
+- Opening greeting generation now requires both the agent name and the represented institution/business name.
+- Added a deterministic post-check: if the LLM returns a greeting that omits either the agent name or business name, the platform replaces it with a concise localized fallback.
+- Updated English, French, Arabic, and legacy Swahili fallback openings to include the business/institution.
+- Added compatible-voice fallback for browser test and turn-based public web voice audio. If the configured voice cannot synthesize the call language, the backend tries the first compatible catalog voice instead of returning silence.
+- Why: user reported greetings that did not identify the institution, and a Sarah agent that did not speak the greeting.
+- Deployment:
+  - Not deployed yet.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.CallPipelineServiceTest`
+  - `.\gradlew.bat :backend:test`
+- Known follow-ups:
+  - Realtime Telnyx/WebSocket TTS still opens the configured realtime voice directly; if silence appears there with an incompatible voice, add equivalent fallback before opening the realtime TTS session.
+
 ### 2026-07-10 - Reject corrupted first browser-test transcripts
 
 - Carried an explicit `acceptedTranscript` flag from `CallPipelineService` through simulated/test turn responses so the browser UI no longer infers transcript acceptance from the latest persisted row.

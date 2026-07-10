@@ -132,7 +132,7 @@ public class ConversationOrchestrator {
                     List.of()
             ));
             var text = voiceReadyText(response.responseText());
-            return text.isBlank() ? openingFallback(call, resolvedLanguage) : text;
+            return openingWithIdentity(call, resolvedLanguage, text);
         } catch (RuntimeException exception) {
             LOGGER.warn("Opening greeting generation failed for callId={} language={}", call.getId(), resolvedLanguage, exception);
             return openingFallback(call, resolvedLanguage);
@@ -288,8 +288,9 @@ public class ConversationOrchestrator {
                 - Do not use a fixed script unless the greeting direction requires exact wording.
                 - Adapt to the language, channel, business context, whether this is a test or public call, and the agent's role.
                 - Introduce yourself by agent name once in a natural phone style.
+                - Mention the institution or business you represent by name: %s.
                 - Do not ask multiple questions.
-                - Prefer concise openings like "Bonjour, c'est %s. Comment puis-je vous aider ?" or "Hi, this is %s. How can I help?".
+                - Prefer concise openings like "Bonjour, c'est %s de %s. Comment puis-je vous aider ?" or "Hi, this is %s from %s. How can I help?".
                 - Do not say "thank you for calling" by default.
                 - Do not output Markdown, quotes, labels, alternatives, or explanations.
                 """.formatted(
@@ -298,8 +299,11 @@ public class ConversationOrchestrator {
                 call.getTenant().getBusinessName(),
                 channel == null || channel.isBlank() ? "voice call" : channel,
                 greetingDirection.isBlank() ? "Open warmly, introduce yourself by name, and ask how you can help." : greetingDirection,
+                call.getTenant().getBusinessName(),
                 call.getAgent().getName(),
-                call.getAgent().getName()
+                call.getTenant().getBusinessName(),
+                call.getAgent().getName(),
+                call.getTenant().getBusinessName()
         );
     }
 
@@ -402,19 +406,37 @@ public class ConversationOrchestrator {
 
     private String openingFallback(Call call, String language) {
         var normalizedLanguage = language == null ? "" : language;
+        var name = call.getAgent().getName();
+        var business = call.getTenant().getBusinessName();
         if ("fr".equals(normalizedLanguage)) {
-            return "Bonjour, c'est " + call.getAgent().getName() + ". Comment puis-je vous aider ?";
+            return "Bonjour, c'est " + name + " de " + business + ". Comment puis-je vous aider ?";
         }
         if (!"sw".equals(normalizedLanguage) && !"ar".equals(normalizedLanguage)) {
-            return "Hi, this is " + call.getAgent().getName() + ". How can I help?";
+            return "Hi, this is " + name + " from " + business + ". How can I help?";
         }
-        var name = call.getAgent().getName();
         return switch (language == null ? "" : language) {
             case "fr" -> "Bonjour, c'est " + name + ". Je vous écoute.";
-            case "sw" -> "Habari, hapa ni " + name + ". Naweza kukusaidiaje?";
-            case "ar" -> "مرحبا، معك " + name + ". كيف أستطيع مساعدتك؟";
-            default -> "Hi, this is " + name + ". How can I help today?";
+            case "sw" -> "Habari, hapa ni " + name + " kutoka " + business + ". Naweza kukusaidiaje?";
+            case "ar" -> "مرحبا، معك " + name + " من " + business + ". كيف أستطيع مساعدتك؟";
+            default -> "Hi, this is " + name + " from " + business + ". How can I help today?";
         };
+    }
+
+    private String openingWithIdentity(Call call, String language, String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return openingFallback(call, language);
+        }
+        if (!mentions(candidate, call.getAgent().getName())
+                || !mentions(candidate, call.getTenant().getBusinessName())) {
+            return openingFallback(call, language);
+        }
+        return candidate;
+    }
+
+    private boolean mentions(String text, String expected) {
+        if (expected == null || expected.isBlank()) return true;
+        return text.toLowerCase(java.util.Locale.ROOT)
+                .contains(expected.toLowerCase(java.util.Locale.ROOT));
     }
 
     static String voiceReadyText(String text) {

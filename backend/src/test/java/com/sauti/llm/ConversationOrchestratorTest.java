@@ -195,7 +195,7 @@ class ConversationOrchestratorTest {
     }
 
     @Test
-    void usesPhoneNativeFrenchFallbackOpeningWhenGreetingGenerationFails() {
+    void usesPhoneNativeFrenchFallbackOpeningWithInstitutionWhenGreetingGenerationFails() {
         var provider = new FailingProvider();
         var router = mock(ToolFulfillmentRouter.class);
         var toolLoader = mock(AgentToolLoader.class);
@@ -209,7 +209,31 @@ class ConversationOrchestratorTest {
 
         var greeting = orchestrator.generateOpeningGreeting(call, "fr", "voice call");
 
-        assertThat(greeting).isEqualTo("Bonjour, c'est Amina. Comment puis-je vous aider ?");
+        assertThat(greeting).isEqualTo("Bonjour, c'est Amina de Demo Clinic. Comment puis-je vous aider ?");
+    }
+
+    @Test
+    void replacesGeneratedOpeningWhenInstitutionIsMissing() {
+        var provider = new SingleResponseProvider("Hi, this is Amina. How can I help?");
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var call = activeCall();
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getGreetingMessage())).thenReturn("Open warmly.");
+
+        var greeting = orchestrator.generateOpeningGreeting(call, "en", "browser test call");
+
+        assertThat(greeting).isEqualTo("Hi, this is Amina from Demo Clinic. How can I help?");
+        assertThat(provider.contexts).hasSize(1);
+        assertThat(provider.contexts.get(0).systemPrompt())
+                .contains("Mention the institution or business you represent by name: Demo Clinic")
+                .contains("Hi, this is Amina from Demo Clinic. How can I help?");
     }
 
     private Call activeCall() {

@@ -193,15 +193,26 @@ public class CallController {
     private byte[] synthesize(com.sauti.call.Call call, String language, String text) {
         var voiceId = call.getAgent().getTtsVoiceId();
         if (voiceId == null || voiceId.isBlank()) {
-            var match = voiceCatalogService.list().voices().stream()
-                    .filter(voice -> voice.languages().contains(language))
-                    .findFirst();
-            if (match.isEmpty()) {
-                return new byte[0];
-            }
-            voiceId = match.get().id();
+            voiceId = compatibleVoiceId(language);
+            if (voiceId.isBlank()) return new byte[0];
         }
-        return voiceCatalogService.synthesize(voiceId, language, text);
+        try {
+            return voiceCatalogService.synthesize(voiceId, language, text);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Configured test voice could not synthesize language={} callId={}; trying compatible fallback",
+                    language, call.getId(), exception);
+            var fallbackVoiceId = compatibleVoiceId(language);
+            if (fallbackVoiceId.isBlank() || fallbackVoiceId.equals(voiceId)) return new byte[0];
+            return voiceCatalogService.synthesize(fallbackVoiceId, language, text);
+        }
+    }
+
+    private String compatibleVoiceId(String language) {
+        return voiceCatalogService.list().voices().stream()
+                .filter(voice -> voice.languages().contains(language))
+                .map(com.sauti.voice.VoiceCatalogDtos.VoiceOption::id)
+                .findFirst()
+                .orElse("");
     }
 
     private String transcribeTestAudio(com.sauti.call.Call call, byte[] audio) {
