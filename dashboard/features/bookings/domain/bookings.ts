@@ -56,9 +56,10 @@ export function filterBookings(bookings: BookingViewModel[], filter: BookingStat
 export function summarizeBookings(bookings: BookingViewModel[], now = new Date()) {
   const upcoming = bookings.filter((booking) => booking.isUpcoming).length;
   const today = bookings.filter((booking) => booking.isToday && booking.status !== "cancelled").length;
+  const confirmed = bookings.filter((booking) => booking.status === "confirmed").length;
   const cancelled = bookings.filter((booking) => booking.status === "cancelled").length;
   const nextBooking = bookings.find((booking) => booking.appointmentDate.getTime() >= now.getTime() && booking.status !== "cancelled") ?? null;
-  return { upcoming, today, cancelled, nextBooking };
+  return { upcoming, today, confirmed, cancelled, nextBooking };
 }
 
 export function formatAppointment(value: Date) {

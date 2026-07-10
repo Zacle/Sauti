@@ -221,6 +221,26 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Dark bookings workspace redesign
+
+- Rebuilt `/bookings` around the supplied dark calendar-operations reference and brought the route into the same dark console shell as Overview, Agents, and Calls.
+- Added a four-card summary for upcoming, today, confirmed, and cancelled bookings; strengthened the next-appointment panel; and redesigned appointment cards with clearer date, time, customer, source, agent, sync, and status hierarchy.
+- Preserved the existing search, status filters, real booking data, loading/empty/error states, and confirmed cancellation flow. Unsupported open/reschedule actions from the visual reference were intentionally not added.
+- Added responsive two-column/tablet and stacked/mobile layouts for the summary, filters, timeline, and cards.
+- Why: the previous Bookings route still used the older light dashboard styling and did not visually match the recently upgraded console routes.
+- Files touched:
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `dashboard/features/bookings/domain/bookings.ts`
+  - `dashboard/features/bookings/presentation/BookingsPage.tsx`
+  - `dashboard/features/bookings/presentation/BookingsPage.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: add real booking detail and rescheduling endpoints before exposing those actions in the interface.
+
 ### 2026-07-10 - Accessible call date and option filters
 
 - Replaced the Calls page native date inputs with a React DayPicker range popover, including visible default dates, two-month navigation, range highlighting, and 7/14/30-day and all-time shortcuts.

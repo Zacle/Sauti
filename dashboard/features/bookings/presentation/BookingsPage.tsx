@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
+  Calendar,
   CalendarCheck2,
   CalendarClock,
   CalendarDays,
@@ -82,12 +83,11 @@ export function BookingsPage() {
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
-          <span>Calendar</span>
           <h1>Bookings</h1>
           <p>Track appointments captured by agents, where they came from, and what needs follow-up.</p>
         </div>
         <div className={styles.nextSlot}>
-          <CalendarClock size={18} />
+          <span className={styles.nextIcon}><CalendarClock size={22} /></span>
           <span>
             <small>Next appointment</small>
             <strong>{summary.nextBooking ? formatAppointment(summary.nextBooking.appointmentDate) : "No upcoming booking"}</strong>
@@ -96,9 +96,10 @@ export function BookingsPage() {
       </header>
 
       <section className={styles.metrics} aria-label="Booking summary">
-        <Metric icon={CalendarCheck2} label="Upcoming" value={summary.upcoming} tone="green" />
-        <Metric icon={Clock3} label="Today" value={summary.today} tone="blue" />
-        <Metric icon={XCircle} label="Cancelled" value={summary.cancelled} tone="orange" />
+        <Metric detail="Next 7 days" icon={CalendarCheck2} label="Upcoming" value={summary.upcoming} tone="cyan" />
+        <Metric detail="Scheduled for today" icon={Clock3} label="Today" value={summary.today} tone="blue" />
+        <Metric detail="All confirmed bookings" icon={CheckCircle2} label="Confirmed" value={summary.confirmed} tone="green" />
+        <Metric detail="All cancelled bookings" icon={XCircle} label="Cancelled" value={summary.cancelled} tone="orange" />
       </section>
 
       <section className={styles.toolbar}>
@@ -168,13 +169,13 @@ export function BookingsPage() {
   );
 }
 
-function Metric({ icon: Icon, label, value, tone }: { icon: typeof CalendarCheck2; label: string; value: number; tone: "green" | "blue" | "orange" }) {
+function Metric({ icon: Icon, label, value, detail, tone }: { icon: typeof CalendarCheck2; label: string; value: number; detail: string; tone: "cyan" | "green" | "blue" | "orange" }) {
   return (
     <article className={`${styles.metric} ${styles[tone]}`}>
       <span><Icon size={19} /></span>
       <div>
-        <strong>{value}</strong>
-        <small>{label}</small>
+        <div className={styles.metricValue}><strong>{value}</strong><small>{label}</small></div>
+        <p>{detail}</p>
       </div>
     </article>
   );
@@ -185,8 +186,13 @@ function BookingCard({ booking, cancelling, onCancel }: { booking: BookingViewMo
   return (
     <article className={`${styles.card} ${cancelled ? styles.cancelled : ""}`}>
       <div className={styles.dateBlock}>
-        <span>{formatShortDate(booking.appointmentDate)}</span>
+        <span>{booking.appointmentDate.toLocaleDateString(undefined, { month: "short", year: "numeric" })}</span>
+        <small>{booking.appointmentDate.toLocaleDateString(undefined, { weekday: "short" })}</small>
+        <b>{booking.appointmentDate.getDate()}</b>
+      </div>
+      <div className={styles.timeBlock}>
         <strong>{formatTime(booking.appointmentDate)}</strong>
+        <small>Appointment</small>
       </div>
       <div className={styles.cardMain}>
         <div className={styles.cardTop}>
@@ -205,7 +211,11 @@ function BookingCard({ booking, cancelling, onCancel }: { booking: BookingViewMo
           <span><ArrowUpRight size={14} /> {booking.sourceLabel}</span>
         </div>
         <div className={styles.footer}>
-          <small>Booked {formatAppointment(booking.bookedDate)}</small>
+          <div className={styles.bookingMeta}>
+            <span><Calendar size={16} /><small>Booked<strong>{formatAppointment(booking.bookedDate)}</strong></small></span>
+            <span><ArrowUpRight size={16} /><small>Source<strong>{booking.sourceLabel}</strong></small></span>
+            <span><CalendarDays size={16} /><small>Agent<strong>{booking.agentName}</strong></small></span>
+          </div>
           <div>
             {booking.confirmationSent && <span className={styles.confirmation}>Confirmation sent</span>}
             {booking.externalEventId && <span className={styles.external}>Synced calendar</span>}
