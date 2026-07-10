@@ -74,6 +74,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const noiseFloorRef = useRef(0.012);
   const utterancePeakRmsRef = useRef(0);
   const utteranceVoicedMsRef = useRef(0);
+  const awaitingDictatedDetailsRef = useRef(false);
   const callStartedAtRef = useRef(0);
   const lastActivityAtRef = useRef(0);
   const acceptedCallerTurnsRef = useRef(0);
@@ -115,9 +116,11 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       acceptedCallerTurnsRef.current = 0;
       remindersRef.current = 0;
       endingRef.current = false;
+      awaitingDictatedDetailsRef.current = false;
       setCallId(started.call.id);
       startVoiceMonitor();
       if (started.greeting) {
+        rememberAgentPrompt(started.greeting);
         setMessages([{ id: crypto.randomUUID(), role: "agent", text: started.greeting }]);
         await playLatestAgentAudio(started.call.id);
       } else {
@@ -180,6 +183,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       const baseThreshold = 0.075 - settings.bargeInSensitivity * 0.055;
       const voiceThreshold = Math.max(0.026, baseThreshold * 0.72, noiseFloorRef.current * 2.4);
       const voiceDetected = rms >= voiceThreshold;
+      // Playback can leak back into an open microphone. Require a much stronger,
+      // sustained signal before treating it as an interruption of the agent.
+      const bargeInDetected = rms >= Math.max(0.042, voiceThreshold * 1.65, noiseFloorRef.current * 3.2);
       const currentStatus = statusRef.current;
 
       if (voiceDetected) {
@@ -192,12 +198,12 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           utteranceVoicedMsRef.current += 16;
         }
 
-        if (currentStatus === "listening" && voiceDuration >= 180) {
-          startUtteranceCapture(false);
-        } else if (currentStatus === "thinking" && voiceDuration >= 180) {
-          startUtteranceCapture(true);
-        } else if (currentStatus === "speaking" && voiceDuration >= settings.bargeInGraceMs) {
-          interruptAgentAndCapture();
+        if (currentStatus === "listening" && voiceDuration >= 100) {
+          startUtteranceCapture(false, "auto", voiceDuration);
+        } else if (currentStatus === "thinking" && voiceDuration >= 100) {
+          startUtteranceCapture(true, "auto", voiceDuration);
+        } else if (currentStatus === "speaking" && bargeInDetected && voiceDuration >= Math.max(360, settings.bargeInGraceMs)) {
+          interruptAgentAndCapture(voiceDuration);
         }
       } else {
         if (currentStatus === "listening") {
@@ -208,7 +214,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           currentStatus === "capturing"
           && utteranceModeRef.current === "auto"
           && lastVoiceAtRef.current
-          && now - lastVoiceAtRef.current >= Math.max(1200, settings.sttEndpointingMs)
+          && now - lastVoiceAtRef.current >= endpointSilenceMs(settings)
         ) {
           stopUtteranceCapture();
         }
@@ -253,7 +259,32 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     monitorFrameRef.current = requestAnimationFrame(monitor);
   }
 
-  function startUtteranceCapture(interruption: boolean, mode: "auto" | "manual" = "auto") {
+  function endpointSilenceMs(settings: TestSettings) {
+    // Most turns should feel responsive. When the last question requested a
+    // dictated detail, retain a longer pause so names, addresses, and numbers
+    // are not split into separate turns.
+    return awaitingDictatedDetailsRef.current
+      ? Math.max(1300, settings.sttEndpointingMs)
+      : Math.max(650, settings.sttEndpointingMs);
+  }
+
+  function agentRequestsDictatedDetails(text: string) {
+    const normalized = text
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    return /\b(nom|prenom|telephone|numero|coordonnees|adresse|email|courriel|epeler|chiffre|digits?|name|phone|number|contact|address|spell)\b/.test(normalized);
+  }
+
+  function rememberAgentPrompt(text: string) {
+    awaitingDictatedDetailsRef.current = agentRequestsDictatedDetails(text);
+  }
+
+  function startUtteranceCapture(
+    interruption: boolean,
+    mode: "auto" | "manual" = "auto",
+    initialVoicedMs = 0,
+  ) {
     if (utteranceRecorderRef.current || !streamRef.current) return;
     const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
@@ -282,7 +313,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       utteranceStartedAtRef.current = 0;
       utterancePeakRmsRef.current = 0;
       utteranceVoicedMsRef.current = 0;
-      if (utterance.size < 1200 || durationMs < 900 || (mode === "auto" && (peakRms < 0.03 || voicedMs < 180))) {
+      if (utterance.size < 1200 || durationMs < 700 || (mode === "auto" && (peakRms < 0.03 || voicedMs < 180))) {
         updateStatus("listening");
         setError("I did not catch clear speech. Move closer to the mic or reduce background noise, then try again.");
         return;
@@ -299,7 +330,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     utteranceModeRef.current = mode;
     utteranceStartedAtRef.current = Date.now();
     utterancePeakRmsRef.current = 0;
-    utteranceVoicedMsRef.current = 0;
+    utteranceVoicedMsRef.current = initialVoicedMs;
     lastVoiceAtRef.current = performance.now();
     updateStatus("capturing");
     recorder.start(200);
@@ -339,14 +370,14 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     }
   }
 
-  function interruptAgentAndCapture() {
+  function interruptAgentAndCapture(initialVoicedMs = 0) {
     try {
       agentAudioSourceRef.current?.stop();
     } catch {
       // The source may have ended between voice detection frames.
     }
     agentAudioSourceRef.current = null;
-    startUtteranceCapture(true);
+    startUtteranceCapture(true, "auto", initialVoicedMs);
   }
 
   async function playLatestAgentAudio(activeCallId: string) {
@@ -422,6 +453,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       remindersRef.current = 0;
       const wasInterrupted = callerInterruptedCurrentTurnRef.current || Boolean(queuedInterruptionRef.current);
       if (turn.callerTranscript) acceptedCallerTurnsRef.current += 1;
+      if (turn.response && !wasInterrupted) rememberAgentPrompt(turn.response);
       setMessages((current) => [
         ...current,
         ...(turn.callerTranscript ? [{ id: crypto.randomUUID(), role: "caller" as const, text: turn.callerTranscript }] : []),
@@ -433,7 +465,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         else if (turn.callerTranscript) await playLatestAgentAudio(activeCallId);
         playedAgentAudio = Boolean(turn.audioBase64 || turn.callerTranscript);
         console.debug("Browser test turn latency", {
-          endpointingMs: Math.max(450, settingsRef.current.sttEndpointingMs),
+          endpointingMs: endpointSilenceMs(settingsRef.current),
           sttMs: turn.sttLatencyMs,
           llmMs: turn.llmLatencyMs,
           ttsMs: turn.ttsLatencyMs,
@@ -482,6 +514,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       remindersRef.current = 0;
       acceptedCallerTurnsRef.current += 1;
       if (turn.response) {
+        rememberAgentPrompt(turn.response);
         setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text: turn.response }]);
         await playLatestAgentAudio(activeCallId);
         if (turn.outcome) await endCall(turn.outcome);
@@ -581,6 +614,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     utteranceRecorderRef.current = null;
     utteranceModeRef.current = null;
     utteranceStartedAtRef.current = 0;
+    awaitingDictatedDetailsRef.current = false;
     processingTurnRef.current = false;
     queuedInterruptionRef.current = null;
     callerInterruptedCurrentTurnRef.current = false;

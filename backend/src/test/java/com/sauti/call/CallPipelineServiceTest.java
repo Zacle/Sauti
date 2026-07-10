@@ -254,6 +254,38 @@ class CallPipelineServiceTest {
     }
 
     @Test
+    void ignoresShortIndonesianNoiseOnFrenchBrowserCallBeforeLanguageDetection() {
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var languageDetector = mock(LanguageDetector.class);
+        var conversationOrchestrator = mock(ConversationOrchestrator.class);
+        var service = new CallPipelineService(
+                mock(CallRepository.class),
+                callTurnRepository,
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                languageDetector,
+                conversationOrchestrator,
+                mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class),
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var call = activeCall("TEST-123");
+        call.selectLanguage("fr");
+        when(callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId())).thenReturn(List.of());
+
+        var result = service.processLiveTranscriptTurn(call, "Terima kasih");
+
+        assertThat(result.language()).isEqualTo("fr");
+        assertThat(result.text()).isBlank();
+        assertThat(result.acceptedTranscript()).isFalse();
+        verify(languageDetector, never()).detect(any(), any(), any());
+        verify(conversationOrchestrator, never()).handleUserUtterance(any(), any(), any());
+        verify(callTurnRepository, never()).save(any());
+    }
+
+    @Test
     void asksForRepeatOnMangledFirstFrenchCallerTranscript() {
         var callRepository = mock(CallRepository.class);
         var callTurnRepository = mock(CallTurnRepository.class);

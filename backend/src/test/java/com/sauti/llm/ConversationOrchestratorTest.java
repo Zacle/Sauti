@@ -70,6 +70,7 @@ class ConversationOrchestratorTest {
                 .contains("Use only facts present in the agent prompt")
                 .contains("If the caller asks for information first")
                 .contains("Booking collection order: caller's name")
+                .contains("Treat a caller detail as collected only when the caller explicitly says that detail")
                 .contains("If speech recognition produced unlikely words for a name")
                 .contains("Do not switch language for a single unclear word")
                 .contains("Before a booking tool succeeds")

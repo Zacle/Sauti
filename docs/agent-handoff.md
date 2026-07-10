@@ -215,6 +215,29 @@ Expected:
 
 ## Change log
 
+### 2026-07-10 - Adaptive browser test turn-taking and stronger detail guardrails
+
+- Made browser test endpointing adaptive: ordinary replies now finalize after 650 ms of silence, while replies to requests for a name, phone number, address, email, spelling, or digits retain a 1300 ms pause so callers can dictate naturally.
+- Start capturing after 100 ms of sustained speech instead of discarding the beginning of a caller's utterance; adjusted the minimum accepted clip duration accordingly.
+- Hardened automatic barge-in against speaker-to-microphone bleed by requiring a substantially louder signal sustained for at least 360 ms. Manual interruption remains available.
+- Prevented the conversation model from treating acknowledgements, thanks, or the agent's own name as caller details; it must repeat the pending request rather than inventing a name/contact and moving forward.
+- Ignore the observed short Indonesian transcription noise (`Terima kasih`) during a French call before it reaches language detection or the LLM.
+- Why: the latest browser-call transcript showed slow turn finalization, clipped/incorrect caller content, false interruption from playback, and invented contact details.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `./gradlew.bat :backend:test --tests com.sauti.llm.ConversationOrchestratorTest --tests com.sauti.call.CallPipelineServiceTest`
+  - `./gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed.
+- Known follow-up: this focuses on browser test calls. If the same pauses occur on Telnyx calls, make the realtime STT commit window similarly context-aware.
+
 ### 2026-07-10 - Browser test VAD and information-first call flow
 
 - Lowered the browser test voice threshold so quieter speech is detected without forcing the tester to speak loudly.

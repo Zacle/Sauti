@@ -635,7 +635,9 @@ public class CallPipelineService {
                 "finally",
                 "version",
                 "thanks",
-                "thank you"
+                "thank you",
+                "terima kasih",
+                "terimakasih"
         ).contains(normalized);
     }
 
