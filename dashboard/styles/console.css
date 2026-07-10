@@ -436,6 +436,19 @@
   padding-top: 12px;
 }
 
+.calls-console-shell .workspace-switcher {
+  order: 0;
+  margin: 20px 0 24px;
+}
+
+.calls-console-shell .console-nav { order: 0; }
+.calls-console-shell .console-sidebar-footer { order: 0; }
+
+.calls-console-shell .console-content {
+  width: min(1580px, 100%);
+  padding-top: 14px;
+}
+
 .dashboard-page-head {
   display: flex;
   align-items: flex-start;

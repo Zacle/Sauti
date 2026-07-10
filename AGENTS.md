@@ -37,15 +37,19 @@ After every code or deployment change:
    - verification run,
    - deployment status if applicable,
    - known follow-ups or risks.
-3. Commit only intentional project files. Never commit `.env`, `secrets/`, private keys, local screenshots, build outputs, or unrelated user files.
+3. Leave all changes uncommitted for the user to review. Coding agents must not run `git add`, `git commit`, `git push`, open a pull request, or otherwise publish repository changes.
+4. Never stage or publish `.env`, `secrets/`, private keys, local screenshots, build outputs, or unrelated user files.
 
-If you deploy:
+## Source control and deployment policy
 
-1. Push to `main`.
-2. Confirm GitHub Actions CI success.
-3. Confirm production deploy success.
-4. Verify `https://sauti.uk/health`.
-5. Record the deployed commit in [docs/agent-handoff.md](docs/agent-handoff.md).
+- Coding agents do not commit or push changes. A human maintainer or separately authorized source-control automation owns commits and pushes.
+- Production deployment must happen only through the existing GitHub Actions CI/CD chain:
+  1. A maintainer or authorized automation pushes a reviewed commit to `main`.
+  2. `.github/workflows/ci.yml` verifies backend and dashboard builds/tests.
+  3. `.github/workflows/deploy.yml` deploys only the exact revision that passed CI.
+- Never deploy the application manually. Do not SSH to the production host to release code, run `deploy/deploy.sh` directly, run production `docker compose` commands, copy application files to the server, or manually dispatch/bypass the deploy workflow.
+- If the user asks a coding agent to deploy, the agent must leave the verified changes uncommitted and report that they are ready for maintainer review and CI/CD. The agent must not create the commit or push it.
+- After a maintainer or authorized automation has pushed, an agent may monitor GitHub Actions, confirm CI and deploy success, verify `https://sauti.uk/health`, and record the externally deployed commit in [docs/agent-handoff.md](docs/agent-handoff.md). These are read-only release checks, not deployment initiation.
 
 ## Coding architecture rules
 
@@ -89,7 +93,7 @@ If you deploy:
 Production runs on a single Docker host with Caddy in front.
 
 - Docker Compose file: `deploy/docker-compose.prod.yml`.
-- Deploy script: `deploy/deploy.sh`.
+- Deploy script used by CI/CD: `deploy/deploy.sh`. Coding agents must not invoke it manually for production releases.
 - CI workflow: `.github/workflows/ci.yml`.
 - Deploy workflow: `.github/workflows/deploy.yml`.
 - Production builds images locally on the VPS from the exact commit that passed CI.
@@ -183,6 +187,6 @@ curl.exe -I https://sauti.uk/analytics
 
 ## Documentation discipline
 
-The handoff file is part of the product. If you change behavior, deployment, environment variables, architecture, UI patterns, provider configuration, or operational workflow, update [docs/agent-handoff.md](docs/agent-handoff.md) in the same commit.
+The handoff file is part of the product. If you change behavior, deployment, environment variables, architecture, UI patterns, provider configuration, or operational workflow, update [docs/agent-handoff.md](docs/agent-handoff.md) in the same uncommitted change set for maintainer review.
 
 Do not leave future agents guessing.

@@ -47,7 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <main className={`console-shell ${pathname === "/agents" || pathname === "/dashboard" ? "agents-console-shell" : ""} ${pathname === "/dashboard" ? "dashboard-console-shell" : ""}`}>
+    <main className={`console-shell ${["/agents", "/dashboard", "/calls"].includes(pathname) ? "agents-console-shell" : ""} ${pathname === "/dashboard" ? "dashboard-console-shell" : ""} ${pathname === "/calls" ? "calls-console-shell" : ""}`}>
       <aside className={`console-sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="console-sidebar-head">
           <Link className="console-brand" href="/dashboard">

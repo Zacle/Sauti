@@ -19,7 +19,7 @@ This document lets a new coding agent continue safely from the previous state. U
 
 Deployment is automated:
 
-1. Push to `main`.
+1. A human maintainer or separately authorized source-control automation reviews, commits, and pushes to `main`. Coding agents leave changes uncommitted and do not push.
 2. GitHub Actions runs CI:
    - backend Gradle tests/build
    - dashboard typecheck/build
@@ -27,6 +27,12 @@ Deployment is automated:
 4. Server checks out the exact commit that passed CI under `/opt/sauti/source`.
 5. Server builds Docker images locally and runs `docker compose up -d`.
 6. Health check verifies `https://sauti.uk/health`.
+
+Release policy:
+
+- Production releases happen only through `.github/workflows/ci.yml` followed by `.github/workflows/deploy.yml`.
+- Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
+- When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
 Important deployment files:
 
@@ -214,6 +220,41 @@ Expected:
 - `/analytics` redirects unauthenticated users to `/login?next=%2Fanalytics`.
 
 ## Change log
+
+### 2026-07-10 - Dark calls workspace and transcript drawer redesign
+
+- Rebuilt `/calls` to match the supplied dark call-operations references while retaining the existing calls, agents, bookings, call-turn, and recording APIs.
+- Added real conversation, answered-rate, average-duration, and booking KPI cards; call-type, date, status, agent, and text filters; 20-row pagination; richer channel/date/status cells; and responsive table behavior.
+- Restyled the selected-call workspace as a sticky transcript drawer with call details, recording playback, a chronological caller/agent timeline, and an AI summary sourced from persisted analysis fields.
+- Corrected transcript rendering within each stored turn so the caller utterance appears before the corresponding agent response; greeting-only turns still begin with the agent.
+- Scoped the shared dark console shell to `/calls` while keeping its workspace switcher in the reference's top position.
+- Why: user requested that the call list and transcript-detail states be improved to match the two supplied high-fidelity dark references.
+- Files touched:
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `dashboard/features/calls/CallsPage/CallsPage.tsx`
+  - `dashboard/features/calls/CallsPage/CallsPage.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted under the maintainer-owned source-control policy.
+- Known follow-up: date filters currently use the browser's native date inputs; a shared console date-range popover can replace them when one is introduced.
+
+### 2026-07-10 - Maintainer-owned commits and CI/CD-only deployments
+
+- Updated the standing agent contract so coding agents leave all repository changes uncommitted and never stage, commit, push, or open pull requests.
+- Made production deployment explicitly CI/CD-only: a maintainer or authorized source-control automation pushes to `main`, CI verifies the revision, and the deploy workflow releases that exact verified revision.
+- Prohibited manual application releases through direct SSH, `deploy/deploy.sh`, production Docker Compose, file copying, manual deploy dispatch, or CI bypasses.
+- Allowed agents to perform read-only GitHub Actions monitoring and public health verification only after an external push has initiated CI/CD.
+- Why: user requested that agents stop committing and that every deployment happen through CI/CD rather than manual release actions.
+- Files touched:
+  - `AGENTS.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `git diff --check`
+- Deployment: not applicable; documentation-only policy change, intentionally left uncommitted under the new rule.
+- Known follow-up: maintainers must commit and push this policy change before other fresh agent sessions receive it from the repository.
 
 ### 2026-07-10 - Dark operations dashboard redesign
 

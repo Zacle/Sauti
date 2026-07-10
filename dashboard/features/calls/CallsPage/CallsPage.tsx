@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Activity,
+  ArrowLeft,
+  ArrowRight,
   Bot,
+  CalendarDays,
   CalendarCheck2,
   CheckCircle2,
   ChevronDown,
@@ -15,8 +19,8 @@ import {
   PhoneIncoming,
   PlayCircle,
   Search,
+  Sparkles,
   SlidersHorizontal,
-  UserRound,
   X,
   XCircle,
 } from "lucide-react";
@@ -27,6 +31,8 @@ import type { Agent, Booking, Call, CallTurn } from "@/types/api";
 import styles from "./CallsPage.module.css";
 
 type CallFilter = "all" | "phone" | "test";
+const ROWS_PER_PAGE = 20;
+const SUCCESSFUL_OUTCOMES = new Set(["completed", "booking", "booked", "faq_answered", "transferred"]);
 
 export function CallsPage() {
   const [calls, setCalls] = useState<Call[]>([]);
@@ -38,6 +44,11 @@ export function CallsPage() {
   const [turns, setTurns] = useState<Record<string, CallTurn[]>>({});
   const [filter, setFilter] = useState<CallFilter>("all");
   const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [agentFilter, setAgentFilter] = useState("all");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     Promise.all([listCalls(), listAgents(), listBookings()])
@@ -69,6 +80,13 @@ export function CallsPage() {
       const isTest = call.direction === "test";
       if (filter === "phone" && isTest) return false;
       if (filter === "test" && !isTest) return false;
+      if (statusFilter === "answered" && !SUCCESSFUL_OUTCOMES.has(call.outcome)) return false;
+      if (statusFilter === "missed" && SUCCESSFUL_OUTCOMES.has(call.outcome)) return false;
+      if (statusFilter === "active" && call.outcome !== "active") return false;
+      if (agentFilter !== "all" && call.agentId !== agentFilter) return false;
+      const startedAt = new Date(call.startedAt).getTime();
+      if (fromDate && startedAt < new Date(`${fromDate}T00:00:00`).getTime()) return false;
+      if (toDate && startedAt > new Date(`${toDate}T23:59:59`).getTime()) return false;
       if (!normalized) return true;
       const booking = bookingsByCall.get(call.id);
       return [
@@ -82,7 +100,24 @@ export function CallsPage() {
         booking?.callerName ?? "",
       ].some((value) => value.toLowerCase().includes(normalized));
     });
-  }, [agentNames, bookingsByCall, calls, filter, query]);
+  }, [agentFilter, agentNames, bookingsByCall, calls, filter, fromDate, query, statusFilter, toDate]);
+
+  useEffect(() => setPage(1), [agentFilter, filter, fromDate, query, statusFilter, toDate]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredCalls.length / ROWS_PER_PAGE));
+  const pagedCalls = filteredCalls.slice((page - 1) * ROWS_PER_PAGE, page * ROWS_PER_PAGE);
+
+  const metrics = useMemo(() => {
+    const completedCalls = calls.filter((call) => call.durationSeconds !== null);
+    const answered = calls.filter((call) => SUCCESSFUL_OUTCOMES.has(call.outcome)).length;
+    const durations = completedCalls.map((call) => call.durationSeconds ?? 0);
+    return {
+      answerRate: calls.length ? Math.round(answered / calls.length * 1000) / 10 : 0,
+      averageDuration: durations.length ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length) : 0,
+      bookingCount: bookings.filter((booking) => booking.status !== "cancelled").length,
+      sparkValues: durations.slice(0, 12).reverse(),
+    };
+  }, [bookings, calls]);
 
   const selectedCall = useMemo(
     () => calls.find((call) => call.id === selectedId) ?? null,
@@ -116,7 +151,15 @@ export function CallsPage() {
           <PhoneCall size={18} />
           <span><strong>{calls.length}</strong><small>Total conversations</small></span>
         </div>
+        <div className={styles["header-wave"]} aria-hidden="true" />
       </header>
+
+      <section className={styles.metrics} aria-label="Call metrics">
+        <CallMetric tone="teal" icon={<PhoneCall size={21} />} label="Total conversations" value={String(calls.length)} detail="Phone and browser sessions" values={metrics.sparkValues} />
+        <CallMetric tone="cyan" icon={<Activity size={21} />} label="Answered rate" value={`${metrics.answerRate}%`} detail="Successful conversations" ring={metrics.answerRate} values={metrics.sparkValues} />
+        <CallMetric tone="blue" icon={<Clock3 size={21} />} label="Avg. duration" value={formatDurationSeconds(metrics.averageDuration)} detail="Across completed calls" values={metrics.sparkValues} />
+        <CallMetric tone="violet" icon={<CalendarCheck2 size={21} />} label="Bookings made" value={String(metrics.bookingCount)} detail="Confirmed routed events" values={metrics.sparkValues} />
+      </section>
 
       <section className={styles.toolbar}>
         <div className={styles.segmented} aria-label="Call type filter">
@@ -130,6 +173,9 @@ export function CallsPage() {
             <PlayCircle size={16} /> Tests
           </button>
         </div>
+        <label className={styles.dateRange}><CalendarDays size={15} /><input aria-label="Calls from date" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} /><span>–</span><input aria-label="Calls to date" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} /></label>
+        <label className={styles.selectControl}><Activity size={15} /><select aria-label="Filter calls by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All status</option><option value="answered">Answered</option><option value="missed">Missed</option><option value="active">Active</option></select><ChevronDown size={14} /></label>
+        <label className={styles.selectControl}><Bot size={15} /><select aria-label="Filter calls by agent" value={agentFilter} onChange={(event) => setAgentFilter(event.target.value)}><option value="all">All agents</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select><ChevronDown size={14} /></label>
         <label className={styles.search}>
           <Search size={17} />
           <input
@@ -162,7 +208,7 @@ export function CallsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredCalls.map((call) => {
+                {pagedCalls.map((call) => {
                   const booking = bookingsByCall.get(call.id) ?? null;
                   const selected = selectedId === call.id;
                   return (
@@ -178,7 +224,7 @@ export function CallsPage() {
                           </span>
                         </div>
                       </td>
-                      <td>{formatCompactDate(call.startedAt)}</td>
+                      <td><DateCell value={call.startedAt} /></td>
                       <td className={styles.muted}>{call.direction === "test" ? "-" : call.callerNumber || "-"}</td>
                       <td><RoutedEvent booking={booking} call={call} /></td>
                       <td>{formatDurationSeconds(call.durationSeconds)}</td>
@@ -191,6 +237,11 @@ export function CallsPage() {
             {filteredCalls.length === 0 && (
               <div className={styles.noResults}>No calls match this filter.</div>
             )}
+            {filteredCalls.length > 0 && <footer className={styles.pagination}>
+              <span>Showing {(page - 1) * ROWS_PER_PAGE + 1} to {Math.min(page * ROWS_PER_PAGE, filteredCalls.length)} of {filteredCalls.length} results</span>
+              <div><button disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button"><ArrowLeft size={14} /></button>{Array.from({ length: pageCount }, (_, index) => <button className={page === index + 1 ? styles.activePage : ""} onClick={() => setPage(index + 1)} type="button" key={index}>{index + 1}</button>)}<button disabled={page === pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} type="button"><ArrowRight size={14} /></button></div>
+              <small>{ROWS_PER_PAGE} rows per page</small>
+            </footer>}
           </div>
 
           {selectedCall && (
@@ -230,12 +281,38 @@ export function CallsPage() {
                 <div className={styles.sectionStatic}><span><FileText size={17} /> Transcription</span></div>
                 <Transcript turns={turns[selectedCall.id]} />
               </section>
+
+              {(selectedCall.callSummary || selectedCall.intent || selectedCall.sentiment || selectedBooking) && <section className={`${styles.panelSection} ${styles["summary-section"]}`}>
+                <div className={styles.sectionStatic}><span><Sparkles size={17} /> AI summary</span></div>
+                <p>{selectedCall.callSummary || summaryFallback(selectedCall, selectedBooking)}</p>
+                <div className={styles["summary-grid"]}>
+                  <span><small>Outcome</small><strong>{humanize(selectedCall.outcome)}</strong></span>
+                  <span><small>Event</small><strong>{selectedBooking?.serviceType ?? "None"}</strong></span>
+                  <span><small>Intent</small><strong>{selectedCall.intent ? humanize(selectedCall.intent) : "Not detected"}</strong></span>
+                  <span><small>Sentiment</small><strong>{selectedCall.sentiment ? humanize(selectedCall.sentiment) : "Not analysed"}</strong></span>
+                </div>
+              </section>}
             </aside>
           )}
         </section>
       )}
     </main>
   );
+}
+
+function CallMetric({ tone, icon, label, value, detail, values, ring }: { tone: string; icon: React.ReactNode; label: string; value: string; detail: string; values: number[]; ring?: number }) {
+  const max = Math.max(...values, 1);
+  const points = values.length > 1 ? values.map((item, index) => `${index * (130 / (values.length - 1))},${26 - item / max * 20}`).join(" ") : "0,20 130,20";
+  return <article className={styles.metricCard}>
+    {ring === undefined ? <span className={styles[`tone-${tone}`]}>{icon}</span> : <span className={styles.ring} style={{ background: `conic-gradient(#20e0d2 ${ring}%, rgba(114,150,183,.17) 0)` }}><i>{icon}</i></span>}
+    <div><small>{label}</small><strong>{value}</strong><p>{detail}</p></div>
+    <svg viewBox="0 0 130 30" preserveAspectRatio="none" aria-hidden="true"><polyline points={points} fill="none" stroke={tone === "violet" ? "#a96cff" : "#21dfd1"} strokeWidth="1.6" vectorEffect="non-scaling-stroke" /></svg>
+  </article>;
+}
+
+function DateCell({ value }: { value: string }) {
+  const date = new Date(value);
+  return <span className={styles.dateCell}><strong>{new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit", year: "numeric" }).format(date)}</strong><small>{new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date)}</small></span>;
 }
 
 function RoutedEvent({ booking, call }: { booking: Booking | null; call: Call }) {
@@ -279,8 +356,8 @@ function Transcript({ turns }: { turns: CallTurn[] | undefined }) {
     <div className={styles.transcript}>
       {turns.map((turn) => (
         <div className={styles.turnGroup} key={turn.turnIndex}>
-          {turn.agentResponse && <TranscriptLine role="Agent" text={turn.agentResponse} time={turn.turnIndex} />}
           {turn.callerTranscript && <TranscriptLine role="Caller" text={turn.callerTranscript} time={turn.turnIndex} />}
+          {turn.agentResponse && <TranscriptLine role="Agent" text={turn.agentResponse} time={turn.turnIndex} />}
         </div>
       ))}
     </div>
@@ -337,7 +414,8 @@ function callTitle(call: Call, agentName?: string) {
 
 function formatDurationSeconds(seconds: number | null) {
   if (seconds === null) return "In progress";
-  return `${seconds} sec`;
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 function formatCompactDate(value: string) {
@@ -355,4 +433,10 @@ function formatTurnTime(turnIndex: number) {
 
 function humanize(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function summaryFallback(call: Call, booking: Booking | null) {
+  if (booking) return `The caller booked ${booking.serviceType} for ${formatDate(booking.appointmentAt)}.`;
+  if (call.intent) return `The conversation was about ${humanize(call.intent).toLowerCase()} and ended as ${humanize(call.outcome).toLowerCase()}.`;
+  return `The conversation ended with the status ${humanize(call.outcome).toLowerCase()}.`;
 }
