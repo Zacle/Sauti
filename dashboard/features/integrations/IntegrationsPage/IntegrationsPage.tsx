@@ -32,7 +32,7 @@ import type { Agent } from "@/types/api";
 import styles from "./IntegrationsPage.module.css";
 
 type Filter = "all" | "calendar" | "messaging" | "crm" | "data" | "notifications" | "payments" | "developer" | "during" | "post" | "connected";
-const oauthProviders = ["google_sheets", "hubspot", "salesforce", "cal_com", "calendly"];
+const oauthProviders = ["google_sheets", "hubspot", "salesforce", "calendly"];
 
 const logos: Record<string, string> = {
   google_calendar: "/logos/google-calendar.svg",
@@ -51,7 +51,7 @@ const labels: Record<string, string> = {
   appendColumns: "Append columns", shortcode: "Shortcode", environment: "Environment",
   minimumAmount: "Minimum amount", maximumAmount: "Maximum amount",
   consumerKey: "Consumer key", consumerSecret: "Consumer secret", passkey: "Passkey",
-  eventTypeId: "Event type ID", eventTypeUri: "Event type URI",
+  eventTypeUri: "Event type URI",
   bookingTitle: "Booking title",
 };
 
@@ -632,8 +632,6 @@ function categoryIcon(category: string) {
 }
 
 function placeholderFor(provider: string, field: string) {
-  if (provider === "cal_com" && field === "eventTypeId") return "123456";
-  if (provider === "cal_com" && field === "bookingTitle") return "Appointment with {{caller_name}}";
   if (provider === "calendly" && field === "eventTypeUri") return "https://api.calendly.com/event_types/...";
   if (provider === "calendly" && field === "bookingTitle") return "Appointment with {{caller_name}}";
   return "";

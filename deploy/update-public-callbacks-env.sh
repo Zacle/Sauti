@@ -29,7 +29,6 @@ updates = {
     "GOOGLE_SHEETS_REDIRECT_URI": f"{https}/api/v1/integrations/google_sheets/callback",
     "HUBSPOT_REDIRECT_URI": f"{https}/api/v1/integrations/hubspot/callback",
     "SALESFORCE_REDIRECT_URI": f"{https}/api/v1/integrations/salesforce/callback",
-    "CAL_COM_REDIRECT_URI": f"{https}/api/v1/integrations/cal_com/callback",
     "CALENDLY_REDIRECT_URI": f"{https}/api/v1/integrations/calendly/callback",
     "SAUTI_LLM_WEBHOOK_URL": f"{https}/agent-turn",
     "SAUTI_LLM_DRAFT_WEBHOOK_URL": f"{https}/agent-draft",

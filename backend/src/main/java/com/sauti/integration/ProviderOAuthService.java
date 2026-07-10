@@ -44,12 +44,6 @@ public class ProviderOAuthService {
             @Value("${sauti.integrations.salesforce.client-id:}") String salesforceClientId,
             @Value("${sauti.integrations.salesforce.client-secret:}") String salesforceClientSecret,
             @Value("${sauti.integrations.salesforce.redirect-uri:}") String salesforceRedirectUri,
-            @Value("${sauti.integrations.cal-com.client-id:}") String calComClientId,
-            @Value("${sauti.integrations.cal-com.client-secret:}") String calComClientSecret,
-            @Value("${sauti.integrations.cal-com.redirect-uri:}") String calComRedirectUri,
-            @Value("${sauti.integrations.cal-com.authorize-url:}") String calComAuthorizeUrl,
-            @Value("${sauti.integrations.cal-com.token-url:}") String calComTokenUrl,
-            @Value("${sauti.integrations.cal-com.scope:}") String calComScope,
             @Value("${sauti.integrations.calendly.client-id:}") String calendlyClientId,
             @Value("${sauti.integrations.calendly.client-secret:}") String calendlyClientSecret,
             @Value("${sauti.integrations.calendly.redirect-uri:}") String calendlyRedirectUri,
@@ -72,8 +66,6 @@ public class ProviderOAuthService {
                         "https://login.salesforce.com/services/oauth2/authorize",
                         "https://login.salesforce.com/services/oauth2/token",
                         "api refresh_token", false),
-                "cal_com", new Provider(calComClientId, calComClientSecret, calComRedirectUri,
-                        calComAuthorizeUrl, calComTokenUrl, calComScope, false),
                 "calendly", new Provider(calendlyClientId, calendlyClientSecret, calendlyRedirectUri,
                         calendlyAuthorizeUrl, calendlyTokenUrl, calendlyScope, false)
         );

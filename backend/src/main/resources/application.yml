@@ -162,13 +162,6 @@ sauti:
       client-id: ${SALESFORCE_CLIENT_ID:}
       client-secret: ${SALESFORCE_CLIENT_SECRET:}
       redirect-uri: ${SALESFORCE_REDIRECT_URI:http://localhost:8082/api/v1/integrations/salesforce/callback}
-    cal-com:
-      client-id: ${CAL_COM_CLIENT_ID:}
-      client-secret: ${CAL_COM_CLIENT_SECRET:}
-      redirect-uri: ${CAL_COM_REDIRECT_URI:http://localhost:8082/api/v1/integrations/cal_com/callback}
-      authorize-url: ${CAL_COM_AUTHORIZE_URL:}
-      token-url: ${CAL_COM_TOKEN_URL:}
-      scope: ${CAL_COM_SCOPE:}
     calendly:
       client-id: ${CALENDLY_CLIENT_ID:}
       client-secret: ${CALENDLY_CLIENT_SECRET:}
