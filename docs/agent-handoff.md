@@ -221,6 +221,26 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Complete Agent Studio surface audit and Radix sliders
+
+- Audited the supplied screenshots across Behavior, Speech, Routing, Integrations, Knowledge, and Post-call and explicitly replaced the remaining light nested surfaces with dark component states.
+- Corrected conversation intelligence cards, prompt source/view controls, prompt and retention guidance, disabled transfer inputs, integration icons/status/actions, knowledge statistics/budget/chunks/document cards/upload controls, empty states, and post-call rows.
+- Replaced the plain agent-name initial in the studio header with a designed bot identity mark using the studio cyan/teal treatment.
+- Added `@radix-ui/react-slider` and replaced native browser range inputs with accessible Radix sliders featuring dark tracks, cyan filled ranges, custom thumbs, keyboard control, focus-visible rings, and hover/drag feedback.
+- Why: several nested components retained their own high-specificity light styles after the initial studio theme pass, and browser-native sliders did not match the console.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `dashboard/package.json`
+  - `dashboard/package-lock.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+  - `Push-Location dashboard; npm.cmd audit --audit-level=high; Pop-Location`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: `npm audit --audit-level=high` passes but reports two moderate PostCSS findings through Next.js; the proposed forced fix would downgrade Next.js and was not applied.
+
 ### 2026-07-11 - Agent Studio dark-surface correction
 
 - Replaced all six remaining native Agent Studio selects with the shared Radix dark selector: primary language, timezone, Web Voice widget language, widget position, vocabulary specialization, and DTMF completion key.

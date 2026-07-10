@@ -2,6 +2,7 @@
 
 import "./AgentCreator.css";
 import Link from "next/link";
+import * as Slider from "@radix-ui/react-slider";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -684,7 +685,7 @@ export function AgentCreator({
               <ArrowLeft size={17} /> {editing ? "Agents" : "Templates"}
             </button>
             <div className="agent-studio-title">
-              <span className="agent-list-avatar">{name.slice(0, 1).toUpperCase() || "A"}</span>
+              <span className="agent-list-avatar"><Bot size={20} /></span>
               <div><small>{editing ? "Agent configuration" : "Draft agent"}</small><h1>{name || "Unnamed agent"}</h1></div>
             </div>
             <div className="agent-studio-actions">
@@ -1799,7 +1800,12 @@ function PostCallSettings({ fields, onFields }: { fields: string[]; onFields: (f
 }
 
 function RangeSetting({ label, detail, value, min, max, step, suffix, onChange }: { label: string; detail: string; value: number; min: number; max: number; step: number; suffix: string; onChange: (value: number) => void }) {
-  return <div className="range-setting"><div><strong>{label}</strong><small>{detail}</small></div><span>{suffix}</span><input type="range" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} /></div>;
+  return <div className="range-setting"><div><strong>{label}</strong><small>{detail}</small></div><span>{suffix}</span>
+    <Slider.Root className="studio-slider" value={[value]} min={min} max={max} step={step} onValueChange={([next]) => onChange(next)} aria-label={label}>
+      <Slider.Track className="studio-slider-track"><Slider.Range className="studio-slider-range" /></Slider.Track>
+      <Slider.Thumb className="studio-slider-thumb" />
+    </Slider.Root>
+  </div>;
 }
 
 function RoutingSettings(props: {
