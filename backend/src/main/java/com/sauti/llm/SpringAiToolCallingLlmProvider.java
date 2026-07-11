@@ -109,8 +109,8 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
                     ? ""
                     : output.getText();
             if (delta != null && !delta.isEmpty()) {
-                text.append(delta);
-                textDeltaConsumer.accept(delta);
+                var incremental = incrementalText(text, delta);
+                if (!incremental.isEmpty()) textDeltaConsumer.accept(incremental);
             }
             if (output != null && output.getToolCalls() != null && !output.getToolCalls().isEmpty()) {
                 streamedToolCalls.set(output);
@@ -118,6 +118,18 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
         });
         var toolOutput = streamedToolCalls.get();
         return new LlmToolTurnResponse(text.toString(), toolOutput == null ? List.of() : toolCalls(toolOutput));
+    }
+
+    static String incrementalText(StringBuilder accumulated, String incoming) {
+        if (incoming == null || incoming.isEmpty()) return "";
+        if (incoming.startsWith(accumulated.toString())) {
+            var suffix = incoming.substring(accumulated.length());
+            accumulated.setLength(0);
+            accumulated.append(incoming);
+            return suffix;
+        }
+        accumulated.append(incoming);
+        return incoming;
     }
 
     boolean shouldTryAdvanced(AgentContext agent) {

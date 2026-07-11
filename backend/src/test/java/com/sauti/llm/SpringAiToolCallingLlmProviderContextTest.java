@@ -53,6 +53,19 @@ class SpringAiToolCallingLlmProviderContextTest {
     }
 
     @Test
+    void convertsCumulativeStreamingUpdatesIntoExactIncrementalSpeech() {
+        var accumulated = new StringBuilder();
+
+        assertThat(SpringAiToolCallingLlmProvider.incrementalText(accumulated, "Bonjour"))
+                .isEqualTo("Bonjour");
+        assertThat(SpringAiToolCallingLlmProvider.incrementalText(accumulated, "Bonjour, comment"))
+                .isEqualTo(", comment");
+        assertThat(SpringAiToolCallingLlmProvider.incrementalText(accumulated, " puis-je vous aider ?"))
+                .isEqualTo(" puis-je vous aider ?");
+        assertThat(accumulated.toString()).isEqualTo("Bonjour, comment puis-je vous aider ?");
+    }
+
+    @Test
     void toolSchemasStripFormatHintsBeforeProviderSubmission() {
         var springProvider = (SpringAiToolCallingLlmProvider) provider;
 

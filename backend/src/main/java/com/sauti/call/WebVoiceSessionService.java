@@ -69,23 +69,7 @@ public class WebVoiceSessionService {
         var previous = sessions.put(callSid, state);
         if (previous != null) previous.close(false);
         sendJson(state, Map.of("type", "connected", "sessionId", callSid, "sampleRate", 16000));
-        state.sttSession = openRealtimeStt(call.getAgent(), new RealtimeTranscriptListener() {
-            @Override
-            public void onPartialTranscript(String transcript, double confidence) {
-                state.enqueue(() -> onPartial(state, transcript, confidence));
-            }
-
-            @Override
-            public void onFinalTranscript(String transcript) {
-                state.enqueue(() -> onFinal(state, transcript));
-            }
-
-            @Override
-            public void onError(Throwable error) {
-                LOGGER.warn("Web Voice STT failed for session={}", callSid, error);
-                sendJson(state, Map.of("type", "error", "message", "Speech recognition became unavailable"));
-            }
-        });
+        connectRealtimeStt(state, false);
         state.maintenanceTask = maintenanceExecutor.scheduleAtFixedRate(
                 () -> state.enqueue(() -> maintain(state)),
                 1,
@@ -99,13 +83,51 @@ public class WebVoiceSessionService {
         }
     }
 
+    private void connectRealtimeStt(BrowserSession state, boolean forceFallback) {
+        var listener = new RealtimeTranscriptListener() {
+            @Override
+            public void onPartialTranscript(String transcript, double confidence) {
+                state.enqueue(() -> onPartial(state, transcript, confidence));
+            }
+
+            @Override
+            public void onFinalTranscript(String transcript) {
+                state.enqueue(() -> onFinal(state, transcript));
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                recoverRealtimeStt(state, error);
+            }
+        };
+        state.sttSession = forceFallback
+                ? sttProvider.open(state.call.getAgent(), listener)
+                : openRealtimeStt(state.call.getAgent(), listener);
+        state.sttSession.whenComplete((session, error) -> {
+            if (error != null) recoverRealtimeStt(state, error);
+            else state.sttRecovering.set(false);
+        });
+    }
+
+    private void recoverRealtimeStt(BrowserSession state, Throwable error) {
+        if (state.terminating || !state.socket.isOpen() || !state.sttRecovering.compareAndSet(false, true)) return;
+        LOGGER.warn("Web Voice STT failed for session={}; reconnecting with fallback", state.call.getTwilioCallSid(), error);
+        state.enqueue(() -> {
+            if (state.sttRecoveryAttempts++ >= 2) {
+                sendJson(state, Map.of("type", "error", "message", "Speech recognition became unavailable"));
+                return;
+            }
+            connectRealtimeStt(state, true);
+        });
+    }
+
     private CompletableFuture<RealtimeSttSession> openRealtimeStt(
             com.sauti.agent.Agent agent,
             RealtimeTranscriptListener listener
     ) {
-        if (openAiRealtimeTranscriptionService.isConfigured()
-                && agent != null
-                && (agent.getSupportedLanguages().size() > 1 || !"en".equals(agent.getDefaultLanguage()))) {
+        var requiresOpenAi = agent != null && agent.getSupportedLanguages().stream()
+                .anyMatch(language -> !java.util.Set.of("en", "fr").contains(language));
+        if (openAiRealtimeTranscriptionService.isConfigured() && requiresOpenAi) {
             return openAiRealtimeTranscriptionService.open(agent, listener);
         }
         return sttProvider.open(agent, listener);
@@ -148,18 +170,22 @@ public class WebVoiceSessionService {
         sendJson(state, Map.of("type", "transcript_final", "text", transcript));
         try {
             var streamed = new AtomicBoolean(false);
+            var spokenText = new StringBuilder();
             var turn = callPipelineService.processLiveTranscriptTurn(
                     state.call.getTwilioCallSid(),
                     transcript,
                     delta -> {
                         if (delta == null || delta.isEmpty()) return;
+                        spokenText.append(delta);
                         if (streamed.compareAndSet(false, true)) beginSpeech(state, state.language, false);
                         state.ttsSession.thenAccept(tts -> tts.speak(delta, false));
                     }
             );
             state.language = turn.language();
             if (!turn.text().isBlank()) {
-                sendJson(state, Map.of("type", "agent_response", "text", turn.text(), "language", turn.language()));
+                var displayedText = spokenText.toString().trim();
+                if (displayedText.isBlank()) displayedText = turn.text();
+                sendJson(state, Map.of("type", "agent_response", "text", displayedText, "language", turn.language()));
                 state.closeOutcome = turn.outcome();
                 if (streamed.get()) {
                     state.closeAfterSpeech = !turn.outcome().isBlank();
@@ -303,6 +329,8 @@ public class WebVoiceSessionService {
         private volatile String closeOutcome = "";
         private volatile boolean terminating;
         private volatile String language;
+        private final AtomicBoolean sttRecovering = new AtomicBoolean(false);
+        private int sttRecoveryAttempts;
         private final long startedNanos = System.nanoTime();
         private long lastActivityNanos = startedNanos;
         private long callerSpeechStartedNanos;

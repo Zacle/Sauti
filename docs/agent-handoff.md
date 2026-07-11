@@ -221,6 +221,27 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Resilient test-call recognition and spoken-text parity
+
+- Changed Web Voice STT routing so agents whose supported languages are entirely English/French use the configured realtime STT provider (Deepgram in production) instead of being sent to OpenAI merely because they are multilingual.
+- Kept OpenAI realtime transcription for agents containing languages outside the Deepgram English/French route.
+- Added automatic STT recovery: failed initial connections and runtime transcription errors reconnect through the configured fallback provider, with two recovery attempts before the browser receives a fatal speech-recognition error.
+- Normalized Spring AI streaming responses so cumulative provider updates are converted into true incremental suffixes before being sent to TTS; ordinary delta streams continue unchanged.
+- Accumulated the exact text submitted to realtime TTS and used that text for the browser `agent_response`, including multi-step tool turns, so the displayed response matches what the caller heard.
+- Added a regression test covering cumulative-to-incremental stream normalization.
+- Why: French hands-free test calls could become permanently deaf after an OpenAI realtime transcription failure, and streamed/tool-loop speech could differ from the final response shown in the transcript.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/test/java/com/sauti/llm/SpringAiToolCallingLlmProviderContextTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:compileJava`
+  - `.\gradlew.bat :backend:test`
+  - `git diff --check`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: production provider failover and spoken/displayed parity should be confirmed with a French hands-free call after CI/CD deployment.
+
 ### 2026-07-11 - Dark new-agent template selection
 
 - Restyled `/agents/new` template selection to match the dark Agents console instead of rendering the original light composer and cards over a dark shell.
