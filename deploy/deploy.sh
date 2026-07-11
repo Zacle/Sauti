@@ -5,6 +5,24 @@ cd /opt/sauti
 
 : "${IMAGE_TAG:?IMAGE_TAG is required}"
 
+ensure_streaming_provider() {
+  local setting="$1"
+  local provider="$2"
+  local credential="$3"
+  local credential_value current_value
+  credential_value="$(grep -E "^${credential}=" .env.production | tail -1 | cut -d= -f2- || true)"
+  current_value="$(grep -E "^${setting}=" .env.production | tail -1 | cut -d= -f2- || true)"
+  if [[ -n "${credential_value}" && ( -z "${current_value}" || "${current_value}" == "noop" ) ]]; then
+    grep -v "^${setting}=" .env.production > .env.production.tmp || true
+    printf '%s=%s\n' "${setting}" "${provider}" >> .env.production.tmp
+    mv .env.production.tmp .env.production
+    chmod 600 .env.production
+  fi
+}
+
+ensure_streaming_provider "SAUTI_STT_STREAMING_PROVIDER" "deepgram" "DEEPGRAM_API_KEY"
+ensure_streaming_provider "SAUTI_TTS_STREAMING_PROVIDER" "elevenlabs" "ELEVENLABS_API_KEY"
+
 compose=(docker compose --env-file .env.production -f docker-compose.prod.yml)
 previous_tag=""
 if [[ -f .deployed-image-tag ]]; then

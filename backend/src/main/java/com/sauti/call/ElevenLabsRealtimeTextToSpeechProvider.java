@@ -118,7 +118,7 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
     private URI uri(String voiceId, String modelId) {
         return URI.create(baseUrl + "/" + voiceId
                 + "/stream-input?model_id=" + modelId
-                + "&output_format=pcm_16000&auto_mode=true");
+                + "&output_format=pcm_16000");
     }
 
     String modelId(String language) {
@@ -224,6 +224,13 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
         void handle(String payload) {
             try {
                 var node = objectMapper.readTree(payload);
+                if (node.has("error") || node.has("message") && node.path("audio").isMissingNode()) {
+                    var message = node.path("error").path("message").asText(
+                            node.path("message").asText("ElevenLabs TTS failed")
+                    );
+                    listener.onError(new IllegalStateException(message));
+                    return;
+                }
                 var audio = node.path("audio").asText("");
                 if (!audio.isBlank()) {
                     listener.onPcmAudio(Base64.getDecoder().decode(audio));

@@ -221,6 +221,30 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Operational realtime provider defaults
+
+- Changed the application defaults from no-op realtime providers to Deepgram STT and ElevenLabs TTS; no-op providers remain available only when explicitly selected for tests or intentionally silent environments.
+- Added `SAUTI_STT_STREAMING_PROVIDER=deepgram` and `SAUTI_TTS_STREAMING_PROVIDER=elevenlabs` to local and production environment templates.
+- Updated the local ignored `.env` from `noop` to `deepgram` without exposing or changing provider credentials.
+- Added a guarded CI/CD deploy migration that changes a missing/`noop` production streaming provider only when the matching Deepgram or ElevenLabs credential is already nonblank.
+- Removed ElevenLabs `auto_mode` from the WebSocket URL because Sauti supplies an explicit chunk schedule and flush protocol; the mixed modes could produce no audio.
+- Added ElevenLabs JSON error parsing so provider rejection details reach the existing TTS error path instead of being ignored until the first-audio watchdog fires.
+- Why: Amélie could speak through Cartesia but could never hear the caller because STT was explicitly configured as `noop`; Sarah used ElevenLabs and returned no frames under the incompatible/opaque WebSocket configuration.
+- Files touched:
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProvider.java`
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `deploy/deploy.sh`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.ElevenLabsRealtimeTextToSpeechProviderTest`
+  - `.\gradlew.bat :backend:test`
+  - `bash -n deploy/deploy.sh`
+  - `git diff --check`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: after CI/CD, confirm the production startup log selects Deepgram/ElevenLabs and run one ElevenLabs-backed and one Cartesia-backed French test call.
+
 ### 2026-07-11 - Realtime TTS protocol correction and first-audio state
 
 - Fixed the ElevenLabs realtime WebSocket adapter to decode and forward base64 PCM from JSON `audio` messages; it previously handled only binary frames and final markers, causing silent calls stuck in a speaking state.

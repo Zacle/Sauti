@@ -179,7 +179,7 @@ sauti:
     # Must be exactly 32 UTF-8 bytes. Use a random secret in production.
     encryption-key: ${SAUTI_TOOLS_ENCRYPTION_KEY:dev-tool-encryption-key-32-bytes}
   stt:
-    streaming-provider: ${SAUTI_STT_STREAMING_PROVIDER:noop}
+    streaming-provider: ${SAUTI_STT_STREAMING_PROVIDER:deepgram}
     deepgram:
       api-key: ${DEEPGRAM_API_KEY:}
       base-url: ${DEEPGRAM_LISTEN_URL:wss://api.deepgram.com/v1/listen}
@@ -194,7 +194,7 @@ sauti:
       realtime-model: ${OPENAI_REALTIME_TRANSCRIPTION_MODEL:gpt-realtime-whisper}
       realtime-delay: ${OPENAI_REALTIME_TRANSCRIPTION_DELAY:low}
   tts:
-    streaming-provider: ${SAUTI_TTS_STREAMING_PROVIDER:noop}
+    streaming-provider: ${SAUTI_TTS_STREAMING_PROVIDER:elevenlabs}
     elevenlabs:
       api-key: ${ELEVENLABS_API_KEY:}
       base-url: ${ELEVENLABS_STREAM_URL:wss://api.elevenlabs.io/v1/text-to-speech}
