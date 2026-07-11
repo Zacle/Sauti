@@ -87,9 +87,12 @@ public class CartesiaRealtimeTextToSpeechClient {
                 .header("Cartesia-Version", version)
                 .buildAsync(websocketUri(), webSocketListener)
                 .thenApply(webSocket -> new RealtimeTtsSession() {
+                    private String contextId = UUID.randomUUID().toString();
+
                     @Override
-                    public void speak(String text, boolean flush) {
-                        sendGeneration(webSocket, providerVoiceId, language, text, flush);
+                    public synchronized void speak(String text, boolean flush) {
+                        sendGeneration(webSocket, providerVoiceId, language, text, flush, contextId);
+                        if (flush) contextId = UUID.randomUUID().toString();
                     }
 
                     @Override
@@ -141,14 +144,21 @@ public class CartesiaRealtimeTextToSpeechClient {
         }
     }
 
-    private void sendGeneration(WebSocket webSocket, String providerVoiceId, String language, String text, boolean flush) {
+    private void sendGeneration(
+            WebSocket webSocket,
+            String providerVoiceId,
+            String language,
+            String text,
+            boolean flush,
+            String contextId
+    ) {
         try {
             var payload = objectMapper.createObjectNode()
                     .put("model_id", modelId)
                     .put("transcript", text == null ? "" : text)
                     .put("language", normalizedLanguage(language))
-                    .put("context_id", UUID.randomUUID().toString())
-                    .put("continue", false);
+                    .put("context_id", contextId)
+                    .put("continue", !flush);
             payload.set("voice", objectMapper.createObjectNode()
                     .put("mode", "id")
                     .put("id", providerVoiceId));

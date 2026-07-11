@@ -216,9 +216,19 @@ public class WebVoiceSessionService {
         state.closeAfterSpeech = closeAfterSpeech;
         if (!closeAfterSpeech) state.closeOutcome = "";
         else if (state.closeOutcome == null || state.closeOutcome.isBlank()) state.closeOutcome = "completed";
-        state.speaking = true;
         state.markActivity();
-        sendJson(state, Map.of("type", "speaking", "value", true));
+        var requestVersion = ++state.audioRequestVersion;
+        state.awaitingAudio = true;
+        maintenanceExecutor.schedule(
+                () -> state.enqueue(() -> {
+                    if (state.awaitingAudio && state.audioRequestVersion == requestVersion && !state.terminating) {
+                        state.interruptSpeech();
+                        sendJson(state, Map.of("type", "error", "message", "Voice playback did not start. Please try again."));
+                    }
+                }),
+                6,
+                TimeUnit.SECONDS
+        );
     }
 
     private void maintain(BrowserSession state) {
@@ -329,6 +339,8 @@ public class WebVoiceSessionService {
         private volatile String closeOutcome = "";
         private volatile boolean terminating;
         private volatile String language;
+        private volatile boolean awaitingAudio;
+        private long audioRequestVersion;
         private final AtomicBoolean sttRecovering = new AtomicBoolean(false);
         private int sttRecoveryAttempts;
         private final long startedNanos = System.nanoTime();
@@ -362,6 +374,12 @@ public class WebVoiceSessionService {
                 @Override
                 public void onPcmAudio(byte[] pcm16kAudio) {
                     try {
+                        if (!speaking) {
+                            awaitingAudio = false;
+                            speaking = true;
+                            markActivity();
+                            sendJson(BrowserSession.this, Map.of("type", "speaking", "value", true));
+                        }
                         if (recording != null) recording.appendAgent(pcm16kAudio);
                         sendBinary(pcm16kAudio);
                     } catch (Exception exception) {
@@ -371,6 +389,7 @@ public class WebVoiceSessionService {
 
                 @Override
                 public void onComplete() {
+                    awaitingAudio = false;
                     speaking = false;
                     markActivity();
                     sendJson(BrowserSession.this, Map.of("type", "speaking", "value", false));
@@ -385,6 +404,7 @@ public class WebVoiceSessionService {
 
                 @Override
                 public void onError(Throwable error) {
+                    awaitingAudio = false;
                     speaking = false;
                     LOGGER.warn("Web Voice TTS failed for session={}", call.getTwilioCallSid(), error);
                     sendJson(BrowserSession.this, Map.of("type", "error", "message", "Voice playback became unavailable"));
@@ -401,6 +421,8 @@ public class WebVoiceSessionService {
             ttsSession = CompletableFuture.completedFuture(null);
             ttsLanguage = "";
             speaking = false;
+            awaitingAudio = false;
+            audioRequestVersion++;
             closeAfterSpeech = false;
             closeOutcome = "";
             if (recording != null) recording.clearPendingAgentAudio();

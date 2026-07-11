@@ -221,6 +221,27 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Realtime TTS protocol correction and first-audio state
+
+- Fixed the ElevenLabs realtime WebSocket adapter to decode and forward base64 PCM from JSON `audio` messages; it previously handled only binary frames and final markers, causing silent calls stuck in a speaking state.
+- Fixed Cartesia streaming synthesis to reuse one `context_id` across all text fragments in a turn, send `continue=true` for intermediate fragments, close the context on flush, and allocate a new context only for the next turn.
+- Changed Web Voice speaking state so the browser receives `speaking=true` only after the first actual PCM frame, rather than when a synthesis request is merely queued.
+- Added a versioned six-second first-audio watchdog that cancels a stalled synthesis request and reports a recoverable playback error instead of leaving the panel indefinitely stuck.
+- Added a regression test proving ElevenLabs JSON audio frames reach the PCM listener.
+- Why: most selected ElevenLabs voices produced no audible browser audio because their JSON audio payload was discarded, while Cartesia voices could speak fragmented/inconsistent content because every streamed text fragment used an unrelated synthesis context.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProvider.java`
+  - `backend/src/main/java/com/sauti/call/CartesiaRealtimeTextToSpeechClient.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/test/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.ElevenLabsRealtimeTextToSpeechProviderTest --tests com.sauti.llm.SpringAiToolCallingLlmProviderContextTest`
+  - `.\gradlew.bat :backend:test`
+  - `git diff --check`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: confirm both an ElevenLabs-backed voice and a `cartesia:` voice in Agent Studio after CI/CD; provider/network behavior cannot be fully exercised by unit tests.
+
 ### 2026-07-11 - Resilient test-call recognition and spoken-text parity
 
 - Changed Web Voice STT routing so agents whose supported languages are entirely English/French use the configured realtime STT provider (Deepgram in production) instead of being sent to OpenAI merely because they are multilingual.

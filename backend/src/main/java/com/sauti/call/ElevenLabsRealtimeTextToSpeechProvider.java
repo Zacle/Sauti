@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -170,13 +171,13 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
         return value;
     }
 
-    private static final class ElevenLabsWebSocketListener implements WebSocket.Listener {
+    static final class ElevenLabsWebSocketListener implements WebSocket.Listener {
         private final ObjectMapper objectMapper;
         private final TtsAudioListener listener;
         private final StringBuilder textBuffer = new StringBuilder();
         private final AtomicBoolean completeFired = new AtomicBoolean(false);
 
-        private ElevenLabsWebSocketListener(ObjectMapper objectMapper, TtsAudioListener listener) {
+        ElevenLabsWebSocketListener(ObjectMapper objectMapper, TtsAudioListener listener) {
             this.objectMapper = objectMapper;
             this.listener = listener;
         }
@@ -220,9 +221,13 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
             listener.onError(error);
         }
 
-        private void handle(String payload) {
+        void handle(String payload) {
             try {
                 var node = objectMapper.readTree(payload);
+                var audio = node.path("audio").asText("");
+                if (!audio.isBlank()) {
+                    listener.onPcmAudio(Base64.getDecoder().decode(audio));
+                }
                 if (node.path("isFinal").asBoolean(false) || node.path("final").asBoolean(false)) {
                     completeOnce();
                 }
