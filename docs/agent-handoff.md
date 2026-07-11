@@ -2127,3 +2127,25 @@ Expected:
   - `.\gradlew.bat :backend:test`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Transcript-driven intake corrections
+
+- Reworked phone-note extraction into a sequential candidate: rejected candidates are cleared, complete repetitions replace them, and short digit-only continuations such as `quatre un` append safely.
+- Added French STT normalization for number phrases seen in production-like transcripts, including `cent onze` and `cinq cent septante-cinq`.
+- Prevented ordinary words such as `une consultation` from being mistaken for phone digit continuations.
+- Added a high-priority allowed-booking-fields block: routine booking collects name, contact, reason, and preferred time only; date of birth is prohibited unless explicitly configured as an extraction field.
+- Extended the Web Voice silence reminder minimum to 25 seconds when the latest agent question requests dictated personal/contact information.
+- Treat an agent-generated goodbye as a terminal outcome, so a polite `Je vous en prie, au revoir` closes the call instead of inviting another goodbye turn.
+- Why: the supplied transcripts showed premature reminders during contact collection, prohibited DOB collection, fragmented phone corrections, and duplicate farewell exchanges.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/CallIntakeNoteService.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/call/CallIntakeNoteServiceTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.CallIntakeNoteServiceTest" --tests "com.sauti.llm.ConversationOrchestratorTest" --tests "com.sauti.call.CallPipelineServiceTest"`
+  - `.\gradlew.bat :backend:test`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

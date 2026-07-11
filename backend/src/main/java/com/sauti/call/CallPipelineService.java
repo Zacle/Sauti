@@ -466,6 +466,9 @@ public class CallPipelineService {
         if ((outcome == null || outcome.isBlank()) && looksLikeConversationEnding(callerTranscript)) {
             outcome = "completed";
         }
+        if ((outcome == null || outcome.isBlank()) && looksLikeConversationEnding(response)) {
+            outcome = "completed";
+        }
         if (outcome != null && !outcome.isBlank()) {
             call.complete(outcome);
             analyzePostCall(call);

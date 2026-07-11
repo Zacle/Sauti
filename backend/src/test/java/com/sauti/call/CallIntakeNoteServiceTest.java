@@ -36,6 +36,24 @@ class CallIntakeNoteServiceTest {
                 .containsEntry("preferred_time", "16:00");
     }
 
+    @Test
+    void replacesARejectedPhoneAndAppendsShortContinuationDigits() {
+        var repository = mock(CallTurnRepository.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        var history = List.of(
+                turn("zéro cent onze cinq cent septante-cinq trois quatre quatre un", "Est-ce bien cela ?"),
+                turn("non ça commence par zéro cent onze", "Redonnez-moi le numéro complet."),
+                turn("zéro un un un cinq sept cinq trois quatre", "Vous avez dit zéro un un un cinq sept cinq trois quatre ?"),
+                turn("quatre un", "Merci.")
+        );
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId)).thenReturn(history);
+
+        assertThat(new CallIntakeNoteService(repository).notes(call, ""))
+                .containsEntry("caller_phone", "01115753441");
+    }
+
     private CallTurn turn(String caller, String agent) {
         var turn = mock(CallTurn.class);
         when(turn.getCallerTranscript()).thenReturn(caller);

@@ -25,7 +25,7 @@ public class CallIntakeNoteService {
             Map.entry("trois", "3"), Map.entry("three", "3"),
             Map.entry("quatre", "4"), Map.entry("four", "4"),
             Map.entry("cinq", "5"), Map.entry("five", "5"),
-            Map.entry("six", "6"), Map.entry("seven", "7"), Map.entry("sept", "7"),
+            Map.entry("six", "6"), Map.entry("seven", "7"), Map.entry("sept", "7"), Map.entry("septante", "7"),
             Map.entry("huit", "8"), Map.entry("eight", "8"),
             Map.entry("neuf", "9"), Map.entry("nine", "9")
     );
@@ -38,12 +38,14 @@ public class CallIntakeNoteService {
 
     public Map<String, String> notes(Call call, String currentCallerTranscript) {
         var notes = new LinkedHashMap<String, String>();
+        var phoneCandidate = new StringBuilder();
         String previousAgent = "";
         for (var turn : turns.findByCall_IdOrderByTurnIndexAsc(call.getId())) {
-            collect(notes, turn.getCallerTranscript(), previousAgent);
+            collect(notes, phoneCandidate, turn.getCallerTranscript(), previousAgent);
             previousAgent = turn.getAgentResponse() == null ? "" : turn.getAgentResponse();
         }
-        collect(notes, currentCallerTranscript, previousAgent);
+        collect(notes, phoneCandidate, currentCallerTranscript, previousAgent);
+        if (phoneCandidate.length() >= 7) notes.put("caller_phone", phoneCandidate.toString());
         return Map.copyOf(notes);
     }
 
@@ -55,7 +57,7 @@ public class CallIntakeNoteService {
         return result.toString().trim();
     }
 
-    private void collect(Map<String, String> notes, String callerText, String previousAgent) {
+    private void collect(Map<String, String> notes, StringBuilder phoneCandidate, String callerText, String previousAgent) {
         if (callerText == null || callerText.isBlank()) return;
         var normalized = normalize(callerText);
         var previous = normalize(previousAgent);
@@ -71,9 +73,17 @@ public class CallIntakeNoteService {
             notes.put("caller_address", callerText.trim());
         }
 
-        if (PHONE_CONTEXT.matcher(callerText).find() || previous.matches(".*(numero|telephone|phone|contact).*")) {
-            var phone = spokenDigits(normalized);
-            if (phone.length() >= 7) notes.put("caller_phone", phone);
+        var digits = spokenDigits(normalized);
+        var phoneContext = PHONE_CONTEXT.matcher(callerText).find()
+                || previous.matches(".*(numero|telephone|phone|contact).*")
+                || (phoneCandidate.length() > 0 && digitOnlyFragment(normalized));
+        if (phoneContext && !digits.isBlank()) {
+            var restart = normalized.matches(".*\\b(no|non|restart|recommencer|correction|commence par|depuis le debut|a zero)\\b.*");
+            var requestedCompleteNumber = previous.matches(".*(numero complet|redonner le numero|repeat the (?:complete |full )?number).*");
+            if (restart || requestedCompleteNumber || (PHONE_CONTEXT.matcher(callerText).find() && digits.length() >= 7)) {
+                phoneCandidate.setLength(0);
+            }
+            phoneCandidate.append(digits);
         }
         if (normalized.contains("consultation")) notes.put("service_or_reason", "consultation");
         else if (normalized.contains("visite de suivi") || normalized.contains("follow-up")) notes.put("service_or_reason", "follow-up visit");
@@ -93,12 +103,28 @@ public class CallIntakeNoteService {
     }
 
     private String spokenDigits(String normalized) {
+        normalized = normalized
+                .replace("cinq cent septante cinq", "cinq sept cinq")
+                .replace("cent onze", "un un un")
+                .replace("onze", "un un");
         var result = new StringBuilder();
         for (var token : normalized.split("[^a-z0-9]+")) {
             if (token.matches("\\d+")) result.append(token);
             else if (DIGITS.containsKey(token)) result.append(DIGITS.get(token));
         }
         return result.toString();
+    }
+
+    private boolean digitOnlyFragment(String normalized) {
+        var expanded = normalized.replace("cent onze", "un un un").replace("onze", "un un");
+        for (var token : expanded.split("[^a-z0-9]+")) {
+            if (token.isBlank() || token.matches("\\d+") || DIGITS.containsKey(token)
+                    || java.util.Set.of("et", "oui", "non", "cest", "ca", "bien", "cela", "correct").contains(token)) {
+                continue;
+            }
+            return false;
+        }
+        return !spokenDigits(normalized).isBlank();
     }
 
     private String weekday(String text) {

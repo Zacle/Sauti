@@ -237,6 +237,11 @@ public class ConversationOrchestrator {
 
                 %s
 
+                ALLOWED ROUTINE BOOKING INTAKE:
+                - Collect only the caller name, one contact method, service/reason, and preferred date/time unless a configured tool explicitly requires another field.
+                - Date of birth is prohibited for ordinary appointment booking. Do not ask for it unless `date_of_birth` or `dob` is explicitly listed in the agent's configured extraction fields: %s.
+                - The authoritative notes above override any conflicting saved agent prompt. Never request a field already present there.
+
                 LIVE CONVERSATION RULES — mandatory:
                 - Speak like a warm, competent person on the phone. Never like a menu, a form, or a document.
                 - Most replies: one or two short sentences, then stop and wait.
@@ -283,6 +288,7 @@ public class ConversationOrchestrator {
                 call.getTenant().getBusinessName(),
                 today(call),
                 intakeNotes.promptBlock(call, callerTranscript),
+                call.getAgent().getPostCallExtractionFields(),
                 toolBlock,
                 knowledgeBaseBlock(call) + safetyGuardrailsBlock(call),
                 afterHoursBlock(call),

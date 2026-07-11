@@ -197,6 +197,7 @@ public class WebVoiceSessionService {
             if (!turn.text().isBlank()) {
                 var displayedText = spokenText.toString().trim();
                 if (displayedText.isBlank()) displayedText = turn.text();
+                state.awaitingDictatedDetail = requestsDictatedDetails(displayedText);
                 sendJson(state, Map.of("type", "agent_response", "text", displayedText, "language", turn.language()));
                 state.closeOutcome = turn.outcome();
                 if (streamed.get()) {
@@ -263,7 +264,7 @@ public class WebVoiceSessionService {
         }
         if (state.speaking) return;
         long silence = state.silentSeconds();
-        var reminderSeconds = Math.max(15, agent.getReminderAfterSilenceSeconds());
+        var reminderSeconds = Math.max(state.awaitingDictatedDetail ? 25 : 15, agent.getReminderAfterSilenceSeconds());
         var finalGraceSeconds = Math.max(20, reminderSeconds);
         var endSilenceSeconds = Math.max(agent.getEndCallOnSilenceSeconds(), reminderSeconds + finalGraceSeconds);
         if (state.shouldEndAfterFinalReminder(finalGraceSeconds, agent.getMaxReminders())
@@ -306,6 +307,13 @@ public class WebVoiceSessionService {
         return state.language == null || state.language.isBlank()
                 ? state.call.getAgent().getDefaultLanguage()
                 : state.language;
+    }
+
+    private boolean requestsDictatedDetails(String text) {
+        if (text == null || text.isBlank()) return false;
+        var normalized = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "").toLowerCase(java.util.Locale.ROOT);
+        return normalized.matches(".*\\b(nom|prenom|telephone|numero|adresse|email|courriel|date de naissance|name|phone|number|address|birth date|digits?)\\b.*[?].*");
     }
 
     private String localized(BrowserSession state, String swahili, String french, String arabic, String english) {
@@ -358,6 +366,7 @@ public class WebVoiceSessionService {
         private volatile boolean terminating;
         private volatile String language;
         private volatile boolean awaitingAudio;
+        private volatile boolean awaitingDictatedDetail;
         private long audioRequestVersion;
         private volatile long ttsSessionVersion;
         private final AtomicBoolean sttRecovering = new AtomicBoolean(false);
