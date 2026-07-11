@@ -263,11 +263,6 @@ export function AgentsPage() {
             )) : <p className={styles["rail-empty"]}>Your agent activity will appear here after the first call.</p>}
           </section>
 
-          <section className={styles["launch-card"]}>
-            <span><Sparkles size={18} /></span>
-            <div><strong>Ready for another voice?</strong><p>Launch a focused agent for a new team, language, or workflow.</p></div>
-            <Link href="/agents/new">Create agent <ArrowRight size={14} /></Link>
-          </section>
         </aside>
       </div>
 

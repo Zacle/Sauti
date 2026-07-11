@@ -1957,3 +1957,51 @@ Expected:
   - `npm.cmd run build`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Agent Studio form and Cartesia voice-picker polish
+
+- Replaced the low-contrast white Agent Studio text fields with explicit dark-console inputs, readable values/placeholders, and stronger hover/focus feedback.
+- Reworked the Live channels panel into a contained console card with consistently aligned channel icons, descriptions, toggles, dividers, and phone-number action.
+- Restyled the Cartesia voice picker search, accent menu, language tabs, result headings, voice cards, selection states, preview controls, scrollbar, and footer as a cohesive dark modal.
+- Added responsive voice-picker and channel layout rules for narrow screens.
+- Why: agent identity, card description, boosted keyterms, channel configuration, and voice selection had conflicting light/dark styles and insufficient contrast.
+- File touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Remove duplicate agent creation card
+
+- Removed the right-rail `Ready for another voice?` creation card from the Agents page.
+- Kept the full-width `Create new agent` card beneath the agent grid as the single creation entry point in that section.
+- Removed the unused launch-card styles.
+- Files touched:
+  - `dashboard/features/agents/AgentList/AgentList.tsx`
+  - `dashboard/features/agents/AgentList/AgentList.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Sauti logo asset and favicon
+
+- Replaced the generated letter-in-a-box brand placeholders with one reusable Sauti SVG logo component.
+- Applied the logo to the console sidebar, authentication pages, onboarding, marketing navigation/footer, legacy homepage footer, and dashboard hero artwork.
+- Kept workspace switcher and user-profile initials dynamic because those identify the tenant/user rather than the Sauti product.
+- Registered the SVG in the root Next.js metadata as the browser favicon, shortcut icon, and Apple icon.
+- Files touched:
+  - `dashboard/public/sauti-logo.svg`
+  - `dashboard/components/BrandLogo/BrandLogo.tsx`
+  - `dashboard/app/layout.tsx`
+  - console, auth, onboarding, marketing, and dashboard brand surfaces
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

@@ -16,6 +16,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { authApi, getOnboardingStatus } from "@/lib/api/auth";
+import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import {
   clearPendingEmail,
   readPendingEmail,
@@ -111,7 +112,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   return (
     <main className="app-auth-page">
       <Link className="app-brand" href="/">
-        <span className="brand-mark">S</span><strong>Sauti</strong>
+        <BrandLogo /><strong>Sauti</strong>
       </Link>
       <section className="auth-shell">
         <div className="auth-copy">

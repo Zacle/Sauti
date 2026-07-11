@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import {
   AudioLines,
   ArrowRight,
@@ -254,7 +255,7 @@ export function OnboardingFlow() {
     <main className="onboarding-clean-page">
       <header className="onboarding-topbar">
         <Link className="onboarding-brand" href="/">
-          <span className="brand-mark">S</span>
+          <BrandLogo />
           <strong>Sauti</strong>
         </Link>
         <div className="onboarding-step">

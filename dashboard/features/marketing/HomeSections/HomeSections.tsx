@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import {
   Activity,
   ArrowRight,
@@ -305,7 +306,7 @@ function Footer() {
   return (
     <footer className="footer">
       <div>
-        <a className="brand" href="#"><span className="brand-mark">S</span><span>Sauti</span></a>
+        <a className="brand" href="#"><BrandLogo /><span>Sauti</span></a>
         <p>AI voice agents that turn conversations into conversions.</p>
       </div>
       <div className="footer-links">

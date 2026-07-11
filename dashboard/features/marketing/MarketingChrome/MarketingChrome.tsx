@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Menu, X } from "lucide-react";
 import { menuGroups, sectionPathFor } from "@/features/marketing/site-map";
+import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 
 export function MarketingNav() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -11,7 +12,7 @@ export function MarketingNav() {
   return (
     <header className="nav-shell">
       <Link className="brand" href="/" onClick={() => setMobileOpen(false)}>
-        <span className="brand-mark">S</span>
+        <BrandLogo />
         <span>Sauti</span>
       </Link>
       <nav className="nav-links" aria-label="Main navigation">
@@ -93,7 +94,7 @@ export function MarketingFooter() {
     <footer className="footer product-footer">
       <div>
         <Link className="brand" href="/">
-          <span className="brand-mark">S</span>
+          <BrandLogo />
           <span>Sauti</span>
         </Link>
         <p>AI voice agents that turn conversations into conversions.</p>

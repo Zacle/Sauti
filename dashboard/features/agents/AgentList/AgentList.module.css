@@ -123,11 +123,6 @@
 .activity-row small { margin-top: 3px; color: #8298ae; font-size: .6rem; }
 .activity-row em { color: #8399ae; font-size: .61rem; font-style: normal; }
 .rail-empty { margin: 18px 0 4px; color: #8398ae; font-size: .68rem; line-height: 1.5; }
-.launch-card { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 11px; padding: 17px; overflow: hidden; background: radial-gradient(circle at 100% 0, rgba(28, 218, 235, .16), transparent 55%), linear-gradient(145deg, #0b4252, #0a1b3a) !important; }
-.launch-card > span { display: grid; width: 37px; height: 37px; place-items: center; border-radius: 11px; color: #031e26; background: #25e2d4; }
-.launch-card strong { font-size: .76rem; }
-.launch-card p { margin: 4px 0 0; color: #9eb4c8; font-size: .62rem; line-height: 1.45; }
-.launch-card a { grid-column: 1 / -1; display: inline-flex; width: max-content; align-items: center; gap: 6px; margin-top: 3px; padding: 7px 10px; border: 1px solid rgba(171, 235, 242, .4); border-radius: 8px; color: #edfdfd; font-size: .64rem; }
 
 .agents-loading-grid span { height: 356px; border-radius: 17px; background: linear-gradient(90deg, #091a2e 25%, #102943 50%, #091a2e 75%); background-size: 200% 100%; animation: shimmer 1.3s infinite; }
 .agents-empty { display: grid; min-height: 330px; place-content: center; justify-items: center; border: 1px dashed var(--line); border-radius: 17px; text-align: center; }

@@ -4,7 +4,7 @@
 .hero h1 span { font-size: .8em; }
 .hero p { margin: 0; color: #9caec1; font-size: .84rem; }
 .hero-wave { position: absolute; inset: -24px 0 0 37%; opacity: .72; background: repeating-radial-gradient(ellipse at 70% 52%, transparent 0 38px, rgba(21, 219, 207, .17) 39px 40px, transparent 42px 66px); transform: rotate(-4deg) scaleY(.44); }
-.hero-wave span { position: absolute; right: 10%; top: 30px; display: grid; width: 67px; height: 67px; place-items: center; border: 1px solid rgba(39,235,220,.55); border-radius: 26px; color: #27ded3; background: rgba(9,61,70,.7); box-shadow: 0 0 32px rgba(26,224,211,.18); font-size: 2rem; font-weight: 700; transform: rotate(4deg) scaleY(2.27); }
+.hero-logo { position: absolute; right: 10%; top: 30px; width: 67px; height: 67px; border-radius: 20px; box-shadow: 0 0 32px rgba(26,224,211,.22); transform: rotate(4deg) scaleY(2.27); }
 .refresh { position: relative; z-index: 2; display: grid; width: 36px; height: 36px; margin: 8px 0 0 auto; place-items: center; border: 1px solid var(--line); border-radius: 10px; color: #9fb2c6; background: rgba(8,27,48,.75); cursor: pointer; }
 
 .setup-card { display: grid; grid-template-columns: 155px minmax(230px,.9fr) minmax(280px,.95fr) minmax(230px,.65fr); min-height: 174px; align-items: center; gap: 28px; margin-bottom: 13px; padding: 19px 23px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: radial-gradient(circle at 90% 30%, rgba(14,159,183,.13), transparent 27rem), linear-gradient(145deg, rgba(8,29,50,.96), rgba(5,20,37,.98)); box-shadow: inset 0 1px rgba(255,255,255,.025), 0 18px 42px rgba(0,0,0,.16); }

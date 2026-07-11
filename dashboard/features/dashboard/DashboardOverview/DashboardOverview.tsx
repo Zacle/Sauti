@@ -3,6 +3,7 @@
 import styles from "./DashboardOverview.module.css";
 import Link from "next/link";
 import { useMemo } from "react";
+import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import {
   ArrowDown,
   ArrowRight,
@@ -76,7 +77,7 @@ export function DashboardOverview() {
     <div className={styles["dashboard-page"]}>
       <header className={styles.hero}>
         <div><h1>Good day, {tenant?.businessName ?? "Sauti"} <span>👋</span></h1><p>Monitor your agents, calls, bookings, and usage from one place.</p></div>
-        <div className={styles["hero-wave"]} aria-hidden="true"><span>S</span></div>
+        <div className={styles["hero-wave"]} aria-hidden="true"><BrandLogo className={styles["hero-logo"]} size={67} /></div>
         <button className={styles.refresh} onClick={() => void refresh()} disabled={loading} aria-label="Refresh dashboard">
           {loading ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}
         </button>
