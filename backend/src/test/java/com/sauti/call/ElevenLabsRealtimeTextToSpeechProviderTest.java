@@ -27,7 +27,23 @@ class ElevenLabsRealtimeTextToSpeechProviderTest {
 
     @Test
     void selectsLanguageSpecificModelIds() {
-        var provider = new ElevenLabsRealtimeTextToSpeechProvider(
+        var provider = provider();
+
+        assertThat(provider.modelId("en")).isEqualTo("eleven_flash_v2_5");
+        assertThat(provider.modelId("fr")).isEqualTo("eleven_multilingual_v2");
+        assertThat(provider.modelId("ar")).isEqualTo("eleven_multilingual_v2");
+        assertThat(provider.modelId("unknown")).isEqualTo("eleven_flash_v2_5");
+    }
+
+    @Test
+    void derivesPcmHttpStreamingUrlFromWebSocketBaseUrl() {
+        assertThat(provider().httpUri("sarah-voice", "eleven_flash_v2_5"))
+                .hasToString("https://example.test/text-to-speech/sarah-voice/stream"
+                        + "?model_id=eleven_flash_v2_5&output_format=pcm_16000");
+    }
+
+    private ElevenLabsRealtimeTextToSpeechProvider provider() {
+        return new ElevenLabsRealtimeTextToSpeechProvider(
                 new ObjectMapper(),
                 "key",
                 "wss://example.test/text-to-speech",
@@ -56,10 +72,5 @@ class ElevenLabsRealtimeTextToSpeechProviderTest {
                         44100
                 )
         );
-
-        assertThat(provider.modelId("en")).isEqualTo("eleven_flash_v2_5");
-        assertThat(provider.modelId("fr")).isEqualTo("eleven_multilingual_v2");
-        assertThat(provider.modelId("ar")).isEqualTo("eleven_multilingual_v2");
-        assertThat(provider.modelId("unknown")).isEqualTo("eleven_flash_v2_5");
     }
 }

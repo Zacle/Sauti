@@ -1920,3 +1920,18 @@ Expected:
   - `npm.cmd run build`
 - Deployment:
   - Not deployed yet.
+### 2026-07-11 - ElevenLabs realtime playback failover
+
+- Added an automatic transport fallback for ElevenLabs voices: when the realtime WebSocket produces no first audio within 1.5 seconds (or reports an error), the same accumulated response is streamed through ElevenLabs' HTTP PCM endpoint.
+- Kept the displayed response and spoken response identical by replaying the already-generated text; the fallback does not invoke the LLM again.
+- Suppressed late WebSocket audio after failover to prevent duplicate or overlapping speech, and preserved interruption/close behavior.
+- Why: Sarah could transcribe and answer correctly, but her ElevenLabs WebSocket produced no playable audio while Cartesia-backed Amélie worked.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProvider.java`
+  - `backend/src/test/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.ElevenLabsRealtimeTextToSpeechProviderTest" --tests "com.sauti.call.WebVoiceSessionServiceTest"`
+  - `.\gradlew.bat :backend:test`
+- Deployment:
+  - Not deployed. Changes are uncommitted and ready for maintainer review and the CI/CD release chain.

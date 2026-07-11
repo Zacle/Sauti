@@ -3,7 +3,10 @@ package com.sauti.call;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.List;
@@ -12,7 +15,9 @@ import java.util.Map;
 import java.util.Base64;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -92,27 +97,152 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
                 safe(resolvedVoiceId),
                 safe(resolvedModelId)
         );
-        var webSocketListener = new ElevenLabsWebSocketListener(objectMapper, listener);
+        var audioStarted = new AtomicBoolean(false);
+        var fallbackStarted = new AtomicBoolean(false);
+        var closed = new AtomicBoolean(false);
+        var turnComplete = new AtomicBoolean(true);
+        var turnVersion = new AtomicLong();
+        var spokenText = new StringBuilder();
+        var webSocketRef = new WebSocket[1];
+        Runnable startFallback = () -> {
+            var text = spokenText.toString().trim();
+            if (text.isBlank() || audioStarted.get() || closed.get()
+                    || !fallbackStarted.compareAndSet(false, true)) return;
+            LOGGER.warn("ElevenLabs WebSocket produced no audio; retrying over HTTP voiceId={} modelId={}",
+                    safe(resolvedVoiceId), safe(resolvedModelId));
+            if (webSocketRef[0] != null) {
+                webSocketRef[0].sendClose(WebSocket.NORMAL_CLOSURE, "switching transport");
+            }
+            streamOverHttp(resolvedVoiceId, resolvedModelId, language, text, listener,
+                    audioStarted, closed, turnComplete);
+        };
+        var webSocketListener = new ElevenLabsWebSocketListener(objectMapper, new TtsAudioListener() {
+            @Override
+            public void onPcmAudio(byte[] pcm16kAudio) {
+                if (fallbackStarted.get() || closed.get()) return;
+                audioStarted.set(true);
+                listener.onPcmAudio(pcm16kAudio);
+            }
+
+            @Override
+            public void onComplete() {
+                if (!fallbackStarted.get() && audioStarted.get()) {
+                    turnComplete.set(true);
+                    listener.onComplete();
+                }
+                else startFallback.run();
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                LOGGER.warn("ElevenLabs WebSocket failed; attempting HTTP fallback", error);
+                startFallback.run();
+            }
+        });
         return httpClient.newWebSocketBuilder()
                 .header("xi-api-key", apiKey)
                 .buildAsync(uri(resolvedVoiceId, resolvedModelId), webSocketListener)
                 .thenApply(webSocket -> {
+                    webSocketRef[0] = webSocket;
                     sendInitialization(webSocket);
                     return new RealtimeTtsSession() {
             @Override
             public void speak(String text, boolean flush) {
+                if (text != null && !text.isEmpty()) {
+                    if (turnComplete.compareAndSet(true, false)) {
+                        spokenText.setLength(0);
+                        audioStarted.set(false);
+                        fallbackStarted.set(false);
+                        turnVersion.incrementAndGet();
+                    }
+                    spokenText.append(text);
+                }
                 if (flush) {
                     webSocketListener.beginFlush();
+                    var scheduledVersion = turnVersion.get();
+                    CompletableFuture.delayedExecutor(1500, TimeUnit.MILLISECONDS).execute(() -> {
+                        if (turnVersion.get() == scheduledVersion && !turnComplete.get()) startFallback.run();
+                    });
                 }
                 sendJson(webSocket, Map.of("text", text == null ? "" : text, "flush", flush));
             }
 
             @Override
             public void close() {
+                closed.set(true);
                 webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "call ended");
             }
                     };
                 });
+    }
+
+    private void streamOverHttp(
+            String voiceId, String modelId, String language, String text,
+            TtsAudioListener listener, AtomicBoolean audioStarted, AtomicBoolean closed,
+            AtomicBoolean turnComplete
+    ) {
+        try {
+            var body = objectMapper.writeValueAsString(Map.of(
+                    "text", text,
+                    "model_id", modelId,
+                    "language_code", language,
+                    "voice_settings", Map.of(
+                            "stability", stability,
+                            "similarity_boost", similarityBoost,
+                            "style", style,
+                            "speed", speed,
+                            "use_speaker_boost", speakerBoost
+                    )
+            ));
+            var request = HttpRequest.newBuilder(httpUri(voiceId, modelId))
+                    .timeout(Duration.ofSeconds(20))
+                    .header("xi-api-key", apiKey)
+                    .header("Accept", "audio/pcm")
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
+                    .thenAcceptAsync(response -> consumeHttpAudio(
+                            response, listener, audioStarted, closed, turnComplete))
+                    .exceptionally(error -> {
+                        if (!closed.get()) listener.onError(error);
+                        return null;
+                    });
+        } catch (Exception exception) {
+            listener.onError(exception);
+        }
+    }
+
+    private void consumeHttpAudio(
+            HttpResponse<InputStream> response, TtsAudioListener listener,
+            AtomicBoolean audioStarted, AtomicBoolean closed, AtomicBoolean turnComplete
+    ) {
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            listener.onError(new IllegalStateException(
+                    "ElevenLabs HTTP streaming failed with status " + response.statusCode()));
+            return;
+        }
+        try (var input = response.body()) {
+            var buffer = new byte[4096];
+            int read;
+            while (!closed.get() && (read = input.read(buffer)) >= 0) {
+                if (read == 0) continue;
+                audioStarted.set(true);
+                listener.onPcmAudio(java.util.Arrays.copyOf(buffer, read));
+            }
+            if (!closed.get()) {
+                turnComplete.set(true);
+                listener.onComplete();
+            }
+        } catch (Exception exception) {
+            if (!closed.get()) listener.onError(exception);
+        }
+    }
+
+    URI httpUri(String voiceId, String modelId) {
+        var httpBase = baseUrl.replaceFirst("^wss://", "https://").replaceFirst("^ws://", "http://");
+        return URI.create(httpBase + "/" + voiceId
+                + "/stream?model_id=" + modelId + "&output_format=pcm_16000");
     }
 
     private URI uri(String voiceId, String modelId) {
