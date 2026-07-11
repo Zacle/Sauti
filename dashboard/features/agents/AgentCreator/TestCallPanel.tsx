@@ -342,7 +342,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         return;
       }
 
-      if (currentStatus === "listening") {
+      // Realtime sessions are governed by the backend's single silence policy.
+      // Keep this legacy timer only for prerecorded/fallback calls; running both
+      // produced duplicate reminder and farewell agent turns.
+      if (currentStatus === "listening" && !socketRef.current) {
         const silentFor = wallClock - lastActivityAtRef.current;
         const reminderDelayMs = Math.max(
           settings.reminderAfterSilenceSeconds * 1000,

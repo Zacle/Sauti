@@ -2075,3 +2075,18 @@ Expected:
   - `npm.cmd run build`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Single silence controller for realtime test calls
+
+- Disabled the Agent Studio browser's local reminder/farewell timer while a realtime WebSocket session is active.
+- Kept the local timer only for legacy prerecorded/fallback calls.
+- Realtime reminder and hangup decisions now come exclusively from `WebVoiceSessionService`, preventing the UI and backend from independently adding consecutive agent turns.
+- Why: after a normal LLM reply, the client emitted its own reminder and farewell while the backend was also maintaining silence state, producing three agent messages without a caller turn.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
