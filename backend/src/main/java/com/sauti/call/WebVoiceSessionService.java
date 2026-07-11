@@ -11,6 +11,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -145,12 +146,26 @@ public class WebVoiceSessionService {
         state.finishCallerSpeech();
         sendJson(state, Map.of("type", "transcript_final", "text", transcript));
         try {
-            var turn = callPipelineService.processLiveTranscriptTurn(state.call.getTwilioCallSid(), transcript);
+            var streamed = new AtomicBoolean(false);
+            var turn = callPipelineService.processLiveTranscriptTurn(
+                    state.call.getTwilioCallSid(),
+                    transcript,
+                    delta -> {
+                        if (delta == null || delta.isEmpty()) return;
+                        if (streamed.compareAndSet(false, true)) beginSpeech(state, state.language, false);
+                        state.ttsSession.thenAccept(tts -> tts.speak(delta, false));
+                    }
+            );
             state.language = turn.language();
             if (!turn.text().isBlank()) {
                 sendJson(state, Map.of("type", "agent_response", "text", turn.text(), "language", turn.language()));
                 state.closeOutcome = turn.outcome();
-                speak(state, turn.text(), turn.language(), !turn.outcome().isBlank());
+                if (streamed.get()) {
+                    state.closeAfterSpeech = !turn.outcome().isBlank();
+                    state.ttsSession.thenAccept(tts -> tts.speak("", true));
+                } else {
+                    speak(state, turn.text(), turn.language(), !turn.outcome().isBlank());
+                }
             } else if (!turn.outcome().isBlank()) {
                 sendJson(state, Map.of("type", "ended", "outcome", turn.outcome()));
                 closeSocket(state);
@@ -162,6 +177,14 @@ public class WebVoiceSessionService {
     }
 
     private void speak(BrowserSession state, String text, String language, boolean closeAfterSpeech) {
+        beginSpeech(state, language, closeAfterSpeech);
+        state.ttsSession.thenAccept(tts -> {
+            for (var chunk : sentenceChunker.chunks(text)) tts.speak(chunk, false);
+            tts.speak("", true);
+        });
+    }
+
+    private void beginSpeech(BrowserSession state, String language, boolean closeAfterSpeech) {
         state.openTts(language);
         state.closeAfterSpeech = closeAfterSpeech;
         if (!closeAfterSpeech) state.closeOutcome = "";
@@ -169,10 +192,6 @@ public class WebVoiceSessionService {
         state.speaking = true;
         state.markActivity();
         sendJson(state, Map.of("type", "speaking", "value", true));
-        state.ttsSession.thenAccept(tts -> {
-            for (var chunk : sentenceChunker.chunks(text)) tts.speak(chunk, false);
-            tts.speak("", true);
-        });
     }
 
     private void maintain(BrowserSession state) {

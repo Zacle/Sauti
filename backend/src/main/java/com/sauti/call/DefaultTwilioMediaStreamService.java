@@ -12,6 +12,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import org.springframework.beans.factory.annotation.Value;
@@ -114,9 +115,19 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 callSid, streamSid, mediaFormat, Map.copyOf(parameters),
                 outboundMediaSender, sttSession, selectedFrameFactory
         );
-        session.attachTtsSessionFactory(generation -> ttsProvider.open(language, voiceId, new TtsAudioListener() {
+        session.attachTtsSessionFactory(generation -> {
+            var ttsOpenedNanos = System.nanoTime();
+            var firstAudio = new AtomicBoolean(false);
+            return ttsProvider.open(language, voiceId, new TtsAudioListener() {
             @Override
             public void onPcmAudio(byte[] pcm16kAudio) {
+                if (firstAudio.compareAndSet(false, true)) {
+                    LOGGER.info(
+                            "Voice latency callSid={} stage=tts_first_audio elapsedMs={}",
+                            callSid,
+                            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - ttsOpenedNanos)
+                    );
+                }
                 session.enqueue(() -> {
                     if (!session.acceptsTtsGeneration(generation)) {
                         return;
@@ -143,7 +154,8 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             public void onError(Throwable error) {
                 LOGGER.warn("Realtime TTS failed for callSid={}", callSid, error);
             }
-        }));
+        });
+        });
         sessions.put(callSid, session);
         if (call != null) {
             session.attachMaintenanceTask(callMaintenanceExecutor.scheduleAtFixedRate(
@@ -375,13 +387,39 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         session.enqueue(() -> callRepository.findByTwilioCallSid(callSid)
                 .filter(Call::isActive)
                 .ifPresent(call -> {
+                    var turnStartedNanos = System.nanoTime();
                     dashboardEventPublisher.transcriptFinal(call, transcript);
-                    var turn = callPipelineService.processLiveTranscriptTurn(call, transcript);
+                    var streamed = new AtomicBoolean(false);
+                    var turn = callPipelineService.processLiveTranscriptTurn(call, transcript, delta -> {
+                        if (delta == null || delta.isEmpty()) return;
+                        if (streamed.compareAndSet(false, true)) {
+                            LOGGER.info(
+                                    "Voice latency callSid={} stage=llm_first_text elapsedMs={}",
+                                    callSid,
+                                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - turnStartedNanos)
+                            );
+                            beginTtsResponse(session, false);
+                        }
+                        session.speak(delta, false);
+                    });
+                    if (turn == null) {
+                        // Compatibility fallback for alternate implementations and older test doubles.
+                        turn = callPipelineService.processLiveTranscriptTurn(call, transcript);
+                    }
                     var terminalTurn = turn.outcome() != null && !turn.outcome().isBlank();
+                    LOGGER.info(
+                            "Voice latency callSid={} stage=turn_complete elapsedMs={} streamed={}",
+                            callSid,
+                            TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - turnStartedNanos),
+                            streamed.get()
+                    );
                     if (callTransferService.isPending(call.getId())) {
                         session.setPendingTransfer(call.getId());
                     }
-                    if (!turn.text().isBlank()) {
+                    if (streamed.get()) {
+                        session.setCloseAfterCurrentMark(terminalTurn);
+                        session.speak("", true);
+                    } else if (!turn.text().isBlank()) {
                         streamTtsResponse(session, turn.text(), terminalTurn);
                     } else if (session.hasPendingTransfer()) {
                         var pendingTransfer = session.takePendingTransfer();
@@ -408,17 +446,21 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
     }
 
     private void streamTtsResponse(TwilioMediaSession session, String responseText, boolean closeAfterPlayback) {
+        beginTtsResponse(session, closeAfterPlayback);
+        var chunks = sentenceChunker.chunks(responseText);
+        for (var chunk : chunks) {
+            session.speak(chunk, false);
+        }
+        session.speak("", true);
+    }
+
+    private void beginTtsResponse(TwilioMediaSession session, boolean closeAfterPlayback) {
         var markName = session.nextMarkName();
         session.startAgentTurn(markName);
         session.setCloseAfterCurrentMark(closeAfterPlayback);
         session.ensureTtsSession();
         callSessionStore.setSpeaking(session.callSid, true, markName);
         callRepository.findByTwilioCallSid(session.callSid).ifPresent(call -> dashboardEventPublisher.agentSpeaking(call, true));
-        var chunks = sentenceChunker.chunks(responseText);
-        for (var chunk : chunks) {
-            session.speak(chunk, false);
-        }
-        session.speak("", true);
     }
 
     private void handlePartialTranscript(String callSid, String transcript, double confidence) {

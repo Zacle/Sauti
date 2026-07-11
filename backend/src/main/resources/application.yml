@@ -186,7 +186,7 @@ sauti:
       prerecorded-url: ${DEEPGRAM_PRERECORDED_URL:https://api.deepgram.com/v1/listen}
       model: ${DEEPGRAM_MODEL:nova-3}
       endpointing-ms: ${DEEPGRAM_ENDPOINTING_MS:300}
-      utterance-end-ms: ${DEEPGRAM_UTTERANCE_END_MS:500}
+      utterance-end-ms: ${DEEPGRAM_UTTERANCE_END_MS:1000}
     openai:
       transcription-url: ${OPENAI_TRANSCRIPTION_URL:https://api.openai.com/v1/audio/transcriptions}
       model: ${OPENAI_TRANSCRIPTION_MODEL:gpt-4o-transcribe}

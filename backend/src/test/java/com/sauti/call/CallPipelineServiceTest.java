@@ -2,7 +2,6 @@ package com.sauti.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -95,9 +94,6 @@ class CallPipelineServiceTest {
         agent.activate();
         when(agentRepository.findByWebVoicePublicId(agent.getWebVoicePublicId())).thenReturn(Optional.of(agent));
         when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(conversationOrchestrator.generateOpeningGreeting(any(Call.class), eq("fr"), eq("public web voice call")))
-                .thenReturn("Bonjour, comment puis-je vous aider ?");
-
         var call = service.startWebCall(agent.getWebVoicePublicId(), "fr");
 
         assertThat(call.getDirection()).isEqualTo("web");
@@ -105,7 +101,8 @@ class CallPipelineServiceTest {
         verify(callSessionStore).createIfAbsent(org.mockito.ArgumentMatchers.eq(call.getTwilioCallSid()), any(CallSession.class));
         var turnCaptor = ArgumentCaptor.forClass(CallTurn.class);
         verify(callTurnRepository).save(turnCaptor.capture());
-        assertThat(turnCaptor.getValue().getAgentResponse()).isEqualTo("Bonjour, comment puis-je vous aider ?");
+        assertThat(turnCaptor.getValue().getAgentResponse())
+                .isEqualTo("Bonjour, c'est Amina de Demo Clinic. Comment puis-je vous aider ?");
         verify(dashboardEventPublisher).callStarted(call);
     }
 

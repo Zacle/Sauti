@@ -10,8 +10,8 @@ import com.sauti.session.CallSession;
 import com.sauti.nlp.LanguageDetector;
 import com.sauti.session.CallSessionStore;
 import jakarta.persistence.EntityNotFoundException;
-import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -19,6 +19,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 @Service
 public class CallPipelineService {
+    private static final Consumer<String> NO_TEXT_DELTAS = ignored -> { };
     private final CallRepository callRepository;
     private final CallTurnRepository callTurnRepository;
     private final AgentRepository agentRepository;
@@ -73,7 +74,7 @@ public class CallPipelineService {
         var callSid = "TEST-" + java.util.UUID.randomUUID();
         var call = callRepository.save(new Call(agent.getTenant(), agent, callSid, "Browser test", "test"));
         callSessionStore.createIfAbsent(callSid, CallSession.fromCall(call, ""));
-        var opening = conversationOrchestrator.generateOpeningGreeting(call, agent.getDefaultLanguage(), "browser test call");
+        var opening = instantGreeting(agent, agent.getDefaultLanguage());
         if (!opening.isBlank()) {
             call.appendAgentMessage(agent.getDefaultLanguage(), opening);
             callTurnRepository.save(new CallTurn(
@@ -107,7 +108,7 @@ public class CallPipelineService {
         if (!agent.isAvailableAt(OffsetDateTime.now())) call.markAfterHours();
         call = callRepository.save(call);
         callSessionStore.createIfAbsent(callSid, CallSession.fromCall(call, ""));
-        var opening = conversationOrchestrator.generateOpeningGreeting(call, language, "public web voice call");
+        var opening = instantGreeting(agent, language);
         if (!opening.isBlank()) {
             call.appendAgentMessage(language, opening);
             callTurnRepository.save(new CallTurn(
@@ -332,13 +333,43 @@ public class CallPipelineService {
     }
 
     @Transactional
+    public TurnResult processLiveTranscriptTurn(
+            Call call,
+            String callerTranscript,
+            Consumer<String> textDeltaConsumer
+    ) {
+        return processTranscriptTurn(call, callerTranscript, 0, false, textDeltaConsumer);
+    }
+
+    @Transactional
     public TurnResult processLiveTranscriptTurn(String callSid, String callerTranscript) {
         var call = callRepository.findByTwilioCallSid(callSid)
                 .orElseThrow(() -> new EntityNotFoundException("Call not found"));
         return processTranscriptTurn(call, callerTranscript, 0, false);
     }
 
+    @Transactional
+    public TurnResult processLiveTranscriptTurn(
+            String callSid,
+            String callerTranscript,
+            Consumer<String> textDeltaConsumer
+    ) {
+        var call = callRepository.findByTwilioCallSid(callSid)
+                .orElseThrow(() -> new EntityNotFoundException("Call not found"));
+        return processTranscriptTurn(call, callerTranscript, 0, false, textDeltaConsumer);
+    }
+
     private TurnResult processTranscriptTurn(Call call, String callerTranscript, int sttMs, boolean synthesizeAudio) {
+        return processTranscriptTurn(call, callerTranscript, sttMs, synthesizeAudio, NO_TEXT_DELTAS);
+    }
+
+    private TurnResult processTranscriptTurn(
+            Call call,
+            String callerTranscript,
+            int sttMs,
+            boolean synthesizeAudio,
+            Consumer<String> textDeltaConsumer
+    ) {
         if (!call.isActive()) {
             return new TurnResult(
                     call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected(),
@@ -412,7 +443,12 @@ public class CallPipelineService {
         );
 
         long llmStart = System.nanoTime();
-        var conversationTurn = conversationOrchestrator.handleUserUtterance(call, language, callerTranscript);
+        var conversationTurn = textDeltaConsumer == NO_TEXT_DELTAS
+                ? conversationOrchestrator.handleUserUtterance(call, language, callerTranscript)
+                : conversationOrchestrator.handleUserUtterance(call, language, callerTranscript, textDeltaConsumer);
+        if (conversationTurn == null) {
+            conversationTurn = conversationOrchestrator.handleUserUtterance(call, language, callerTranscript);
+        }
         String response = conversationTurn.responseText();
         int llmMs = elapsedMs(llmStart);
 
@@ -481,6 +517,21 @@ public class CallPipelineService {
             }
         }
         return result;
+    }
+
+    private String instantGreeting(Agent agent, String language) {
+        var resolvedLanguage = language == null || language.isBlank() ? agent.getDefaultLanguage() : language;
+        if (resolvedLanguage.equals(agent.getDefaultLanguage())) {
+            var configured = resolveGreeting(agent).trim();
+            if (!configured.isBlank()) return configured;
+        }
+        var business = agent.getTenant().getBusinessName();
+        return switch (resolvedLanguage) {
+            case "fr" -> "Bonjour, c'est " + agent.getName() + " de " + business + ". Comment puis-je vous aider ?";
+            case "sw" -> "Habari, ni " + agent.getName() + " kutoka " + business + ". Ninaweza kukusaidiaje?";
+            case "ar" -> "مرحبًا، معك " + agent.getName() + " من " + business + ". كيف يمكنني مساعدتك؟";
+            default -> "Hello, this is " + agent.getName() + " from " + business + ". How can I help?";
+        };
     }
 
     @Transactional(readOnly = true)

@@ -221,6 +221,42 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Realtime voice latency pipeline
+
+- Fixed Deepgram turn delivery so `speech_final=true` immediately flushes the accumulated caller transcript instead of waiting for the later `UtteranceEnd` event; kept ordinary `is_final` fragments buffered so mid-thought segments are not submitted prematurely.
+- Raised and runtime-clamped Deepgram `utterance_end_ms` to its supported 1,000 ms minimum while retaining the faster agent-configured endpointing signal as the primary turn trigger.
+- Added streaming LLM turns to the provider/orchestrator contract and implemented Gemini token streaming through Spring AI, including tool-enabled turns and confirmed tool-result loops.
+- Connected streamed model text directly to the existing ElevenLabs WebSocket for telephone and browser calls, enabled ElevenLabs `auto_mode`, and retained the complete-response fallback for advanced OpenAI turns, alternate providers, and test doubles.
+- Replaced per-call LLM-generated browser greetings with immediate deterministic/configured greetings, including localized identity fallbacks for non-default languages.
+- Added adaptive OpenAI transcription commits: short turns use a 450 ms silence window while longer dictated turns use 800 ms so callers can pause while providing names, addresses, or numbers.
+- Added structured production logs for LLM first text, complete turn latency, and TTS first audio without logging response content.
+- Added a Deepgram regression test covering immediate `speech_final` delivery and updated the preferred-language greeting assertion.
+- Why: production agents were taking 5-7 seconds to respond because confirmed Deepgram speech was buffered until a later event, greetings invoked an LLM synchronously, and the full LLM response completed before TTS received any text.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/call/DeepgramRealtimeSpeechToTextProvider.java`
+  - `backend/src/main/java/com/sauti/call/DefaultTwilioMediaStreamService.java`
+  - `backend/src/main/java/com/sauti/call/ElevenLabsRealtimeTextToSpeechProvider.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeTranscriptionService.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/llm/LlmToolCallingProvider.java`
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/DeepgramRealtimeSpeechToTextProviderTest.java`
+  - `deploy/.env.production.example`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.CallPipelineServiceTest --tests com.sauti.call.DefaultTwilioMediaStreamServiceTest --tests com.sauti.call.ElevenLabsRealtimeTextToSpeechProviderTest --tests com.sauti.llm.ConversationOrchestratorTest`
+  - `.\gradlew.bat :backend:test`
+  - `git diff --check`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-ups and risks:
+  - Advanced-tier OpenAI text turns use the compatibility complete-response path; standard Gemini turns use token streaming.
+  - Actual carrier/provider latency must be validated after CI/CD using the new `Voice latency` log stages; no local test can reproduce production network geography or provider queues.
+  - If streamed model output ever includes formatting despite the voice prompt, add an incremental spoken-text sanitizer before TTS rather than buffering the full response again.
+
 ### 2026-07-11 - Routing and numeric hover-state correction
 
 - Added explicit dark default, hover, focus, disabled, and browser-control styling for numeric inputs and suffix fields used by silence reminders, reminder limits, timeouts, and similar configuration values.

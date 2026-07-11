@@ -23,7 +23,9 @@ public class OpenAiRealtimeTranscriptionService {
     private static final int INPUT_SAMPLE_RATE = 16_000;
     private static final int SPEECH_RMS_THRESHOLD = 450;
     private static final long MIN_COMMIT_AUDIO_MS = 280;
-    private static final long SILENCE_COMMIT_MS = 500;
+    private static final long SHORT_TURN_SILENCE_COMMIT_MS = 450;
+    private static final long DICTATION_SILENCE_COMMIT_MS = 800;
+    private static final long DICTATION_AUDIO_THRESHOLD_MS = 1_200;
     private static final long MAX_COMMIT_AUDIO_MS = 15_000;
 
     private final ObjectMapper objectMapper;
@@ -208,9 +210,13 @@ public class OpenAiRealtimeTranscriptionService {
                 } else {
                     trailingSilenceMillis += durationMillis;
                 }
+                var requiredSilenceMillis = pendingAudioMillis >= DICTATION_AUDIO_THRESHOLD_MS
+                        ? DICTATION_SILENCE_COMMIT_MS
+                        : SHORT_TURN_SILENCE_COMMIT_MS;
                 if (pendingSpeech
                         && pendingAudioMillis >= MIN_COMMIT_AUDIO_MS
-                        && (trailingSilenceMillis >= SILENCE_COMMIT_MS || pendingAudioMillis >= MAX_COMMIT_AUDIO_MS)) {
+                        && (trailingSilenceMillis >= requiredSilenceMillis
+                                || pendingAudioMillis >= MAX_COMMIT_AUDIO_MS)) {
                     commitAudio();
                 }
             } catch (Exception exception) {

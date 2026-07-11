@@ -115,7 +115,9 @@ public class ElevenLabsRealtimeTextToSpeechProvider implements RealtimeTextToSpe
     }
 
     private URI uri(String voiceId, String modelId) {
-        return URI.create(baseUrl + "/" + voiceId + "/stream-input?model_id=" + modelId + "&output_format=pcm_16000");
+        return URI.create(baseUrl + "/" + voiceId
+                + "/stream-input?model_id=" + modelId
+                + "&output_format=pcm_16000&auto_mode=true");
     }
 
     String modelId(String language) {

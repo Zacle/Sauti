@@ -47,7 +47,7 @@ public class DeepgramRealtimeSpeechToTextProvider implements RealtimeSpeechToTex
         this.baseUrl = baseUrl;
         this.model = model;
         this.endpointingMs = endpointingMs;
-        this.utteranceEndMs = utteranceEndMs;
+        this.utteranceEndMs = Math.max(1_000, utteranceEndMs);
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     }
 
@@ -97,7 +97,7 @@ public class DeepgramRealtimeSpeechToTextProvider implements RealtimeSpeechToTex
         if (agent == null) return "en";
         var supported = agent.getSupportedLanguages();
         if (supported.size() > 1
-                && supported.stream().allMatch(language -> java.util.Set.of("en", "fr").contains(language))) {
+                && java.util.Set.of("en", "fr").containsAll(supported)) {
             return "multi";
         }
         // Deepgram's realtime Nova models do not currently support Swahili.
@@ -106,13 +106,13 @@ public class DeepgramRealtimeSpeechToTextProvider implements RealtimeSpeechToTex
         return "sw".equals(agent.getDefaultLanguage()) ? null : agent.getDefaultLanguage();
     }
 
-    private static final class DeepgramWebSocketListener implements WebSocket.Listener {
+    static final class DeepgramWebSocketListener implements WebSocket.Listener {
         private final ObjectMapper objectMapper;
         private final RealtimeTranscriptListener listener;
         private final StringBuilder textBuffer = new StringBuilder();
         private final StringBuilder finalTranscriptBuffer = new StringBuilder();
 
-        private DeepgramWebSocketListener(ObjectMapper objectMapper, RealtimeTranscriptListener listener) {
+        DeepgramWebSocketListener(ObjectMapper objectMapper, RealtimeTranscriptListener listener) {
             this.objectMapper = objectMapper;
             this.listener = listener;
         }
@@ -148,7 +148,7 @@ public class DeepgramRealtimeSpeechToTextProvider implements RealtimeSpeechToTex
             return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
         }
 
-        private void handle(String payload) {
+        void handle(String payload) {
             try {
                 var node = objectMapper.readTree(payload);
                 if ("UtteranceEnd".equals(node.path("type").asText())) {
@@ -160,11 +160,13 @@ public class DeepgramRealtimeSpeechToTextProvider implements RealtimeSpeechToTex
                 if (transcript.isBlank()) {
                     return;
                 }
-                if (node.path("is_final").asBoolean(false) || node.path("speech_final").asBoolean(false)) {
+                var speechFinal = node.path("speech_final").asBoolean(false);
+                if (node.path("is_final").asBoolean(false) || speechFinal) {
                     if (!finalTranscriptBuffer.isEmpty()) {
                         finalTranscriptBuffer.append(' ');
                     }
                     finalTranscriptBuffer.append(transcript);
+                    if (speechFinal) flushFinalTranscript();
                 } else {
                     listener.onPartialTranscript(transcript, alternative.path("confidence").asDouble(1.0));
                 }

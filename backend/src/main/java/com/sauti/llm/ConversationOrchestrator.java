@@ -10,6 +10,7 @@ import com.sauti.tool.AgentToolLoader;
 import com.sauti.tool.ToolFulfillmentRouter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import org.slf4j.Logger;
@@ -54,6 +55,15 @@ public class ConversationOrchestrator {
     }
 
     public ConversationTurnResult handleUserUtterance(Call call, String language, String callerTranscript) {
+        return handleUserUtterance(call, language, callerTranscript, ignored -> { });
+    }
+
+    public ConversationTurnResult handleUserUtterance(
+            Call call,
+            String language,
+            String callerTranscript,
+            Consumer<String> textDeltaConsumer
+    ) {
         var tools = agentToolLoader.loadForAgent(call.getAgent().getId());
         var latestToolResults = List.<LlmToolResult>of();
         var allToolResults = new ArrayList<LlmToolResult>();
@@ -65,7 +75,7 @@ public class ConversationOrchestrator {
 
         try {
             for (int loop = 0; loop < maxToolLoops; loop++) {
-                var response = llmProvider.completeTurn(new LlmToolTurnContext(
+                var context = new LlmToolTurnContext(
                         AgentContext.from(call.getAgent()),
                         systemPrompt,
                         language,
@@ -76,7 +86,8 @@ public class ConversationOrchestrator {
                         call.getTwilioCallSid(),
                         tools,
                         latestToolResults
-                ));
+                );
+                var response = llmProvider.streamTurn(context, textDeltaConsumer);
                 responseText = voiceReadyText(response.responseText());
                 if (response.toolCalls().isEmpty()) {
                     if (!responseText.isBlank()) {

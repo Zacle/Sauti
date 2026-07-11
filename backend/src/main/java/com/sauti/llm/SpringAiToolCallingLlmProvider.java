@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -91,6 +92,32 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
                 defaultModel,
                 ModelProvider.GOOGLE
         );
+    }
+
+    @Override
+    public LlmToolTurnResponse streamTurn(LlmToolTurnContext context, Consumer<String> textDeltaConsumer) {
+        if (shouldTryAdvanced(context.agent())) {
+            return LlmToolCallingProvider.super.streamTurn(context, textDeltaConsumer);
+        }
+        var callbacks = context.tools().stream().map(this::toolCallback).toList();
+        var prompt = new Prompt(messages(context), options(defaultModel, ModelProvider.GOOGLE, callbacks));
+        var text = new StringBuilder();
+        var streamedToolCalls = new java.util.concurrent.atomic.AtomicReference<AssistantMessage>();
+        defaultChatModel.stream(prompt).toStream().forEach(response -> {
+            var output = response.getResult() == null ? null : response.getResult().getOutput();
+            var delta = output == null
+                    ? ""
+                    : output.getText();
+            if (delta != null && !delta.isEmpty()) {
+                text.append(delta);
+                textDeltaConsumer.accept(delta);
+            }
+            if (output != null && output.getToolCalls() != null && !output.getToolCalls().isEmpty()) {
+                streamedToolCalls.set(output);
+            }
+        });
+        var toolOutput = streamedToolCalls.get();
+        return new LlmToolTurnResponse(text.toString(), toolOutput == null ? List.of() : toolCalls(toolOutput));
     }
 
     boolean shouldTryAdvanced(AgentContext agent) {
