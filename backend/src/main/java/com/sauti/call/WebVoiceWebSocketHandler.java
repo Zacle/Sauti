@@ -4,6 +4,7 @@ import java.net.URI;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.AbstractWebSocketHandler;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -41,6 +42,13 @@ public class WebVoiceWebSocketHandler extends AbstractWebSocketHandler {
         var audio = new byte[buffer.remaining()];
         buffer.get(audio);
         sessionService.acceptAudio(callSid, audio);
+    }
+
+    @Override
+    protected void handleTextMessage(WebSocketSession session, TextMessage message) {
+        var callSid = (String) session.getAttributes().get(CALL_SID);
+        if (callSid == null) return;
+        if (message.getPayload().contains("\"type\":\"interrupt\"")) sessionService.interrupt(callSid);
     }
 
     @Override

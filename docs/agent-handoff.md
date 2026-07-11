@@ -2031,3 +2031,25 @@ Expected:
   - `npm.cmd run build`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Immediate realtime barge-in and phone-number collection rules
+
+- Added an explicit browser WebSocket interruption command. Local voice activity now clears queued PCM immediately and tells the backend to close the active Cartesia turn instead of waiting for a high-confidence partial transcript.
+- Lowered the partial-transcript barge-in confidence threshold for browser and telephony fallback detection while retaining the configured speech grace period.
+- Added mandatory conversation-ledger rules so collected names/services are not requested again after phone confirmation.
+- Added phone-dictation rules for accumulating short digit fragments, preserving leading zeroes, discarding the previous candidate after restart/correction language, avoiding premature length assumptions, and confirming a completed candidate only once.
+- Why: callers could be transcribed while old queued audio continued playing, and fragmented/corrected phone numbers caused repetitive prompts and loss of already collected fields.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `backend/src/main/java/com/sauti/call/WebVoiceWebSocketHandler.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/call/DefaultTwilioMediaStreamService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.DefaultTwilioMediaStreamServiceTest" --tests "com.sauti.llm.ConversationOrchestratorTest"`
+  - `.\gradlew.bat :backend:test`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

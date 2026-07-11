@@ -140,6 +140,18 @@ public class WebVoiceSessionService {
         state.sttSession.thenAccept(session -> session.sendPcmAudio(pcm16Audio));
     }
 
+    public void interrupt(String callSid) {
+        var state = sessions.get(callSid);
+        if (state == null) return;
+        state.enqueue(() -> {
+            if (!state.speaking && !state.awaitingAudio) return;
+            state.interruptSpeech();
+            state.markCallerActivity();
+            sendJson(state, Map.of("type", "clear_audio"));
+            sendJson(state, Map.of("type", "speaking", "value", false));
+        });
+    }
+
     public void stop(String callSid) {
         var state = sessions.remove(callSid);
         if (state == null) return;
@@ -153,7 +165,7 @@ public class WebVoiceSessionService {
         state.markCallerActivity();
         sendJson(state, Map.of("type", "transcript_partial", "text", transcript, "confidence", confidence));
         var sensitivity = state.call.getAgent().getBargeInSensitivity();
-        var threshold = Math.max(0.35, Math.min(0.98, 0.98 - (0.4 * sensitivity)));
+        var threshold = Math.max(0.45, Math.min(0.90, 0.83 - (0.4 * sensitivity)));
         if (state.speaking
                 && confidence >= threshold
                 && state.callerSpeechMillis() >= state.call.getAgent().getBargeInGraceMs()) {

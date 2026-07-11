@@ -484,6 +484,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function interruptAgentAndCapture(initialVoicedMs = 0) {
+    clearRealtimePlayback();
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "interrupt" }));
     try {
       agentAudioSourceRef.current?.stop();
     } catch {

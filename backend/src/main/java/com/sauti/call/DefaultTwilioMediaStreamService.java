@@ -480,7 +480,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                     .ifPresent(call -> dashboardEventPublisher.transcriptPartial(call, transcript, confidence));
             var agent = callRepository.findByTwilioCallSid(callSid).map(Call::getAgent).orElse(null);
             var sensitivity = agent == null ? bargeInConfidenceThreshold : agent.getBargeInSensitivity();
-            var confidenceThreshold = Math.max(0.35, Math.min(0.98, 0.98 - (0.4 * sensitivity)));
+            var confidenceThreshold = Math.max(0.45, Math.min(0.90, 0.83 - (0.4 * sensitivity)));
             var graceMs = agent == null ? bargeInGraceMs : agent.getBargeInGraceMs();
             if (!session.shouldBargeIn(transcript, confidence, confidenceThreshold, bargeInMinAudioMs, graceMs)) {
                 return;
