@@ -29,6 +29,13 @@ type Message = {
 
 type CallStatus = "idle" | "connecting" | "listening" | "capturing" | "thinking" | "speaking" | "ending";
 type TestSettings = StartTestCallResponse["settings"];
+type VoiceEvent = {
+  type: "connected" | "transcript_partial" | "transcript_final" | "agent_response" | "speaking" | "clear_audio" | "error" | "ended";
+  text?: string;
+  value?: boolean;
+  message?: string;
+  outcome?: string;
+};
 
 const DEFAULT_SETTINGS: TestSettings = {
   bargeInSensitivity: 0.7,
@@ -81,6 +88,11 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const remindersRef = useRef(0);
   const endingRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
+  const processorRef = useRef<AudioWorkletNode | null>(null);
+  const pcmQueueRef = useRef<number[]>([]);
+  const playbackTimeRef = useRef(0);
+  const playbackSourcesRef = useRef(new Set<AudioBufferSourceNode>());
 
   function updateStatus(next: CallStatus) {
     statusRef.current = next;
@@ -118,14 +130,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       endingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
       setCallId(started.call.id);
-      startVoiceMonitor();
-      if (started.greeting) {
-        rememberAgentPrompt(started.greeting);
-        setMessages([{ id: crypto.randomUUID(), role: "agent", text: started.greeting }]);
-        await playLatestAgentAudio(started.call.id);
-      } else {
-        updateStatus("listening");
-      }
+      await connectRealtimeVoice(started, stream);
     } catch (caught) {
       cleanupMedia();
       updateStatus("idle");
@@ -159,6 +164,114 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     recordingDestinationRef.current = destination;
     analyserRef.current = analyser;
     recorderRef.current = recorder;
+  }
+
+  async function connectRealtimeVoice(started: StartTestCallResponse, stream: MediaStream) {
+    const context = audioContextRef.current;
+    if (!context) throw new Error("The browser audio engine is unavailable.");
+    await context.audioWorklet.addModule("/web-voice-processor.js");
+    const socket = new WebSocket(started.websocketUrl);
+    socket.binaryType = "arraybuffer";
+    socketRef.current = socket;
+    socket.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        playRealtimePcm(event.data);
+        return;
+      }
+      handleRealtimeEvent(JSON.parse(String(event.data)) as VoiceEvent);
+    };
+    socket.onclose = () => {
+      if (!endingRef.current && callIdRef.current) setError("The realtime voice connection ended unexpectedly.");
+    };
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("The realtime voice connection timed out.")), 8000);
+      socket.onopen = () => {
+        window.clearTimeout(timeout);
+        attachRealtimeMicrophone(context, stream, socket);
+        updateStatus("listening");
+        resolve();
+      };
+      socket.onerror = () => {
+        window.clearTimeout(timeout);
+        reject(new Error("The realtime voice connection could not be opened."));
+      };
+    });
+  }
+
+  function attachRealtimeMicrophone(context: AudioContext, stream: MediaStream, socket: WebSocket) {
+    const source = context.createMediaStreamSource(stream);
+    const processor = new AudioWorkletNode(context, "sauti-voice-processor");
+    const silentGain = context.createGain();
+    silentGain.gain.value = 0;
+    processor.port.onmessage = (event: MessageEvent<{ samples: Float32Array; sampleRate: number }>) => {
+      if (socket.readyState !== WebSocket.OPEN) return;
+      const samples = downsamplePcm(event.data.samples, event.data.sampleRate, 16000);
+      for (const sample of samples) pcmQueueRef.current.push(sample);
+      while (pcmQueueRef.current.length >= 320) {
+        const frame = pcmQueueRef.current.splice(0, 320);
+        const pcm = new Int16Array(frame.length);
+        frame.forEach((value, index) => {
+          const clipped = Math.max(-1, Math.min(1, value));
+          pcm[index] = clipped < 0 ? clipped * 32768 : clipped * 32767;
+        });
+        socket.send(pcm.buffer);
+      }
+    };
+    source.connect(processor);
+    processor.connect(silentGain);
+    silentGain.connect(context.destination);
+    processorRef.current = processor;
+  }
+
+  function handleRealtimeEvent(event: VoiceEvent) {
+    if (event.type === "transcript_partial") updateStatus("capturing");
+    if (event.type === "transcript_final" && event.text) {
+      acceptedCallerTurnsRef.current += 1;
+      setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text: event.text! }]);
+      updateStatus("thinking");
+    }
+    if (event.type === "agent_response" && event.text) {
+      rememberAgentPrompt(event.text);
+      setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text: event.text! }]);
+    }
+    if (event.type === "speaking") updateStatus(event.value ? "speaking" : "listening");
+    if (event.type === "clear_audio") clearRealtimePlayback();
+    if (event.type === "error") setError(event.message ?? "The realtime voice session encountered an error.");
+    if (event.type === "ended" && !endingRef.current) void endCall(event.outcome || "completed");
+  }
+
+  function playRealtimePcm(data: ArrayBuffer) {
+    const context = audioContextRef.current;
+    if (!context) return;
+    const pcm = new Int16Array(data);
+    const buffer = context.createBuffer(1, pcm.length, 16000);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < pcm.length; index++) channel[index] = pcm[index] / 32768;
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    if (recordingDestinationRef.current) source.connect(recordingDestinationRef.current);
+    const startAt = Math.max(context.currentTime + 0.02, playbackTimeRef.current);
+    source.start(startAt);
+    playbackTimeRef.current = startAt + buffer.duration;
+    playbackSourcesRef.current.add(source);
+    source.onended = () => playbackSourcesRef.current.delete(source);
+  }
+
+  function clearRealtimePlayback() {
+    playbackSourcesRef.current.forEach((source) => {
+      try { source.stop(); } catch { /* already stopped */ }
+    });
+    playbackSourcesRef.current.clear();
+    playbackTimeRef.current = audioContextRef.current?.currentTime ?? 0;
+  }
+
+  function downsamplePcm(input: Float32Array, sourceRate: number, targetRate: number) {
+    if (sourceRate === targetRate) return Array.from(input);
+    const ratio = sourceRate / targetRate;
+    const output = new Array<number>(Math.floor(input.length / ratio));
+    for (let index = 0; index < output.length; index++) output[index] = input[Math.floor(index * ratio)];
+    return output;
   }
 
   function startVoiceMonitor() {
@@ -632,13 +745,15 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     audioContextRef.current = null;
     analyserRef.current = null;
     recordingDestinationRef.current = null;
+    processorRef.current?.disconnect();
+    processorRef.current = null;
+    const socket = socketRef.current;
+    socketRef.current = null;
+    if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "Test call ended");
+    clearRealtimePlayback();
   }
 
   const active = Boolean(callId);
-  const manualCaptureActive = status === "capturing" && utteranceModeRef.current === "manual";
-  const manualCaptureDisabled =
-    !["listening", "capturing", "thinking", "speaking"].includes(status) || (status === "capturing" && !manualCaptureActive);
-
   return (
     <aside className={`agent-test-panel ${active ? "active" : ""}`}>
       {!active ? (
@@ -674,10 +789,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             )}
           </div>
           <div className="test-call-auto-state">
-            <span className={status === "capturing" ? "hearing" : ""}><Mic size={15} /></span>
+            <span className={status === "capturing" ? "hearing" : status === "thinking" ? "thinking" : ""}><Mic size={17} /></span>
             <div>
-              <strong>{status === "capturing" ? "Listening to you…" : status === "listening" ? "Listening automatically" : status === "speaking" ? "You can interrupt the agent" : "Processing the conversation"}</strong>
-              <small>Speak naturally, or tap the mic button to record manually.</small>
+              <strong>{status === "capturing" ? "Hearing you…" : status === "listening" ? "Listening" : status === "speaking" ? `${agentName} is speaking` : "Preparing a response…"}</strong>
+              <small>{status === "speaking" ? "Speak at any time to interrupt." : "Hands-free mode is active. Just speak naturally."}</small>
             </div>
           </div>
           <div className="test-call-controls">
@@ -693,16 +808,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
               placeholder="Or type a message…"
               value={input}
             />
-            <button
-              aria-label={manualCaptureActive ? "Stop recording" : "Record voice turn"}
-              className={`test-call-mic ${manualCaptureActive ? "recording" : ""}`}
-              disabled={manualCaptureDisabled}
-              onClick={toggleManualCapture}
-              title={manualCaptureActive ? "Stop recording" : "Record voice turn"}
-              type="button"
-            >
-              {manualCaptureActive ? <span className="test-call-stop" /> : <Mic size={16} />}
-            </button>
             <button disabled={!input.trim() || status !== "listening"} onClick={() => void submitTranscript(input)} type="button">
               <Send size={16} />
             </button>

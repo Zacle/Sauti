@@ -523,7 +523,7 @@ public class CallPipelineService {
         var resolvedLanguage = language == null || language.isBlank() ? agent.getDefaultLanguage() : language;
         if (resolvedLanguage.equals(agent.getDefaultLanguage())) {
             var configured = resolveGreeting(agent).trim();
-            if (!configured.isBlank()) return configured;
+            if (!configured.isBlank() && !looksLikeGreetingInstruction(configured)) return configured;
         }
         var business = agent.getTenant().getBusinessName();
         return switch (resolvedLanguage) {
@@ -532,6 +532,16 @@ public class CallPipelineService {
             case "ar" -> "مرحبًا، معك " + agent.getName() + " من " + business + ". كيف يمكنني مساعدتك؟";
             default -> "Hello, this is " + agent.getName() + " from " + business + ". How can I help?";
         };
+    }
+
+    private boolean looksLikeGreetingInstruction(String greeting) {
+        var normalized = greeting.toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("generate the opening")
+                || normalized.contains("generate a greeting")
+                || normalized.contains("do not use a fixed script")
+                || normalized.contains("adapt naturally")
+                || normalized.contains("mention {{agent_name}}")
+                || normalized.contains("ask one simple opening question");
     }
 
     @Transactional(readOnly = true)

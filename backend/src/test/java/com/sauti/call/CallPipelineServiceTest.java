@@ -24,6 +24,43 @@ import org.mockito.ArgumentCaptor;
 
 class CallPipelineServiceTest {
     @Test
+    void startTestCallDoesNotSpeakGreetingGenerationInstructions() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var agentRepository = mock(AgentRepository.class);
+        var tenant = new Tenant("Tranquil AI", "owner@example.com", "KE");
+        var agent = new Agent(
+                tenant,
+                "Sarah",
+                "Generate the opening at call time. Do not use a fixed script. Ask one simple opening question.",
+                "Prompt"
+        );
+        agent.activate();
+        when(agentRepository.findByIdAndTenantId(agent.getId(), tenant.getId())).thenReturn(Optional.of(agent));
+        when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                agentRepository,
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                mock(LanguageDetector.class),
+                mock(ConversationOrchestrator.class),
+                mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class),
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+
+        service.startTestCall(tenant.getId(), agent.getId());
+
+        var turn = ArgumentCaptor.forClass(CallTurn.class);
+        verify(callTurnRepository).save(turn.capture());
+        assertThat(turn.getValue().getAgentResponse())
+                .isEqualTo("Bonjour, c'est Sarah de Tranquil AI. Comment puis-je vous aider ?");
+    }
+
+    @Test
     void startInboundCallCreatesCallSessionBeforeMediaStreamStarts() {
         var callRepository = mock(CallRepository.class);
         var callTurnRepository = mock(CallTurnRepository.class);

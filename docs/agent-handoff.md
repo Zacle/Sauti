@@ -221,6 +221,59 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Consistent workspace switcher and integration selector alignment
+
+- Removed the Agents-only sidebar ordering rule that moved the workspace/business switcher below navigation and footer actions; Agents now keeps the switcher directly below the Sauti brand like the other console pages.
+- Reset Agents navigation/footer ordering to the shared console order while preserving the Agents dark theme and active navigation treatment.
+- Fixed the Integration marketplace agent selector icon collision by restricting legacy absolute SVG positioning to direct legacy field wrappers instead of icons nested inside the Radix `DarkSelect` trigger.
+- Hardened the shared `DarkSelect` trigger with explicit icon, value, and chevron grid columns plus component-owned static SVG positioning, so the selected agent name remains vertically aligned with the bot icon regardless of surrounding header styles.
+- Tightened the marketplace header height and vertically centered its content, while giving the agent selector a stable 300 px width, 56 px control height, aligned icons, and consistent rounded-console styling.
+- Why: the Agents sidebar unexpectedly moved the business identity to the bottom, and the integration agent icon overlapped the selected agent name.
+- Files touched:
+  - `dashboard/styles/console.css`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.module.css`
+  - `dashboard/components/DarkSelect/DarkSelect.tsx`
+  - `dashboard/components/DarkSelect/DarkSelect.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+  - `git diff --check`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: none.
+
+### 2026-07-11 - Realtime Agent Studio test calls and greeting correction
+
+- Corrected the immediate greeting optimization so instruction-style `greetingMessage` values are never spoken verbatim; fixed scripts remain supported, while generation directions now use a deterministic localized agent/business introduction.
+- Added a regression test reproducing the instruction text shown in the Agent Studio screenshot.
+- Extended authenticated test-call startup responses with a short-lived signed Web Voice token and WebSocket URL tied to the test call and agent.
+- Allowed the existing Web Voice session service to host signed `test` calls as well as public `web` calls without weakening tenant access: test tokens are issued only by the authenticated call endpoint and match the persisted agent UUID.
+- Migrated the Agent Studio hands-free panel from its serialized MediaRecorder upload path to the same persistent 16 kHz PCM WebSocket used by realtime Web Voice, including partial/final transcripts, streamed PCM playback, barge-in audio clearing, speaking state, and call-ending events.
+- Kept typed-message fallback and recording upload behavior, while removing the redundant manual-record control from the hands-free UI.
+- Redesigned the active test-call panel with larger readable messages, single-surface conversation bubbles, clearer live/thinking/speaking states, improved spacing, stronger contrast, and a simpler composer.
+- Why: the prior greeting optimization exposed greeting-generation instructions, and the Agent Studio panel was still using the old prerecorded STT/full-LLM/full-TTS HTTP loop, so it did not benefit from the realtime latency work and still took 5-6 seconds before playback.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/call/CallDtos.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `dashboard/types/api.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:compileJava`
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.CallPipelineServiceTest`
+  - `.\gradlew.bat :backend:test`
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+  - `git diff --check`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-ups and risks:
+  - Typed messages intentionally retain the request/response fallback; spoken hands-free turns use the realtime WebSocket.
+  - Browser and production provider latency still require validation after CI/CD with the existing `Voice latency` logs.
+
 ### 2026-07-11 - Realtime voice latency pipeline
 
 - Fixed Deepgram turn delivery so `speech_final=true` immediately flushes the accumulated caller transcript instead of waiting for the later `UtteranceEnd` event; kept ordinary `is_final` fragments buffered so mid-thought segments are not submitted prematurely.

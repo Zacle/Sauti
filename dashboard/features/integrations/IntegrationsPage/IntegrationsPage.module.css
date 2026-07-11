@@ -5,8 +5,8 @@
 .heading p, .description { margin: 0; color: #6f7e92; line-height: 1.55; }
 .heading label { display: grid; flex: 0 0 280px; gap: 7px; color: #6f7e92; font-size: .72rem; }
 .heading label > div { position: relative; display: flex; align-items: center; }
-.heading label svg:first-child { position: absolute; left: 14px; color: #07958e; pointer-events: none; }
-.heading label svg:last-child { position: absolute; right: 13px; color: #7d8999; pointer-events: none; }
+.heading label > div > svg:first-child { position: absolute; left: 14px; color: #07958e; pointer-events: none; }
+.heading label > div > svg:last-child { position: absolute; right: 13px; color: #7d8999; pointer-events: none; }
 .heading select { width: 100%; min-height: 46px; padding: 0 38px; appearance: none; border: 1px solid #d8e2eb; border-radius: 12px; outline: none; color: #1f3047; background: #fff; font: inherit; font-size: .85rem; }
 .success, .error { display: flex; align-items: center; gap: 9px; margin-bottom: 16px; padding: 12px 14px; border-radius: 12px; font-size: .8rem; }
 .success { border: 1px solid #b9e8df; color: #08766f; background: #effbf8; }
@@ -102,16 +102,16 @@
 
 /* Dark integration marketplace */
 .page { width:min(1320px,100%); color:#eaf4ff; }
-.heading { position:relative; min-height:126px; margin-bottom:20px; }
+.heading { position:relative; min-height:112px; align-items:center; margin-bottom:20px; }
 .heading::after { content:""; position:absolute; z-index:0; inset:-24px 8% -30px 28%; pointer-events:none; background:radial-gradient(ellipse,rgba(11,190,199,.14),transparent 65%); filter:blur(14px); }
 .heading > * { position:relative; z-index:1; }
 .heading > div > span { color:#28e2d4; font-size:.7rem; font-weight:700; letter-spacing:.08em; }
 .heading h1 { color:#f5fbff; font-size:clamp(2rem,3.2vw,2.6rem); font-weight:650; }
 .heading p,.description { color:#8fa4b8; }
-.heading label { color:#72899f; }
+.heading label { flex:0 0 300px; gap:9px; color:#72899f; }
 .heading select { min-height:52px; border-color:rgba(91,153,204,.2); color:#e7f1f9; background:rgba(7,25,44,.88); }
-.heading label svg:first-child { color:#28dfd2; }
-.heading label svg:last-child { color:#7890a5; }
+.heading label > div > svg:first-child { color:#28dfd2; }
+.heading label > div > svg:last-child { color:#7890a5; }
 .success,.error { border-color:rgba(28,214,180,.3); color:#2addba; background:rgba(7,113,88,.14); }
 .error { border-color:rgba(255,94,67,.32); color:#ff8a70; background:rgba(126,34,20,.14); }
 .controls { gap:13px; }
@@ -166,5 +166,5 @@
 .templateSection p { color:#8da2b5; background:rgba(255,255,255,.03); }
 @media(max-width:980px){.grid{grid-template-columns:1fr}}
 @media(max-width:700px){.heading{min-height:0}.filters{width:100%}.card{min-height:245px}}
-.heading label > button { padding-left:14px; padding-right:14px; }
-.heading label > button svg { position:static; pointer-events:auto; }
+.heading label > button { min-height:56px; padding:0 16px; border-radius:15px; }
+.heading label > button svg { position:static; flex:none; pointer-events:auto; }

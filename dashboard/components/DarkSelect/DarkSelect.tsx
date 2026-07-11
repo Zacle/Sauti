@@ -18,7 +18,7 @@ export function DarkSelect({ ariaLabel, icon, options, value, onValueChange }: {
     <Select.Root value={value} onValueChange={onValueChange}>
       <Select.Trigger className={styles.trigger} aria-label={ariaLabel}>
         {icon && <span className={styles.icon}>{icon}</span>}
-        <Select.Value />
+        <Select.Value className={styles.value} />
         <Select.Icon className={styles.chevron}><ChevronDown size={16} /></Select.Icon>
       </Select.Trigger>
       <Select.Portal>

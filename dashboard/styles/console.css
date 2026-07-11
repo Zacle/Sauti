@@ -368,14 +368,14 @@
 }
 
 .agents-console-shell .workspace-switcher {
-  order: 4;
-  margin: 14px 0 0;
+  order: 0;
+  margin: 20px 0 24px;
   border-color: rgba(118, 171, 219, 0.15);
   background: rgba(8, 29, 51, 0.86);
 }
 
-.agents-console-shell .console-nav { order: 1; }
-.agents-console-shell .console-sidebar-footer { order: 3; }
+.agents-console-shell .console-nav { order: 0; }
+.agents-console-shell .console-sidebar-footer { order: 0; }
 
 .agents-console-shell .console-nav > span { display: none; }
 

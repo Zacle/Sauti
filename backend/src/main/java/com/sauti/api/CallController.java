@@ -15,6 +15,7 @@ import com.sauti.call.CallPipelineService;
 import com.sauti.call.CallQueryService;
 import com.sauti.call.CallRecordingService;
 import com.sauti.call.CallTurnRepository;
+import com.sauti.call.WebVoiceTokenService;
 import com.sauti.voice.VoiceCatalogService;
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +27,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,6 +45,8 @@ public class CallController {
     private final CallRecordingService callRecordingService;
     private final VoiceCatalogService voiceCatalogService;
     private final BrowserSpeechToTextService browserSpeechToTextService;
+    private final WebVoiceTokenService webVoiceTokenService;
+    private final String webVoiceWebsocketUrl;
 
     public CallController(
             CallQueryService callQueryService,
@@ -50,7 +54,9 @@ public class CallController {
             CallTurnRepository callTurnRepository,
             CallRecordingService callRecordingService,
             VoiceCatalogService voiceCatalogService,
-            BrowserSpeechToTextService browserSpeechToTextService
+            BrowserSpeechToTextService browserSpeechToTextService,
+            WebVoiceTokenService webVoiceTokenService,
+            @Value("${sauti.web-voice.public-websocket-base-url:ws://localhost:8082}") String webVoiceWebsocketUrl
     ) {
         this.callQueryService = callQueryService;
         this.callPipelineService = callPipelineService;
@@ -58,6 +64,8 @@ public class CallController {
         this.callRecordingService = callRecordingService;
         this.voiceCatalogService = voiceCatalogService;
         this.browserSpeechToTextService = browserSpeechToTextService;
+        this.webVoiceTokenService = webVoiceTokenService;
+        this.webVoiceWebsocketUrl = webVoiceWebsocketUrl;
     }
 
     @GetMapping
@@ -78,7 +86,16 @@ public class CallController {
         var call = callPipelineService.startTestCall(user.tenantId(), request.agentId(), request.ttsVoiceId());
         var greeting = callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId()).stream()
                 .findFirst().map(turn -> turn.getAgentResponse()).orElse("");
-        return new StartTestCallResponse(CallResponse.from(call), greeting, TestCallSettings.from(call.getAgent()));
+        var agentKey = call.getAgent().getId().toString();
+        var token = webVoiceTokenService.issue(call.getTwilioCallSid(), agentKey);
+        return new StartTestCallResponse(
+                CallResponse.from(call),
+                greeting,
+                TestCallSettings.from(call.getAgent()),
+                webVoiceWebsocketUrl + "/ws/web-voice/" + call.getTwilioCallSid() + "?token=" + token,
+                token,
+                16000
+        );
     }
 
     @PostMapping("/{twilioCallSid}/simulate-turn")

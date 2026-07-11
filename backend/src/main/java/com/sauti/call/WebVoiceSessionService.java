@@ -61,8 +61,9 @@ public class WebVoiceSessionService {
     public void start(String callSid, String publicAgentId, WebSocketSession socket) {
         var call = callRepository.findByTwilioCallSid(callSid)
                 .filter(Call::isActive)
-                .filter(candidate -> "web".equals(candidate.getDirection()))
-                .filter(candidate -> publicAgentId.equals(candidate.getAgent().getWebVoicePublicId()))
+                .filter(candidate -> "web".equals(candidate.getDirection()) || "test".equals(candidate.getDirection()))
+                .filter(candidate -> publicAgentId.equals(candidate.getAgent().getWebVoicePublicId())
+                        || publicAgentId.equals(candidate.getAgent().getId().toString()))
                 .orElseThrow(() -> new IllegalArgumentException("Web Voice session is unavailable"));
         var state = new BrowserSession(call, socket);
         var previous = sessions.put(callSid, state);

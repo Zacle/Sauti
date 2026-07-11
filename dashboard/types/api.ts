@@ -291,6 +291,9 @@ export type CallTurn = {
 export type StartTestCallResponse = {
   call: Call;
   greeting: string;
+  websocketUrl: string;
+  token: string;
+  inputSampleRate: number;
   settings: {
     bargeInSensitivity: number;
     bargeInGraceMs: number;

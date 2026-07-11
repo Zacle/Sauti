@@ -79,7 +79,14 @@ public final class CallDtos {
     public record CompleteTestCallRequest(String outcome) {
     }
 
-    public record StartTestCallResponse(CallResponse call, String greeting, TestCallSettings settings) {
+    public record StartTestCallResponse(
+            CallResponse call,
+            String greeting,
+            TestCallSettings settings,
+            String websocketUrl,
+            String token,
+            int inputSampleRate
+    ) {
     }
 
     public record TestCallSettings(
