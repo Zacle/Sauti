@@ -143,13 +143,11 @@ public class WebVoiceSessionService {
     public void interrupt(String callSid) {
         var state = sessions.get(callSid);
         if (state == null) return;
-        state.enqueue(() -> {
-            if (!state.speaking && !state.awaitingAudio) return;
-            state.interruptSpeech();
-            state.markCallerActivity();
-            sendJson(state, Map.of("type", "clear_audio"));
-            sendJson(state, Map.of("type", "speaking", "value", false));
-        });
+        if (!state.speaking && !state.awaitingAudio) return;
+        state.interruptSpeech();
+        state.markCallerActivity();
+        sendJson(state, Map.of("type", "clear_audio"));
+        sendJson(state, Map.of("type", "speaking", "value", false));
     }
 
     public void stop(String callSid) {
@@ -190,7 +188,9 @@ public class WebVoiceSessionService {
                         if (delta == null || delta.isEmpty()) return;
                         spokenText.append(delta);
                         if (streamed.compareAndSet(false, true)) beginSpeech(state, state.language, false);
-                        state.ttsSession.thenAccept(tts -> tts.speak(delta, false));
+                        state.ttsSession.thenAccept(tts -> {
+                            if (tts != null) tts.speak(delta, false);
+                        });
                     }
             );
             state.language = turn.language();
@@ -201,7 +201,9 @@ public class WebVoiceSessionService {
                 state.closeOutcome = turn.outcome();
                 if (streamed.get()) {
                     state.closeAfterSpeech = !turn.outcome().isBlank();
-                    state.ttsSession.thenAccept(tts -> tts.speak("", true));
+                    state.ttsSession.thenAccept(tts -> {
+                        if (tts != null) tts.speak("", true);
+                    });
                 } else {
                     speak(state, turn.text(), turn.language(), !turn.outcome().isBlank());
                 }
@@ -218,6 +220,7 @@ public class WebVoiceSessionService {
     private void speak(BrowserSession state, String text, String language, boolean closeAfterSpeech) {
         beginSpeech(state, language, closeAfterSpeech);
         state.ttsSession.thenAccept(tts -> {
+            if (tts == null) return;
             for (var chunk : sentenceChunker.chunks(text)) tts.speak(chunk, false);
             tts.speak("", true);
         });
@@ -356,6 +359,7 @@ public class WebVoiceSessionService {
         private volatile String language;
         private volatile boolean awaitingAudio;
         private long audioRequestVersion;
+        private volatile long ttsSessionVersion;
         private final AtomicBoolean sttRecovering = new AtomicBoolean(false);
         private int sttRecoveryAttempts;
         private final long startedNanos = System.nanoTime();
@@ -385,9 +389,11 @@ public class WebVoiceSessionService {
             if (ttsSession != null && language.equals(ttsLanguage) && !ttsSession.isCompletedExceptionally()) return;
             interruptSpeech();
             ttsLanguage = language;
+            var listenerVersion = ++ttsSessionVersion;
             ttsSession = ttsProvider.open(language, call.getAgent().getTtsVoiceId(), new TtsAudioListener() {
                 @Override
                 public void onPcmAudio(byte[] pcm16kAudio) {
+                    if (listenerVersion != ttsSessionVersion) return;
                     try {
                         if (!speaking) {
                             awaitingAudio = false;
@@ -404,6 +410,7 @@ public class WebVoiceSessionService {
 
                 @Override
                 public void onComplete() {
+                    if (listenerVersion != ttsSessionVersion) return;
                     awaitingAudio = false;
                     speaking = false;
                     markActivity();
@@ -419,6 +426,7 @@ public class WebVoiceSessionService {
 
                 @Override
                 public void onError(Throwable error) {
+                    if (listenerVersion != ttsSessionVersion) return;
                     awaitingAudio = false;
                     speaking = false;
                     LOGGER.warn("Web Voice TTS failed for session={}", call.getTwilioCallSid(), error);
@@ -438,6 +446,7 @@ public class WebVoiceSessionService {
             speaking = false;
             awaitingAudio = false;
             audioRequestVersion++;
+            ttsSessionVersion++;
             closeAfterSpeech = false;
             closeOutcome = "";
             if (recording != null) recording.clearPendingAgentAudio();

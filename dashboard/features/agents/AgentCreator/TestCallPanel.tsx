@@ -131,6 +131,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       awaitingDictatedDetailsRef.current = false;
       setCallId(started.call.id);
       await connectRealtimeVoice(started, stream);
+      startVoiceMonitor();
     } catch (caught) {
       cleanupMedia();
       updateStatus("idle");
@@ -224,7 +225,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function handleRealtimeEvent(event: VoiceEvent) {
-    if (event.type === "transcript_partial") updateStatus("capturing");
+    if (event.type === "transcript_partial") {
+      if (statusRef.current === "speaking") interruptRealtimeAgent();
+      updateStatus("capturing");
+    }
     if (event.type === "transcript_final" && event.text) {
       acceptedCallerTurnsRef.current += 1;
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text: event.text! }]);
@@ -298,7 +302,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       const voiceDetected = rms >= voiceThreshold;
       // Playback can leak back into an open microphone. Require a much stronger,
       // sustained signal before treating it as an interruption of the agent.
-      const bargeInDetected = rms >= Math.max(0.042, voiceThreshold * 1.65, noiseFloorRef.current * 3.2);
+      const bargeInDetected = rms >= Math.max(0.04, voiceThreshold * 1.5, noiseFloorRef.current * 3);
       const currentStatus = statusRef.current;
 
       if (voiceDetected) {
@@ -315,7 +319,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           startUtteranceCapture(false, "auto", voiceDuration);
         } else if (currentStatus === "thinking" && voiceDuration >= 100) {
           startUtteranceCapture(true, "auto", voiceDuration);
-        } else if (currentStatus === "speaking" && bargeInDetected && voiceDuration >= Math.max(360, settings.bargeInGraceMs)) {
+        } else if (currentStatus === "speaking" && bargeInDetected && voiceDuration >= Math.max(180, Math.min(250, settings.bargeInGraceMs))) {
           interruptAgentAndCapture(voiceDuration);
         }
       } else {
@@ -484,6 +488,11 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function interruptAgentAndCapture(initialVoicedMs = 0) {
+    void initialVoicedMs;
+    interruptRealtimeAgent();
+  }
+
+  function interruptRealtimeAgent() {
     clearRealtimePlayback();
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "interrupt" }));
@@ -493,7 +502,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       // The source may have ended between voice detection frames.
     }
     agentAudioSourceRef.current = null;
-    startUtteranceCapture(true, "auto", initialVoicedMs);
+    callerInterruptedCurrentTurnRef.current = true;
+    updateStatus("capturing");
   }
 
   async function playLatestAgentAudio(activeCallId: string) {

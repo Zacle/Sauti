@@ -2053,3 +2053,25 @@ Expected:
   - `npm.cmd run build`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Audio-first barge-in cancellation
+
+- Started the browser voice-activity monitor when a realtime test call connects; it previously existed but was never started on the successful connection path.
+- Reduced sustained local speech time to roughly 180–250 ms before interruption while retaining a strong echo-resistant energy threshold.
+- A recognized partial transcript now clears browser playback immediately as a second client-side interruption path.
+- Public Web Voice uses a ref-backed speaking state so its long-lived WebSocket callback can reliably cancel playback instead of reading a stale React state value.
+- Made the backend interruption command synchronous rather than queueing it behind the still-running LLM turn.
+- Added TTS session generations so late Cartesia frames from a cancelled stream are discarded and cannot restart speech after the clear event.
+- Guarded streamed TTS callbacks after cancellation so later LLM deltas are ignored safely.
+- Why: the caller audio reached STT, but local cancellation was inactive and server cancellation waited behind sentence generation, allowing the agent to finish talking over the caller.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

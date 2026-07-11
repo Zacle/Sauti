@@ -45,6 +45,12 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const playbackTimeRef = useRef(0);
   const playbackSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const pcmQueueRef = useRef<number[]>([]);
+  const speakingRef = useRef(false);
+
+  function updateSpeaking(value: boolean) {
+    speakingRef.current = value;
+    setSpeaking(value);
+  }
 
   useEffect(() => {
     const requestedAccent = new URLSearchParams(window.location.search).get("color") ?? "";
@@ -107,7 +113,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       socket.onerror = () => setError("The live voice connection was interrupted.");
       socket.onclose = () => {
         stopCapture();
-        setSpeaking(false);
+        updateSpeaking(false);
         setStatus((current) => current === "connecting" ? "ended" : current === "live" ? "ended" : current);
       };
     } catch (caught) {
@@ -212,7 +218,15 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   }
 
   function handleEvent(event: VoiceEvent) {
-    if (event.type === "transcript_partial") setPartial(event.text ?? "");
+    if (event.type === "transcript_partial") {
+      if (speakingRef.current) {
+        clearPlayback();
+        updateSpeaking(false);
+        const socket = socketRef.current;
+        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "interrupt" }));
+      }
+      setPartial(event.text ?? "");
+    }
     if (event.type === "transcript_final" && event.text) {
       setPartial("");
       setMessages((current) => [...current, { role: "visitor", text: event.text! }]);
@@ -220,7 +234,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     if (event.type === "agent_response" && event.text) {
       setMessages((current) => [...current, { role: "agent", text: event.text! }]);
     }
-    if (event.type === "speaking") setSpeaking(Boolean(event.value));
+    if (event.type === "speaking") updateSpeaking(Boolean(event.value));
     if (event.type === "clear_audio") clearPlayback();
     if (event.type === "error") setError(event.message ?? "The voice session encountered an error.");
     if (event.type === "ended") {
@@ -249,7 +263,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   async function playEncodedAudio(encoded: string) {
     const context = contextRef.current;
     if (!context) return;
-    setSpeaking(true);
+    updateSpeaking(true);
     try {
       const binary = window.atob(encoded);
       const bytes = new Uint8Array(binary.length);
@@ -263,7 +277,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
         source.start();
       });
     } finally {
-      setSpeaking(false);
+      updateSpeaking(false);
     }
   }
 
