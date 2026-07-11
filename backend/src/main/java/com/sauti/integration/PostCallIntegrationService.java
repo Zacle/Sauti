@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.call.Call;
 import com.sauti.call.CallRepository;
+import com.sauti.call.CallIntakeNoteService;
 import com.sauti.calendar.BookingRepository;
 import com.sauti.tool.WebhookDestinationValidator;
 import com.sauti.webhook.WebhookDeliveryService;
@@ -36,6 +37,7 @@ public class PostCallIntegrationService {
     private final IntegrationConnectionRepository connections;
     private final CallRepository calls;
     private final BookingRepository bookings;
+    private final CallIntakeNoteService intakeNotes;
     private final IntegrationService integrationService;
     private final ProviderOAuthService oauth;
     private final ObjectMapper objectMapper;
@@ -53,6 +55,7 @@ public class PostCallIntegrationService {
                                       IntegrationConnectionRepository connections,
                                       CallRepository calls,
                                       BookingRepository bookings,
+                                      CallIntakeNoteService intakeNotes,
                                       IntegrationService integrationService,
                                       ProviderOAuthService oauth,
                                       ObjectMapper objectMapper,
@@ -68,6 +71,7 @@ public class PostCallIntegrationService {
         this.connections = connections;
         this.calls = calls;
         this.bookings = bookings;
+        this.intakeNotes = intakeNotes;
         this.integrationService = integrationService;
         this.oauth = oauth;
         this.objectMapper = objectMapper;
@@ -219,11 +223,11 @@ public class PostCallIntegrationService {
         var nameParts = splitName(name);
         var search = requestJson("POST", "https://api.hubapi.com/crm/v3/objects/contacts/search", Map.of(
                 "filterGroups", List.of(Map.of("filters", List.of(Map.of(
-                        "propertyName", "phone", "operator", "EQ", "value", value(call.getCallerNumber()))))),
+                        "propertyName", "phone", "operator", "EQ", "value", callerPhone(call))))),
                 "properties", List.of("phone", "firstname", "lastname"), "limit", 1), headers);
         var contactId = search.body().path("results").path(0).path("id").asText("");
         var properties = new LinkedHashMap<String, Object>();
-        properties.put("phone", value(call.getCallerNumber()));
+        properties.put("phone", callerPhone(call));
         properties.put("firstname", nameParts[0]);
         properties.put("lastname", nameParts[1]);
         if (contactId.isBlank()) {
@@ -252,7 +256,7 @@ public class PostCallIntegrationService {
         var token = oauth.accessToken(call.getTenant().getId(), call.getAgent().getId(), "salesforce");
         var instanceUrl = required(credentials, "instanceUrl").replaceFirst("/+$", "");
         var headers = Map.of("Authorization", "Bearer " + token);
-        var phone = value(call.getCallerNumber()).replace("'", "\\'");
+        var phone = callerPhone(call).replace("'", "\\'");
         var queryUrl = instanceUrl + "/services/data/v61.0/query?q=" + urlPart(
                 "SELECT Id FROM Contact WHERE Phone = '" + phone + "' LIMIT 1");
         var contactId = requestJson("GET", queryUrl, null, headers)
@@ -260,7 +264,7 @@ public class PostCallIntegrationService {
         var nameParts = splitName(callerName(call));
         var contactBody = Map.of(
                 "FirstName", nameParts[0], "LastName", nameParts[1],
-                "Phone", value(call.getCallerNumber()), "Description", value(call.getCallSummary()));
+                "Phone", callerPhone(call), "Description", value(call.getCallSummary()));
         var contactRequest = contactId.isBlank()
                 ? Map.of("method", "POST", "url", "/services/data/v61.0/sobjects/Contact",
                         "referenceId", "contact", "body", contactBody)
@@ -336,7 +340,8 @@ public class PostCallIntegrationService {
         payload.put("test", test);
         payload.put("callId", call.getId());
         payload.put("agentId", call.getAgent().getId());
-        payload.put("callerPhone", call.getCallerNumber());
+        payload.put("callerPhone", callerPhone(call));
+        payload.put("collectedDetails", intakeNotes.notes(call, ""));
         payload.put("direction", call.getDirection());
         payload.put("outcome", call.getOutcome());
         payload.put("summary", call.getCallSummary());
@@ -379,7 +384,13 @@ public class PostCallIntegrationService {
 
     private String callerName(Call call) {
         return bookings.findFirstByCall_Id(call.getId()).map(booking -> booking.getCallerName())
-                .filter(name -> name != null && !name.isBlank()).orElse("Sauti Caller");
+                .filter(name -> name != null && !name.isBlank())
+                .orElseGet(() -> intakeNotes.notes(call, "").getOrDefault("caller_name", "Sauti Caller"));
+    }
+
+    private String callerPhone(Call call) {
+        var collected = intakeNotes.notes(call, "").get("caller_phone");
+        return collected == null || collected.isBlank() ? value(call.getCallerNumber()) : collected;
     }
 
     private String[] splitName(String name) {
@@ -396,10 +407,11 @@ public class PostCallIntegrationService {
                 Summary: %s
                 Outcome: %s
                 Sentiment: %s
+                Collected details: %s
                 Transcript: %s/calls?callId=%s
                 Recording: %s
                 """.formatted(value(call.getCallSummary()), value(call.getOutcome()), value(call.getSentiment()),
-                dashboardBaseUrl, call.getId(), value(call.getRecordingUrl()));
+                intakeNotes.notes(call, ""), dashboardBaseUrl, call.getId(), value(call.getRecordingUrl()));
     }
 
     private String trimProviderError(String body) {
@@ -423,7 +435,7 @@ public class PostCallIntegrationService {
         return switch (column) {
             case "callId" -> call.getId();
             case "agentId" -> call.getAgent().getId();
-            case "callerPhone" -> value(call.getCallerNumber());
+            case "callerPhone" -> callerPhone(call);
             case "direction" -> call.getDirection();
             case "outcome" -> value(call.getOutcome());
             case "summary" -> value(call.getCallSummary());

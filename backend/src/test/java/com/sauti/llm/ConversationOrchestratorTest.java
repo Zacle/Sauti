@@ -41,7 +41,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         when(callSessionStore.conversationHistory(call.getTwilioCallSid()))
@@ -106,7 +106,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         when(callSessionStore.conversationHistory(call.getTwilioCallSid())).thenReturn(List.of());
@@ -138,7 +138,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         var toolCall = new LlmToolCall("availability-1", "check_availability", Map.of("date", "2030-01-15"));
@@ -168,7 +168,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         var toolCall = new LlmToolCall("availability-1", "check_availability", Map.of("date", "2030-01-15"));
@@ -206,7 +206,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
         var call = activeCall();
 
         var greeting = orchestrator.generateOpeningGreeting(call, "fr", "voice call");
@@ -224,7 +224,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getGreetingMessage())).thenReturn("Open warmly.");

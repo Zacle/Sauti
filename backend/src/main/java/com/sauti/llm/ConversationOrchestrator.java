@@ -2,6 +2,7 @@ package com.sauti.llm;
 
 import com.sauti.call.Call;
 import com.sauti.call.CallTurnRepository;
+import com.sauti.call.CallIntakeNoteService;
 import com.sauti.agent.AgentVariableService;
 import com.sauti.agent.KnowledgeBaseService;
 import com.sauti.knowledge.KnowledgeRetrievalService;
@@ -31,6 +32,7 @@ public class ConversationOrchestrator {
     private final AgentVariableService agentVariableService;
     private final KnowledgeBaseService knowledgeBaseService;
     private final KnowledgeRetrievalService knowledgeRetrievalService;
+    private final CallIntakeNoteService intakeNotes;
 
     public ConversationOrchestrator(
             LlmToolCallingProvider llmProvider,
@@ -41,6 +43,7 @@ public class ConversationOrchestrator {
             AgentVariableService agentVariableService,
             KnowledgeBaseService knowledgeBaseService,
             KnowledgeRetrievalService knowledgeRetrievalService,
+            CallIntakeNoteService intakeNotes,
             @Value("${sauti.llm.max-tool-loops:4}") int maxToolLoops
     ) {
         this.llmProvider = llmProvider;
@@ -51,6 +54,7 @@ public class ConversationOrchestrator {
         this.agentVariableService = agentVariableService;
         this.knowledgeBaseService = knowledgeBaseService;
         this.knowledgeRetrievalService = knowledgeRetrievalService;
+        this.intakeNotes = intakeNotes;
         this.maxToolLoops = maxToolLoops;
     }
 
@@ -231,6 +235,8 @@ public class ConversationOrchestrator {
                 BUSINESS: You are working for %s.
                 TODAY IN THE BUSINESS TIMEZONE: %s.
 
+                %s
+
                 LIVE CONVERSATION RULES — mandatory:
                 - Speak like a warm, competent person on the phone. Never like a menu, a form, or a document.
                 - Most replies: one or two short sentences, then stop and wait.
@@ -276,6 +282,7 @@ public class ConversationOrchestrator {
                 language,
                 call.getTenant().getBusinessName(),
                 today(call),
+                intakeNotes.promptBlock(call, callerTranscript),
                 toolBlock,
                 knowledgeBaseBlock(call) + safetyGuardrailsBlock(call),
                 afterHoursBlock(call),

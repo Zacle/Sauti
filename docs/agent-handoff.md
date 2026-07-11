@@ -2105,3 +2105,25 @@ Expected:
   - `npm.cmd run build`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Authoritative call intake notes and integration fields
+
+- Added `CallIntakeNoteService`, which rebuilds structured notes from the complete persisted call history rather than the LLM's rolling 12-message context.
+- Notes currently retain caller name, dictated phone number with leading zeroes, email, address, spoken date of birth when explicitly requested, service/reason, preferred weekday, and preferred time; accepted agent proposals are captured from affirmative caller replies.
+- Injected the authoritative notes into every LLM turn with an explicit prohibition on asking again for filled fields.
+- Added `collectedDetails` to generic post-call integration payloads.
+- HubSpot and Salesforce contact sync now use the captured caller name/phone as fallbacks when browser/test calls do not have a carrier caller number or booking record.
+- Google Sheets `callerPhone` and CRM notes now include the collected values as well.
+- Why: older details fell outside `MAX_HISTORY_MESSAGES = 12` during longer bookings, so the model asked again for name, phone, and reason even though they remained in the transcript.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/CallIntakeNoteService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/integration/PostCallIntegrationService.java`
+  - `backend/src/test/java/com/sauti/call/CallIntakeNoteServiceTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.CallIntakeNoteServiceTest" --tests "com.sauti.llm.ConversationOrchestratorTest"`
+  - `.\gradlew.bat :backend:test`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
