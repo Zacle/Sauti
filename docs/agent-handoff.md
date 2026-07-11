@@ -221,6 +221,23 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Dark new-agent template selection
+
+- Restyled `/agents/new` template selection to match the dark Agents console instead of rendering the original light composer and cards over a dark shell.
+- Increased heading and description contrast, added a teal focus treatment to the role composer, and styled its icon, character count, enabled/disabled generation actions, and generation-progress state.
+- Rebuilt the template section heading, category tabs, template cards, badges, icons, descriptions, actions, hover elevation, and blank-agent state with dark navy surfaces and restrained teal accents.
+- Added responsive two-column and single-column template layouts with horizontally scrollable filters on narrow screens.
+- Why: the page had nearly invisible dark text and large white/grey surfaces that did not match the surrounding console, as shown in the supplied full-page screenshot.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+  - `git diff --check`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: none.
+
 ### 2026-07-11 - Consistent workspace switcher and integration selector alignment
 
 - Removed the Agents-only sidebar ordering rule that moved the workspace/business switcher below navigation and footer actions; Agents now keeps the switcher directly below the Sauti brand like the other console pages.
