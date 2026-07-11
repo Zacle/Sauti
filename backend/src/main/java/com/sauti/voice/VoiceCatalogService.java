@@ -15,7 +15,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,13 +33,6 @@ public class VoiceCatalogService {
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final ObjectMapper objectMapper;
     private final CartesiaRealtimeTextToSpeechClient cartesiaClient;
-    private final String elevenLabsApiKey;
-    private final String elevenLabsVoicesUrl;
-    private final String elevenLabsPreviewUrl;
-    private final String elevenLabsModelId;
-    private final String elevenLabsEnglishModelId;
-    private final String elevenLabsFrenchModelId;
-    private final String elevenLabsArabicModelId;
     private final String cartesiaApiKey;
     private final String cartesiaVersion;
     private final String cartesiaVoicesUrl;
@@ -51,26 +43,12 @@ public class VoiceCatalogService {
     public VoiceCatalogService(
             ObjectMapper objectMapper,
             CartesiaRealtimeTextToSpeechClient cartesiaClient,
-            @Value("${sauti.tts.elevenlabs.api-key:}") String elevenLabsApiKey,
-            @Value("${sauti.tts.elevenlabs.voices-url:https://api.elevenlabs.io/v2/voices?page_size=100}") String elevenLabsVoicesUrl,
-            @Value("${sauti.tts.elevenlabs.preview-url:https://api.elevenlabs.io/v1/text-to-speech}") String elevenLabsPreviewUrl,
-            @Value("${sauti.tts.elevenlabs.model-id:eleven_flash_v2_5}") String elevenLabsModelId,
-            @Value("${sauti.tts.elevenlabs.model-id-en:}") String elevenLabsEnglishModelId,
-            @Value("${sauti.tts.elevenlabs.model-id-fr:}") String elevenLabsFrenchModelId,
-            @Value("${sauti.tts.elevenlabs.model-id-ar:}") String elevenLabsArabicModelId,
             @Value("${sauti.tts.cartesia.api-key:}") String cartesiaApiKey,
             @Value("${sauti.tts.cartesia.version:2026-03-01}") String cartesiaVersion,
             @Value("${sauti.tts.cartesia.voices-url:https://api.cartesia.ai/voices?limit=100}") String cartesiaVoicesUrl
     ) {
         this.objectMapper = objectMapper;
         this.cartesiaClient = cartesiaClient;
-        this.elevenLabsApiKey = elevenLabsApiKey == null ? "" : elevenLabsApiKey.trim();
-        this.elevenLabsVoicesUrl = elevenLabsVoicesUrl;
-        this.elevenLabsPreviewUrl = elevenLabsPreviewUrl;
-        this.elevenLabsModelId = elevenLabsModelId;
-        this.elevenLabsEnglishModelId = blankToDefault(elevenLabsEnglishModelId, elevenLabsModelId);
-        this.elevenLabsFrenchModelId = blankToDefault(elevenLabsFrenchModelId, elevenLabsModelId);
-        this.elevenLabsArabicModelId = blankToDefault(elevenLabsArabicModelId, elevenLabsModelId);
         this.cartesiaApiKey = cartesiaApiKey == null ? "" : cartesiaApiKey.trim();
         this.cartesiaVersion = cartesiaVersion;
         this.cartesiaVoicesUrl = cartesiaVoicesUrl;
@@ -126,45 +104,15 @@ public class VoiceCatalogService {
     private VoiceCatalogResponse load() {
         var providers = new java.util.ArrayList<String>();
         var voices = new java.util.ArrayList<VoiceOption>();
-        if (!elevenLabsApiKey.isBlank()) {
-            voices.addAll(loadElevenLabsVoices());
-            providers.add("elevenlabs");
-        }
         if (!cartesiaApiKey.isBlank()) {
             voices.addAll(loadCartesiaVoices());
             providers.add("cartesia");
         }
         voices.removeIf(voice -> voice.languages().stream().noneMatch(SUPPORTED_LANGUAGES::contains));
         voices.sort(Comparator
-                .comparingInt((VoiceOption voice) -> providerRank(voice.provider()))
-                .thenComparingInt(voice -> professionalRank(voice.name() + " " + nullSafe(voice.description())))
+                .comparingInt((VoiceOption voice) -> professionalRank(voice.name() + " " + nullSafe(voice.description())))
                 .thenComparing(VoiceOption::name));
         return new VoiceCatalogResponse(List.copyOf(providers), List.copyOf(voices));
-    }
-
-    private List<VoiceOption> loadElevenLabsVoices() {
-        try {
-            var request = HttpRequest.newBuilder(URI.create(elevenLabsVoicesUrl))
-                    .header("Accept", "application/json")
-                    .header("xi-api-key", elevenLabsApiKey)
-                    .GET()
-                    .build();
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("ElevenLabs voice catalog failed with status " + response.statusCode());
-            }
-            var root = objectMapper.readTree(response.body());
-            var voices = new java.util.ArrayList<VoiceOption>();
-            for (var voice : root.withArray("voices")) {
-                voices.add(mapElevenLabsVoice(voice));
-            }
-            return voices;
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Voice catalog request was interrupted", exception);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Unable to load the ElevenLabs voice catalog", exception);
-        }
     }
 
     private List<VoiceOption> loadCartesiaVoices() {
@@ -233,34 +181,6 @@ public class VoiceCatalogService {
         return voices;
     }
 
-    private VoiceOption mapElevenLabsVoice(JsonNode voice) {
-        var traits = new LinkedHashMap<String, String>();
-        voice.path("labels").fields().forEachRemaining(entry -> traits.put(entry.getKey(), entry.getValue().asText()));
-        var languages = new LinkedHashSet<String>();
-        var nativeLanguage = normalizeLanguageCode(traits.getOrDefault("language", ""));
-        if (!nativeLanguage.isBlank()) {
-            languages.add(nativeLanguage);
-        }
-        voice.withArray("verified_languages").forEach(language -> {
-            var value = normalizeLanguageCode(language.path("language").asText(""));
-            if (!value.isBlank() && includeElevenLabsVerifiedLanguage(nativeLanguage, value)) {
-                languages.add(value);
-            }
-        });
-        languages.removeIf(language -> !SUPPORTED_LANGUAGES.contains(language));
-        return new VoiceOption(
-                "elevenlabs",
-                voice.path("voice_id").asText(),
-                voice.path("name").asText("Unnamed voice"),
-                textOrNull(voice, "description"),
-                voice.path("category").asText("voice"),
-                textOrNull(voice, "preview_url"),
-                List.copyOf(languages),
-                Map.copyOf(traits),
-                voice.path("is_owner").asBoolean(false)
-        );
-    }
-
     private VoiceOption mapCartesiaVoice(JsonNode voice) {
         var language = normalizeLanguageCode(voice.path("language").asText(""));
         if (!SUPPORTED_LANGUAGES.contains(language)) {
@@ -289,45 +209,12 @@ public class VoiceCatalogService {
     }
 
     private byte[] generateAudio(String voiceId, String language, String text) {
-        if (voiceId.startsWith(CartesiaRealtimeTextToSpeechClient.VOICE_PREFIX)) {
-            LOGGER.info(
-                    "Generating catalog TTS audio provider=voice-catalog engine=cartesia language={} voiceId={} modelId=sonic-3.5",
-                    safe(language),
-                    safe(voiceId)
-            );
-            return cartesiaClient.preview(voiceId, language, text);
-        }
-        var resolvedModelId = elevenLabsModelId(language);
         LOGGER.info(
-                "Generating catalog TTS audio provider=voice-catalog engine=elevenlabs language={} voiceId={} modelId={}",
+                "Generating catalog TTS audio provider=cartesia language={} voiceId={} modelId=sonic-3.5",
                 safe(language),
-                safe(voiceId),
-                safe(resolvedModelId)
+                safe(voiceId)
         );
-        try {
-            var body = objectMapper.createObjectNode()
-                    .put("text", text)
-                    .put("model_id", resolvedModelId)
-                    .put("language_code", language);
-            var request = HttpRequest.newBuilder(URI.create(
-                            elevenLabsPreviewUrl + "/" + voiceId + "?output_format=mp3_22050_32"))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("Accept", "audio/mpeg")
-                    .header("Content-Type", "application/json")
-                    .header("xi-api-key", elevenLabsApiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
-                    .build();
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("ElevenLabs preview failed with status " + response.statusCode());
-            }
-            return response.body();
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Voice preview request was interrupted", exception);
-        } catch (Exception exception) {
-            throw new IllegalStateException("Unable to generate the voice preview", exception);
-        }
+        return cartesiaClient.preview(voiceId, language, text);
     }
 
     private String previewText(String language) {
@@ -356,16 +243,6 @@ public class VoiceCatalogService {
         };
     }
 
-    private boolean includeElevenLabsVerifiedLanguage(String nativeLanguage, String verifiedLanguage) {
-        if (nativeLanguage == null || nativeLanguage.isBlank()) {
-            return true;
-        }
-        if ("en".equals(nativeLanguage)) {
-            return "en".equals(verifiedLanguage);
-        }
-        return verifiedLanguage.equals(nativeLanguage) || "en".equals(verifiedLanguage);
-    }
-
     private String normalizePreviewText(String text, String language) {
         if (text == null || text.isBlank()) {
             return previewText(language);
@@ -375,19 +252,6 @@ public class VoiceCatalogService {
             return normalized.substring(0, MAX_PREVIEW_TEXT_LENGTH).trim();
         }
         return normalized;
-    }
-
-    private String elevenLabsModelId(String language) {
-        return switch (language == null ? "" : language.trim().toLowerCase()) {
-            case "en" -> elevenLabsEnglishModelId;
-            case "fr" -> elevenLabsFrenchModelId;
-            case "ar" -> elevenLabsArabicModelId;
-            default -> elevenLabsModelId;
-        };
-    }
-
-    private int providerRank(String provider) {
-        return "elevenlabs".equals(provider) ? 0 : "cartesia".equals(provider) ? 1 : 2;
     }
 
     private int professionalRank(String value) {
@@ -405,10 +269,6 @@ public class VoiceCatalogService {
 
     private String appendQuery(String url, String query) {
         return url + (url.contains("?") ? "&" : "?") + query;
-    }
-
-    private String blankToDefault(String value, String fallback) {
-        return value == null || value.isBlank() ? fallback : value.trim();
     }
 
     private String safe(String value) {

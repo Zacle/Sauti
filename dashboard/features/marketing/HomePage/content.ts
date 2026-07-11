@@ -16,7 +16,7 @@ export const metrics = [
   { value: 100, suffix: "%", label: "Data security and compliance", icon: ShieldCheck },
 ];
 
-export const partners = ["twilio", "Deepgram", "ElevenLabs", "OpenAI", "Google Calendar"];
+export const partners = ["twilio", "Deepgram", "Cartesia", "OpenAI", "Google Calendar"];
 
 export const workflow = [
   { icon: PhoneCall, title: "Answers the call", text: "Natural greeting, understands who you are." },
@@ -28,7 +28,7 @@ export const workflow = [
 export const integrations = [
   { name: "Twilio", category: "Voice infrastructure", tone: "red", logo: "/logos/twilio.svg" },
   { name: "Deepgram", category: "Speech intelligence", tone: "teal", logo: "/logos/deepgram.svg" },
-  { name: "ElevenLabs", category: "Natural voice", tone: "slate", logo: "/logos/elevenlabs.svg" },
+  { name: "Cartesia", category: "Realtime voice", tone: "slate", logo: "/logos/cartesia.svg" },
   { name: "OpenAI", category: "AI reasoning", tone: "green", logo: "/logos/openai.svg" },
   { name: "Google Calendar", category: "Scheduling", tone: "blue", logo: "/logos/google-calendar.svg" },
   { name: "HubSpot", category: "Customer platform", tone: "amber", logo: "/logos/hubspot.svg" },

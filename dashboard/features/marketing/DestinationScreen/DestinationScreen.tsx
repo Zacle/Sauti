@@ -754,7 +754,7 @@ function DestinationVisual({ destination, mode }: { destination: VisualDestinati
           {[
             ["Language", "Auto detected"],
             ["STT provider", "Deepgram / Intron"],
-            ["TTS voice", "ElevenLabs"],
+            ["TTS voice", "Cartesia"],
             ["Output", "Twilio μ-law stream"],
           ].map(([label, value]) => (
             <div key={label}>

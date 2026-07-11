@@ -53,7 +53,7 @@ export const menuGroups = [
     description: "Use trusted providers for voice, speech, AI, calendars, CRM, and developer workflows.",
     items: [
       ["voice-infrastructure", "Voice Infrastructure", "Twilio call handling, media streams, status callbacks, and carrier-grade routing.", PhoneCall],
-      ["speech-and-voice", "Speech & Voice", "Deepgram, ElevenLabs, Intron, and provider routing for multilingual calls.", Radio],
+      ["speech-and-voice", "Speech & Voice", "Deepgram, Cartesia, Intron, and provider routing for multilingual calls.", Radio],
       ["ai-models", "AI Models", "OpenAI, Gemini, Spring AI, prompt construction, and tool calling.", Bot],
       ["calendars", "Calendars", "Google Calendar, Calendly, and custom booking webhooks.", CalendarCheck],
       ["business-tools", "Business Tools", "HubSpot, Salesforce, Slack, Pipedrive, Notion, and team workflows.", BriefcaseBusiness],

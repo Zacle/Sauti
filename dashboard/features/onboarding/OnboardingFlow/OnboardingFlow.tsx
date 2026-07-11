@@ -301,7 +301,7 @@ export function OnboardingFlow() {
                     <select value={voiceId} onChange={(event) => setVoiceId(event.target.value)}>
                       <option value="">Provider default</option>
                       {languageVoices.map((item) => (
-                        <option value={item.id} key={item.id}>{item.name}{item.provider === "cartesia" ? " - Cartesia" : " - ElevenLabs"}</option>
+                        <option value={item.id} key={item.id}>{item.name} - Cartesia</option>
                       ))}
                     </select>
                     <button
@@ -571,7 +571,7 @@ function compareVoiceQuality(left: VoiceOption, right: VoiceOption) {
 }
 
 function providerRank(provider: string) {
-  return provider === "elevenlabs" ? 0 : provider === "cartesia" ? 1 : 2;
+  return provider === "cartesia" ? 0 : 1;
 }
 
 function categoryRank(category: string) {

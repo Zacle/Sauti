@@ -1935,3 +1935,25 @@ Expected:
   - `.\gradlew.bat :backend:test`
 - Deployment:
   - Not deployed. Changes are uncommitted and ready for maintainer review and the CI/CD release chain.
+
+### 2026-07-11 - Cartesia-only text-to-speech cutover
+
+- Removed the ElevenLabs realtime adapter, configuration, voice catalog integration, tests, and dashboard/marketing references.
+- Made Cartesia Sonic 3.5 the sole realtime and preview TTS engine and the default `SAUTI_TTS_STREAMING_PROVIDER`.
+- Added `CARTESIA_DEFAULT_VOICE_ID` as a safe fallback for agents with missing or legacy voice identifiers.
+- Added a tenant-scoped Flyway migration that replaces legacy agent voice IDs with an existing Cartesia voice from the same workspace. This automatically moves Sarah to the working Cartesia path when Amélie's Cartesia voice exists in that workspace.
+- Updated the CI/CD-owned deployment script to force Cartesia when `CARTESIA_API_KEY` is configured; no manual production deployment is required or permitted.
+- Why: Amélie's Cartesia realtime path consistently supported low-latency listening and playback, while Sarah's ElevenLabs path repeatedly failed to produce audio.
+- Files touched:
+  - Cartesia runtime provider/client configuration and tests
+  - Voice catalog service
+  - Flyway agent voice migration
+  - Environment and CI/CD deployment templates
+  - Dashboard voice-provider and marketing copy/assets
+  - Removed ElevenLabs runtime and test files
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

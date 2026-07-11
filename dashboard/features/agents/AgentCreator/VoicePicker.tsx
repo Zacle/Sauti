@@ -236,7 +236,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               {previewError && <div className="voice-preview-error">{previewError}</div>}
               {loading && <div className="voice-picker-state"><LoaderCircle className="spin" size={22} /> Loading available voices...</div>}
               {!loading && error && <div className="voice-picker-state error">{error}<small>Check the configured TTS provider credentials.</small></div>}
-              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure ElevenLabs or Cartesia in the backend environment.</small></div>}
+              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure Cartesia in the backend environment.</small></div>}
               {!loading && !error && providerEnabled && unsupportedLanguage && (
                 <div className="voice-language-unavailable">
                   <CircleAlert aria-hidden="true" size={20} />
@@ -343,7 +343,7 @@ function unsupportedLanguageMessage(language: string, enabledProviders: string[]
     if (!enabledProviders.includes("cartesia")) {
       return "Cartesia is not enabled in the backend environment. Add CARTESIA_API_KEY to production so native non-English voices can load.";
     }
-    return `No ${languageName(language)} voice was returned by ElevenLabs or Cartesia. Check provider language support and credentials.`;
+    return `No ${languageName(language)} voice was returned by Cartesia. Check provider language support and credentials.`;
   }
   return "The current speech model returned no compatible voice for this language.";
 }
@@ -356,7 +356,7 @@ function compareVoiceQuality(left: VoiceOption, right: VoiceOption, languages: s
 }
 
 function providerRank(provider: string) {
-  return provider === "elevenlabs" ? 0 : provider === "cartesia" ? 1 : 2;
+  return provider === "cartesia" ? 0 : 1;
 }
 
 function categoryRank(category: string) {

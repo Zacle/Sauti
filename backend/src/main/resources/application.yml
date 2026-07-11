@@ -194,24 +194,10 @@ sauti:
       realtime-model: ${OPENAI_REALTIME_TRANSCRIPTION_MODEL:gpt-realtime-whisper}
       realtime-delay: ${OPENAI_REALTIME_TRANSCRIPTION_DELAY:low}
   tts:
-    streaming-provider: ${SAUTI_TTS_STREAMING_PROVIDER:elevenlabs}
-    elevenlabs:
-      api-key: ${ELEVENLABS_API_KEY:}
-      base-url: ${ELEVENLABS_STREAM_URL:wss://api.elevenlabs.io/v1/text-to-speech}
-      voices-url: ${ELEVENLABS_VOICES_URL:https://api.elevenlabs.io/v2/voices?page_size=100}
-      preview-url: ${ELEVENLABS_PREVIEW_URL:https://api.elevenlabs.io/v1/text-to-speech}
-      model-id: ${ELEVENLABS_MODEL_ID:eleven_flash_v2_5}
-      model-id-en: ${ELEVENLABS_MODEL_ID_EN:}
-      model-id-fr: ${ELEVENLABS_MODEL_ID_FR:}
-      model-id-ar: ${ELEVENLABS_MODEL_ID_AR:}
-      default-voice-id: ${ELEVENLABS_DEFAULT_VOICE_ID:}
-      stability: ${ELEVENLABS_STABILITY:0.38}
-      similarity-boost: ${ELEVENLABS_SIMILARITY_BOOST:0.78}
-      style: ${ELEVENLABS_STYLE:0.12}
-      speed: ${ELEVENLABS_SPEED:0.98}
-      speaker-boost: ${ELEVENLABS_SPEAKER_BOOST:true}
+    streaming-provider: ${SAUTI_TTS_STREAMING_PROVIDER:cartesia}
     cartesia:
       api-key: ${CARTESIA_API_KEY:}
+      default-voice-id: ${CARTESIA_DEFAULT_VOICE_ID:}
       version: ${CARTESIA_VERSION:2026-03-01}
       voices-url: ${CARTESIA_VOICES_URL:https://api.cartesia.ai/voices?limit=100}
       websocket-url: ${CARTESIA_WEBSOCKET_URL:wss://api.cartesia.ai/tts/websocket}
