@@ -221,6 +221,27 @@ Expected:
 
 ## Change log
 
+### 2026-07-11 - Realtime ElevenLabs model migration and French call termination
+
+- Changed French and Arabic ElevenLabs realtime model examples from `eleven_multilingual_v2` to `eleven_flash_v2_5`; updated the ignored local default from deprecated-equivalent Turbo v2.5 to Flash v2.5.
+- Added a guarded CI/CD migration that rewrites missing, Multilingual v2, or Turbo v2.5 realtime model overrides to Flash v2.5 for the base, French, and Arabic settings.
+- Why: Sarah's ElevenLabs-backed French call completed STT/LLM but produced no first audio, while Cartesia-backed Amélie worked; Flash v2.5 is ElevenLabs' recommended low-latency realtime/Agents model.
+- Expanded conversation-ending recognition with the exact observed French phrase `excellent jour à vous`, normalized/no-accent variants, and the common STT spelling `orevoir`.
+- Added regression assertions proving those French closing utterances terminate a call, preventing post-goodbye silence reminders and repeated farewells.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `deploy/deploy.sh`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `bash -n deploy/deploy.sh`
+  - `git diff --check`
+- Deployment: not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+- Known follow-up: after CI/CD, retest Sarah's ElevenLabs voice and confirm Amélie's call closes immediately after the first farewell finishes playing.
+
 ### 2026-07-11 - Operational realtime provider defaults
 
 - Changed the application defaults from no-op realtime providers to Deepgram STT and ElevenLabs TTS; no-op providers remain available only when explicitly selected for tests or intentionally silent environments.

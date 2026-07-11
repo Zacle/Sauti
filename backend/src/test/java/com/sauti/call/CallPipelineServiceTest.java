@@ -446,6 +446,8 @@ class CallPipelineServiceTest {
 
         assertThat(service.looksLikeConversationEnding("No thank you, have a good day.")).isTrue();
         assertThat(service.looksLikeConversationEnding("Non merci, excellente journée.")).isTrue();
+        assertThat(service.looksLikeConversationEnding("D'accord merci beaucoup, excellent jour à vous.")).isTrue();
+        assertThat(service.looksLikeConversationEnding("orevoir")).isTrue();
         assertThat(service.looksLikeConversationEnding("I want to book tomorrow.")).isFalse();
     }
 
