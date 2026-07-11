@@ -2090,3 +2090,18 @@ Expected:
   - `npm.cmd run build`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Single microphone ingestion path for realtime calls
+
+- Prevented the local voice monitor from starting legacy MediaRecorder turn uploads while the realtime WebSocket is connected.
+- Realtime mode now streams microphone PCM only once; the local monitor is used solely for immediate barge-in detection.
+- Disabled manual prerecorded capture during an active realtime session; pressing it while the agent speaks now performs only an interruption.
+- Why: activating the monitor for barge-in accidentally submitted the same caller utterance through both realtime STT and the legacy audio-turn API, creating duplicate caller transcripts and therefore repeated agent replies.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

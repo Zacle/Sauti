@@ -304,6 +304,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       // sustained signal before treating it as an interruption of the agent.
       const bargeInDetected = rms >= Math.max(0.04, voiceThreshold * 1.5, noiseFloorRef.current * 3);
       const currentStatus = statusRef.current;
+      const realtimeConnected = socketRef.current?.readyState === WebSocket.OPEN;
 
       if (voiceDetected) {
         lastActivityAtRef.current = wallClock;
@@ -315,9 +316,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           utteranceVoicedMsRef.current += 16;
         }
 
-        if (currentStatus === "listening" && voiceDuration >= 100) {
+        if (!realtimeConnected && currentStatus === "listening" && voiceDuration >= 100) {
           startUtteranceCapture(false, "auto", voiceDuration);
-        } else if (currentStatus === "thinking" && voiceDuration >= 100) {
+        } else if (!realtimeConnected && currentStatus === "thinking" && voiceDuration >= 100) {
           startUtteranceCapture(true, "auto", voiceDuration);
         } else if (currentStatus === "speaking" && bargeInDetected && voiceDuration >= Math.max(180, Math.min(250, settings.bargeInGraceMs))) {
           interruptAgentAndCapture(voiceDuration);
@@ -469,6 +470,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function toggleManualCapture() {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      if (statusRef.current === "speaking") interruptRealtimeAgent();
+      return;
+    }
     if (statusRef.current === "capturing" && utteranceModeRef.current === "manual") {
       stopUtteranceCapture();
       return;
