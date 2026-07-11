@@ -4,3 +4,22 @@
 @import "../styles/marketing/sections.css";
 @import "../styles/marketing/destinations.css";
 @import "react-day-picker/style.css";
+
+.sauti-logo-mark {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  overflow: hidden;
+  border-radius: 28%;
+  background: #fff;
+}
+
+.sauti-logo-mark .sauti-logo-source {
+  position: absolute;
+  top: -52%;
+  left: -85%;
+  width: 270%;
+  max-width: none;
+  height: 270%;
+  object-fit: contain;
+}

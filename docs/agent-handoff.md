@@ -1988,14 +1988,15 @@ Expected:
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 
-### 2026-07-11 - Sauti logo asset and favicon
+### 2026-07-11 - Official Sauti logo asset and favicon
 
-- Replaced the generated letter-in-a-box brand placeholders with one reusable Sauti SVG logo component.
+- Replaced the generated letter-in-a-box brand placeholders with the official user-supplied Sauti JPG artwork.
+- The reusable compact mark crops the symbol directly from the official artwork with CSS; it does not redraw or reinterpret the logo.
 - Applied the logo to the console sidebar, authentication pages, onboarding, marketing navigation/footer, legacy homepage footer, and dashboard hero artwork.
 - Kept workspace switcher and user-profile initials dynamic because those identify the tenant/user rather than the Sauti product.
-- Registered the SVG in the root Next.js metadata as the browser favicon, shortcut icon, and Apple icon.
+- Registered the official JPG in the root Next.js metadata as the browser favicon, shortcut icon, and Apple icon.
 - Files touched:
-  - `dashboard/public/sauti-logo.svg`
+  - `dashboard/public/sauti-logo.jpg`
   - `dashboard/components/BrandLogo/BrandLogo.tsx`
   - `dashboard/app/layout.tsx`
   - console, auth, onboarding, marketing, and dashboard brand surfaces
