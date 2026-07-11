@@ -2006,3 +2006,28 @@ Expected:
   - `npm.cmd run build`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-11 - Updated logo, agent rename synchronization, and humane silence timing
+
+- Replaced the previous full wordmark source with the latest user-supplied standalone Sauti symbol (`logo.png`) for compact brand marks and favicon metadata.
+- When an agent is renamed, fixed greeting text containing the previous agent name is now updated case-insensitively. This prevents a renamed Sarah agent from continuing to introduce itself as Amélie.
+- Reset the silence-reminder counter whenever real caller speech (or DTMF input) arrives, for browser and phone calls.
+- Enforced at least 15 seconds before a silence reminder and at least 20 additional seconds after the final reminder before hangup. Direct silence termination also cannot occur sooner than the combined reminder/grace window.
+- Why: reminder state survived later caller responses, causing the agent to interrupt healthy data collection and terminate after the next short pause.
+- Files touched:
+  - `dashboard/public/sauti-logo.png`
+  - `dashboard/components/BrandLogo/BrandLogo.tsx`
+  - `dashboard/app/layout.tsx`
+  - `dashboard/app/globals.css`
+  - `backend/src/main/java/com/sauti/agent/Agent.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/call/DefaultTwilioMediaStreamService.java`
+  - `backend/src/test/java/com/sauti/agent/AgentTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.agent.AgentTest" --tests "com.sauti.call.DefaultTwilioMediaStreamServiceTest"`
+  - `.\gradlew.bat :backend:test`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

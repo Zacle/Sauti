@@ -216,7 +216,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         if (call == null || !call.isActive() || !call.getAgent().isDtmfEnabled()) return;
         var session = sessions.get(callSid);
         if (session == null) return;
-        session.markActivity();
+        session.markCallerResponse();
         session.enqueue(() -> {
             if (session.interruptCurrentTurn()) {
                 callSessionStore.markInterrupted(callSid);
@@ -257,12 +257,15 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         if (sessions.get(call.getTwilioCallSid()) != session || !call.isActive()) return;
         long silentSeconds = session.silentSeconds();
         var agent = call.getAgent();
-        if (session.shouldEndAfterFinalReminder(agent.getReminderAfterSilenceSeconds(), agent.getMaxReminders())
-                || silentSeconds >= agent.getEndCallOnSilenceSeconds()) {
+        var reminderSeconds = Math.max(15, agent.getReminderAfterSilenceSeconds());
+        var finalGraceSeconds = Math.max(20, reminderSeconds);
+        var endSilenceSeconds = Math.max(agent.getEndCallOnSilenceSeconds(), reminderSeconds + finalGraceSeconds);
+        if (session.shouldEndAfterFinalReminder(finalGraceSeconds, agent.getMaxReminders())
+                || silentSeconds >= endSilenceSeconds) {
             endSilentCall(call, session);
             return;
         }
-        if (session.canSendReminder(agent.getReminderAfterSilenceSeconds(), agent.getMaxReminders())) {
+        if (session.canSendReminder(reminderSeconds, agent.getMaxReminders())) {
             session.markReminderSent();
             var language = callLanguage(call);
             var reminder = localized(language,
@@ -384,6 +387,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         if (session == null) {
             return;
         }
+        session.markCallerResponse();
         session.enqueue(() -> callRepository.findByTwilioCallSid(callSid)
                 .filter(Call::isActive)
                 .ifPresent(call -> {
@@ -590,6 +594,11 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
 
         private synchronized void markActivity() {
             lastActivityNanos = System.nanoTime();
+        }
+
+        private synchronized void markCallerResponse() {
+            remindersSent = 0;
+            markActivity();
         }
 
         private synchronized long silentSeconds() {

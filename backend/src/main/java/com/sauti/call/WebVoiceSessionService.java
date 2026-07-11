@@ -248,8 +248,11 @@ public class WebVoiceSessionService {
         }
         if (state.speaking) return;
         long silence = state.silentSeconds();
-        if (state.shouldEndAfterFinalReminder(agent.getReminderAfterSilenceSeconds(), agent.getMaxReminders())
-                || silence >= agent.getEndCallOnSilenceSeconds()) {
+        var reminderSeconds = Math.max(15, agent.getReminderAfterSilenceSeconds());
+        var finalGraceSeconds = Math.max(20, reminderSeconds);
+        var endSilenceSeconds = Math.max(agent.getEndCallOnSilenceSeconds(), reminderSeconds + finalGraceSeconds);
+        if (state.shouldEndAfterFinalReminder(finalGraceSeconds, agent.getMaxReminders())
+                || silence >= endSilenceSeconds) {
             finishWithMessage(
                     state,
                     localized(state,
@@ -261,7 +264,7 @@ public class WebVoiceSessionService {
             );
             return;
         }
-        if (state.canSendReminder(agent.getReminderAfterSilenceSeconds(), agent.getMaxReminders())) {
+        if (state.canSendReminder(reminderSeconds, agent.getMaxReminders())) {
             state.markReminderSent();
             var message = localized(state,
                     "Bado uko hapo? Chukua muda wako, kisha uniambie ukiwa tayari.",
@@ -430,6 +433,7 @@ public class WebVoiceSessionService {
 
         private synchronized void markCallerActivity() {
             markActivity();
+            remindersSent = 0;
             if (callerSpeechStartedNanos == 0) callerSpeechStartedNanos = System.nanoTime();
         }
 

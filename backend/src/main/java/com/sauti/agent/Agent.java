@@ -166,9 +166,10 @@ public class Agent extends Auditable {
             Boolean saveTranscript,
             Boolean recordCalls
     ) {
+        var previousName = this.name;
         this.name = name;
         this.description = description == null || description.isBlank() ? summarize(systemPrompt) : description.trim();
-        this.greetingMessage = greetingMessage;
+        this.greetingMessage = synchronizeAgentName(greetingMessage, previousName, name);
         this.systemPrompt = systemPrompt;
         this.defaultLanguage = defaultLanguage;
         this.supportedLanguages = String.join(",", supportedLanguages);
@@ -186,6 +187,17 @@ public class Agent extends Auditable {
                 : maxCallDurationSeconds;
         this.saveTranscript = saveTranscript == null || saveTranscript;
         this.recordCalls = recordCalls != null && recordCalls;
+    }
+
+    private String synchronizeAgentName(String text, String previousName, String currentName) {
+        if (text == null || previousName == null || previousName.isBlank()
+                || currentName == null || currentName.isBlank() || previousName.equalsIgnoreCase(currentName)) {
+            return text;
+        }
+        return text.replaceAll(
+                "(?i)" + java.util.regex.Pattern.quote(previousName.trim()),
+                java.util.regex.Matcher.quoteReplacement(currentName.trim())
+        );
     }
 
     public void update(
