@@ -6,4 +6,24 @@
 @media(max-width:1050px){.hero{grid-template-columns:1fr;padding-top:125px}.heroCopy{text-align:center}.heroCopy>p{margin-inline:auto}.hero .actions,.assurances{justify-content:center}.heroScreen{max-width:780px;width:100%;margin:15px auto 0}.chapter{grid-template-columns:220px 1fr}.lifecycleGrid{grid-template-columns:repeat(3,1fr)}.connector{display:none}.teamGrid{grid-template-columns:1fr 1fr}.security{grid-template-columns:1fr}.securityItems{grid-template-columns:repeat(4,1fr)}}
 @media(max-width:720px){.hero{padding:112px 18px 60px}.hero h1{font-size:3rem}.features,.lifecycle,.teams,.faq{width:calc(100% - 28px);padding:75px 0}.chapter{grid-template-columns:1fr}.chapterCopy{border-right:0;border-bottom:1px solid rgba(255,255,255,.06)}.chapterView{min-height:250px}.dashboard{grid-template-columns:60px 1fr}.dashboard aside b{display:none}.dashboard aside span{font-size:0;justify-content:center}.dashStats>div:nth-child(4){display:none}.dashStats{grid-template-columns:repeat(3,1fr)}.dashPanels{grid-template-columns:1fr}.ops{display:none}.callsView{grid-template-columns:1fr}.transcript{display:none}.integrationView{grid-template-columns:1fr 1fr}.integrationView article:nth-child(3){display:none}.lifecycleGrid{grid-template-columns:1fr 1fr}.security{padding:65px 20px}.securityItems{grid-template-columns:1fr 1fr}.faqGrid{grid-template-columns:1fr}}
 @media(max-width:480px){.hero h1{font-size:2.6rem}.assurances{gap:8px}.heroScreen{width:620px;max-width:none;transform:translateX(-16%)}.chapterView{overflow:hidden}.chapterView>.frame{min-width:580px;transform-origin:left center;transform:scale(.83)}.lifecycleGrid,.teamGrid{grid-template-columns:1fr}.analyticsBottom{grid-template-columns:1fr}.donut{display:none}.securityItems{grid-template-columns:1fr 1fr}.cta{padding:48px 18px}.cta h2{font-size:1.65rem}}
+/* Final density and legibility pass: keep the reference composition substantial at desktop widths. */
+.hero{grid-template-columns:minmax(420px,.78fr) minmax(650px,1.22fr);gap:64px;min-height:700px;padding:125px max(34px,calc((100% - 1320px)/2)) 38px}
+.hero h1{font-size:clamp(3.8rem,5.4vw,6rem)}
+.heroCopy>p{max-width:570px;font-size:1.08rem}
+.heroScreen{transform:scale(1.035);transform-origin:center left}
+.features,.lifecycle,.teams,.faq{width:min(1320px,calc(100% - 54px))}
+.features{padding:64px 0 76px}.lifecycle{padding:82px 0}.teams{padding:78px 0 92px}.faq{padding:82px 0}
+.header{max-width:760px;margin-bottom:38px}.header h2{font-size:clamp(2.35rem,3.8vw,3.55rem)}.header p{font-size:.96rem}
+.chapterList{gap:16px}.chapter{grid-template-columns:310px 1fr;min-height:305px}.chapterCopy{padding:36px 31px}.chapterCopy h3{font-size:1.18rem}.chapterCopy p{font-size:.82rem}.chapterView{padding:15px}
+.frameTop{height:45px;padding-inline:15px}.frameTop strong{font-size:.68rem}.frameTop>span{font-size:.57rem}
+.agentForm>span{font-size:.55rem}.agentForm label{font-size:.51rem}.agentForm label>div{padding:9px;font-size:.58rem}.voicePreview strong{font-size:.61rem}.voicePreview small{font-size:.5rem}
+.callTable b,.callTable span,.callTable em{font-size:.54rem}.transcript>b{font-size:.58rem}.transcript strong{font-size:.5rem}.transcript small{font-size:.49rem}.bookingRow strong{font-size:.58rem}.bookingRow small,.bookingRow em{font-size:.5rem}
+.analyticsBottom b{font-size:.55rem}.integrationView strong{font-size:.6rem}.integrationView span,.integrationView em{font-size:.5rem}
+.lifecycleGrid{gap:12px}.lifecycleGrid article{min-height:215px;padding:22px 18px}.lifecycleGrid h3{font-size:.84rem}.lifecycleGrid p{font-size:.67rem}
+.teamGrid{gap:15px}.teamGrid article{min-height:225px;padding:29px}.teamGrid h3{font-size:1rem}.teamGrid p{font-size:.76rem}
+.security{padding:78px max(34px,calc((100% - 1320px)/2))}.security h2{font-size:2.55rem}.security>div:first-child>p{font-size:.84rem}.securityItems>div{min-height:125px}.securityItems strong{font-size:.72rem}
+.faqGrid{gap:11px}.faqItem button{padding:18px;font-size:.8rem}.faqItem>div p{font-size:.74rem}.cta{width:min(1240px,calc(100% - 54px));margin:20px auto 70px;padding:66px 25px}.cta h2{font-size:2.35rem}.cta>p{font-size:.88rem}
+@media(max-width:1180px){.hero{grid-template-columns:1fr;min-height:auto;padding-top:125px}.heroScreen{max-width:900px;transform:none}.chapter{grid-template-columns:260px 1fr}}
+@media(max-width:1050px){.chapter{grid-template-columns:220px 1fr}}
+@media(max-width:720px){.hero{padding-bottom:45px}.hero h1{font-size:3.1rem}.features,.lifecycle,.teams,.faq{width:calc(100% - 28px)}.chapter{grid-template-columns:1fr;min-height:0}.chapterCopy{padding:25px}.chapterView{min-height:275px}.security{padding:60px 20px}.cta{width:calc(100% - 28px)}}
 @media(prefers-reduced-motion:reduce){.chapter,.primary,.secondary{transition:none}.chapter:hover,.primary:hover,.secondary:hover{transform:none}}

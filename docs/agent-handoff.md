@@ -2237,6 +2237,7 @@ Expected:
 - Explicitly excluded customer-logo claims, testimonial cards, and marketing metric tiles as requested.
 - Removed the superseded `ProductHome` implementation and its GitHub-inspired scroll progress/parallax behavior. The shared motion hook is back to restrained intersection-based reveal transitions with reduced-motion support in the page styles.
 - Kept all previews code-native and responsive so they remain visually aligned with the console without shipping large screenshot assets.
+- After reviewing the deployed-scale screenshot, widened the desktop system from 1180px to 1320px, increased hero and preview typography, enlarged every product frame and chapter, tightened excessive vertical gaps, and raised navigation, footer, workflow, security, FAQ, and CTA legibility to match the supplied reference's density.
 - Files touched:
   - `dashboard/features/marketing/HomePage/HomePage.tsx`
   - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
@@ -2244,6 +2245,7 @@ Expected:
   - `dashboard/features/marketing/ProductHome/ProductHome.tsx` (removed)
   - `dashboard/features/marketing/ProductHome/ProductHome.module.css` (removed)
   - `dashboard/hooks/useRevealMotion.ts`
+  - `dashboard/styles/marketing/foundation.css`
   - `docs/agent-handoff.md`
 - Verification:
   - `npm.cmd run typecheck`

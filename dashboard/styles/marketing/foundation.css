@@ -27,6 +27,28 @@
   backdrop-filter: none;
 }
 
+@media (min-width: 1181px) {
+  .nav-shell {
+    min-height: 76px;
+    padding-inline: max(34px, calc((100% - 1320px) / 2));
+  }
+
+  .nav-links {
+    gap: 28px;
+    font-size: 0.94rem;
+  }
+
+  .nav-actions {
+    font-size: 0.9rem;
+  }
+
+  .product-footer {
+    width: min(1320px, calc(100% - 68px));
+    padding-top: 44px;
+    font-size: 0.84rem;
+  }
+}
+
 .brand,
 .nav-links,
 .nav-actions,
