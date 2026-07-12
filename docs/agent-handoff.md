@@ -1958,6 +1958,27 @@ Expected:
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 
+### 2026-07-12 - Public privacy policy and terms of service
+
+- Added responsive public `/privacy` and `/terms` pages within the existing Sauti marketing shell, with reusable legal-document presentation, section navigation, trust highlights, and mobile layouts.
+- Based the content on the project requirements and implemented architecture: tenant accounts, multilingual AI calls, optional recording, transcripts and analytics, booking workflows, encrypted provider credentials, explicit integrations, Google Calendar availability/event access, and Google Sheets lookup/post-call records.
+- The privacy policy expressly covers Google API Limited Use, prohibits selling, advertising use, and generalized AI training with Google user data, and explains access, retention, deletion, revocation, security, and provider sharing.
+- The terms cover AI limitations, workspace responsibilities, caller consent and recording rules, connected services, acceptable use, payment confirmation, availability, termination, and liability.
+- Added Privacy, Terms, and Contact links to the public footer so the policies are discoverable from the OAuth application homepage.
+- Files touched:
+  - `dashboard/app/(marketing)/privacy/page.tsx`
+  - `dashboard/app/(marketing)/terms/page.tsx`
+  - `dashboard/features/marketing/LegalDocument/LegalDocument.tsx`
+  - `dashboard/features/marketing/LegalDocument/LegalDocument.module.css`
+  - `dashboard/features/marketing/MarketingChrome/MarketingChrome.tsx`
+  - `dashboard/styles/marketing/sections.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated, including static `/privacy` and `/terms`)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
 ### 2026-07-11 - Agent Studio form and Cartesia voice-picker polish
 
 - Replaced the low-contrast white Agent Studio text fields with explicit dark-console inputs, readable values/placeholders, and stronger hover/focus feedback.

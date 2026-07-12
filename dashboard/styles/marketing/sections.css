@@ -71,7 +71,7 @@
 
 .footer {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: 1fr auto auto auto auto;
   gap: 60px;
   width: min(1180px, calc(100% - 68px));
   margin: 0 auto;

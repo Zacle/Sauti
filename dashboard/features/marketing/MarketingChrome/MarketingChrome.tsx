@@ -108,6 +108,11 @@ export function MarketingFooter() {
         <Link href="/resources/security">Security</Link>
         <Link href="/pricing">Pricing</Link>
       </div>
+      <div className="footer-links">
+        <Link href="/privacy">Privacy</Link>
+        <Link href="/terms">Terms</Link>
+        <a href="mailto:support@sauti.uk">Contact</a>
+      </div>
       <small>© 2025 Sauti. All rights reserved.</small>
     </footer>
   );
