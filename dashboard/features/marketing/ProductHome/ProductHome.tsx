@@ -20,7 +20,7 @@ const flow = [
 export default function ProductHome() {
   return <main className={styles.page}>
     <section className={styles.hero}>
-      <div className={styles.heroGlow}/><div className={styles.heroGrid}/>
+      <div className={styles.heroGlow} data-parallax/><div className={styles.heroGrid}/>
       <div className={styles.heroCopy} data-reveal>
         <div className={styles.eyebrow}><span><Radio size={13}/></span> The operating system for AI conversations</div>
         <h1>Build voice agents that <em>listen, act, and improve.</em></h1>
@@ -31,12 +31,7 @@ export default function ProductHome() {
         </div>
         <div className={styles.heroProof}><span><Check size={14}/> Multilingual voice</span><span><Check size={14}/> Human handoff</span><span><Check size={14}/> Tenant-isolated data</span></div>
       </div>
-      <CommandCenterPreview />
-    </section>
-
-    <section className={styles.trustStrip} aria-label="Sauti product capabilities">
-      <span>One workspace</span><i/>
-      <div><Mic2 size={17}/> Realtime voice</div><div><CalendarCheck size={17}/> Scheduling</div><div><Database size={17}/> Business data</div><div><Activity size={17}/> Conversation intelligence</div>
+      <div data-parallax className={styles.heroProduct}><CommandCenterPreview /></div>
     </section>
 
     <section className={styles.problemSection}>
@@ -48,9 +43,10 @@ export default function ProductHome() {
 
     <section className={styles.tour} id="product-tour">
       <div className={styles.sectionHead} data-reveal><span>Inside Sauti</span><h2>Everything your team needs to run AI calls.</h2><p>Purpose-built surfaces keep configuration, live operations, and business outcomes connected without overwhelming operators.</p></div>
-      <ProductStory eyebrow="Agent Studio" title="Shape the agent around your business—not the other way around." text="Configure identity, language, voice, behavior, knowledge, call handling, tools, and post-call workflows from one focused studio." bullets={["Test the agent before going live","Assign integrations per agent","Keep prompts and business context editable"]} preview={<AgentStudioPreview/>}/>
-      <ProductStory reverse eyebrow="Live conversations" title="See what the agent hears, says, and does." text="Follow the transcript, call state, captured intent, and routed actions while the conversation is happening. Interruption-aware voice keeps callers in control." bullets={["Realtime caller and agent transcript","Barge-in and human-transfer controls","Recordings, summaries, and collected details"]} preview={<CallPreview/>}/>
-      <ProductStory eyebrow="Operations & analytics" title="Turn conversations into decisions your team can use." text="Track outcomes across agents and channels, inspect individual calls, review booking conversion, and understand where callers need help." bullets={["Call, answer, booking, and duration trends","Agent and intent breakdowns","Searchable call history with transcript detail"]} preview={<AnalyticsPreview/>}/>
+      <div className={styles.storyRail} aria-hidden="true"><i/></div>
+      <ProductStory index="01" eyebrow="Agent Studio" title="Shape the agent around your business—not the other way around." text="Configure identity, language, voice, behavior, knowledge, call handling, tools, and post-call workflows from one focused studio." bullets={["Test the agent before going live","Assign integrations per agent","Keep prompts and business context editable"]} preview={<AgentStudioPreview/>}/>
+      <ProductStory index="02" reverse eyebrow="Live conversations" title="See what the agent hears, says, and does." text="Follow the transcript, call state, captured intent, and routed actions while the conversation is happening. Interruption-aware voice keeps callers in control." bullets={["Realtime caller and agent transcript","Barge-in and human-transfer controls","Recordings, summaries, and collected details"]} preview={<CallPreview/>}/>
+      <ProductStory index="03" eyebrow="Operations & analytics" title="Turn conversations into decisions your team can use." text="Track outcomes across agents and channels, inspect individual calls, review booking conversion, and understand where callers need help." bullets={["Call, answer, booking, and duration trends","Agent and intent breakdowns","Searchable call history with transcript detail"]} preview={<AnalyticsPreview/>}/>
     </section>
 
     <section className={styles.integrations}>
@@ -78,7 +74,7 @@ export default function ProductHome() {
   </main>;
 }
 
-function ProductStory({eyebrow,title,text,bullets,preview,reverse=false}:{eyebrow:string;title:string;text:string;bullets:string[];preview:React.ReactNode;reverse?:boolean}){return <article className={`${styles.story} ${reverse?styles.reverse:""}`}><div className={styles.storyCopy} data-reveal><span>{eyebrow}</span><h3>{title}</h3><p>{text}</p><ul>{bullets.map(item=><li key={item}><CheckCircle2 size={17}/>{item}</li>)}</ul></div><div data-reveal>{preview}</div></article>}
+function ProductStory({index,eyebrow,title,text,bullets,preview,reverse=false}:{index:string;eyebrow:string;title:string;text:string;bullets:string[];preview:React.ReactNode;reverse?:boolean}){return <article className={`${styles.story} ${reverse?styles.reverse:""}`} data-scroll-progress><div className={styles.storyMarker}>{index}</div><div className={styles.storyCopy} data-reveal><span>{eyebrow}</span><h3>{title}</h3><p>{text}</p><ul>{bullets.map(item=><li key={item}><CheckCircle2 size={17}/>{item}</li>)}</ul></div><div className={styles.storyPreview} data-reveal>{preview}</div></article>}
 
 function CommandCenterPreview(){return <div className={styles.commandWrap} data-reveal><div className={styles.floatBadge}><span/><div><small>Agent status</small><strong>Ready for calls</strong></div></div><div className={styles.command}>
   <div className={styles.commandTop}><div className={styles.miniBrand}><BrandLogo size={27}/><strong>Sauti</strong></div><div className={styles.search}>Search calls, agents, bookings…</div><span className={styles.liveBadge}><i/> Live</span></div>

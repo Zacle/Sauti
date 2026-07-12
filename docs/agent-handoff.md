@@ -2214,11 +2214,14 @@ Expected:
 - Replaced the generic booking-focused homepage with a product-led narrative that presents Sauti as an operating system for AI conversations across agent design, live voice, business actions, and conversation intelligence.
 - Added responsive, code-native product previews based on the real console: command center overview, Agent Studio instructions, live caller/agent transcript with tool execution and interruption status, analytics trends and conversion funnel, and agent-scoped integration topology.
 - Reorganized the page around a five-stage operating loop (design, connect, converse, act, improve), concrete appointment/support/qualification use cases, platform controls, and clear registration/demo calls to action.
+- Refined the layout against the supplied homepage reference: removed the capability strip that read like a trust/metrics band, kept testimonials and customer-logo claims out, and strengthened the numbered product-chapter rhythm around the real UI previews.
+- Extended the shared reveal hook with requestAnimationFrame-throttled scroll progress and parallax variables. The homepage now uses a progressive chapter rail, active numbered markers, preview depth/scale, and subtle hero parallax inspired by GitHub's scroll storytelling, with a reduced-motion fallback.
 - Removed the homepage's dependency on generic simulated performance claims and fragile screenshot assets; the visual previews remain sharp at every viewport and reuse the product's dark console language and real provider logos.
 - Files touched:
   - `dashboard/features/marketing/HomePage/HomePage.tsx`
   - `dashboard/features/marketing/ProductHome/ProductHome.tsx`
   - `dashboard/features/marketing/ProductHome/ProductHome.module.css`
+  - `dashboard/hooks/useRevealMotion.ts`
   - `docs/agent-handoff.md`
 - Verification:
   - `npm.cmd run typecheck`
