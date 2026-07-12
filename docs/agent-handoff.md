@@ -2194,3 +2194,17 @@ Expected:
   - `npm.cmd run build`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-12 - Authenticated users default to the console
+
+- Updated the central Next.js middleware so a browser with a Sauti session is redirected from public marketing, pricing, resource, legal, login, registration, and verification pages to `/dashboard`.
+- Kept `/oauth/callback` session-neutral so Google sign-in can finish writing the browser session, and kept `/call/[publicId]` session-neutral because public agent voice links must remain usable by callers even if they also own a Sauti workspace.
+- Preserved the existing unauthenticated console guard and its `next` return path, while tightening prefix matching to route boundaries.
+- Files touched:
+  - `dashboard/middleware.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated successfully)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

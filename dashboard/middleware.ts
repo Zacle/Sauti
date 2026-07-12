@@ -13,23 +13,40 @@ const CONSOLE_PREFIXES = [
   "/onboarding",
 ];
 
+// These routes are part of completing authentication or are intentionally
+// shared with callers outside the workspace. They must remain reachable even
+// when the browser also has an authenticated Sauti workspace session.
+const SESSION_NEUTRAL_PREFIXES = ["/oauth/callback", "/call"];
+
+function matchesRoute(pathname: string, prefix: string) {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 export function middleware(request: NextRequest) {
   if (process.env.SAUTI_AUTH_BYPASS === "true") {
     return NextResponse.next();
   }
 
-  const isConsoleRoute = CONSOLE_PREFIXES.some((prefix) =>
-    request.nextUrl.pathname.startsWith(prefix),
-  );
-  if (!isConsoleRoute) return NextResponse.next();
-
+  const pathname = request.nextUrl.pathname;
   const hasSession = request.cookies.get("sauti.session.present")?.value === "1";
-  if (hasSession) return NextResponse.next();
+  const isConsoleRoute = CONSOLE_PREFIXES.some((prefix) => matchesRoute(pathname, prefix));
 
-  const loginUrl = request.nextUrl.clone();
-  loginUrl.pathname = "/login";
-  loginUrl.searchParams.set("next", request.nextUrl.pathname);
-  return NextResponse.redirect(loginUrl);
+  if (isConsoleRoute) {
+    if (hasSession) return NextResponse.next();
+
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  const isSessionNeutralRoute = SESSION_NEUTRAL_PREFIXES.some((prefix) => matchesRoute(pathname, prefix));
+  if (!hasSession || isSessionNeutralRoute) return NextResponse.next();
+
+  const dashboardUrl = request.nextUrl.clone();
+  dashboardUrl.pathname = "/dashboard";
+  dashboardUrl.search = "";
+  return NextResponse.redirect(dashboardUrl);
 }
 
 export const config = {
