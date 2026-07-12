@@ -2208,3 +2208,21 @@ Expected:
   - `npm.cmd run build` (50 routes generated successfully)
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-12 - Product-led public homepage redesign
+
+- Replaced the generic booking-focused homepage with a product-led narrative that presents Sauti as an operating system for AI conversations across agent design, live voice, business actions, and conversation intelligence.
+- Added responsive, code-native product previews based on the real console: command center overview, Agent Studio instructions, live caller/agent transcript with tool execution and interruption status, analytics trends and conversion funnel, and agent-scoped integration topology.
+- Reorganized the page around a five-stage operating loop (design, connect, converse, act, improve), concrete appointment/support/qualification use cases, platform controls, and clear registration/demo calls to action.
+- Removed the homepage's dependency on generic simulated performance claims and fragile screenshot assets; the visual previews remain sharp at every viewport and reuse the product's dark console language and real provider logos.
+- Files touched:
+  - `dashboard/features/marketing/HomePage/HomePage.tsx`
+  - `dashboard/features/marketing/ProductHome/ProductHome.tsx`
+  - `dashboard/features/marketing/ProductHome/ProductHome.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated successfully; homepage first-load JS 120 kB)
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
