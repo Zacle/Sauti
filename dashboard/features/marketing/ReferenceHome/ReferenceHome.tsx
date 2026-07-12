@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import {
-  Activity, ArrowRight, BarChart3, Bot, CalendarCheck, Check, CheckCircle2,
-  ChevronDown, Clock3, Headphones, Languages, LockKeyhole, MessageSquareText,
-  Mic2, PhoneCall, PlugZap, Radio, Route, ShieldCheck, Sparkles, UserRoundCheck,
+  Activity, ArrowRight, BarChart3, Bot, Building2, CalendarCheck, Check,
+  ChevronDown, Clock3, Dumbbell, GraduationCap, Headphones, HeartPulse,
+  LockKeyhole, MessageSquareText, Mic2, PhoneCall, PlugZap, Radio, Route,
+  ShieldCheck, ShoppingBag, Sparkles, UserRoundCheck, Wrench,
 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import styles from "./ReferenceHome.module.css";
@@ -51,7 +52,7 @@ export default function ReferenceHome(){return <main className={styles.page}>
 
   <section className={styles.features}>
     <Header kicker="Product features" title="Everything you need to run AI calls" text="From setup to analytics, Sauti keeps the entire voice operation visible and under your control."/>
-    <div className={styles.chapterList}>{chapters.map((chapter,index)=><article className={styles.chapter} key={chapter.title} data-reveal><div className={styles.chapterCopy}><span>0{index+1}</span><div><h3>{chapter.title}</h3><p>{chapter.text}</p></div></div><div className={styles.chapterView}>{chapter.view}</div></article>)}</div>
+    <div className={styles.chapterList}>{chapters.map((chapter,index)=><article className={`${styles.chapter} ${index%2?styles.chapterReverse:""}`} key={chapter.title} data-reveal><div className={styles.chapterCopy}><span>0{index+1}</span><div><h3>{chapter.title}</h3><p>{chapter.text}</p></div></div><div className={styles.chapterView}>{chapter.view}</div></article>)}</div>
   </section>
 
   <section className={styles.lifecycle}>
@@ -62,6 +63,23 @@ export default function ReferenceHome(){return <main className={styles.page}>
   <section className={styles.teams}>
     <Header kicker="Built for every team" title="Use Sauti across your business"/>
     <div className={styles.teamGrid}><Team icon={CalendarCheck} title="Appointment booking" text="Book, reschedule, and cancel consultations automatically."/><Team icon={Headphones} title="Customer support" text="Answer common questions and escalate when needed."/><Team icon={Route} title="Lead qualification" text="Capture intent and route high-value opportunities."/><Team icon={Clock3} title="Follow-up & reminders" text="Run post-call workflows and keep customers informed."/></div>
+  </section>
+
+  <section className={styles.industries}>
+    <Header kicker="Industries" title="Built around the way your business works" text="Start with a proven operating pattern, then shape the agent around your team, terminology, and customer journey."/>
+    <div className={styles.industryGrid}>
+      <Industry className={styles.industryLead} icon={HeartPulse} title="Healthcare" text="Reduce front-desk pressure with appointment handling, routine questions, structured intake, and safe escalation." features={["Consultations","Patient intake","After-hours"]}/>
+      <Industry icon={Building2} title="Real estate" text="Qualify buyers and tenants, capture property preferences, and schedule viewings." features={["Lead routing","Viewings"]}/>
+      <Industry icon={ShoppingBag} title="Commerce" text="Answer product questions, check configured order data, and coordinate support." features={["Order status","Product help"]}/>
+      <Industry icon={GraduationCap} title="Education" text="Handle admissions questions, campus visits, and student service requests." features={["Admissions","Campus visits"]}/>
+      <Industry className={styles.industryWide} icon={Dumbbell} title="Fitness, beauty & wellness" text="Keep classes, consultations, treatments, memberships, and follow-ups moving without tying up the front desk." features={["Bookings","Memberships","Reminders"]}/>
+      <Industry icon={Wrench} title="Local services" text="Capture the job, urgency, location, and preferred service window before dispatch." features={["Quotes","Dispatch"]}/>
+    </div>
+  </section>
+
+  <section className={styles.connections}>
+    <Header kicker="Integrations" title="Connect the tools that move work forward" text="Connections stay workspace-scoped, and each agent only receives the tools you explicitly enable."/>
+    <IntegrationRail/>
   </section>
 
   <section className={styles.security}>
@@ -78,6 +96,9 @@ function Header({kicker,title,text}:{kicker:string;title:string;text?:string}){r
 function Faq({question,answer}:{question:string;answer:string}){const[open,setOpen]=useState(false);return <div className={`${styles.faqItem} ${open?styles.open:""}`}><button onClick={()=>setOpen(!open)} aria-expanded={open}><span>{question}</span><ChevronDown size={17}/></button><div><p>{answer}</p></div></div>}
 function Team({icon:Icon,title,text}:{icon:typeof CalendarCheck;title:string;text:string}){return <article data-reveal><Icon size={24}/><h3>{title}</h3><p>{text}</p></article>}
 function Security({icon:Icon,title}:{icon:typeof ShieldCheck;title:string}){return <div><span><Icon size={20}/></span><strong>{title}</strong></div>}
+function Industry({icon:Icon,title,text,features,className=""}:{icon:typeof HeartPulse;title:string;text:string;features:string[];className?:string}){return <article className={`${styles.industryCard} ${className}`} data-reveal><div className={styles.industryIcon}><Icon size={24}/></div><div><h3>{title}</h3><p>{text}</p><footer>{features.map(feature=><span key={feature}>{feature}</span>)}</footer></div><ArrowRight size={18}/></article>}
+
+function IntegrationRail(){const apps=[["Google Calendar","/logos/google-calendar.svg"],["Google Sheets","/logos/google-sheets.svg"],["WhatsApp","/logos/whatsapp.svg"],["HubSpot","/logos/hubspot.svg"],["Salesforce","/logos/salesforce.svg"],["Slack","/logos/slack.svg"],["Calendly","/logos/calendly.svg"],["Zapier","/logos/zapier.svg"],["Twilio","/logos/twilio.svg"],["M-Pesa","/logos/mpesa.svg"]];const set=<div className={styles.railSet}>{apps.map(([name,logo])=><article key={name}><span><img src={logo} alt=""/></span><div><strong>{name}</strong><small>Connect to Sauti</small></div><i><em/></i></article>)}</div>;return <div className={styles.railViewport} data-reveal><div className={styles.railGlow}/><div className={styles.railTrack}>{set}{set}</div></div>}
 
 function Frame({title,children,action}:{title:string;children:React.ReactNode;action?:string}){return <div className={styles.frame}><div className={styles.frameTop}><div><BrandLogo size={19}/><strong>{title}</strong></div><span>{action??"Live preview"}</span></div>{children}</div>}
 function DashboardView(){return <Frame title="Sauti" action="Workspace overview"><div className={styles.dashboard}><aside><b>Tranquil AI</b>{[[Activity,"Overview"],[Bot,"Agents"],[PhoneCall,"Calls"],[CalendarCheck,"Bookings"],[BarChart3,"Analytics"],[PlugZap,"Integrations"]].map(([Icon,label],i)=><span className={i===0?styles.active:""} key={String(label)}><Icon size={13}/>{String(label)}</span>)}</aside><section><div className={styles.dashTitle}><div><small>Good evening, Tranquil AI</small><strong>Monitor your voice operation</strong></div><button>+ Create agent</button></div><div className={styles.dashStats}><Stat label="Total calls" value="1,248"/><Stat label="Bookings" value="324"/><Stat label="Answer rate" value="68%"/><Stat label="Minutes left" value="2,420"/></div><div className={styles.dashPanels}><div className={styles.lineChart}><b>Call activity</b><svg viewBox="0 0 420 125" preserveAspectRatio="none"><path d="M0 105 C35 97 39 48 78 68 S125 111 158 59 S209 103 243 70 S289 29 321 60 S367 81 395 37 S425 49 440 20"/><path className={styles.area} d="M0 105 C35 97 39 48 78 68 S125 111 158 59 S209 103 243 70 S289 29 321 60 S367 81 395 37 S425 49 440 20 L440 125 L0 125Z"/></svg></div><div className={styles.ops}><b>Operations summary</b><Event icon={PhoneCall} title="Incoming call" value="Completed"/><Event icon={CalendarCheck} title="Booking created" value="Confirmed"/><Event icon={MessageSquareText} title="Call ended" value="Completed"/></div></div></section></div></Frame>}

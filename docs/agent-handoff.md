@@ -2238,6 +2238,9 @@ Expected:
 - Removed the superseded `ProductHome` implementation and its GitHub-inspired scroll progress/parallax behavior. The shared motion hook is back to restrained intersection-based reveal transitions with reduced-motion support in the page styles.
 - Kept all previews code-native and responsive so they remain visually aligned with the console without shipping large screenshot assets.
 - After reviewing the deployed-scale screenshot, widened the desktop system from 1180px to 1320px, increased hero and preview typography, enlarged every product frame and chapter, tightened excessive vertical gaps, and raised navigation, footer, workflow, security, FAQ, and CTA legibility to match the supplied reference's density.
+- Alternated the five product chapters so copy and product canvases switch sides from top to bottom. Added a staggered light sweep and hover depth across each product canvas to keep the stacked feature sequence active without reintroducing scroll-jacking.
+- Added a continuously looping, left-to-right integration rail for Google Calendar, Google Sheets, WhatsApp, HubSpot, Salesforce, Slack, Calendly, Zapier, Twilio, and M-Pesa, including moving connection signals and hover-to-pause behavior.
+- Added a responsive industry bento section with distinct healthcare, real-estate, commerce, education, wellness, and local-service treatments rather than a uniform row of generic cards.
 - Files touched:
   - `dashboard/features/marketing/HomePage/HomePage.tsx`
   - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
