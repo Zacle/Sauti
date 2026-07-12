@@ -642,7 +642,10 @@ public class CallPipelineService {
 
     boolean looksLikeConversationEnding(String transcript) {
         if (transcript == null) return false;
-        String value = transcript.toLowerCase(java.util.Locale.ROOT).trim();
+        String value = java.text.Normalizer.normalize(transcript, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .toLowerCase(java.util.Locale.ROOT)
+                .trim();
         return value.matches(".*\\b(goodbye|bye|no thanks|no thank you|nothing else|that is all|that's all|all good|have a good day|have a nice day)\\b.*")
                 || value.contains("au revoir")
                 || value.contains("c'est tout")
@@ -653,6 +656,8 @@ public class CallPipelineService {
                 || value.contains("excellente journee")
                 || value.contains("excellente journée")
                 || value.contains("excellent jour")
+                || value.contains("a tres bientot")
+                || value.contains("Ã  trÃ¨s bientÃ´t")
                 || value.contains("bonne journee a vous")
                 || value.contains("bonne journée à vous")
                 || value.contains("orevoir")

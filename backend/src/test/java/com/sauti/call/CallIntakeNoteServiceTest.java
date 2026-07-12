@@ -54,6 +54,25 @@ class CallIntakeNoteServiceTest {
                 .containsEntry("caller_phone", "01115753441");
     }
 
+    @Test
+    void treatsRepeatedSttAAsOnesWithoutTreatingIlYAAsADigit() {
+        var repository = mock(CallTurnRepository.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        var history = List.of(
+                turn("zéro un un sept cinq trois quatre quatre un", "Est-ce correct ?"),
+                turn("non il y a trois un", "Redonnez-moi le numéro complet."),
+                turn("le numéro c'est zéro", "Je vous écoute."),
+                turn("a a un cinq sept cinq trois quatre quatre un", "Merci.")
+        );
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId)).thenReturn(history);
+
+        assertThat(new CallIntakeNoteService(repository).notes(call, ""))
+                .containsEntry("caller_phone", "01115753441")
+                .containsEntry("phone_repetition_hint", "the number contains three consecutive 1 digits");
+    }
+
     private CallTurn turn(String caller, String agent) {
         var turn = mock(CallTurn.class);
         when(turn.getCallerTranscript()).thenReturn(caller);

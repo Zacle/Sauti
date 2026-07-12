@@ -20,7 +20,7 @@ public class CallIntakeNoteService {
     );
     private static final Map<String, String> DIGITS = Map.ofEntries(
             Map.entry("zero", "0"), Map.entry("oh", "0"),
-            Map.entry("un", "1"), Map.entry("une", "1"), Map.entry("one", "1"), Map.entry("a", "1"),
+            Map.entry("un", "1"), Map.entry("une", "1"), Map.entry("one", "1"),
             Map.entry("deux", "2"), Map.entry("two", "2"),
             Map.entry("trois", "3"), Map.entry("three", "3"),
             Map.entry("quatre", "4"), Map.entry("four", "4"),
@@ -73,7 +73,16 @@ public class CallIntakeNoteService {
             notes.put("caller_address", callerText.trim());
         }
 
-        var digits = spokenDigits(normalized);
+        var repetitionInstruction = normalized.matches(".*\\b(?:il y a )?trois (?:fois )?(?:un|a)\\b.*");
+        if (repetitionInstruction) {
+            notes.put("phone_repetition_hint", "the number contains three consecutive 1 digits");
+            phoneCandidate.setLength(0);
+        }
+        var digitSource = normalized;
+        if (repetitionInstruction && normalized.contains("cest zero")) {
+            digitSource = normalized.substring(normalized.indexOf("cest zero") + "cest ".length());
+        }
+        var digits = repetitionInstruction && !normalized.contains("cest zero") ? "" : spokenDigits(digitSource);
         var phoneContext = PHONE_CONTEXT.matcher(callerText).find()
                 || previous.matches(".*(numero|telephone|phone|contact).*")
                 || (phoneCandidate.length() > 0 && digitOnlyFragment(normalized));
@@ -104,6 +113,8 @@ public class CallIntakeNoteService {
 
     private String spokenDigits(String normalized) {
         normalized = normalized
+                .replaceAll("\\ba\\s+a\\s+a\\b", "un un un")
+                .replaceAll("\\ba\\s+a\\b", "un un")
                 .replace("cinq cent septante cinq", "cinq sept cinq")
                 .replace("cent onze", "un un un")
                 .replace("onze", "un un");
@@ -116,7 +127,11 @@ public class CallIntakeNoteService {
     }
 
     private boolean digitOnlyFragment(String normalized) {
-        var expanded = normalized.replace("cent onze", "un un un").replace("onze", "un un");
+        var expanded = normalized
+                .replaceAll("\\ba\\s+a\\s+a\\b", "un un un")
+                .replaceAll("\\ba\\s+a\\b", "un un")
+                .replace("cent onze", "un un un")
+                .replace("onze", "un un");
         for (var token : expanded.split("[^a-z0-9]+")) {
             if (token.isBlank() || token.matches("\\d+") || DIGITS.containsKey(token)
                     || java.util.Set.of("et", "oui", "non", "cest", "ca", "bien", "cela", "correct").contains(token)) {

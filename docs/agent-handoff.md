@@ -2149,3 +2149,27 @@ Expected:
   - `.\gradlew.bat :backend:test`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-12 - Repeated phone digits and graceful spoken call closure
+
+- Stopped treating the ordinary French word `a` as a phone digit globally; only repeated STT fragments such as `a a` or `a a a` are normalized to repeated `1` digits while a phone number is actively being dictated.
+- Recognize correction language such as `il y a trois un` / `trois fois un` as a repetition hint instead of appending the literal digits `3, 1`; a subsequent restart beginning with zero replaces the rejected candidate.
+- Added the repeated-digit interpretation to the LLM's authoritative intake instructions and covered the observed correction sequence with a regression test.
+- Accent-normalized natural farewell detection and included `a tres bientot`, allowing a completed booking response to end the realtime session without another caller turn.
+- Delayed Agent Studio realtime cleanup until the browser's queued PCM has drained, preventing the final spoken sentence from being cut off when the backend sends `ended` immediately after synthesis delivery.
+- Why: the supplied transcript showed repeated ones being confused with French filler/correction phrases, and the final goodbye was displayed but its remaining queued audio was stopped during immediate session cleanup.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/CallIntakeNoteService.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/call/CallIntakeNoteServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.CallIntakeNoteServiceTest" --tests "com.sauti.call.CallPipelineServiceTest"`
+  - `.\gradlew.bat :backend:test`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

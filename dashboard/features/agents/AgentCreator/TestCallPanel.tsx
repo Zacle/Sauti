@@ -87,6 +87,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const acceptedCallerTurnsRef = useRef(0);
   const remindersRef = useRef(0);
   const endingRef = useRef(false);
+  const remoteEndPendingRef = useRef(false);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const processorRef = useRef<AudioWorkletNode | null>(null);
@@ -128,6 +129,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       acceptedCallerTurnsRef.current = 0;
       remindersRef.current = 0;
       endingRef.current = false;
+      remoteEndPendingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
       setCallId(started.call.id);
       await connectRealtimeVoice(started, stream);
@@ -182,7 +184,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       handleRealtimeEvent(JSON.parse(String(event.data)) as VoiceEvent);
     };
     socket.onclose = () => {
-      if (!endingRef.current && callIdRef.current) setError("The realtime voice connection ended unexpectedly.");
+      if (!endingRef.current && !remoteEndPendingRef.current && callIdRef.current) setError("The realtime voice connection ended unexpectedly.");
     };
     await new Promise<void>((resolve, reject) => {
       const timeout = window.setTimeout(() => reject(new Error("The realtime voice connection timed out.")), 8000);
@@ -241,7 +243,15 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     if (event.type === "speaking") updateStatus(event.value ? "speaking" : "listening");
     if (event.type === "clear_audio") clearRealtimePlayback();
     if (event.type === "error") setError(event.message ?? "The realtime voice session encountered an error.");
-    if (event.type === "ended" && !endingRef.current) void endCall(event.outcome || "completed");
+    if (event.type === "ended" && !endingRef.current && !remoteEndPendingRef.current) {
+      remoteEndPendingRef.current = true;
+      const context = audioContextRef.current;
+      const remainingMs = context ? Math.max(0, playbackTimeRef.current - context.currentTime) * 1000 : 0;
+      window.setTimeout(() => {
+        remoteEndPendingRef.current = false;
+        void endCall(event.outcome || "completed");
+      }, remainingMs + 180);
+    }
   }
 
   function playRealtimePcm(data: ArrayBuffer) {
