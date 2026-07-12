@@ -2229,3 +2229,25 @@ Expected:
   - `git diff --check`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-12 - Reference-matched homepage structural refactor
+
+- Replaced the earlier floating product-story homepage with the composition from the supplied Sauti reference: compact split hero, large dashboard proof point, five numbered full-width product chapters, six-step call lifecycle, four business use cases, security/control band, FAQ, and focused final CTA.
+- Built chapter previews for the actual product surfaces: agent configuration and voice preview, calls list and transcript, booking status, analytics and language mix, and the integration marketplace.
+- Explicitly excluded customer-logo claims, testimonial cards, and marketing metric tiles as requested.
+- Removed the superseded `ProductHome` implementation and its GitHub-inspired scroll progress/parallax behavior. The shared motion hook is back to restrained intersection-based reveal transitions with reduced-motion support in the page styles.
+- Kept all previews code-native and responsive so they remain visually aligned with the console without shipping large screenshot assets.
+- Files touched:
+  - `dashboard/features/marketing/HomePage/HomePage.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/features/marketing/ProductHome/ProductHome.tsx` (removed)
+  - `dashboard/features/marketing/ProductHome/ProductHome.module.css` (removed)
+  - `dashboard/hooks/useRevealMotion.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated successfully; homepage first-load JS 119 kB)
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

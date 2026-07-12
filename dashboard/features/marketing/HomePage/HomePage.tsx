@@ -1,9 +1,9 @@
 "use client";
 import { useRevealMotion } from "@/hooks/useRevealMotion";
-import ProductHome from "@/features/marketing/ProductHome/ProductHome";
+import ReferenceHome from "@/features/marketing/ReferenceHome/ReferenceHome";
 
 export default function HomePage() {
   useRevealMotion();
 
-  return <ProductHome />;
+  return <ReferenceHome />;
 }
