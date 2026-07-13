@@ -43,8 +43,8 @@ export function MarketingNav() {
       </nav>
       <div className="nav-actions">
         <Link className="login-link" href="/login">Log in</Link>
-        <Link className="solid-button" href="https://cal.com/sauti/demo" target="_blank">
-          Start pilot <ArrowRight size={15} />
+        <Link className="solid-button" href="/register">
+          Start free trial <ArrowRight size={15} />
         </Link>
       </div>
       <button
@@ -80,8 +80,8 @@ export function MarketingNav() {
           <Link className="mobile-nav-pricing" href="/pricing" onClick={() => setMobileOpen(false)}>
             Pricing <ArrowRight size={16} />
           </Link>
-          <Link className="solid-button large mobile-nav-cta" href="https://cal.com/sauti/demo" target="_blank" onClick={() => setMobileOpen(false)}>
-            Start pilot <ArrowRight size={17} />
+          <Link className="solid-button large mobile-nav-cta" href="/register" onClick={() => setMobileOpen(false)}>
+            Start free trial <ArrowRight size={17} />
           </Link>
         </div>
       </div>
@@ -92,28 +92,53 @@ export function MarketingNav() {
 export function MarketingFooter() {
   return (
     <footer className="footer product-footer">
-      <div>
+      <div className="footer-brand">
         <Link className="brand" href="/">
           <BrandLogo />
           <span>Sauti</span>
         </Link>
         <p>AI voice agents that turn conversations into conversions.</p>
+        <div className="footer-socials">
+          <a href="https://github.com/Zacle/Sauti" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://www.linkedin.com" target="_blank" rel="noreferrer">LinkedIn</a>
+        </div>
       </div>
       <div className="footer-links">
-        <Link href="/solutions">Solutions</Link>
+        <strong>Product</strong>
+        <Link href="/">Overview</Link>
         <Link href="/integrations">Integrations</Link>
-      </div>
-      <div className="footer-links">
-        <Link href="/industries">Industries</Link>
-        <Link href="/resources/security">Security</Link>
         <Link href="/pricing">Pricing</Link>
       </div>
       <div className="footer-links">
+        <strong>Solutions</strong>
+        <Link href="/solutions/appointment-booking">Appointment booking</Link>
+        <Link href="/solutions/customer-service">Customer support</Link>
+        <Link href="/solutions/lead-qualification">Lead qualification</Link>
+      </div>
+      <div className="footer-links">
+        <strong>Industries</strong>
+        <Link href="/industries">Industries</Link>
+        <Link href="/industries/clinics-healthcare">Healthcare</Link>
+        <Link href="/industries/real-estate">Property</Link>
+      </div>
+      <div className="footer-links">
+        <strong>Resources</strong>
+        <Link href="/resources/documentation">Documentation</Link>
+        <Link href="/resources/api-reference">API reference</Link>
+        <Link href="/resources/security">Security</Link>
+        <a href="/health">Status</a>
+      </div>
+      <div className="footer-links">
+        <strong>Company</strong>
+        <Link href="/resources/blog">Updates</Link>
+        <a href="mailto:support@sauti.uk">Support</a>
+      </div>
+      <div className="footer-links">
+        <strong>Legal</strong>
         <Link href="/privacy">Privacy</Link>
         <Link href="/terms">Terms</Link>
-        <a href="mailto:support@sauti.uk">Contact</a>
       </div>
-      <small>© 2025 Sauti. All rights reserved.</small>
+      <small className="footer-bottom">© 2026 Sauti. All rights reserved.</small>
     </footer>
   );
 }

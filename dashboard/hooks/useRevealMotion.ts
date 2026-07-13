@@ -4,7 +4,9 @@ import { useEffect } from "react";
 
 export function useRevealMotion() {
   useEffect(() => {
-    const elements = document.querySelectorAll<HTMLElement>("[data-reveal]");
+    const selector =
+      "[data-reveal],[data-reveal-left],[data-reveal-right],[data-reveal-scale]";
+    const elements = document.querySelectorAll<HTMLElement>(selector);
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {

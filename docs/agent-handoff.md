@@ -221,6 +221,55 @@ Expected:
 
 ## Change log
 
+### 2026-07-13 - Homepage hierarchy, readability, and conversion pass
+
+- Rebalanced the hero around a wider, deliberately grouped headline and a dashboard preview reduced by roughly 6%, aligned with the headline rather than the eyebrow.
+- Standardized every primary and secondary conversion action to `Start free trial` and `Book a demo`; strengthened hero and final-CTA sizing, reassurance copy, and glow treatment.
+- Replaced the repeated audience strip and separate four-card business section with one eight-card `Built for every customer-facing team` section covering workflows and industries.
+- Reworked all five product chapters to use the same step number, icon, heading, description, benefit label, and preview padding structure; increased muted-text contrast across previews, cards, trust indicators, FAQ, navigation, and footer.
+- Prioritized 24/7 availability, multilingual conversations, and real-time actions in the differentiator band; renamed `One view` to `Complete visibility` and visually reduced secondary benefits.
+- Added a continuous connector and stronger arrow nodes to the six-step call workflow, ending in `Track results`.
+- Expanded and clarified the security band with buyer-facing language: encrypted data, secure isolation, reliable systems, human handoff, and agent controls.
+- Removed generic quote-style pseudo-testimonials after repository review found no verified customer identities, logos, or measured outcomes. Replaced them with honest, measurable product outcome categories rather than fabricating social proof.
+- Grouped FAQ questions by setup, phone numbers, languages, handoffs, data/privacy, and trial/workflows while retaining two desktop columns and one mobile column.
+- Rebuilt the marketing footer into Product, Solutions, Industries, Resources, Company, and Legal columns with documentation, API reference, status, support, and social links.
+- Files touched:
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/features/marketing/MarketingChrome/MarketingChrome.tsx`
+  - `dashboard/styles/marketing/foundation.css`
+  - `dashboard/styles/marketing/sections.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated successfully; homepage first-load JS 121 kB)
+  - `git diff --check`
+  - Live local desktop and responsive browser captures reviewed at the active breakpoints.
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-13 - Reference-matched homepage visual consolidation
+
+- Consolidated the homepage's accumulated style overrides into one responsive, reference-led system with a stronger split hero, larger product dashboard, clearer product chapters, compact workflow/use-case grids, a security band, FAQ, and final call to action.
+- After direct screenshot comparison, widened the desktop canvas from 1280px to 1400px, rebuilt the hero preview with setup progress and launch checks, shortened product showcase rows, increased chapter and embedded-UI typography by roughly 20-30%, and removed much of the excess vertical space between sections. This corrected the initial pass, which still looked too close to the previous homepage and made feature content difficult to read.
+- Replaced the product showcase internals after a second live review showed that resizing the old previews was not enough: chapter copy columns are now wider and substantially larger, agent setup includes the current channel warning and two-column fields, calls include filters/timestamps/transcript metadata, and integration cards include real descriptions and actions. Chapter numbering now matches the reference's single-digit guide markers.
+- Added the reference's compact audience and capability bands, but used supported product capabilities and customer-facing team categories instead of fabricated customer logos, performance results, testimonials, or compliance certifications.
+- Increased the legibility and depth of all code-native product previews while retaining the existing console visual language, subtle reveal motion, animated light sweep, and reduced-motion behavior.
+- Aligned desktop and mobile navigation calls to action with the homepage's free-trial path and updated the footer year.
+- Files touched:
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/features/marketing/MarketingChrome/MarketingChrome.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated successfully; homepage first-load JS 120 kB)
+  - `git diff --check`
+- Visual QA note:
+  - Captured the live local homepage at 1440px desktop widths after the proportional correction and compared both the fold and full-page rhythm against the supplied reference.
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
 ### 2026-07-13 - Reference-led homepage composition refinement
 
 - Removed the experimental pinned feature stack after browser review showed that it obscured product surfaces and introduced excessive scroll distance. The five product chapters are again distinct, dense showcase rows matching the supplied reference's readable product-tour structure.
