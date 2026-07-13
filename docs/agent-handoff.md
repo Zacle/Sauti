@@ -221,6 +221,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-13 - Reference-led homepage composition refinement
+
+- Removed the experimental pinned feature stack after browser review showed that it obscured product surfaces and introduced excessive scroll distance. The five product chapters are again distinct, dense showcase rows matching the supplied reference's readable product-tour structure.
+- Increased the split hero's scale, dashboard prominence, typography, atmospheric line work, and visual depth so the product proof point is the dominant element above the fold.
+- Removed the substitute capability band and the separate industry/integration sections after visual comparison showed that they changed the reference's overall silhouette. Integration proof remains inside the fifth product chapter.
+- Refined product rows with numbered guide markers, stronger copy hierarchy, larger embedded console surfaces, tighter section spacing, richer cards, and a more dimensional security/CTA treatment.
+- The final page rhythm now follows the requested hero â†’ five product chapters â†’ call lifecycle â†’ business uses â†’ security â†’ FAQ â†’ CTA structure. Testimonials, customer-logo claims, and marketing metric tiles remain excluded as previously requested.
+- Files touched:
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run build` (50 routes generated successfully; homepage first-load JS 119 kB)
+  - `npm.cmd run typecheck`
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
 ### 2026-07-11 - Realtime ElevenLabs model migration and French call termination
 
 - Changed French and Arabic ElevenLabs realtime model examples from `eleven_multilingual_v2` to `eleven_flash_v2_5`; updated the ignored local default from deprecated-equivalent Turbo v2.5 to Flash v2.5.
