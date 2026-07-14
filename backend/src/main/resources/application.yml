@@ -108,8 +108,10 @@ sauti:
     mode: ${PROVIDER_MODE:fake}
   llm:
     provider: ${SAUTI_LLM_PROVIDER:heuristic}
-    default-model: ${SAUTI_LLM_DEFAULT_MODEL:gemini-2.5-flash}
-    advanced-model: ${SAUTI_LLM_ADVANCED_MODEL:gpt-4o-mini}
+    default-model: ${SAUTI_LLM_DEFAULT_MODEL:gemini-3.1-flash-lite}
+    advanced-model: ${SAUTI_LLM_ADVANCED_MODEL:gpt-5.4-mini}
+    primary-model: ${SAUTI_LLM_PRIMARY_MODEL:${SAUTI_LLM_ADVANCED_MODEL:gpt-5.4-mini}}
+    fallback-model: ${SAUTI_LLM_FALLBACK_MODEL:${SAUTI_LLM_DEFAULT_MODEL:gemini-3.1-flash-lite}}
     webhook:
       url: ${SAUTI_LLM_WEBHOOK_URL:http://localhost:8090/agent-turn}
       draft-url: ${SAUTI_LLM_DRAFT_WEBHOOK_URL:http://localhost:8090/agent-draft}

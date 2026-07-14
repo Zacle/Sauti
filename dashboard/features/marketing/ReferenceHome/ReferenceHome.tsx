@@ -65,6 +65,7 @@ const faq = [
 export default function ReferenceHome(){return <main className={styles.page}>
   <section className={styles.hero}>
     <div className={styles.aurora}/>
+    <div className={styles.heroGrid} aria-hidden="true"/>
     <div className={styles.heroCopy} data-reveal>
       <span className={styles.eyebrow}><Sparkles size={13}/> AI VOICE AGENTS THAT WORK 24/7</span>
       <h1><span>AI voice agents that</span><em>answer, book, and automate.</em></h1>
@@ -72,7 +73,13 @@ export default function ReferenceHome(){return <main className={styles.page}>
       <div className={styles.actions}><Link className={styles.primary} href="/register">Start free trial <ArrowRight size={16}/></Link><a className={styles.secondary} href="https://cal.com/sauti/demo" target="_blank" rel="noreferrer">Book a demo</a></div>
       <div className={styles.assurances}><span><Check size={13}/> No credit card required</span><span><Check size={13}/> Setup in minutes</span><span><Check size={13}/> Cancel anytime</span></div>
     </div>
-    <div className={styles.heroScreen} data-reveal><DashboardView/></div>
+    <div className={styles.heroScreen} data-reveal>
+      <div className={styles.voiceSignal} aria-hidden="true">
+        <span/><span/><span/><span/><span/><span/><span/><span/><span/>
+      </div>
+      <DashboardView/>
+      <div className={styles.liveBadge}><span/><Radio size={12}/> Voice agent online</div>
+    </div>
   </section>
 
   <section className={styles.trustStrip} aria-label="Platform trust indicators" data-reveal><span><ShieldCheck size={17}/> Designed for customer-facing operations</span><span><Mic2 size={17}/> Browser test calls included</span><span><LockKeyhole size={17}/> Tenant-scoped workspace data</span></section>

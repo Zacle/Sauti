@@ -21,10 +21,11 @@
   gap: 28px;
   min-height: 70px;
   padding: 0 max(34px, calc((100% - 1180px) / 2));
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  background: #020a14;
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.26);
-  backdrop-filter: none;
+  border-bottom: 1px solid rgba(106, 245, 224, 0.1);
+  background: linear-gradient(180deg, rgba(2, 14, 23, 0.86), rgba(2, 10, 20, 0.68));
+  box-shadow: 0 14px 46px rgba(0, 0, 0, 0.22), inset 0 -1px rgba(255, 255, 255, 0.018);
+  -webkit-backdrop-filter: blur(20px) saturate(135%);
+  backdrop-filter: blur(20px) saturate(135%);
 }
 
 @media (min-width: 1181px) {

@@ -221,6 +221,49 @@ Expected:
 
 ## Change log
 
+### 2026-07-14 - Luminous glass marketing homepage refinement
+
+- Refined the homepage visual system around the actual Sauti product previews rather than introducing fabricated dashboard screenshots or unsupported customer claims.
+- Added a layered teal aurora, subtle perspective grid, animated voice signal, live-agent indicator, stronger hero dashboard glow, translucent glass cards, and improved CTA lighting.
+- Alternated the feature narrative and product preview placement on desktop so the feature journey has more visual rhythm while retaining a simple stacked order on smaller screens.
+- Applied the glass treatment consistently to capability, workflow, use-case, security, outcome, and FAQ surfaces, with reduced-motion fallbacks for the new ambient animation.
+- Updated the marketing navigation to use a translucent blurred header that fits the revised homepage while remaining shared across public marketing routes.
+- Files touched:
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/styles/marketing/foundation.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location`
+  - Local 1440px headless Chrome render of `/` (checked hero, capability band, and initial feature sequence; corrected hero preview clipping found during this pass)
+  - `git diff --check`
+- Deployment status: not deployed. Changes are intentionally uncommitted for maintainer review and the normal CI/CD path.
+- Known follow-up: narrow-mobile visual QA is recommended after maintainer review; the desktop render, production build, and responsive breakpoints pass.
+
+### 2026-07-14 - OpenAI-primary conversational LLM with Gemini fallback
+
+- Changed the Spring AI conversation provider so every live agent turn uses OpenAI first, independent of the agent's former standard/advanced tier value.
+- Added automatic Gemini fallback for synchronous turns and for streaming turns that fail before OpenAI emits its first text chunk.
+- Deliberately do not replay a streaming turn through Gemini after OpenAI has already emitted text, because doing so would make the voice agent repeat or contradict partially spoken output.
+- Added explicit `SAUTI_LLM_PRIMARY_MODEL` and `SAUTI_LLM_FALLBACK_MODEL` settings. Existing installations remain compatible: `SAUTI_LLM_ADVANCED_MODEL` is the OpenAI-primary alias and `SAUTI_LLM_DEFAULT_MODEL` is the Gemini-fallback alias when the new variables are absent.
+- Updated defaults and examples to OpenAI `gpt-5.4-mini` primary and Gemini `gemini-3.1-flash-lite` fallback. Both `OPENAI_API_KEY` and `GOOGLE_AI_API_KEY` are required in `spring-ai` mode so failover is actually available.
+- Gemini embeddings and non-conversational knowledge retrieval were not changed.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/llm/SpringAiToolCallingLlmProvider.java`
+  - `backend/src/test/java/com/sauti/llm/SpringAiToolCallingLlmProviderContextTest.java`
+  - `backend/src/test/java/com/sauti/llm/SpringAiToolCallingLlmProviderFailoverTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.llm.SpringAiToolCallingLlmProviderContextTest" --tests "com.sauti.llm.SpringAiToolCallingLlmProviderFailoverTest"`
+  - `.\gradlew.bat :backend:test`
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
 ### 2026-07-13 - Homepage hierarchy, readability, and conversion pass
 
 - Rebalanced the hero around a wider, deliberately grouped headline and a dashboard preview reduced by roughly 6%, aligned with the headline rather than the eyebrow.

@@ -25,6 +25,7 @@ import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -39,71 +40,112 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
     private static final double VOICE_TEMPERATURE = 0.45;
 
     private final ObjectMapper objectMapper;
-    private final String defaultModel;
-    private final String advancedModel;
-    private final ChatModel defaultChatModel;
-    private final ChatModel advancedChatModel;
+    private final String primaryModel;
+    private final String fallbackModel;
+    private final ChatModel primaryChatModel;
+    private final ChatModel fallbackChatModel;
 
+    @Autowired
     public SpringAiToolCallingLlmProvider(
             ObjectMapper objectMapper,
-            @Value("${sauti.llm.default-model}") String defaultModel,
-            @Value("${sauti.llm.advanced-model}") String advancedModel,
+            @Value("${sauti.llm.primary-model}") String primaryModel,
+            @Value("${sauti.llm.fallback-model}") String fallbackModel,
             @Value("${spring.ai.google.genai.api-key:}") String googleApiKey,
             @Value("${spring.ai.openai.api-key:}") String openAiApiKey
     ) {
-        this.objectMapper = objectMapper;
-        this.defaultModel = requireModel(defaultModel, "SAUTI_LLM_DEFAULT_MODEL");
-        this.advancedModel = requireModel(advancedModel, "SAUTI_LLM_ADVANCED_MODEL");
-        this.defaultChatModel = createGeminiModel(
-                this.defaultModel,
-                requireApiKey(googleApiKey, "GOOGLE_AI_API_KEY", this.defaultModel)
+        this(
+                objectMapper,
+                requireModel(primaryModel, "SAUTI_LLM_PRIMARY_MODEL"),
+                requireModel(fallbackModel, "SAUTI_LLM_FALLBACK_MODEL"),
+                createOpenAiModel(
+                        primaryModel,
+                        requireApiKey(openAiApiKey, "OPENAI_API_KEY", primaryModel)
+                ),
+                createGeminiModel(
+                        fallbackModel,
+                        requireApiKey(googleApiKey, "GOOGLE_AI_API_KEY", fallbackModel)
+                )
         );
-        this.advancedChatModel = openAiApiKey == null || openAiApiKey.isBlank()
-                ? null
-                : createOpenAiModel(this.advancedModel, openAiApiKey);
+    }
+
+    SpringAiToolCallingLlmProvider(
+            ObjectMapper objectMapper,
+            String primaryModel,
+            String fallbackModel,
+            ChatModel primaryChatModel,
+            ChatModel fallbackChatModel
+    ) {
+        this.objectMapper = objectMapper;
+        this.primaryModel = primaryModel;
+        this.fallbackModel = fallbackModel;
+        this.primaryChatModel = primaryChatModel;
+        this.fallbackChatModel = fallbackChatModel;
     }
 
     @Override
     public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
-        if (shouldTryAdvanced(context.agent())) {
-            try {
-                return request(
-                        context,
-                        advancedChatModel,
-                        advancedModel,
-                        ModelProvider.OPENAI
-                );
-            } catch (RuntimeException exception) {
-                LOGGER.warn(
-                        "Advanced LLM turn failed for callId={}; retrying with the standard model",
-                        context.callId(),
-                        exception
-                );
-            }
-        } else if ("advanced".equalsIgnoreCase(context.agent().llmTier())) {
+        try {
+            return request(context, primaryChatModel, primaryModel, ModelProvider.OPENAI);
+        } catch (RuntimeException exception) {
             LOGGER.warn(
-                    "Advanced LLM tier requested for callId={} but OPENAI_API_KEY is not configured; using the standard model",
-                    context.callId()
+                    "Primary OpenAI LLM turn failed for callId={}; retrying with Gemini fallback",
+                    context.callId(),
+                    exception
             );
         }
-        return request(
-                context,
-                defaultChatModel,
-                defaultModel,
-                ModelProvider.GOOGLE
-        );
+        return request(context, fallbackChatModel, fallbackModel, ModelProvider.GOOGLE);
     }
 
     @Override
     public LlmToolTurnResponse streamTurn(LlmToolTurnContext context, Consumer<String> textDeltaConsumer) {
-        if (shouldTryAdvanced(context.agent())) {
-            return LlmToolCallingProvider.super.streamTurn(context, textDeltaConsumer);
+        var emittedPrimaryText = new java.util.concurrent.atomic.AtomicBoolean(false);
+        try {
+            return streamRequest(
+                    context,
+                    primaryChatModel,
+                    primaryModel,
+                    ModelProvider.OPENAI,
+                    delta -> {
+                        emittedPrimaryText.set(true);
+                        textDeltaConsumer.accept(delta);
+                    }
+            );
+        } catch (RuntimeException exception) {
+            if (emittedPrimaryText.get()) {
+                LOGGER.warn(
+                        "Primary OpenAI stream failed after emitting audio text for callId={}; not replaying the turn with Gemini",
+                        context.callId(),
+                        exception
+                );
+                throw exception;
+            }
+            LOGGER.warn(
+                    "Primary OpenAI stream failed before first text for callId={}; retrying with Gemini fallback",
+                    context.callId(),
+                    exception
+            );
         }
+        return streamRequest(
+                context,
+                fallbackChatModel,
+                fallbackModel,
+                ModelProvider.GOOGLE,
+                textDeltaConsumer
+        );
+    }
+
+    private LlmToolTurnResponse streamRequest(
+            LlmToolTurnContext context,
+            ChatModel chatModel,
+            String modelName,
+            ModelProvider provider,
+            Consumer<String> textDeltaConsumer
+    ) {
         var callbacks = context.tools().stream().map(this::toolCallback).toList();
-        var prompt = new Prompt(messages(context), options(defaultModel, ModelProvider.GOOGLE, callbacks));
+        var prompt = new Prompt(messages(context), options(modelName, provider, callbacks));
         var text = new StringBuilder();
         var streamedToolCalls = new java.util.concurrent.atomic.AtomicReference<AssistantMessage>();
-        defaultChatModel.stream(prompt).toStream().forEach(response -> {
+        chatModel.stream(prompt).toStream().forEach(response -> {
             var output = response.getResult() == null ? null : response.getResult().getOutput();
             var delta = output == null
                     ? ""
@@ -130,10 +172,6 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
         }
         accumulated.append(incoming);
         return incoming;
-    }
-
-    boolean shouldTryAdvanced(AgentContext agent) {
-        return "advanced".equalsIgnoreCase(agent.llmTier()) && advancedChatModel != null;
     }
 
     private LlmToolTurnResponse request(
@@ -248,9 +286,9 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
                 .build();
     }
 
-    private ChatModel createGeminiModel(String modelName, String apiKey) {
+    private static ChatModel createGeminiModel(String modelName, String apiKey) {
         if (!modelName.toLowerCase(java.util.Locale.ROOT).startsWith("gemini-")) {
-            throw new IllegalArgumentException("Standard tier requires a Gemini model; received " + modelName);
+            throw new IllegalArgumentException("Fallback LLM must be a Gemini model; received " + modelName);
         }
         return GoogleGenAiChatModel.builder()
                 .genAiClient(Client.builder().apiKey(apiKey).build())
@@ -263,9 +301,9 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
                 .build();
     }
 
-    private ChatModel createOpenAiModel(String modelName, String apiKey) {
+    private static ChatModel createOpenAiModel(String modelName, String apiKey) {
         if (!modelName.toLowerCase(java.util.Locale.ROOT).startsWith("gpt-")) {
-            throw new IllegalArgumentException("Advanced tier requires an OpenAI GPT model; received " + modelName);
+            throw new IllegalArgumentException("Primary LLM must be an OpenAI GPT model; received " + modelName);
         }
         return OpenAiChatModel.builder()
                 .openAiApi(OpenAiApi.builder().apiKey(apiKey).build())
