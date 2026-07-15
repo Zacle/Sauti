@@ -11,6 +11,7 @@ import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionResponse;
 import com.sauti.call.WebVoiceDtos.WebVoiceAudioTurnResponse;
 import com.sauti.call.WebVoiceTokenService;
 import com.sauti.call.OpenAiRealtimeService;
+import com.sauti.call.CartesiaRealtimeTextToSpeechClient;
 import com.sauti.call.RealtimeDtos.RealtimeToolRequest;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
 import com.sauti.voice.VoiceCatalogService;
@@ -44,6 +45,7 @@ public class PublicWebVoiceController {
     private final VoiceCatalogService voiceCatalogService;
     private final String websocketBaseUrl;
     private final OpenAiRealtimeService openAiRealtimeService;
+    private final CartesiaRealtimeTextToSpeechClient cartesiaClient;
     private final Map<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
     public PublicWebVoiceController(
@@ -54,6 +56,7 @@ public class PublicWebVoiceController {
             BrowserSpeechToTextService speechToTextService,
             VoiceCatalogService voiceCatalogService,
             OpenAiRealtimeService openAiRealtimeService,
+            CartesiaRealtimeTextToSpeechClient cartesiaClient,
             @Value("${sauti.web-voice.public-websocket-base-url:ws://localhost:8082}") String websocketBaseUrl
     ) {
         this.agentRepository = agentRepository;
@@ -63,6 +66,7 @@ public class PublicWebVoiceController {
         this.speechToTextService = speechToTextService;
         this.voiceCatalogService = voiceCatalogService;
         this.openAiRealtimeService = openAiRealtimeService;
+        this.cartesiaClient = cartesiaClient;
         this.websocketBaseUrl = websocketBaseUrl.replaceFirst("/+$", "");
     }
 
@@ -107,21 +111,27 @@ public class PublicWebVoiceController {
         var call = callPipelineService.startWebCall(publicId, preferredLanguage);
         var token = tokenService.issue(call.getTwilioCallSid(), publicId);
         var language = call.getLanguageDetected();
-        var mode = openAiRealtimeService.enabled() && openAiRealtimeService.usesOpenAiVoice(call)
-                ? "openai_realtime"
-                : "realtime";
+        var mode = realtimeMode(call);
+        var websocketPath = "hybrid_realtime".equals(mode) ? "/ws/hybrid-voice/" : "/ws/web-voice/";
         var greeting = callPipelineService.openingGreeting(call);
         return new StartWebVoiceSessionResponse(
                 call.getId(),
                 call.getTwilioCallSid(),
                 token,
-                websocketBaseUrl + "/ws/web-voice/" + call.getTwilioCallSid() + "?token=" + token,
+                websocketBaseUrl + websocketPath + call.getTwilioCallSid() + "?token=" + token,
                 greeting,
                 null,
                 16000,
                 language,
                 mode
         );
+    }
+
+    private String realtimeMode(com.sauti.call.Call call) {
+        if (!openAiRealtimeService.enabled()) return "realtime";
+        if (openAiRealtimeService.usesOpenAiVoice(call)) return "openai_realtime";
+        if (openAiRealtimeService.usesCartesiaVoice(call) && cartesiaClient.isConfigured()) return "hybrid_realtime";
+        return "realtime";
     }
 
     @PostMapping(value = "/sessions/{sessionId}/realtime/connect", consumes = "application/sdp", produces = "application/sdp")

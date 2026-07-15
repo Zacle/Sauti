@@ -17,7 +17,7 @@ export type WebVoiceSession = {
   greetingAudioBase64: string | null;
   inputSampleRate: number;
   language: string;
-  mode: "openai_realtime" | "realtime" | "turn";
+  mode: "openai_realtime" | "hybrid_realtime" | "realtime" | "turn";
 };
 
 export type WebVoiceAudioTurn = {

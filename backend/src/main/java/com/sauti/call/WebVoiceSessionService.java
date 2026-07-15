@@ -181,20 +181,31 @@ public class WebVoiceSessionService {
         try {
             var streamed = new AtomicBoolean(false);
             var spokenText = new StringBuilder();
+            var speechBuffer = new StringBuilder();
             var turn = callPipelineService.processLiveTranscriptTurn(
                     state.call.getTwilioCallSid(),
                     transcript,
                     delta -> {
                         if (delta == null || delta.isEmpty()) return;
                         spokenText.append(delta);
+                        speechBuffer.append(delta);
+                        var speakable = takeSpeakablePhrase(speechBuffer, false);
+                        if (speakable.isBlank()) return;
                         if (streamed.compareAndSet(false, true)) beginSpeech(state, state.language, false);
                         state.ttsSession.thenAccept(tts -> {
-                            if (tts != null) tts.speak(delta, false);
+                            if (tts != null) tts.speak(speakable, false);
                         });
                     }
             );
             state.language = turn.language();
             if (!turn.text().isBlank()) {
+                var remainingSpeech = takeSpeakablePhrase(speechBuffer, true);
+                if (!remainingSpeech.isBlank()) {
+                    if (streamed.compareAndSet(false, true)) beginSpeech(state, turn.language(), false);
+                    state.ttsSession.thenAccept(tts -> {
+                        if (tts != null) tts.speak(remainingSpeech, false);
+                    });
+                }
                 var displayedText = spokenText.toString().trim();
                 if (displayedText.isBlank()) displayedText = turn.text();
                 state.awaitingDictatedDetail = requestsDictatedDetails(displayedText);
@@ -216,6 +227,31 @@ public class WebVoiceSessionService {
             LOGGER.warn("Web Voice turn failed for session={}", state.call.getTwilioCallSid(), exception);
             sendJson(state, Map.of("type", "error", "message", "The agent could not complete that turn"));
         }
+    }
+
+    static String takeSpeakablePhrase(StringBuilder buffer, boolean complete) {
+        if (buffer.isEmpty()) return "";
+        if (complete) {
+            var remaining = buffer.toString().trim();
+            buffer.setLength(0);
+            return remaining.isBlank() ? "" : remaining + " ";
+        }
+        var boundary = -1;
+        for (int index = 0; index < buffer.length(); index++) {
+            var current = buffer.charAt(index);
+            if (index >= 24 && (current == '.' || current == '?' || current == '!' || current == ',' || current == ';' || current == ':')) {
+                boundary = index + 1;
+                break;
+            }
+        }
+        if (boundary < 0 && buffer.length() >= 72) {
+            boundary = buffer.lastIndexOf(" ", 72);
+            if (boundary < 40) boundary = -1;
+        }
+        if (boundary < 0) return "";
+        var phrase = buffer.substring(0, boundary).trim();
+        buffer.delete(0, boundary);
+        return phrase.isBlank() ? "" : phrase + " ";
     }
 
     private void speak(BrowserSession state, String text, String language, boolean closeAfterSpeech) {

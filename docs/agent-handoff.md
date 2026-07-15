@@ -2435,3 +2435,71 @@ Expected:
 - Follow-ups / risks:
   - Native Realtime routing is implemented for browser/WebRTC calls. Telnyx/Twilio phone media continues to use the existing cascade until a provider-native SIP or server WebSocket Realtime bridge is implemented and load-tested.
   - A live OpenAI session was not opened during automated verification; production requires a funded `OPENAI_API_KEY` with Realtime access and browser/network access to WebRTC.
+
+### 2026-07-15 - Realtime playback, completion, picker, and Cartesia latency corrections
+
+- Removed the artificial 180-token OpenAI Realtime response cap. Audio tokens consumed that budget quickly and could stop speech mid-sentence; Realtime now uses an unlimited per-response budget while the conversation prompt continues to enforce concise answers.
+- Routed Realtime remote audio through the already user-activated Web Audio context in both Agent Studio and public Web Voice. This avoids delayed `HTMLAudioElement.play()` autoplay rejections and suppresses the false playback-blocked error emitted during call teardown.
+- Corrected the voice picker from five to six explicit grid rows after adding the engine selector. Renamed and restyled the engine selector to avoid collision with an older provider-banner class, restored the Best match/English/French/Arabic tabs, and fixed the accent selector's transparent click overlay.
+- Reduced Cartesia latency without removing its voice catalog. Sauti now accumulates raw LLM token deltas into short speakable phrases before sending them over the existing long-lived Cartesia WebSocket, then sets `max_buffer_delay_ms=0` because buffering is handled by Sauti. This avoids Cartesia's documented default buffer of up to 3000 ms for punctuation-free token streams.
+- Added `CARTESIA_MAX_BUFFER_DELAY_MS=0` to local and production environment examples and a focused test proving that phrase buffering does not lose final words.
+- Files touched in this correction:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/call/CartesiaRealtimeTextToSpeechClient.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeService.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiRealtimeServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/WebVoiceSpeechBufferTest.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.OpenAiRealtimeServiceTest" --tests "com.sauti.call.WebVoiceSpeechBufferTest"`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated successfully)
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up:
+  - The next larger Cartesia improvement would replace the separate STT and chat-completions inference stages with either Cartesia Line's managed low-latency audio orchestration/OpenAI WebSocket mode or a custom OpenAI Realtime text-output -> Cartesia Sonic streaming bridge.
+
+### 2026-07-15 - OpenAI Realtime + Cartesia Sonic hybrid voice runtime
+
+- Added a third explicit browser runtime, `hybrid_realtime`, for agents whose saved voice uses the `cartesia:` prefix while both OpenAI Realtime and Cartesia are configured.
+- Hybrid calls now send caller audio directly from browser WebRTC to OpenAI Realtime for native audio understanding, transcription, server VAD, turn detection, instructions, and tool calls. OpenAI streams text output instead of synthesizing audio for this mode.
+- Added an authenticated `/ws/hybrid-voice/{callSid}` bridge. It keeps one Cartesia Sonic WebSocket warm, buffers OpenAI text deltas into short speakable phrases, streams PCM back to the browser, and flushes the final phrase so long responses are not cut off.
+- Kept provider routing explicit and backward compatible: `openai:` voices use native OpenAI speech-to-speech, `cartesia:` voices use the hybrid runtime when available, and the existing Deepgram/LLM/Cartesia cascade remains the fallback when Realtime is not configured.
+- Coordinated barge-in across both providers. OpenAI server VAD interrupts only an active model response; the same speech-start event clears queued browser PCM and closes/reopens the Cartesia context so the old sentence cannot continue over the caller. Ordinary caller speech while the agent is idle no longer triggers a spurious response cancellation.
+- The transcript shown and persisted for hybrid calls is assembled from the same OpenAI text deltas sent to Cartesia, preventing displayed text and spoken text from diverging.
+- Added focused coverage for Cartesia hybrid session configuration, PCM forwarding, phrase completion, and interruption context replacement.
+- Files touched for the hybrid runtime:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
+  - `backend/src/main/java/com/sauti/call/HybridVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/call/HybridVoiceWebSocketHandler.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeService.java`
+  - `backend/src/main/java/com/sauti/call/WebSocketConfig.java`
+  - `backend/src/test/java/com/sauti/call/HybridVoiceSessionServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiRealtimeServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/lib/api/public-web-voice.ts`
+  - `dashboard/types/api.ts`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.OpenAiRealtimeServiceTest" --tests "com.sauti.call.HybridVoiceSessionServiceTest" --tests "com.sauti.call.WebVoiceSpeechBufferTest"`
+  - `.\gradlew.bat :backend:test --rerun-tasks`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated successfully)
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - This hybrid path covers browser/Agent Studio WebRTC calls. Telnyx/Twilio phone media still uses the existing server-side cascade until a server-side OpenAI Realtime media bridge or provider SIP path is implemented and load-tested.
+  - Automated tests use mocked provider streams; a live environment still needs funded OpenAI Realtime and Cartesia credentials to measure first-audio latency and tune VAD/phrase thresholds under real network conditions.

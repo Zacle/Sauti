@@ -33,7 +33,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState("");
   const [language, setLanguage] = useState("");
-  const [mode, setMode] = useState<"openai_realtime" | "realtime" | "turn">("realtime");
+  const [mode, setMode] = useState<"openai_realtime" | "hybrid_realtime" | "realtime" | "turn">("realtime");
   const [recordingTurn, setRecordingTurn] = useState(false);
   const [processingTurn, setProcessingTurn] = useState(false);
   const [accent, setAccent] = useState("#31d9c9");
@@ -52,6 +52,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const speakingRef = useRef(false);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
   const nativeEndPendingRef = useRef(false);
+  const hybridRealtimeRef = useRef(false);
 
   function updateSpeaking(value: boolean) {
     speakingRef.current = value;
@@ -94,11 +95,16 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       sessionIdRef.current = session.sessionId;
       tokenRef.current = session.token;
       setMode(session.mode);
-      if (session.mode === "openai_realtime") {
+      if (session.mode === "openai_realtime" || session.mode === "hybrid_realtime") {
+        const hybrid = session.mode === "hybrid_realtime";
+        hybridRealtimeRef.current = hybrid;
+        if (hybrid) await connectHybridVoice(session.websocketUrl, context);
         openAiConnectionRef.current = await connectOpenAiRealtime({
           microphone: stream,
           greeting: session.greeting,
+          outputMode: hybrid ? "text" : "audio",
           connectSdp: (offer) => connectPublicRealtime(session.sessionId, session.token, offer),
+          playbackContext: context,
           callbacks: {
             onConnected: () => setStatus("live"),
             onCallerTranscript: (text) => {
@@ -111,6 +117,10 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
               void recordPublicRealtimeTranscript(session.sessionId, session.token, "agent", text, interrupted);
               if (isFarewell(text)) nativeEndPendingRef.current = true;
             },
+            onAgentTextDelta: hybrid ? (delta) => sendHybridEvent({ type: "tts_delta", text: delta }) : undefined,
+            onAgentTextComplete: hybrid ? (interrupted) => {
+              if (!interrupted) sendHybridEvent({ type: "tts_complete" });
+            } : undefined,
             onSpeaking: (value) => {
               updateSpeaking(value);
               if (!value && nativeEndPendingRef.current) {
@@ -118,9 +128,18 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
                 window.setTimeout(end, 220);
               }
             },
-            onCallerSpeechStarted: () => {
+            onCallerSpeechStarted: (agentWasResponding) => {
+              const cartesiaStillAudible = hybrid && (
+                speakingRef.current
+                || playbackTimeRef.current > context.currentTime + 0.03
+              );
               updateSpeaking(false);
               setPartial("Listening...");
+              if (hybrid && (agentWasResponding || cartesiaStillAudible)) {
+                if (agentWasResponding) openAiConnectionRef.current?.cancelResponse();
+                clearPlayback();
+                sendHybridEvent({ type: "interrupt" });
+              }
             },
             onError: setError,
             executeTool: (callId, name, argumentsJson) => executePublicRealtimeTool(
@@ -163,6 +182,39 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       setStatus("idle");
       setError(caught instanceof Error ? caught.message : "Microphone access could not be started.");
     }
+  }
+
+  async function connectHybridVoice(websocketUrl: string, context: AudioContext) {
+    void context;
+    const socket = new WebSocket(websocketUrl);
+    socket.binaryType = "arraybuffer";
+    socketRef.current = socket;
+    socket.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        playPcm(event.data);
+        return;
+      }
+      handleEvent(JSON.parse(String(event.data)) as VoiceEvent);
+    };
+    socket.onclose = () => {
+      if (sessionIdRef.current) setError("The Cartesia voice connection ended unexpectedly.");
+    };
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("The Cartesia voice connection timed out.")), 8000);
+      socket.onopen = () => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+      socket.onerror = () => {
+        window.clearTimeout(timeout);
+        reject(new Error("The Cartesia voice connection could not be opened."));
+      };
+    });
+  }
+
+  function sendHybridEvent(payload: Record<string, unknown>) {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
   }
 
   function startTurnRecording() {
@@ -276,7 +328,15 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     if (event.type === "agent_response" && event.text) {
       setMessages((current) => [...current, { role: "agent", text: event.text! }]);
     }
-    if (event.type === "speaking") updateSpeaking(Boolean(event.value));
+    if (event.type === "speaking") {
+      updateSpeaking(Boolean(event.value));
+      if (!event.value && hybridRealtimeRef.current && nativeEndPendingRef.current) {
+        nativeEndPendingRef.current = false;
+        const context = contextRef.current;
+        const remainingMs = context ? Math.max(0, playbackTimeRef.current - context.currentTime) * 1000 : 0;
+        window.setTimeout(end, remainingMs + 180);
+      }
+    }
     if (event.type === "clear_audio") clearPlayback();
     if (event.type === "error") setError(event.message ?? "The voice session encountered an error.");
     if (event.type === "ended") {
@@ -365,6 +425,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     openAiConnectionRef.current?.close();
     openAiConnectionRef.current = null;
     nativeEndPendingRef.current = false;
+    hybridRealtimeRef.current = false;
     sessionIdRef.current = "";
     tokenRef.current = "";
   }

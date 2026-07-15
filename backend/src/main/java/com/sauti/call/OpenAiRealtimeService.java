@@ -64,9 +64,16 @@ public class OpenAiRealtimeService {
                 && call.getAgent().getTtsVoiceId().startsWith(VOICE_PREFIX);
     }
 
+    public boolean usesCartesiaVoice(Call call) {
+        return call.getAgent().getTtsVoiceId() != null
+                && call.getAgent().getTtsVoiceId().startsWith(CartesiaRealtimeTextToSpeechClient.VOICE_PREFIX);
+    }
+
     public String createWebRtcSession(Call call, String sdpOffer) {
         if (!enabled()) throw new IllegalStateException("OpenAI Realtime is not configured");
-        if (!usesOpenAiVoice(call)) throw new IllegalArgumentException("This call does not use an OpenAI Realtime voice");
+        if (!usesOpenAiVoice(call) && !usesCartesiaVoice(call)) {
+            throw new IllegalArgumentException("This call does not use a Realtime-compatible voice");
+        }
         if (sdpOffer == null || sdpOffer.isBlank()) throw new IllegalArgumentException("A WebRTC SDP offer is required");
 
         try {
@@ -130,17 +137,27 @@ public class OpenAiRealtimeService {
                     return definition;
                 })
                 .toList();
-        var voice = call.getAgent().getTtsVoiceId().substring(VOICE_PREFIX.length());
+        var nativeAudio = usesOpenAiVoice(call);
         var session = new LinkedHashMap<String, Object>();
         session.put("type", "realtime");
         session.put("model", model);
         session.put("instructions", conversationOrchestrator.realtimeInstructions(call, call.getLanguageDetected()));
-        session.put("output_modalities", List.of("audio"));
-        session.put("max_output_tokens", 180);
-        session.put("audio", Map.of(
-                "input", input,
-                "output", Map.of("voice", voice, "speed", 1.08)
-        ));
+        session.put("output_modalities", List.of(nativeAudio ? "audio" : "text"));
+        // Audio responses consume substantially more tokens than their transcript.
+        // An artificially small cap can cut audible speech in the middle of a word.
+        // Conversational brevity is enforced by the prompt instead.
+        session.put("max_output_tokens", "inf");
+        if (nativeAudio) {
+            var voice = call.getAgent().getTtsVoiceId().substring(VOICE_PREFIX.length());
+            session.put("audio", Map.of(
+                    "input", input,
+                    "output", Map.of("voice", voice, "speed", 1.08)
+            ));
+        } else {
+            // Hybrid mode keeps OpenAI's native audio understanding and VAD, but
+            // streams response text to Cartesia instead of asking OpenAI to speak.
+            session.put("audio", Map.of("input", input));
+        }
         if (!tools.isEmpty()) {
             session.put("tools", tools);
             session.put("tool_choice", "auto");

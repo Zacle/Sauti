@@ -100,6 +100,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const playbackSourcesRef = useRef(new Set<AudioBufferSourceNode>());
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
   const nativeRealtimeRef = useRef(false);
+  const hybridRealtimeRef = useRef(false);
   const nativeEndPendingRef = useRef(false);
 
   function updateStatus(next: CallStatus) {
@@ -139,9 +140,11 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       remoteEndPendingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
       setCallId(started.call.id);
-      if (started.mode === "openai_realtime") {
+      if (started.mode === "openai_realtime" || started.mode === "hybrid_realtime") {
         nativeRealtimeRef.current = true;
-        await connectNativeRealtime(started, stream);
+        hybridRealtimeRef.current = started.mode === "hybrid_realtime";
+        if (hybridRealtimeRef.current) await connectHybridVoice(started);
+        await connectNativeRealtime(started, stream, hybridRealtimeRef.current);
       } else {
         await connectRealtimeVoice(started, stream);
         startVoiceMonitor();
@@ -153,11 +156,40 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     }
   }
 
-  async function connectNativeRealtime(started: StartTestCallResponse, stream: MediaStream) {
+  async function connectHybridVoice(started: StartTestCallResponse) {
+    const socket = new WebSocket(started.websocketUrl);
+    socket.binaryType = "arraybuffer";
+    socketRef.current = socket;
+    socket.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        playRealtimePcm(event.data);
+        return;
+      }
+      handleRealtimeEvent(JSON.parse(String(event.data)) as VoiceEvent);
+    };
+    socket.onclose = () => {
+      if (!endingRef.current && callIdRef.current) setError("The Cartesia voice connection ended unexpectedly.");
+    };
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error("The Cartesia voice connection timed out.")), 8000);
+      socket.onopen = () => {
+        window.clearTimeout(timeout);
+        resolve();
+      };
+      socket.onerror = () => {
+        window.clearTimeout(timeout);
+        reject(new Error("The Cartesia voice connection could not be opened."));
+      };
+    });
+  }
+
+  async function connectNativeRealtime(started: StartTestCallResponse, stream: MediaStream, hybrid: boolean) {
     openAiConnectionRef.current = await connectOpenAiRealtime({
       microphone: stream,
       greeting: started.greeting,
+      outputMode: hybrid ? "text" : "audio",
       connectSdp: (offer) => connectTestRealtime(started.call.id, offer),
+      playbackContext: audioContextRef.current,
       recordingDestination: recordingDestinationRef.current,
       callbacks: {
         onConnected: () => updateStatus("listening"),
@@ -174,6 +206,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           void recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted);
           if (isFarewell(text)) nativeEndPendingRef.current = true;
         },
+        onAgentTextDelta: hybrid ? (delta) => sendHybridEvent({ type: "tts_delta", text: delta }) : undefined,
+        onAgentTextComplete: hybrid ? (interrupted) => {
+          if (!interrupted) sendHybridEvent({ type: "tts_complete" });
+        } : undefined,
         onSpeaking: (value) => {
           updateStatus(value ? "speaking" : "listening");
           if (!value && nativeEndPendingRef.current) {
@@ -181,13 +217,34 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             window.setTimeout(() => void endCall("completed"), 220);
           }
         },
-        onCallerSpeechStarted: () => updateStatus("capturing"),
+        onCallerSpeechStarted: (agentWasResponding) => {
+          const context = audioContextRef.current;
+          const cartesiaStillAudible = hybrid && (
+            statusRef.current === "speaking"
+            || Boolean(context && playbackTimeRef.current > context.currentTime + 0.03)
+          );
+          updateStatus("capturing");
+          if (hybrid && (agentWasResponding || cartesiaStillAudible)) {
+            interruptHybridResponse(agentWasResponding);
+          }
+        },
         onError: (message) => setError(message),
         executeTool: (toolCallId, name, argumentsJson) => executeTestRealtimeTool(
           started.call.id, toolCallId, name, argumentsJson,
         ),
       },
     });
+  }
+
+  function sendHybridEvent(payload: Record<string, unknown>) {
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+  }
+
+  function interruptHybridResponse(cancelModel: boolean) {
+    if (cancelModel) openAiConnectionRef.current?.cancelResponse();
+    clearRealtimePlayback();
+    sendHybridEvent({ type: "interrupt" });
   }
 
   async function prepareAudio(stream: MediaStream) {
@@ -289,7 +346,15 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       rememberAgentPrompt(event.text);
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text: event.text! }]);
     }
-    if (event.type === "speaking") updateStatus(event.value ? "speaking" : "listening");
+    if (event.type === "speaking") {
+      updateStatus(event.value ? "speaking" : "listening");
+      if (!event.value && hybridRealtimeRef.current && nativeEndPendingRef.current) {
+        nativeEndPendingRef.current = false;
+        const context = audioContextRef.current;
+        const remainingMs = context ? Math.max(0, playbackTimeRef.current - context.currentTime) * 1000 : 0;
+        window.setTimeout(() => void endCall("completed"), remainingMs + 180);
+      }
+    }
     if (event.type === "clear_audio") clearRealtimePlayback();
     if (event.type === "error") setError(event.message ?? "The realtime voice session encountered an error.");
     if (event.type === "ended" && !endingRef.current && !remoteEndPendingRef.current) {
@@ -836,6 +901,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     openAiConnectionRef.current?.close();
     openAiConnectionRef.current = null;
     nativeRealtimeRef.current = false;
+    hybridRealtimeRef.current = false;
     nativeEndPendingRef.current = false;
     const socket = socketRef.current;
     socketRef.current = null;

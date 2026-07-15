@@ -17,6 +17,7 @@ import com.sauti.call.CallRecordingService;
 import com.sauti.call.CallTurnRepository;
 import com.sauti.call.WebVoiceTokenService;
 import com.sauti.call.OpenAiRealtimeService;
+import com.sauti.call.CartesiaRealtimeTextToSpeechClient;
 import com.sauti.call.RealtimeDtos.RealtimeToolRequest;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
 import com.sauti.voice.VoiceCatalogService;
@@ -51,6 +52,7 @@ public class CallController {
     private final WebVoiceTokenService webVoiceTokenService;
     private final String webVoiceWebsocketUrl;
     private final OpenAiRealtimeService openAiRealtimeService;
+    private final CartesiaRealtimeTextToSpeechClient cartesiaClient;
 
     public CallController(
             CallQueryService callQueryService,
@@ -61,6 +63,7 @@ public class CallController {
             BrowserSpeechToTextService browserSpeechToTextService,
             WebVoiceTokenService webVoiceTokenService,
             OpenAiRealtimeService openAiRealtimeService,
+            CartesiaRealtimeTextToSpeechClient cartesiaClient,
             @Value("${sauti.web-voice.public-websocket-base-url:ws://localhost:8082}") String webVoiceWebsocketUrl
     ) {
         this.callQueryService = callQueryService;
@@ -71,6 +74,7 @@ public class CallController {
         this.browserSpeechToTextService = browserSpeechToTextService;
         this.webVoiceTokenService = webVoiceTokenService;
         this.openAiRealtimeService = openAiRealtimeService;
+        this.cartesiaClient = cartesiaClient;
         this.webVoiceWebsocketUrl = webVoiceWebsocketUrl;
     }
 
@@ -94,17 +98,24 @@ public class CallController {
                 .findFirst().map(turn -> turn.getAgentResponse()).orElse("");
         var agentKey = call.getAgent().getId().toString();
         var token = webVoiceTokenService.issue(call.getTwilioCallSid(), agentKey);
+        var mode = realtimeMode(call);
+        var websocketPath = "hybrid_realtime".equals(mode) ? "/ws/hybrid-voice/" : "/ws/web-voice/";
         return new StartTestCallResponse(
                 CallResponse.from(call),
                 greeting,
                 TestCallSettings.from(call.getAgent()),
-                webVoiceWebsocketUrl + "/ws/web-voice/" + call.getTwilioCallSid() + "?token=" + token,
+                webVoiceWebsocketUrl + websocketPath + call.getTwilioCallSid() + "?token=" + token,
                 token,
                 16000,
-                openAiRealtimeService.enabled() && openAiRealtimeService.usesOpenAiVoice(call)
-                        ? "openai_realtime"
-                        : "cascade"
+                mode
         );
+    }
+
+    private String realtimeMode(com.sauti.call.Call call) {
+        if (!openAiRealtimeService.enabled()) return "cascade";
+        if (openAiRealtimeService.usesOpenAiVoice(call)) return "openai_realtime";
+        if (openAiRealtimeService.usesCartesiaVoice(call) && cartesiaClient.isConfigured()) return "hybrid_realtime";
+        return "cascade";
     }
 
     @PostMapping(value = "/{id}/realtime/connect", consumes = "application/sdp", produces = "application/sdp")

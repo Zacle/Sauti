@@ -218,6 +218,9 @@ sauti:
       preview-container: ${CARTESIA_PREVIEW_CONTAINER:mp3}
       preview-encoding: ${CARTESIA_PREVIEW_ENCODING:pcm_s16le}
       preview-sample-rate: ${CARTESIA_PREVIEW_SAMPLE_RATE:44100}
+      # Sauti buffers LLM deltas into speakable phrases, so Cartesia should not
+      # add its default multi-second token buffer on top.
+      max-buffer-delay-ms: ${CARTESIA_MAX_BUFFER_DELAY_MS:0}
   twilio:
     account-sid: ${TWILIO_ACCOUNT_SID:}
     public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}

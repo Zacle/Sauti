@@ -221,7 +221,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               </div>
             </div>
 
-            <div className="voice-provider-tabs" aria-label="Voice engine">
+            <div className="voice-engine-tabs" aria-label="Voice engine">
               <button className={providerFilter === "all" ? "active" : ""} type="button" onClick={() => setProviderFilter("all")}>
                 All engines <span>{voices.length}</span>
               </button>

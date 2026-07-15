@@ -14,6 +14,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private final TwilioMediaWebSocketHandler twilioHandler;
     private final DashboardWebSocketHandler dashboardHandler;
     private final WebVoiceWebSocketHandler webVoiceHandler;
+    private final HybridVoiceWebSocketHandler hybridVoiceHandler;
     private final TelnyxMediaWebSocketHandler telnyxHandler;
     private final String allowedOriginPatterns;
 
@@ -21,12 +22,14 @@ public class WebSocketConfig implements WebSocketConfigurer {
             TwilioMediaWebSocketHandler twilioHandler,
             DashboardWebSocketHandler dashboardHandler,
             WebVoiceWebSocketHandler webVoiceHandler,
+            HybridVoiceWebSocketHandler hybridVoiceHandler,
             TelnyxMediaWebSocketHandler telnyxHandler,
             @Value("${sauti.twilio.websocket.allowed-origin-patterns:*}") String allowedOriginPatterns
     ) {
         this.twilioHandler = twilioHandler;
         this.dashboardHandler = dashboardHandler;
         this.webVoiceHandler = webVoiceHandler;
+        this.hybridVoiceHandler = hybridVoiceHandler;
         this.telnyxHandler = telnyxHandler;
         this.allowedOriginPatterns = allowedOriginPatterns;
     }
@@ -45,6 +48,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
                         .filter(origin -> !origin.isBlank())
                         .toArray(String[]::new));
         registry.addHandler(webVoiceHandler, "/ws/web-voice/{callSid}")
+                .setAllowedOriginPatterns(origins);
+        registry.addHandler(hybridVoiceHandler, "/ws/hybrid-voice/{callSid}")
                 .setAllowedOriginPatterns(origins);
         registry.addHandler(telnyxHandler, "/ws/telnyx/media/{callControlId}")
                 .setAllowedOriginPatterns(origins);

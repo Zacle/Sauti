@@ -36,6 +36,7 @@ public class CartesiaRealtimeTextToSpeechClient {
     private final String previewContainer;
     private final String previewEncoding;
     private final int previewSampleRate;
+    private final int maxBufferDelayMs;
 
     public CartesiaRealtimeTextToSpeechClient(
             ObjectMapper objectMapper,
@@ -49,7 +50,8 @@ public class CartesiaRealtimeTextToSpeechClient {
             @Value("${sauti.tts.cartesia.output-sample-rate:16000}") int outputSampleRate,
             @Value("${sauti.tts.cartesia.preview-container:mp3}") String previewContainer,
             @Value("${sauti.tts.cartesia.preview-encoding:mp3}") String previewEncoding,
-            @Value("${sauti.tts.cartesia.preview-sample-rate:44100}") int previewSampleRate
+            @Value("${sauti.tts.cartesia.preview-sample-rate:44100}") int previewSampleRate,
+            @Value("${sauti.tts.cartesia.max-buffer-delay-ms:0}") int maxBufferDelayMs
     ) {
         this.objectMapper = objectMapper;
         this.apiKey = apiKey == null ? "" : apiKey.trim();
@@ -63,6 +65,7 @@ public class CartesiaRealtimeTextToSpeechClient {
         this.previewContainer = previewContainer;
         this.previewEncoding = previewEncoding;
         this.previewSampleRate = previewSampleRate;
+        this.maxBufferDelayMs = Math.max(0, Math.min(5000, maxBufferDelayMs));
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     }
 
@@ -158,7 +161,8 @@ public class CartesiaRealtimeTextToSpeechClient {
                     .put("transcript", text == null ? "" : text)
                     .put("language", normalizedLanguage(language))
                     .put("context_id", contextId)
-                    .put("continue", !flush);
+                    .put("continue", !flush)
+                    .put("max_buffer_delay_ms", maxBufferDelayMs);
             payload.set("voice", objectMapper.createObjectNode()
                     .put("mode", "id")
                     .put("id", providerVoiceId));
