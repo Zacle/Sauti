@@ -4870,6 +4870,135 @@
 .agent-studio .voice-search:focus-within,.agent-studio .voice-accent-filter.open{border-color:#29ddd1;background:#0a263f;box-shadow:0 0 0 3px rgba(38,221,208,.09)}
 .agent-studio .voice-accent-filter>button{border:0!important;background:transparent!important}.agent-studio .voice-accent-filter>span,.agent-studio .voice-accent-filter>b,.agent-studio .voice-accent-filter>svg{z-index:1}
 .agent-studio .voice-search input,.agent-studio .voice-accent-filter>b{color:#dce9f3!important;background:transparent!important}.agent-studio .voice-search input::placeholder{color:#668096}
+
+/* Voice discovery controls share the console typography and one focus language. */
+.agent-studio .voice-engine-tabs > button,
+.agent-studio .voice-search input,
+.agent-studio .voice-accent-trigger,
+.agent-studio .voice-accent-menu > button {
+  font-family: inherit;
+}
+
+.agent-studio .voice-engine-tabs > button {
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.agent-studio .voice-engine-tabs b {
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.agent-studio .voice-engine-tabs small {
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.agent-studio .voice-search {
+  min-height: 52px;
+  padding: 0 16px;
+  border-color: rgba(91,151,199,.24);
+  border-radius: 14px;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.agent-studio .voice-search svg {
+  flex: 0 0 auto;
+  color: #7894aa;
+  transition: color .18s ease, filter .18s ease;
+}
+
+.agent-studio .voice-search input {
+  min-height: 50px;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  font-size: 0.82rem;
+  box-shadow: none !important;
+}
+
+.agent-studio .voice-search:focus-within {
+  border-color: rgba(45,224,211,.78);
+  background: linear-gradient(180deg,rgba(10,39,62,.98),rgba(7,31,51,.98));
+  box-shadow: 0 0 0 3px rgba(39,222,209,.08), 0 12px 30px rgba(0,0,0,.16), inset 0 1px rgba(255,255,255,.025);
+}
+
+.agent-studio .voice-search:focus-within svg {
+  color: #31e0d4;
+  filter: drop-shadow(0 0 7px rgba(49,224,212,.28));
+}
+
+.agent-studio .voice-accent-filter {
+  display: block;
+  min-height: 52px;
+  padding: 0;
+  border-color: rgba(91,151,199,.24);
+  border-radius: 14px;
+  transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.agent-studio .voice-accent-filter > .voice-accent-trigger {
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 50px;
+  padding: 7px 14px 7px 16px;
+  color: #dce9f3;
+  cursor: pointer;
+}
+
+.agent-studio .voice-accent-trigger > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  text-align: left;
+}
+
+.agent-studio .voice-accent-trigger small {
+  color: #7891a6;
+  font-size: 0.58rem;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.agent-studio .voice-accent-trigger strong {
+  overflow: hidden;
+  color: #e2edf4;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-studio .voice-accent-trigger svg {
+  flex: 0 0 auto;
+  color: #7894aa;
+  transition: color .18s ease, transform .18s ease;
+}
+
+.agent-studio .voice-accent-filter:hover {
+  border-color: rgba(42,220,207,.48);
+  background: #0a263f;
+}
+
+.agent-studio .voice-accent-filter.open {
+  border-color: rgba(45,224,211,.78);
+  box-shadow: 0 0 0 3px rgba(39,222,209,.08), 0 12px 30px rgba(0,0,0,.16);
+}
+
+.agent-studio .voice-accent-filter.open .voice-accent-trigger svg {
+  color: #31e0d4;
+  transform: rotate(180deg);
+}
 .agent-studio .voice-accent-menu{border-color:rgba(81,145,193,.35);color:#b9cad7;background:#092038;box-shadow:0 24px 60px rgba(0,0,0,.58)}
 .agent-studio .voice-accent-menu>button{color:#aec0cf}.agent-studio .voice-accent-menu>button:hover,.agent-studio .voice-accent-menu>button.selected{color:#31e0d4;background:rgba(17,124,125,.22)}
 .agent-studio .voice-language-tabs{gap:8px;margin:0 26px 16px;padding:5px;border:1px solid rgba(89,149,197,.18);background:rgba(6,24,41,.8)}

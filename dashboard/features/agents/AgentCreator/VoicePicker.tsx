@@ -192,12 +192,29 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
             </header>
 
             <div className="voice-picker-filters">
-              <label className="voice-search"><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search voices, accents, or styles..." /></label>
+              <label className="voice-search">
+                <Search aria-hidden="true" size={18} />
+                <input
+                  aria-label="Search voices"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search voices, accents, or styles..."
+                />
+              </label>
               <div className={`voice-accent-filter ${accentOpen ? "open" : ""}`}>
-                <span>Accent</span>
-                <b>{accentFilter === "all" ? "All accents" : titleCase(accentFilter)}</b>
-                <button type="button" aria-label="Filter by accent" onClick={() => setAccentOpen((current) => !current)} />
-                <ChevronDown aria-hidden="true" size={15} />
+                <button
+                  className="voice-accent-trigger"
+                  type="button"
+                  aria-expanded={accentOpen}
+                  aria-haspopup="menu"
+                  onClick={() => setAccentOpen((current) => !current)}
+                >
+                  <span>
+                    <small>Accent</small>
+                    <strong>{accentFilter === "all" ? "All accents" : titleCase(accentFilter)}</strong>
+                  </span>
+                  <ChevronDown aria-hidden="true" size={16} />
+                </button>
                 {accentOpen && (
                   <div className="voice-accent-menu" role="menu">
                     {[["all", "All accents"], ...accents.map((accent) => [accent, titleCase(accent)] as [string, string])].map(([value, label]) => (
@@ -226,7 +243,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
                 All engines <span>{voices.length}</span>
               </button>
               {enabledProviders.includes("openai") && <button className={providerFilter === "openai" ? "active" : ""} type="button" onClick={() => setProviderFilter("openai")}><b>OpenAI Realtime</b><small>Lowest latency · native speech-to-speech</small></button>}
-              {enabledProviders.includes("cartesia") && <button className={providerFilter === "cartesia" ? "active" : ""} type="button" onClick={() => setProviderFilter("cartesia")}><b>Cartesia</b><small>Custom voice · cascaded STT + LLM + TTS</small></button>}
+              {enabledProviders.includes("cartesia") && <button className={providerFilter === "cartesia" ? "active" : ""} type="button" onClick={() => setProviderFilter("cartesia")}><b>Cartesia</b><small>OpenAI Realtime · Cartesia Sonic voice</small></button>}
             </div>
 
             <div className="voice-language-tabs" aria-label="Voice language">

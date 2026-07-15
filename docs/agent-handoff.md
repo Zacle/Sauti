@@ -221,6 +221,22 @@ Expected:
 
 ## Change log
 
+### 2026-07-15 - Voice picker control typography and focus refinement
+
+- Standardized the voice-engine tabs on the Agent Studio font stack, including consistent title, count, and supporting-copy weights.
+- Reworked the voice search focus state into a single restrained teal ring with an illuminated search icon; removed the nested input outline that produced the heavy double border.
+- Replaced the accent selector's invisible full-surface overlay with an accessible trigger button containing a vertically aligned label, selected value, and animated chevron.
+- Updated Cartesia's engine description to reflect the OpenAI Realtime + Cartesia Sonic hybrid runtime instead of the superseded cascaded STT/LLM/TTS path.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated successfully)
+  - `git diff --check`
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
 ### 2026-07-15 - Pinned homepage feature scrollytelling
 
 - Rebuilt the five homepage product chapters as a pinned scrollytelling sequence: the feature viewport stays fixed while scrolling advances the product panels, then releases naturally into the call-lifecycle section after the final feature.
