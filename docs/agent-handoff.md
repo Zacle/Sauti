@@ -221,6 +221,30 @@ Expected:
 
 ## Change log
 
+### 2026-07-15 - Pinned homepage feature scrollytelling
+
+- Rebuilt the five homepage product chapters as a pinned scrollytelling sequence: the feature viewport stays fixed while scrolling advances the product panels, then releases naturally into the call-lifecycle section after the final feature.
+- Added eased vertical panel transitions with a short reading hold around every feature, an updating `01 / 05` counter, and a scroll-progress rail so the interaction remains understandable.
+- Made each transition more noticeable with a restrained overshoot-and-return bounce, a springing product preview, a bouncing feature icon, an active-card glow, and an animated down-arrow scroll cue. Settle animations fire once per newly active feature instead of looping continuously.
+- Preserved subtle independent depth movement inside each panel for the copy, product preview, ambient orbit, and light particles.
+- Scheduled scroll measurements through `requestAnimationFrame`; inactive panels are removed from keyboard and accessibility navigation while pinned.
+- Added normal stacked-layout fallbacks for viewports at or below 900px and for `prefers-reduced-motion`, including cleanup when either condition changes while the page is open.
+- Replaced root horizontal `overflow-x: hidden` with `overflow-x: clip` and removed clipping from the homepage container. This preserves horizontal overflow protection without creating the ancestor scroll containers that prevent `position: sticky` from pinning in Chrome.
+- Standardized the capability row so Safe workflows and Complete visibility now match the first three cards in height, top alignment, opacity, internal spacing, and hover behavior instead of appearing shorter and vertically offset.
+- Files touched:
+  - `dashboard/hooks/useRevealMotion.ts`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/styles/reset.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location`
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location` (50 routes generated successfully; homepage first-load JS 122 kB)
+  - Live Chrome DevTools Protocol scroll inspection at 1440x804: sticky container remained at `top: 0` mid-sequence, feature three was active at the midpoint, feature five was active at the end, and the container released after the feature section.
+  - `git diff --check`
+- Deployment status: not deployed. Changes are intentionally uncommitted for maintainer review and the normal CI/CD path.
+- Known follow-up: full-page screenshot tools may represent pinned scrollytelling sections differently because they stitch multiple scroll positions; verify the interaction through normal viewport scrolling. The live desktop scroll coordinates, responsive CSS fallbacks, and reduced-motion behavior were verified.
+
 ### 2026-07-14 - Luminous glass marketing homepage refinement
 
 - Refined the homepage visual system around the actual Sauti product previews rather than introducing fabricated dashboard screenshots or unsupported customer claims.

@@ -92,9 +92,12 @@ export default function ReferenceHome(){return <main className={styles.page}>
     </div>)}
   </section>
 
-  <section className={styles.features}>
-    <Header kicker="Product features" title="Everything you need to run AI calls" text="From setup to analytics, Sauti keeps the entire voice operation visible and under your control."/>
-    <div className={styles.chapterList}>{chapters.map(({icon:Icon,...chapter},index)=><article className={styles.chapter} key={chapter.title} data-reveal><div className={styles.chapterCopy}><span>{index+1}</span><div className={styles.chapterIcon}><Icon size={18}/></div><div className={styles.chapterBody}><h3>{chapter.title}</h3><p>{chapter.text}</p><small><Check size={12}/>{chapter.benefit}</small></div></div><div className={styles.chapterView}>{chapter.view}</div></article>)}</div>
+  <section className={styles.features} data-feature-story>
+    <div className={styles.featureSticky}>
+      <Header kicker="Product features" title="Everything you need to run AI calls" text="From setup to analytics, Sauti keeps the entire voice operation visible and under your control."/>
+      <div className={styles.storyProgress} aria-hidden="true"><span>Scroll to explore</span><div><i/></div><em><b data-story-current>01</b> / {String(chapters.length).padStart(2,"0")}</em></div>
+      <div className={styles.chapterList}>{chapters.map(({icon:Icon,...chapter},index)=><article className={styles.chapter} key={chapter.title} data-story-panel><div className={styles.chapterAtmosphere} aria-hidden="true"><i/><i/><i/></div><div className={styles.chapterCopy}><span>{index+1}</span><div className={styles.chapterIcon}><Icon size={18}/></div><div className={styles.chapterBody}><small className={styles.chapterCount}>Feature {String(index+1).padStart(2,"0")} / {String(chapters.length).padStart(2,"0")}</small><h3>{chapter.title}</h3><p>{chapter.text}</p><small className={styles.chapterBenefit}><Check size={12}/>{chapter.benefit}</small></div></div><div className={styles.chapterView}>{chapter.view}</div></article>)}</div>
+    </div>
   </section>
 
   <section className={styles.lifecycle}>
