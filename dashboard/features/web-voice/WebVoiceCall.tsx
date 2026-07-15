@@ -7,8 +7,12 @@ import {
   getPublicWebVoiceAgent,
   sendPublicWebVoiceAudioTurn,
   startPublicWebVoiceSession,
+  connectPublicRealtime,
+  executePublicRealtimeTool,
+  recordPublicRealtimeTranscript,
   type PublicWebVoiceAgent,
 } from "@/lib/api/public-web-voice";
+import { connectOpenAiRealtime, type OpenAiRealtimeConnection } from "@/features/voice-runtime/openaiRealtime";
 import styles from "./WebVoiceCall.module.css";
 
 type Message = { role: "visitor" | "agent"; text: string };
@@ -29,7 +33,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [error, setError] = useState("");
   const [language, setLanguage] = useState("");
-  const [mode, setMode] = useState<"realtime" | "turn">("realtime");
+  const [mode, setMode] = useState<"openai_realtime" | "realtime" | "turn">("realtime");
   const [recordingTurn, setRecordingTurn] = useState(false);
   const [processingTurn, setProcessingTurn] = useState(false);
   const [accent, setAccent] = useState("#31d9c9");
@@ -46,6 +50,8 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const playbackSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const pcmQueueRef = useRef<number[]>([]);
   const speakingRef = useRef(false);
+  const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
+  const nativeEndPendingRef = useRef(false);
 
   function updateSpeaking(value: boolean) {
     speakingRef.current = value;
@@ -88,6 +94,42 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       sessionIdRef.current = session.sessionId;
       tokenRef.current = session.token;
       setMode(session.mode);
+      if (session.mode === "openai_realtime") {
+        openAiConnectionRef.current = await connectOpenAiRealtime({
+          microphone: stream,
+          greeting: session.greeting,
+          connectSdp: (offer) => connectPublicRealtime(session.sessionId, session.token, offer),
+          callbacks: {
+            onConnected: () => setStatus("live"),
+            onCallerTranscript: (text) => {
+              setMessages((current) => [...current, { role: "visitor", text }]);
+              setPartial("");
+              void recordPublicRealtimeTranscript(session.sessionId, session.token, "caller", text);
+            },
+            onAgentTranscript: (text, interrupted) => {
+              setMessages((current) => [...current, { role: "agent", text }]);
+              void recordPublicRealtimeTranscript(session.sessionId, session.token, "agent", text, interrupted);
+              if (isFarewell(text)) nativeEndPendingRef.current = true;
+            },
+            onSpeaking: (value) => {
+              updateSpeaking(value);
+              if (!value && nativeEndPendingRef.current) {
+                nativeEndPendingRef.current = false;
+                window.setTimeout(end, 220);
+              }
+            },
+            onCallerSpeechStarted: () => {
+              updateSpeaking(false);
+              setPartial("Listening...");
+            },
+            onError: setError,
+            executeTool: (callId, name, argumentsJson) => executePublicRealtimeTool(
+              session.sessionId, session.token, callId, name, argumentsJson,
+            ),
+          },
+        });
+        return;
+      }
       if (session.mode === "turn") {
         if (session.greeting) setMessages([{ role: "agent", text: session.greeting }]);
         if (session.greetingAudioBase64) await playEncodedAudio(session.greetingAudioBase64);
@@ -290,7 +332,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   }
 
   function end() {
-    if (mode === "turn" && sessionIdRef.current && tokenRef.current) {
+    if (sessionIdRef.current && tokenRef.current) {
       void completePublicWebVoiceSession(sessionIdRef.current, tokenRef.current).catch(() => undefined);
     }
     socketRef.current?.close(1000, "Visitor ended the call");
@@ -320,6 +362,9 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     void contextRef.current?.close();
     contextRef.current = null;
     pcmQueueRef.current = [];
+    openAiConnectionRef.current?.close();
+    openAiConnectionRef.current = null;
+    nativeEndPendingRef.current = false;
     sessionIdRef.current = "";
     tokenRef.current = "";
   }
@@ -386,4 +431,8 @@ function downsample(samples: Float32Array, sourceRate: number, targetRate: numbe
     result[index] = sum / Math.max(1, end - start);
   }
   return result;
+}
+
+function isFarewell(text: string) {
+  return /(?:au revoir|bonne journ[ée]e|goodbye|bye[.! ]*$|مع السلامة|إلى اللقاء)/i.test(text.trim());
 }

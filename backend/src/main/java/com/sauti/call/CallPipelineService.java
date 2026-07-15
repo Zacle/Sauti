@@ -31,6 +31,7 @@ public class CallPipelineService {
     private final CallSessionStore callSessionStore;
     private final DashboardEventPublisher dashboardEventPublisher;
     private final PostCallAnalysisService postCallAnalysisService;
+    private final java.util.concurrent.ConcurrentMap<java.util.UUID, String> realtimeCallerTranscripts = new java.util.concurrent.ConcurrentHashMap<>();
 
     public CallPipelineService(
             CallRepository callRepository,
@@ -277,6 +278,44 @@ public class CallPipelineService {
         var turnIndex = callTurnRepository.countByCall_Id(call.getId()) + 1;
         callTurnRepository.save(new CallTurn(call, turnIndex, "", text, language, 0, 0, 0, false));
         callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), text, java.util.List.of());
+        callRepository.save(call);
+    }
+
+    @Transactional
+    public void recordRealtimeTranscript(
+            java.util.UUID tenantId,
+            java.util.UUID callId,
+            String role,
+            String text,
+            boolean interrupted
+    ) {
+        if (text == null || text.isBlank()) return;
+        var call = callRepository.findByIdAndTenantId(callId, tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Call not found"));
+        if (!call.isActive()) return;
+        var normalized = text.trim();
+        if ("caller".equalsIgnoreCase(role)) {
+            realtimeCallerTranscripts.put(callId, normalized);
+            callSessionStore.appendUserMessage(call.getTwilioCallSid(), normalized);
+            return;
+        }
+        if (!"agent".equalsIgnoreCase(role)) return;
+
+        var previous = callTurnRepository.findFirstByCall_IdOrderByTurnIndexDesc(callId).orElse(null);
+        if (previous != null && previous.getCallerTranscript().isBlank()
+                && normalized.equals(previous.getAgentResponse())) {
+            return;
+        }
+        var caller = realtimeCallerTranscripts.remove(callId);
+        if (caller == null) caller = "";
+        var language = call.getLanguageDetected() == null
+                ? call.getAgent().getDefaultLanguage()
+                : call.getLanguageDetected();
+        if (caller.isBlank()) call.appendAgentMessage(language, normalized);
+        else call.appendTurn(language, caller, normalized);
+        var turnIndex = callTurnRepository.countByCall_Id(callId) + 1;
+        callTurnRepository.save(new CallTurn(call, turnIndex, caller, normalized, language, 0, 0, 0, interrupted));
+        callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), normalized, java.util.List.of());
         callRepository.save(call);
     }
 

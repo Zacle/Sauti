@@ -1,0 +1,164 @@
+package com.sauti.call;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sauti.llm.ConversationOrchestrator;
+import com.sauti.llm.LlmToolCall;
+import com.sauti.llm.LlmToolResult;
+import com.sauti.tool.AgentToolLoader;
+import com.sauti.tool.ToolFulfillmentRouter;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+@Service
+public class OpenAiRealtimeService {
+    public static final String VOICE_PREFIX = "openai:";
+
+    private final ObjectMapper objectMapper;
+    private final ConversationOrchestrator conversationOrchestrator;
+    private final AgentToolLoader agentToolLoader;
+    private final ToolFulfillmentRouter toolRouter;
+    private final HttpClient httpClient;
+    private final String apiKey;
+    private final String callsUrl;
+    private final String model;
+    private final String transcriptionModel;
+
+    public OpenAiRealtimeService(
+            ObjectMapper objectMapper,
+            ConversationOrchestrator conversationOrchestrator,
+            AgentToolLoader agentToolLoader,
+            ToolFulfillmentRouter toolRouter,
+            @Value("${spring.ai.openai.api-key:}") String apiKey,
+            @Value("${sauti.realtime.openai.calls-url:https://api.openai.com/v1/realtime/calls}") String callsUrl,
+            @Value("${sauti.realtime.openai.model:gpt-realtime-1.5}") String model,
+            @Value("${sauti.realtime.openai.transcription-model:gpt-4o-mini-transcribe}") String transcriptionModel
+    ) {
+        this.objectMapper = objectMapper;
+        this.conversationOrchestrator = conversationOrchestrator;
+        this.agentToolLoader = agentToolLoader;
+        this.toolRouter = toolRouter;
+        this.apiKey = apiKey == null ? "" : apiKey.trim();
+        this.callsUrl = callsUrl;
+        this.model = model;
+        this.transcriptionModel = transcriptionModel;
+        this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
+    }
+
+    public boolean enabled() {
+        return !apiKey.isBlank();
+    }
+
+    public boolean usesOpenAiVoice(Call call) {
+        return call.getAgent().getTtsVoiceId() != null
+                && call.getAgent().getTtsVoiceId().startsWith(VOICE_PREFIX);
+    }
+
+    public String createWebRtcSession(Call call, String sdpOffer) {
+        if (!enabled()) throw new IllegalStateException("OpenAI Realtime is not configured");
+        if (!usesOpenAiVoice(call)) throw new IllegalArgumentException("This call does not use an OpenAI Realtime voice");
+        if (sdpOffer == null || sdpOffer.isBlank()) throw new IllegalArgumentException("A WebRTC SDP offer is required");
+
+        try {
+            var session = sessionConfiguration(call);
+            var boundary = "----SautiRealtime" + UUID.randomUUID().toString().replace("-", "");
+            var body = multipart(boundary, sdpOffer, objectMapper.writeValueAsString(session));
+            var request = HttpRequest.newBuilder(URI.create(callsUrl))
+                    .timeout(Duration.ofSeconds(20))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                    .build();
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IllegalStateException("OpenAI Realtime session failed with status " + response.statusCode());
+            }
+            return response.body();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("OpenAI Realtime session creation was interrupted", exception);
+        } catch (Exception exception) {
+            if (exception instanceof RuntimeException runtimeException) throw runtimeException;
+            throw new IllegalStateException("Unable to create the OpenAI Realtime session", exception);
+        }
+    }
+
+    public LlmToolResult executeTool(Call call, String callId, String name, String argumentsJson) {
+        try {
+            Map<String, Object> arguments = argumentsJson == null || argumentsJson.isBlank()
+                    ? Map.of()
+                    : objectMapper.readValue(argumentsJson, new TypeReference<>() { });
+            return toolRouter.route(call, new LlmToolCall(callId, name, arguments));
+        } catch (Exception exception) {
+            return new LlmToolResult(callId, name, false, Map.of(), "The requested action could not be completed");
+        }
+    }
+
+    private Map<String, Object> sessionConfiguration(Call call) {
+        var input = new LinkedHashMap<String, Object>();
+        input.put("noise_reduction", Map.of("type", "near_field"));
+        input.put("transcription", Map.of(
+                "model", transcriptionModel,
+                "language", call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected()
+        ));
+        input.put("turn_detection", Map.of(
+                "type", "server_vad",
+                "threshold", 0.45,
+                "prefix_padding_ms", 250,
+                "silence_duration_ms", 320,
+                "create_response", true,
+                "interrupt_response", true
+        ));
+
+        var tools = agentToolLoader.loadForAgent(call.getAgent().getId()).stream()
+                .map(tool -> {
+                    var definition = new LinkedHashMap<String, Object>();
+                    definition.put("type", "function");
+                    definition.put("name", tool.name());
+                    definition.put("description", tool.description() == null ? "" : tool.description());
+                    definition.put("parameters", tool.inputSchema() == null ? Map.of("type", "object") : tool.inputSchema());
+                    return definition;
+                })
+                .toList();
+        var voice = call.getAgent().getTtsVoiceId().substring(VOICE_PREFIX.length());
+        var session = new LinkedHashMap<String, Object>();
+        session.put("type", "realtime");
+        session.put("model", model);
+        session.put("instructions", conversationOrchestrator.realtimeInstructions(call, call.getLanguageDetected()));
+        session.put("output_modalities", List.of("audio"));
+        session.put("max_output_tokens", 180);
+        session.put("audio", Map.of(
+                "input", input,
+                "output", Map.of("voice", voice, "speed", 1.08)
+        ));
+        if (!tools.isEmpty()) {
+            session.put("tools", tools);
+            session.put("tool_choice", "auto");
+        }
+        return session;
+    }
+
+    private byte[] multipart(String boundary, String sdp, String sessionJson) {
+        var separator = "--" + boundary + "\r\n";
+        var body = separator
+                + "Content-Disposition: form-data; name=\"sdp\"\r\n"
+                + "Content-Type: application/sdp\r\n\r\n"
+                + sdp + "\r\n"
+                + separator
+                + "Content-Disposition: form-data; name=\"session\"\r\n"
+                + "Content-Type: application/json\r\n\r\n"
+                + sessionJson + "\r\n"
+                + "--" + boundary + "--\r\n";
+        return body.getBytes(StandardCharsets.UTF_8);
+    }
+}

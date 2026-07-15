@@ -294,6 +294,7 @@ export type StartTestCallResponse = {
   websocketUrl: string;
   token: string;
   inputSampleRate: number;
+  mode: "openai_realtime" | "cascade";
   settings: {
     bargeInSensitivity: number;
     bargeInGraceMs: number;

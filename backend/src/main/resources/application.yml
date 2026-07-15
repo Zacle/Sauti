@@ -76,6 +76,13 @@ sauti:
     token-secret: ${SAUTI_WEB_VOICE_TOKEN_SECRET:${JWT_SECRET:dev-only-change-me-dev-only-change-me}}
     token-minutes: ${SAUTI_WEB_VOICE_TOKEN_MINUTES:10}
     public-websocket-base-url: ${SAUTI_WEB_VOICE_WEBSOCKET_URL:ws://localhost:8082}
+  realtime:
+    openai:
+      calls-url: ${OPENAI_REALTIME_CALLS_URL:https://api.openai.com/v1/realtime/calls}
+      model: ${OPENAI_REALTIME_CONVERSATION_MODEL:gpt-realtime-1.5}
+      transcription-model: ${OPENAI_REALTIME_TRANSCRIPTION_MODEL:gpt-4o-mini-transcribe}
+      speech-url: ${OPENAI_SPEECH_URL:https://api.openai.com/v1/audio/speech}
+      preview-model: ${OPENAI_TTS_PREVIEW_MODEL:gpt-4o-mini-tts}
   whatsapp:
     access-token: ${WHATSAPP_ACCESS_TOKEN:}
     verify-token: ${WHATSAPP_VERIFY_TOKEN:}

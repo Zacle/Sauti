@@ -17,7 +17,7 @@ export type WebVoiceSession = {
   greetingAudioBase64: string | null;
   inputSampleRate: number;
   language: string;
-  mode: "realtime" | "turn";
+  mode: "openai_realtime" | "realtime" | "turn";
 };
 
 export type WebVoiceAudioTurn = {
@@ -75,4 +75,32 @@ export async function completePublicWebVoiceSession(sessionId: string, token: st
     const payload = await response.json().catch(() => ({})) as { message?: string };
     throw new Error(payload.message ?? "Unable to end this voice session.");
   }
+}
+
+export async function connectPublicRealtime(sessionId: string, token: string, sdp: string) {
+  const response = await fetch(`/api/v1/public/web-voice/sessions/${encodeURIComponent(sessionId)}/realtime/connect`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/sdp", Accept: "application/sdp" },
+    body: sdp,
+  });
+  if (!response.ok) throw new Error("Unable to establish the low-latency voice connection.");
+  return response.text();
+}
+
+export async function recordPublicRealtimeTranscript(sessionId: string, token: string, role: "caller" | "agent", text: string, interrupted = false) {
+  await fetch(`/api/v1/public/web-voice/sessions/${encodeURIComponent(sessionId)}/realtime/transcript`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ role, text, interrupted }),
+  });
+}
+
+export async function executePublicRealtimeTool(sessionId: string, token: string, callId: string, name: string, argumentsJson: string) {
+  const response = await fetch(`/api/v1/public/web-voice/sessions/${encodeURIComponent(sessionId)}/realtime/tool`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ callId, name, arguments: argumentsJson }),
+  });
+  if (!response.ok) return { success: false, error: "The requested action could not be completed" };
+  return response.json() as Promise<Record<string, unknown>>;
 }

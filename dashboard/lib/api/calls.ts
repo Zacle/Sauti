@@ -1,5 +1,5 @@
 import type { Call, CallTurn, StartTestCallResponse } from "@/types/api";
-import { apiBlobRequest, apiRequest, apiUpload } from "./client";
+import { apiBlobRequest, apiRequest, apiTextRequest, apiUpload } from "./client";
 
 export function listCalls() {
   return apiRequest<Call[]>("/calls");
@@ -71,6 +71,28 @@ export function getTestCallAudio(callId: string) {
 
 export function uploadCallRecording(callId: string, recording: Blob) {
   return apiUpload<Call>(`/calls/${callId}/recording`, recording);
+}
+
+export function connectTestRealtime(callId: string, sdp: string) {
+  return apiTextRequest(`/calls/${callId}/realtime/connect`, {
+    method: "POST",
+    headers: { "Content-Type": "application/sdp", Accept: "application/sdp" },
+    body: sdp,
+  });
+}
+
+export function recordTestRealtimeTranscript(callId: string, role: "caller" | "agent", text: string, interrupted = false) {
+  return apiRequest<void>(`/calls/${callId}/realtime/transcript`, {
+    method: "POST",
+    body: JSON.stringify({ role, text, interrupted }),
+  });
+}
+
+export function executeTestRealtimeTool(callId: string, toolCallId: string, name: string, argumentsJson: string) {
+  return apiRequest<Record<string, unknown>>(`/calls/${callId}/realtime/tool`, {
+    method: "POST",
+    body: JSON.stringify({ callId: toolCallId, name, arguments: argumentsJson }),
+  });
 }
 
 export function getCallRecording(callId: string) {

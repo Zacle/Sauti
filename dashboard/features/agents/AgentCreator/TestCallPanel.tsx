@@ -12,8 +12,12 @@ import {
   sendTestTurn,
   startTestCall,
   uploadCallRecording,
+  connectTestRealtime,
+  executeTestRealtimeTool,
+  recordTestRealtimeTranscript,
 } from "@/lib/api/calls";
 import type { StartTestCallResponse } from "@/types/api";
+import { connectOpenAiRealtime, type OpenAiRealtimeConnection } from "@/features/voice-runtime/openaiRealtime";
 
 type TestCallPanelProps = {
   agentId?: string;
@@ -94,6 +98,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const pcmQueueRef = useRef<number[]>([]);
   const playbackTimeRef = useRef(0);
   const playbackSourcesRef = useRef(new Set<AudioBufferSourceNode>());
+  const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
+  const nativeRealtimeRef = useRef(false);
+  const nativeEndPendingRef = useRef(false);
 
   function updateStatus(next: CallStatus) {
     statusRef.current = next;
@@ -132,13 +139,55 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       remoteEndPendingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
       setCallId(started.call.id);
-      await connectRealtimeVoice(started, stream);
-      startVoiceMonitor();
+      if (started.mode === "openai_realtime") {
+        nativeRealtimeRef.current = true;
+        await connectNativeRealtime(started, stream);
+      } else {
+        await connectRealtimeVoice(started, stream);
+        startVoiceMonitor();
+      }
     } catch (caught) {
       cleanupMedia();
       updateStatus("idle");
       setError(caught instanceof Error ? caught.message : "Unable to start the test call.");
     }
+  }
+
+  async function connectNativeRealtime(started: StartTestCallResponse, stream: MediaStream) {
+    openAiConnectionRef.current = await connectOpenAiRealtime({
+      microphone: stream,
+      greeting: started.greeting,
+      connectSdp: (offer) => connectTestRealtime(started.call.id, offer),
+      recordingDestination: recordingDestinationRef.current,
+      callbacks: {
+        onConnected: () => updateStatus("listening"),
+        onCallerTranscript: (text) => {
+          acceptedCallerTurnsRef.current += 1;
+          lastActivityAtRef.current = Date.now();
+          setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text }]);
+          updateStatus("thinking");
+          void recordTestRealtimeTranscript(started.call.id, "caller", text);
+        },
+        onAgentTranscript: (text, interrupted) => {
+          rememberAgentPrompt(text);
+          setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text }]);
+          void recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted);
+          if (isFarewell(text)) nativeEndPendingRef.current = true;
+        },
+        onSpeaking: (value) => {
+          updateStatus(value ? "speaking" : "listening");
+          if (!value && nativeEndPendingRef.current) {
+            nativeEndPendingRef.current = false;
+            window.setTimeout(() => void endCall("completed"), 220);
+          }
+        },
+        onCallerSpeechStarted: () => updateStatus("capturing"),
+        onError: (message) => setError(message),
+        executeTool: (toolCallId, name, argumentsJson) => executeTestRealtimeTool(
+          started.call.id, toolCallId, name, argumentsJson,
+        ),
+      },
+    });
   }
 
   async function prepareAudio(stream: MediaStream) {
@@ -314,7 +363,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       // sustained signal before treating it as an interruption of the agent.
       const bargeInDetected = rms >= Math.max(0.04, voiceThreshold * 1.5, noiseFloorRef.current * 3);
       const currentStatus = statusRef.current;
-      const realtimeConnected = socketRef.current?.readyState === WebSocket.OPEN;
+      const realtimeConnected = nativeRealtimeRef.current || socketRef.current?.readyState === WebSocket.OPEN;
 
       if (voiceDetected) {
         lastActivityAtRef.current = wallClock;
@@ -480,6 +529,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function toggleManualCapture() {
+    if (nativeRealtimeRef.current) return;
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       if (statusRef.current === "speaking") interruptRealtimeAgent();
       return;
@@ -652,6 +702,11 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     setError("");
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text: transcript }]);
     updateStatus("thinking");
+    if (nativeRealtimeRef.current && openAiConnectionRef.current) {
+      await recordTestRealtimeTranscript(activeCallId, "caller", transcript);
+      openAiConnectionRef.current.sendUserText(transcript);
+      return;
+    }
     try {
       const turn = await sendTestTurn(activeCallSid, transcript);
       lastActivityAtRef.current = Date.now();
@@ -778,6 +833,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     recordingDestinationRef.current = null;
     processorRef.current?.disconnect();
     processorRef.current = null;
+    openAiConnectionRef.current?.close();
+    openAiConnectionRef.current = null;
+    nativeRealtimeRef.current = false;
+    nativeEndPendingRef.current = false;
     const socket = socketRef.current;
     socketRef.current = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "Test call ended");
@@ -848,4 +907,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       )}
     </aside>
   );
+}
+
+function isFarewell(text: string) {
+  return /(?:au revoir|bonne journ[ée]e|goodbye|bye[.! ]*$|مع السلامة|إلى اللقاء)/i.test(text.trim());
 }

@@ -10,6 +10,9 @@ import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionRequest;
 import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionResponse;
 import com.sauti.call.WebVoiceDtos.WebVoiceAudioTurnResponse;
 import com.sauti.call.WebVoiceTokenService;
+import com.sauti.call.OpenAiRealtimeService;
+import com.sauti.call.RealtimeDtos.RealtimeToolRequest;
+import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
 import com.sauti.voice.VoiceCatalogService;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,6 +22,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -38,6 +43,7 @@ public class PublicWebVoiceController {
     private final BrowserSpeechToTextService speechToTextService;
     private final VoiceCatalogService voiceCatalogService;
     private final String websocketBaseUrl;
+    private final OpenAiRealtimeService openAiRealtimeService;
     private final Map<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
     public PublicWebVoiceController(
@@ -47,6 +53,7 @@ public class PublicWebVoiceController {
             WebVoiceTokenService tokenService,
             BrowserSpeechToTextService speechToTextService,
             VoiceCatalogService voiceCatalogService,
+            OpenAiRealtimeService openAiRealtimeService,
             @Value("${sauti.web-voice.public-websocket-base-url:ws://localhost:8082}") String websocketBaseUrl
     ) {
         this.agentRepository = agentRepository;
@@ -55,6 +62,7 @@ public class PublicWebVoiceController {
         this.tokenService = tokenService;
         this.speechToTextService = speechToTextService;
         this.voiceCatalogService = voiceCatalogService;
+        this.openAiRealtimeService = openAiRealtimeService;
         this.websocketBaseUrl = websocketBaseUrl.replaceFirst("/+$", "");
     }
 
@@ -99,7 +107,9 @@ public class PublicWebVoiceController {
         var call = callPipelineService.startWebCall(publicId, preferredLanguage);
         var token = tokenService.issue(call.getTwilioCallSid(), publicId);
         var language = call.getLanguageDetected();
-        var mode = "realtime";
+        var mode = openAiRealtimeService.enabled() && openAiRealtimeService.usesOpenAiVoice(call)
+                ? "openai_realtime"
+                : "realtime";
         var greeting = callPipelineService.openingGreeting(call);
         return new StartWebVoiceSessionResponse(
                 call.getId(),
@@ -112,6 +122,40 @@ public class PublicWebVoiceController {
                 language,
                 mode
         );
+    }
+
+    @PostMapping(value = "/sessions/{sessionId}/realtime/connect", consumes = "application/sdp", produces = "application/sdp")
+    ResponseEntity<String> connectRealtime(
+            @PathVariable String sessionId,
+            @RequestBody String sdpOffer,
+            HttpServletRequest request
+    ) {
+        var call = verifiedPublicCall(sessionId, request);
+        return ResponseEntity.ok()
+                .contentType(MediaType.valueOf("application/sdp"))
+                .body(openAiRealtimeService.createWebRtcSession(call, sdpOffer));
+    }
+
+    @PostMapping("/sessions/{sessionId}/realtime/transcript")
+    @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.NO_CONTENT)
+    void recordRealtimeTranscript(
+            @PathVariable String sessionId,
+            @RequestBody RealtimeTranscriptRequest transcript,
+            HttpServletRequest request
+    ) {
+        var call = verifiedPublicCall(sessionId, request);
+        callPipelineService.recordRealtimeTranscript(
+                call.getTenant().getId(), call.getId(), transcript.role(), transcript.text(), transcript.interrupted());
+    }
+
+    @PostMapping("/sessions/{sessionId}/realtime/tool")
+    com.sauti.llm.LlmToolResult realtimeTool(
+            @PathVariable String sessionId,
+            @RequestBody RealtimeToolRequest tool,
+            HttpServletRequest request
+    ) {
+        var call = verifiedPublicCall(sessionId, request);
+        return openAiRealtimeService.executeTool(call, tool.callId(), tool.name(), tool.arguments());
     }
 
     @PostMapping(value = "/sessions/{sessionId}/turn-audio", consumes = {"audio/webm", "application/octet-stream"})
@@ -173,6 +217,18 @@ public class PublicWebVoiceController {
                 .filter(Agent::isActive)
                 .filter(Agent::isWebVoiceEnabled)
                 .orElseThrow(() -> new EntityNotFoundException("Web Voice agent not found"));
+    }
+
+    private com.sauti.call.Call verifiedPublicCall(String sessionId, HttpServletRequest request) {
+        var principal = verifyBearer(request);
+        if (!sessionId.equals(principal.callSid())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Invalid Web Voice session token");
+        }
+        return callRepository.findByTwilioCallSid(sessionId)
+                .filter(candidate -> "web".equals(candidate.getDirection()))
+                .filter(com.sauti.call.Call::isActive)
+                .filter(candidate -> principal.publicAgentId().equals(candidate.getAgent().getWebVoicePublicId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Web Voice session is unavailable"));
     }
 
     private void enforceRateLimit(String client) {

@@ -70,6 +70,19 @@ export async function apiBlobRequest(path: string, init: RequestInit = {}, retry
   return response.blob();
 }
 
+export async function apiTextRequest(path: string, init: RequestInit = {}, retry = true): Promise<string> {
+  const session = readSession();
+  const headers = new Headers(init.headers);
+  if (session?.accessToken) headers.set("Authorization", `Bearer ${session.accessToken}`);
+  const response = await fetch(`/api/v1${path}`, { ...init, headers });
+  if (response.status === 401 && session?.refreshToken && retry) {
+    await refreshSession(session);
+    return apiTextRequest(path, init, false);
+  }
+  if (!response.ok) throw new ApiError(await parseError(response), response.status);
+  return response.text();
+}
+
 export async function apiUpload<T>(path: string, body: Blob, retry = true): Promise<T> {
   const session = readSession();
   const headers = new Headers({ "Content-Type": body.type || "application/octet-stream", Accept: "application/json" });

@@ -85,7 +85,8 @@ public final class CallDtos {
             TestCallSettings settings,
             String websocketUrl,
             String token,
-            int inputSampleRate
+            int inputSampleRate,
+            String mode
     ) {
     }
 

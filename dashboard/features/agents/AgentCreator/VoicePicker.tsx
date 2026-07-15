@@ -29,6 +29,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   const [languageFilter, setLanguageFilter] = useState("recommended");
   const [accentFilter, setAccentFilter] = useState("all");
   const [accentOpen, setAccentOpen] = useState(false);
+  const [providerFilter, setProviderFilter] = useState<"all" | "openai" | "cartesia">("all");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -37,6 +38,10 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
         setVoices(catalog.voices);
         setEnabledProviders(catalog.enabledProviders);
         setProviderEnabled(catalog.enabledProviders.length > 0);
+        if (!value) {
+          const realtimeDefault = catalog.voices.find((voice) => voice.id === "openai:marin");
+          if (realtimeDefault) onChange(realtimeDefault.id);
+        }
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load voices."))
       .finally(() => setLoading(false));
@@ -78,15 +83,16 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   const filteredVoices = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return voices.filter((voice) => {
+      const matchesProvider = providerFilter === "all" || voice.provider === providerFilter;
       const matchesAccent = accentFilter === "all"
         || voice.traits.accent?.trim().toLowerCase() === accentFilter;
       const matchesQuery = !normalizedQuery
         || `${voice.name} ${voice.description ?? ""} ${Object.values(voice.traits).join(" ")}`
           .toLowerCase()
           .includes(normalizedQuery);
-      return matchesAccent && matchesQuery;
+      return matchesProvider && matchesAccent && matchesQuery;
     });
-  }, [accentFilter, query, voices]);
+  }, [accentFilter, providerFilter, query, voices]);
   const voiceCoverage = useMemo(
     () => Object.fromEntries(visibleLanguages.map((language) => [
       language,
@@ -166,7 +172,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
         <span><Mic2 size={17} /></span>
         <div>
           <strong>{selectedVoice?.name ?? (value ? "Custom provider voice" : "Choose a voice")}</strong>
-          <small>{selectedVoice ? `${selectedVoice.languages.length > 1 ? "Multilingual" : languageName(selectedVoice.languages[0] ?? primaryLanguage)} · ${selectedVoice.traits.description ?? selectedVoice.traits.accent ?? selectedVoice.category}` : "Preview and select a voice for the caller's language"}</small>
+          <small>{selectedVoice ? `${providerName(selectedVoice.provider)} · ${selectedVoice.languages.length > 1 ? "Multilingual" : languageName(selectedVoice.languages[0] ?? primaryLanguage)} · ${selectedVoice.traits.description ?? selectedVoice.traits.accent ?? selectedVoice.category}` : "Preview and select a voice for the caller's language"}</small>
         </div>
         <ChevronDown size={16} />
       </button>
@@ -215,6 +221,14 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               </div>
             </div>
 
+            <div className="voice-provider-tabs" aria-label="Voice engine">
+              <button className={providerFilter === "all" ? "active" : ""} type="button" onClick={() => setProviderFilter("all")}>
+                All engines <span>{voices.length}</span>
+              </button>
+              {enabledProviders.includes("openai") && <button className={providerFilter === "openai" ? "active" : ""} type="button" onClick={() => setProviderFilter("openai")}><b>OpenAI Realtime</b><small>Lowest latency · native speech-to-speech</small></button>}
+              {enabledProviders.includes("cartesia") && <button className={providerFilter === "cartesia" ? "active" : ""} type="button" onClick={() => setProviderFilter("cartesia")}><b>Cartesia</b><small>Custom voice · cascaded STT + LLM + TTS</small></button>}
+            </div>
+
             <div className="voice-language-tabs" aria-label="Voice language">
               <button className={languageFilter === "recommended" ? "active" : ""} onClick={() => setLanguageFilter("recommended")} type="button">
                 Best match
@@ -236,7 +250,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               {previewError && <div className="voice-preview-error">{previewError}</div>}
               {loading && <div className="voice-picker-state"><LoaderCircle className="spin" size={22} /> Loading available voices...</div>}
               {!loading && error && <div className="voice-picker-state error">{error}<small>Check the configured TTS provider credentials.</small></div>}
-              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure Cartesia in the backend environment.</small></div>}
+              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure OpenAI or Cartesia credentials in the backend environment.</small></div>}
               {!loading && !error && providerEnabled && unsupportedLanguage && (
                 <div className="voice-language-unavailable">
                   <CircleAlert aria-hidden="true" size={20} />
@@ -282,7 +296,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
                     <span className="voice-option-radio">{selected && <Check size={13} />}</span>
                     <span className="voice-option-avatar">{voice.name.slice(0, 1).toUpperCase()}</span>
                     <span className="voice-option-copy">
-                      <strong>{voice.name}{languageFilter === "recommended" && index < 3 && <em>Recommended</em>}</strong>
+                      <strong>{voice.name}<em className={`provider-${voice.provider}`}>{providerName(voice.provider)}</em>{languageFilter === "recommended" && index < 3 && <em>Recommended</em>}</strong>
                       <small>{voice.description || voice.category}</small>
                       <span>
                         {languageFilter === "recommended" && <i>{covered}/{configuredLanguages.length} languages</i>}
@@ -356,7 +370,11 @@ function compareVoiceQuality(left: VoiceOption, right: VoiceOption, languages: s
 }
 
 function providerRank(provider: string) {
-  return provider === "cartesia" ? 0 : 1;
+  return provider === "openai" ? 0 : provider === "cartesia" ? 1 : 2;
+}
+
+function providerName(provider: string) {
+  return provider === "openai" ? "OpenAI Realtime" : provider === "cartesia" ? "Cartesia" : titleCase(provider);
 }
 
 function categoryRank(category: string) {

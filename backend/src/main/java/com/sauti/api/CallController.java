@@ -16,6 +16,9 @@ import com.sauti.call.CallQueryService;
 import com.sauti.call.CallRecordingService;
 import com.sauti.call.CallTurnRepository;
 import com.sauti.call.WebVoiceTokenService;
+import com.sauti.call.OpenAiRealtimeService;
+import com.sauti.call.RealtimeDtos.RealtimeToolRequest;
+import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
 import com.sauti.voice.VoiceCatalogService;
 import java.util.List;
 import java.util.UUID;
@@ -47,6 +50,7 @@ public class CallController {
     private final BrowserSpeechToTextService browserSpeechToTextService;
     private final WebVoiceTokenService webVoiceTokenService;
     private final String webVoiceWebsocketUrl;
+    private final OpenAiRealtimeService openAiRealtimeService;
 
     public CallController(
             CallQueryService callQueryService,
@@ -56,6 +60,7 @@ public class CallController {
             VoiceCatalogService voiceCatalogService,
             BrowserSpeechToTextService browserSpeechToTextService,
             WebVoiceTokenService webVoiceTokenService,
+            OpenAiRealtimeService openAiRealtimeService,
             @Value("${sauti.web-voice.public-websocket-base-url:ws://localhost:8082}") String webVoiceWebsocketUrl
     ) {
         this.callQueryService = callQueryService;
@@ -65,6 +70,7 @@ public class CallController {
         this.voiceCatalogService = voiceCatalogService;
         this.browserSpeechToTextService = browserSpeechToTextService;
         this.webVoiceTokenService = webVoiceTokenService;
+        this.openAiRealtimeService = openAiRealtimeService;
         this.webVoiceWebsocketUrl = webVoiceWebsocketUrl;
     }
 
@@ -94,8 +100,49 @@ public class CallController {
                 TestCallSettings.from(call.getAgent()),
                 webVoiceWebsocketUrl + "/ws/web-voice/" + call.getTwilioCallSid() + "?token=" + token,
                 token,
-                16000
+                16000,
+                openAiRealtimeService.enabled() && openAiRealtimeService.usesOpenAiVoice(call)
+                        ? "openai_realtime"
+                        : "cascade"
         );
+    }
+
+    @PostMapping(value = "/{id}/realtime/connect", consumes = "application/sdp", produces = "application/sdp")
+    ResponseEntity<String> connectRealtime(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID id,
+            @RequestBody String sdpOffer
+    ) {
+        var call = callQueryService.get(user.tenantId(), id);
+        if (!"test".equals(call.getDirection()) || !call.isActive()) {
+            throw new IllegalArgumentException("The browser test call is not active");
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.valueOf("application/sdp"))
+                .body(openAiRealtimeService.createWebRtcSession(call, sdpOffer));
+    }
+
+    @PostMapping("/{id}/realtime/transcript")
+    @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.NO_CONTENT)
+    void recordRealtimeTranscript(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID id,
+            @RequestBody RealtimeTranscriptRequest request
+    ) {
+        callPipelineService.recordRealtimeTranscript(user.tenantId(), id, request.role(), request.text(), request.interrupted());
+    }
+
+    @PostMapping("/{id}/realtime/tool")
+    com.sauti.llm.LlmToolResult realtimeTool(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID id,
+            @RequestBody RealtimeToolRequest request
+    ) {
+        var call = callQueryService.get(user.tenantId(), id);
+        if (!"test".equals(call.getDirection()) || !call.isActive()) {
+            throw new IllegalArgumentException("The browser test call is not active");
+        }
+        return openAiRealtimeService.executeTool(call, request.callId(), request.name(), request.arguments());
     }
 
     @PostMapping("/{twilioCallSid}/simulate-turn")

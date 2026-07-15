@@ -2390,3 +2390,48 @@ Expected:
   - `git diff --check`
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-15 - Provider-aware OpenAI Realtime voice path
+
+- Added a native OpenAI Realtime WebRTC path for authenticated Agent Studio test calls and public Web Voice calls. Browser audio now travels directly over the Realtime peer connection after Sauti performs the authenticated server-side SDP exchange; the OpenAI API key is never returned to the browser.
+- Kept the existing Deepgram -> OpenAI text LLM -> Cartesia TTS cascade intact for Cartesia voices. Runtime routing is explicit from the stored voice prefix: `openai:*` selects native speech-to-speech, while `cartesia:*` selects the cascade.
+- Added the current OpenAI Realtime built-in voices to the catalog, with `openai:marin` as the default for agents without a selected voice. OpenAI and Cartesia are visibly separated in Agent Studio, and each provider uses its own compatible preview endpoint.
+- Configured native server VAD for fast end-of-turn detection and automatic response interruption. Caller speech stops Realtime output, allowing true barge-in rather than merely transcribing over agent playback.
+- Forwarded Realtime function calls through the existing tenant/agent-scoped `ToolFulfillmentRouter`, preserving booking and integration actions. Caller/agent transcripts are posted back to Sauti and persisted as call turns; mutual goodbyes close the browser call after playback completes.
+- Added OpenAI Realtime/TTS configuration placeholders to local and production environment examples. Defaults are `gpt-realtime-1.5`, `gpt-4o-mini-transcribe`, and `gpt-4o-mini-tts`, all overridable through environment variables.
+- Added focused tests for provider-separated voice catalog behavior and the server-side multipart Realtime SDP request, including authorization, model, VAD interruption, voice, and transcription settings.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
+  - `backend/src/main/java/com/sauti/call/CallDtos.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeService.java`
+  - `backend/src/main/java/com/sauti/call/RealtimeDtos.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiRealtimeServiceTest.java`
+  - `backend/src/test/java/com/sauti/voice/VoiceCatalogServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/lib/api/calls.ts`
+  - `dashboard/lib/api/client.ts`
+  - `dashboard/lib/api/public-web-voice.ts`
+  - `dashboard/types/api.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test`
+  - `.\gradlew.bat :backend:test --tests "com.sauti.voice.VoiceCatalogServiceTest" --tests "com.sauti.call.OpenAiRealtimeServiceTest"`
+  - `npm.cmd run typecheck`
+  - `npm.cmd run build` (50 routes generated successfully)
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - Native Realtime routing is implemented for browser/WebRTC calls. Telnyx/Twilio phone media continues to use the existing cascade until a provider-native SIP or server WebSocket Realtime bridge is implemented and load-tested.
+  - A live OpenAI session was not opened during automated verification; production requires a funded `OPENAI_API_KEY` with Realtime access and browser/network access to WebRTC.

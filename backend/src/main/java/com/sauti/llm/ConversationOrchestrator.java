@@ -154,6 +154,23 @@ public class ConversationOrchestrator {
         }
     }
 
+    /**
+     * Builds the stable instruction block used by native speech-to-speech sessions.
+     * Realtime sessions keep their own conversation history, so this intentionally
+     * avoids doing retrieval work for every spoken turn.
+     */
+    public String realtimeInstructions(Call call, String language) {
+        var resolvedLanguage = language == null || language.isBlank()
+                ? call.getAgent().getDefaultLanguage()
+                : language.trim().toLowerCase(java.util.Locale.ROOT);
+        return systemPrompt(call, resolvedLanguage, agentToolLoader.loadForAgent(call.getAgent().getId()), "")
+                + "\nNATIVE REALTIME AUDIO RULES:\n"
+                + "- Respond as soon as the caller finishes, usually in one short sentence.\n"
+                + "- If the caller begins speaking while you are speaking, stop immediately and listen.\n"
+                + "- Do not repeat a greeting after the opening turn.\n"
+                + "- End cleanly after a mutual goodbye; never send an extra reminder after goodbye.\n";
+    }
+
     private String recoverWithoutTools(Call call, String language, String callerTranscript) {
         try {
             var systemPrompt = systemPrompt(call, language, List.of(), callerTranscript);
