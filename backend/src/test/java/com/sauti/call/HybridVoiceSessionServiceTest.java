@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -44,7 +45,10 @@ class HybridVoiceSessionServiceTest {
         var delayedTts = new CompletableFuture<RealtimeTtsSession>();
         when(provider.open(eq("fr"), eq("cartesia:french-voice"), any())).thenReturn(delayedTts);
         var listener = ArgumentCaptor.forClass(TtsAudioListener.class);
-        var service = new HybridVoiceSessionService(repository, provider, new ObjectMapper());
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
 
         service.start("test-hybrid", agentId.toString(), socket);
         verify(provider).open(eq("fr"), eq("cartesia:french-voice"), listener.capture());
@@ -84,7 +88,10 @@ class HybridVoiceSessionServiceTest {
         when(socket.isOpen()).thenReturn(true);
         when(provider.open(eq("en"), eq("cartesia:english-voice"), any()))
                 .thenReturn(CompletableFuture.completedFuture(first), CompletableFuture.completedFuture(second));
-        var service = new HybridVoiceSessionService(repository, provider, new ObjectMapper());
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
 
         service.start("interrupt-hybrid", agentId.toString(), socket);
         service.accept("interrupt-hybrid", "{\"type\":\"interrupt\"}");

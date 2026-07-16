@@ -81,8 +81,7 @@ public class IntegrationService {
     @Transactional
     public void disconnect(UUID tenantId, UUID id) {
         var connection = requireConnection(tenantId, id);
-        bindings.findAll().stream()
-                .filter(binding -> tenantId.equals(binding.getTenantId()) && id.equals(binding.getConnectionId()))
+        bindings.findAllByTenantIdAndConnectionId(tenantId, id).stream()
                 .forEach(binding -> {
                     binding.disconnect();
                     if ("whatsapp".equals(connection.getProvider())) {

@@ -12,7 +12,6 @@ import {
   PhoneCall,
   RefreshCw,
   Route,
-  Send,
   TrendingUp,
   UsersRound,
 } from "lucide-react";

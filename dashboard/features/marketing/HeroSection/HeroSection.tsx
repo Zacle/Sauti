@@ -2,14 +2,9 @@
 
 import { useEffect, useState } from "react";
 import {
-  ArrowRight,
   CalendarCheck,
-  Languages,
-  Mic2,
-  Pause,
   PhoneCall,
   Play,
-  Radio,
   RotateCcw,
   Sparkles,
   Volume2,

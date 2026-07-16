@@ -1,8 +1,5 @@
 import type { Metadata } from "next";
 import { CategoryScreen } from "@/features/marketing/DestinationScreen/DestinationScreen";
-import { groupFor } from "@/features/marketing/site-map";
-
-const group = groupFor("solutions");
 
 export const metadata: Metadata = {
   title: "Solutions | Sauti",

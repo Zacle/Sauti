@@ -1,10 +1,10 @@
 package com.sauti.api;
 
 import com.sauti.agent.Agent;
-import com.sauti.agent.AgentRepository;
 import com.sauti.call.BrowserSpeechToTextService;
 import com.sauti.call.CallPipelineService;
-import com.sauti.call.CallRepository;
+import com.sauti.call.PublicWebVoiceAccessService;
+import com.sauti.call.PublicWebVoiceRateLimitService;
 import com.sauti.call.WebVoiceDtos.PublicAgentResponse;
 import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionRequest;
 import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionResponse;
@@ -15,12 +15,9 @@ import com.sauti.call.CartesiaRealtimeTextToSpeechClient;
 import com.sauti.call.RealtimeDtos.RealtimeToolRequest;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
 import com.sauti.voice.VoiceCatalogService;
-import jakarta.persistence.EntityNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Base64;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
@@ -42,8 +39,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class PublicWebVoiceController {
     private static final Logger LOGGER = LoggerFactory.getLogger(PublicWebVoiceController.class);
     private static final Set<String> TURN_BASED_LANGUAGES = Set.of("fr", "ar");
-    private final AgentRepository agentRepository;
-    private final CallRepository callRepository;
+    private final PublicWebVoiceAccessService accessService;
+    private final PublicWebVoiceRateLimitService rateLimitService;
     private final CallPipelineService callPipelineService;
     private final WebVoiceTokenService tokenService;
     private final BrowserSpeechToTextService speechToTextService;
@@ -51,11 +48,10 @@ public class PublicWebVoiceController {
     private final String websocketBaseUrl;
     private final OpenAiRealtimeService openAiRealtimeService;
     private final CartesiaRealtimeTextToSpeechClient cartesiaClient;
-    private final Map<String, RateWindow> rateWindows = new ConcurrentHashMap<>();
 
     public PublicWebVoiceController(
-            AgentRepository agentRepository,
-            CallRepository callRepository,
+            PublicWebVoiceAccessService accessService,
+            PublicWebVoiceRateLimitService rateLimitService,
             CallPipelineService callPipelineService,
             WebVoiceTokenService tokenService,
             BrowserSpeechToTextService speechToTextService,
@@ -64,8 +60,8 @@ public class PublicWebVoiceController {
             CartesiaRealtimeTextToSpeechClient cartesiaClient,
             @Value("${sauti.web-voice.public-websocket-base-url:ws://localhost:8082}") String websocketBaseUrl
     ) {
-        this.agentRepository = agentRepository;
-        this.callRepository = callRepository;
+        this.accessService = accessService;
+        this.rateLimitService = rateLimitService;
         this.callPipelineService = callPipelineService;
         this.tokenService = tokenService;
         this.speechToTextService = speechToTextService;
@@ -95,7 +91,7 @@ public class PublicWebVoiceController {
             @RequestBody(required = false) StartWebVoiceSessionRequest request,
             HttpServletRequest httpRequest
     ) {
-        enforceRateLimit(publicId + ":" + clientAddress(httpRequest));
+        rateLimitService.checkSessionStart(publicId, clientAddress(httpRequest));
         var agent = publicAgent(publicId);
         if ((agent.isWebVoiceRequireConsent() || agent.isRecordCalls())
                 && (request == null || !request.consentAccepted())) {
@@ -205,11 +201,7 @@ public class PublicWebVoiceController {
         if (!sessionId.equals(principal.callSid())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Invalid Web Voice session token");
         }
-        var call = callRepository.findByTwilioCallSid(sessionId)
-                .filter(candidate -> "web".equals(candidate.getDirection()))
-                .filter(com.sauti.call.Call::isActive)
-                .filter(candidate -> principal.publicAgentId().equals(candidate.getAgent().getWebVoicePublicId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Web Voice session is unavailable"));
+        var call = accessService.requireActiveCall(sessionId, principal.publicAgentId());
         if (!turnBased(call.getLanguageDetected())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This Web Voice session uses realtime audio");
         }
@@ -240,20 +232,14 @@ public class PublicWebVoiceController {
         if (!sessionId.equals(principal.callSid())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Invalid Web Voice session token");
         }
-        var call = callRepository.findByTwilioCallSid(sessionId)
-                .filter(candidate -> "web".equals(candidate.getDirection()))
-                .filter(candidate -> principal.publicAgentId().equals(candidate.getAgent().getWebVoicePublicId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Web Voice session is unavailable"));
+        var call = accessService.requireCall(sessionId, principal.publicAgentId());
         if (call.isActive()) {
             callPipelineService.completeActiveCall(sessionId, "completed");
         }
     }
 
     private Agent publicAgent(String publicId) {
-        return agentRepository.findByWebVoicePublicId(publicId)
-                .filter(Agent::isActive)
-                .filter(Agent::isWebVoiceEnabled)
-                .orElseThrow(() -> new EntityNotFoundException("Web Voice agent not found"));
+        return accessService.requirePublicAgent(publicId);
     }
 
     private com.sauti.call.Call verifiedPublicCall(String sessionId, HttpServletRequest request) {
@@ -261,27 +247,7 @@ public class PublicWebVoiceController {
         if (!sessionId.equals(principal.callSid())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Invalid Web Voice session token");
         }
-        return callRepository.findByTwilioCallSid(sessionId)
-                .filter(candidate -> "web".equals(candidate.getDirection()))
-                .filter(com.sauti.call.Call::isActive)
-                .filter(candidate -> principal.publicAgentId().equals(candidate.getAgent().getWebVoicePublicId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Web Voice session is unavailable"));
-    }
-
-    private void enforceRateLimit(String client) {
-        var now = System.currentTimeMillis();
-        if (rateWindows.size() > 10_000) {
-            rateWindows.entrySet().removeIf(entry -> now - entry.getValue().startedAt() >= 60_000);
-        }
-        rateWindows.compute(client, (key, current) -> {
-            var window = current == null || now - current.startedAt() >= 60_000
-                    ? new RateWindow(now, 0)
-                    : current;
-            if (window.count() >= 10) {
-                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Too many Web Voice sessions");
-            }
-            return new RateWindow(window.startedAt(), window.count() + 1);
-        });
+        return accessService.requireActiveCall(sessionId, principal.publicAgentId());
     }
 
     private String clientAddress(HttpServletRequest request) {
@@ -340,6 +306,4 @@ public class PublicWebVoiceController {
                 .orElse("");
     }
 
-    private record RateWindow(long startedAt, int count) {
-    }
 }

@@ -103,6 +103,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const hybridRealtimeRef = useRef(false);
   const nativeEndPendingRef = useRef(false);
   const transcriptWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const cleanupMediaRef = useRef<() => void>(() => undefined);
+  cleanupMediaRef.current = cleanupMedia;
 
   function updateStatus(next: CallStatus) {
     statusRef.current = next;
@@ -113,7 +115,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  useEffect(() => () => cleanupMedia(), []);
+  useEffect(() => () => cleanupMediaRef.current(), []);
 
   async function beginCall() {
     if (!agentId) return;
@@ -619,33 +621,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     if (recorder?.state === "recording") {
       updateStatus("thinking");
       recorder.stop();
-    }
-  }
-
-  function toggleManualCapture() {
-    if (nativeRealtimeRef.current) return;
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      if (statusRef.current === "speaking") interruptRealtimeAgent();
-      return;
-    }
-    if (statusRef.current === "capturing" && utteranceModeRef.current === "manual") {
-      stopUtteranceCapture();
-      return;
-    }
-    if (statusRef.current === "speaking") {
-      setError("");
-      try {
-        agentAudioSourceRef.current?.stop();
-      } catch {
-        // The source may have ended between the button click and stop request.
-      }
-      agentAudioSourceRef.current = null;
-      startUtteranceCapture(true, "manual");
-      return;
-    }
-    if (statusRef.current === "listening" || statusRef.current === "thinking") {
-      setError("");
-      startUtteranceCapture(statusRef.current === "thinking", "manual");
     }
   }
 

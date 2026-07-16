@@ -14,7 +14,6 @@ import com.sauti.call.BrowserSpeechToTextService;
 import com.sauti.call.CallPipelineService;
 import com.sauti.call.CallQueryService;
 import com.sauti.call.CallRecordingService;
-import com.sauti.call.CallTurnRepository;
 import com.sauti.call.WebVoiceTokenService;
 import com.sauti.call.OpenAiRealtimeService;
 import com.sauti.call.CartesiaRealtimeTextToSpeechClient;
@@ -47,7 +46,6 @@ public class CallController {
     private static final Logger LOGGER = LoggerFactory.getLogger(CallController.class);
     private final CallQueryService callQueryService;
     private final CallPipelineService callPipelineService;
-    private final CallTurnRepository callTurnRepository;
     private final CallRecordingService callRecordingService;
     private final VoiceCatalogService voiceCatalogService;
     private final BrowserSpeechToTextService browserSpeechToTextService;
@@ -59,7 +57,6 @@ public class CallController {
     public CallController(
             CallQueryService callQueryService,
             CallPipelineService callPipelineService,
-            CallTurnRepository callTurnRepository,
             CallRecordingService callRecordingService,
             VoiceCatalogService voiceCatalogService,
             BrowserSpeechToTextService browserSpeechToTextService,
@@ -70,7 +67,6 @@ public class CallController {
     ) {
         this.callQueryService = callQueryService;
         this.callPipelineService = callPipelineService;
-        this.callTurnRepository = callTurnRepository;
         this.callRecordingService = callRecordingService;
         this.voiceCatalogService = voiceCatalogService;
         this.browserSpeechToTextService = browserSpeechToTextService;
@@ -96,8 +92,7 @@ public class CallController {
             @RequestBody StartTestCallRequest request
     ) {
         var call = callPipelineService.startTestCall(user.tenantId(), request.agentId(), request.ttsVoiceId());
-        var greeting = callTurnRepository.findByCall_IdOrderByTurnIndexAsc(call.getId()).stream()
-                .findFirst().map(turn -> turn.getAgentResponse()).orElse("");
+        var greeting = callQueryService.firstAgentResponse(user.tenantId(), call.getId());
         var agentKey = call.getAgent().getId().toString();
         var token = webVoiceTokenService.issue(call.getTwilioCallSid(), agentKey);
         var mode = realtimeMode(call);
@@ -240,14 +235,13 @@ public class CallController {
         var callerTranscript = transcribeTestAudio(call, audio);
         var sttMs = elapsedMs(sttStart);
         var turn = processTestTranscriptTurn(user.tenantId(), call, callerTranscript, sttMs);
-        var persistedTurn = callTurnRepository.findFirstByCall_IdOrderByTurnIndexDesc(id).orElse(null);
+        var persistedTurn = callQueryService.lastTurn(user.tenantId(), id);
         var acceptedTranscript = turn.acceptedTranscript() ? callerTranscript : "";
         var ttsStart = System.nanoTime();
         var synthesized = synthesizeTestTurn(call, turn.language(), turn.response());
         var ttsMs = elapsedMs(ttsStart);
         if (persistedTurn != null) {
-            persistedTurn.recordTtsLatency(ttsMs);
-            callTurnRepository.save(persistedTurn);
+            persistedTurn = callQueryService.recordLatestTtsLatency(user.tenantId(), id, ttsMs);
         }
         return new TestAudioTurnResponse(
                 acceptedTranscript,
@@ -267,8 +261,7 @@ public class CallController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID id
     ) {
-        callQueryService.get(user.tenantId(), id);
-        return callTurnRepository.findByCall_IdOrderByTurnIndexAsc(id).stream()
+        return callQueryService.turns(user.tenantId(), id).stream()
                 .map(CallTurnResponse::from)
                 .toList();
     }
@@ -279,9 +272,7 @@ public class CallController {
             @PathVariable UUID id
     ) {
         var call = callQueryService.get(user.tenantId(), id);
-        var lastTurn = callTurnRepository.findByCall_IdOrderByTurnIndexAsc(id).stream()
-                .reduce((first, second) -> second)
-                .orElseThrow(() -> new IllegalArgumentException("Call has no agent response"));
+        var lastTurn = callQueryService.lastTurn(user.tenantId(), id);
         return ResponseEntity.ok()
                 .contentType(MediaType.valueOf("audio/mpeg"))
                 .cacheControl(CacheControl.noStore())

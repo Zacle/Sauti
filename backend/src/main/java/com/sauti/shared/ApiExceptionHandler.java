@@ -3,6 +3,7 @@ package com.sauti.shared;
 import jakarta.persistence.EntityNotFoundException;
 import com.sauti.auth.RateLimitExceededException;
 import com.sauti.auth.UnverifiedEmailException;
+import com.sauti.call.PublicWebVoiceRateLimitExceededException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -35,6 +36,12 @@ public class ApiExceptionHandler {
     @ExceptionHandler(RateLimitExceededException.class)
     ResponseEntity<ApiError> rateLimited(RateLimitExceededException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(new ApiError("rate_limited", exception.getMessage()));
+    }
+
+    @ExceptionHandler(PublicWebVoiceRateLimitExceededException.class)
+    ResponseEntity<ApiError> webVoiceRateLimited(PublicWebVoiceRateLimitExceededException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new ApiError("rate_limited", exception.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

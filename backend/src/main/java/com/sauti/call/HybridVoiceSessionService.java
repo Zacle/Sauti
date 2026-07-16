@@ -19,16 +19,19 @@ public class HybridVoiceSessionService {
     private final CallRepository callRepository;
     private final RealtimeTextToSpeechProvider ttsProvider;
     private final ObjectMapper objectMapper;
+    private final VoiceRuntimeMetrics metrics;
     private final Map<String, HybridSession> sessions = new ConcurrentHashMap<>();
 
     public HybridVoiceSessionService(
             CallRepository callRepository,
             RealtimeTextToSpeechProvider ttsProvider,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            VoiceRuntimeMetrics metrics
     ) {
         this.callRepository = callRepository;
         this.ttsProvider = ttsProvider;
         this.objectMapper = objectMapper;
+        this.metrics = metrics;
     }
 
     public void start(String callSid, String agentKey, WebSocketSession socket) {
@@ -42,9 +45,10 @@ public class HybridVoiceSessionService {
         if (voiceId == null || !voiceId.startsWith(CartesiaRealtimeTextToSpeechClient.VOICE_PREFIX)) {
             throw new IllegalArgumentException("Hybrid voice requires a Cartesia voice");
         }
-        var state = new HybridSession(call, socket);
+        var state = new HybridSession(call, socket, () -> metrics.sessionEnded("hybrid", call.getDirection()));
         var previous = sessions.put(callSid, state);
         if (previous != null) previous.close();
+        metrics.sessionStarted("hybrid", call.getDirection());
         synchronized (state) {
             openTts(state);
         }
@@ -92,6 +96,7 @@ public class HybridVoiceSessionService {
     }
 
     private void interrupt(HybridSession state) {
+        metrics.interruption("hybrid", state.call.getDirection());
         state.generation++;
         state.textBuffer.setLength(0);
         closeTts(state);
@@ -115,6 +120,13 @@ public class HybridVoiceSessionService {
                     if (!state.current(generation)) return;
                     if (!state.speaking) {
                         state.speaking = true;
+                        if (!state.firstAudioRecorded) {
+                            state.firstAudioRecorded = true;
+                            metrics.recordLatency(
+                                    "session_to_first_audio", "hybrid", state.call.getDirection(),
+                                    System.nanoTime() - state.startedNanos
+                            );
+                        }
                         sendJson(state, Map.of("type", "speaking", "value", true));
                     }
                     sendBinary(state, audio);
@@ -135,6 +147,7 @@ public class HybridVoiceSessionService {
                 synchronized (state) {
                     if (!state.current(generation)) return;
                     LOGGER.warn("Hybrid Cartesia stream failed for call={}", state.call.getTwilioCallSid(), error);
+                    metrics.failure("hybrid", state.call.getDirection(), "tts_stream");
                     sendJson(state, Map.of("type", "error", "message", "The selected voice could not speak. Please try again."));
                 }
             }
@@ -142,6 +155,7 @@ public class HybridVoiceSessionService {
             synchronized (state) {
                 if (!state.current(generation) && tts != null) tts.close();
                 if (error != null && state.current(generation)) {
+                    metrics.failure("hybrid", state.call.getDirection(), "tts_connect");
                     sendJson(state, Map.of("type", "error", "message", "The selected voice could not be connected."));
                 }
             }
@@ -163,6 +177,7 @@ public class HybridVoiceSessionService {
                             tts.speak(text, flush);
                         } catch (Exception exception) {
                             LOGGER.warn("Unable to stream hybrid speech for call={}", state.call.getTwilioCallSid(), exception);
+                            metrics.failure("hybrid", state.call.getDirection(), "tts_write");
                             sendJson(state, Map.of("type", "error", "message", "The selected voice could not speak."));
                         }
                     }
@@ -197,15 +212,19 @@ public class HybridVoiceSessionService {
         private final Call call;
         private final WebSocketSession socket;
         private final StringBuilder textBuffer = new StringBuilder();
+        private final Runnable onClose;
+        private final long startedNanos = System.nanoTime();
         private CompletableFuture<RealtimeTtsSession> tts = CompletableFuture.completedFuture(null);
         private CompletableFuture<Void> ttsWrites = CompletableFuture.completedFuture(null);
         private int generation;
         private boolean speaking;
+        private boolean firstAudioRecorded;
         private boolean closed;
 
-        private HybridSession(Call call, WebSocketSession socket) {
+        private HybridSession(Call call, WebSocketSession socket, Runnable onClose) {
             this.call = call;
             this.socket = socket;
+            this.onClose = onClose;
         }
 
         private boolean current(int expectedGeneration) {
@@ -217,6 +236,7 @@ public class HybridVoiceSessionService {
             closed = true;
             generation++;
             textBuffer.setLength(0);
+            onClose.run();
             tts.thenAccept(session -> { if (session != null) session.close(); });
             tts = CompletableFuture.completedFuture(null);
             ttsWrites = CompletableFuture.completedFuture(null);

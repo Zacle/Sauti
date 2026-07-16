@@ -9,6 +9,7 @@ services:
     env_file:
       - ${SAUTI_ENV_FILE:-.env.production}
     environment:
+      SPRING_PROFILES_ACTIVE: production
       DB_URL: ${DB_URL:?DB_URL is required}
       DB_USER: ${DB_USER:?DB_USER is required}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}

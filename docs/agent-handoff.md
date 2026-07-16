@@ -2656,3 +2656,50 @@ Expected:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 - Follow-up / risk:
   - The next runtime-alignment change should pass saved interruption/VAD and public silence-duration settings into the hybrid Realtime session, then expose uploaded knowledge retrieval as a safe Realtime tool or refreshable context source.
+
+### 2026-07-16 - Architecture hardening foundation
+
+- Removed repository access from REST/WebSocket controllers. `CallQueryService` now owns tenant-checked call-turn reads and TTS latency updates, while `PublicWebVoiceAccessService` owns public-agent and session authorization.
+- Added `ApiBoundaryTest`, which fails the backend build if a class in `com.sauti.api` imports a repository.
+- Replaced the process-local public Web Voice start limiter and duplicated authentication limiter logic with a shared Redis limiter. Identities are SHA-256 protected in Redis keys, and Lua applies increment plus expiry atomically across replicas.
+- Replaced integration disconnect's global agent-integration scan with a tenant-and-connection-scoped repository query.
+- Added the production Spring profile and `ProductionSafetyValidator`. Production now fails startup for placeholder secrets, fake providers, H2, development token exposure, insecure origins/WebSockets, or disabled signature verification for the selected phone provider.
+- Added bounded Micrometer voice metrics for browser-hybrid and phone runtimes: active/started/ended sessions, stage latency histograms, caller interruptions, provider fallbacks, and failures. No tenant, call, agent, or caller identifiers are used as meter tags.
+- Added a non-interactive zero-warning ESLint configuration, enforced it in GitHub Actions, removed dead dashboard components/imports, and corrected hook cleanup/catalog initialization without changing live behavior.
+- Rewrote the backend module map and added `docs/architecture-hardening.md` with the prioritized follow-up roadmap and service-extraction criteria.
+- Files touched:
+  - `.github/workflows/ci.yml`
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
+  - `backend/src/main/java/com/sauti/auth/AuthRateLimitService.java`
+  - `backend/src/main/java/com/sauti/call/CallQueryService.java`
+  - `backend/src/main/java/com/sauti/call/DefaultTwilioMediaStreamService.java`
+  - `backend/src/main/java/com/sauti/call/HybridVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/call/PublicWebVoiceAccessService.java`
+  - `backend/src/main/java/com/sauti/call/PublicWebVoiceRateLimitService.java`
+  - `backend/src/main/java/com/sauti/call/VoiceRuntimeMetrics.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationRepositories.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationService.java`
+  - `backend/src/main/java/com/sauti/shared/ProductionSafetyValidator.java`
+  - `backend/src/main/java/com/sauti/shared/RedisRateLimiter.java`
+  - `backend/src/main/resources/application-production.yml`
+  - related backend tests under `backend/src/test/java/com/sauti/{architecture,call,shared}`
+  - `dashboard/eslint.config.mjs`, `dashboard/package.json`, and lint cleanup in affected dashboard feature/marketing files
+  - `deploy/docker-compose.prod.yml`
+  - `deploy/.env.production.example`
+  - `docs/backend-modules.md`
+  - `docs/architecture-hardening.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test` (successful)
+  - `.\gradlew.bat :backend:test --tests com.sauti.shared.RedisRateLimiterTest` (successful after the final test cleanup)
+  - `npm.cmd run lint` (successful, zero warnings)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` (successful; 50 routes generated)
+  - `git diff --check` (successful; Git reported only expected working-tree line-ending notices)
+- Deployment:
+  - Not deployed. All changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - Durable database-backed worker claiming is the next scaling prerequisite before multiple backend replicas process post-call jobs.
+  - `AgentCreator.tsx` and `TestCallPanel.tsx` remain large and should be split behind feature hooks in incremental, behavior-preserving changes.
+  - Existing Spring test warnings for deprecated `@MockBean` remain outside this change and should migrate to the replacement test annotation before the next Spring Boot major upgrade.

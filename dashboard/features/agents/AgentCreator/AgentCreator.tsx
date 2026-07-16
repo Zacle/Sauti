@@ -1258,58 +1258,6 @@ function formatPhoneNumberCost(value: string, currency: string) {
   }
 }
 
-function PersonaliseTemplate({
-  template,
-  values,
-  countryName,
-  onChange,
-  onBack,
-  onContinue,
-}: {
-  template: Template;
-  values: Record<string, string>;
-  countryName: string;
-  onChange: (key: string, value: string) => void;
-  onBack: () => void;
-  onContinue: () => void;
-}) {
-  const missingRequired = template.variables.filter(
-    (variable) => variable.required && !values[variable.key]?.trim(),
-  );
-  const invalidVariables = template.variables.filter(
-    (variable) => variableValueError(variable, values[variable.key] ?? ""),
-  );
-  return (
-    <main className="agent-personalise-page">
-      <button className="personalise-back" type="button" onClick={onBack}>
-        <ArrowLeft size={17} /> Back to templates
-      </button>
-      <section className="personalise-card">
-        <div className="personalise-template-badge"><Sparkles size={17} /> {template.name} · Template</div>
-        <h1>Personalise your agent</h1>
-        <p>Fill in your business details. Sauti uses them throughout conversations so the agent sounds like a genuine member of your team.</p>
-        <div className="personalise-fields">
-          {template.variables.map((variable) => (
-            <VariableValueField
-              countryName={countryName}
-              key={variable.key}
-              variable={variable}
-              value={values[variable.key] ?? ""}
-              onChange={(value) => onChange(variable.key, value)}
-            />
-          ))}
-        </div>
-        <footer>
-          <span><CircleAlert size={15} /> {invalidVariables.length ? "Correct the highlighted details to continue." : "Required details must be completed before activation."}</span>
-          <button className="console-primary-button" type="button" disabled={missingRequired.length > 0 || invalidVariables.length > 0} onClick={onContinue}>
-            Continue to studio <ArrowRight size={16} />
-          </button>
-        </footer>
-      </section>
-    </main>
-  );
-}
-
 function TemplateSelection({
   brief,
   category,
@@ -2129,42 +2077,6 @@ function knowledgeChunks(value: string) {
   }
   if (current.trim()) chunks.push(current.trim());
   return chunks;
-}
-
-function VariablesSettings({
-  variables,
-  values,
-  countryName,
-  onChange,
-  onAdd,
-}: {
-  variables: AgentVariableDefinition[];
-  values: Record<string, string>;
-  countryName: string;
-  onChange: (key: string, value: string) => void;
-  onAdd: (variable: CreateAgentVariable) => void;
-}) {
-  return (
-    <>
-      <StudioHeading eyebrow="Variables" title="Your business details" description="Update facts used throughout the agent's conversations without editing its prompt." />
-      <AddVariableForm onAdd={onAdd} />
-      {variables.length === 0 ? (
-        <div className="prompt-guidance"><Sparkles size={19} /><div><strong>No template variables</strong><p>This agent does not require additional business details.</p></div></div>
-      ) : (
-        <div className="variable-settings-list">
-          {variables.map((variable) => (
-            <VariableValueField
-              countryName={countryName}
-              key={variable.key}
-              variable={variable}
-              value={values[variable.key] ?? ""}
-              onChange={(value) => onChange(variable.key, value)}
-            />
-          ))}
-        </div>
-      )}
-    </>
-  );
 }
 
 function PersonalisationDrawer({

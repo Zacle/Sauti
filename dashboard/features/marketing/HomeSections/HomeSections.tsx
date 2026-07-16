@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
+import Image from "next/image";
+import Link from "next/link";
 import {
   Activity,
   ArrowRight,
@@ -251,7 +252,7 @@ export function IntegrationsSection() {
                   key={`${item.name}-${index}`}
                 >
                   <span className={`brand-dot ${"logoStyle" in item ? item.logoStyle : ""}`}>
-                    <img src={item.logo} alt="" />
+                    <Image src={item.logo} alt="" width={24} height={24} />
                   </span>
                   <span className="integration-card-copy">
                     <strong>{item.name}</strong>
@@ -264,7 +265,7 @@ export function IntegrationsSection() {
           </div>
         ))}
       </div>
-      <a className="view-integrations" href="/integrations">Explore integrations <ArrowRight size={16} /></a>
+      <Link className="view-integrations" href="/integrations">Explore integrations <ArrowRight size={16} /></Link>
     </section>
   );
 }
@@ -299,27 +300,6 @@ export function FinalCta() {
         </div>
       </div>
     </section>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="footer">
-      <div>
-        <a className="brand" href="#"><BrandLogo /><span>Sauti</span></a>
-        <p>AI voice agents that turn conversations into conversions.</p>
-      </div>
-      <div className="footer-links">
-        <a href="#workflow">Features</a>
-        <a href="#integrations">Integrations</a>
-      </div>
-      <div className="footer-links">
-        <a href="#security">Company</a>
-        <a href="#security">Security</a>
-        <a href="#contact">Contact</a>
-      </div>
-      <small>© 2025 Sauti. All rights reserved.</small>
-    </footer>
   );
 }
 

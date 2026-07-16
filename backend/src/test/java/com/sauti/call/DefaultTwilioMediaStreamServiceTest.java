@@ -20,6 +20,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BooleanSupplier;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 class DefaultTwilioMediaStreamServiceTest {
@@ -35,6 +36,7 @@ class DefaultTwilioMediaStreamServiceTest {
     private final CallSessionStore callSessionStore = mock(CallSessionStore.class);
     private final DashboardEventPublisher dashboardEventPublisher = mock(DashboardEventPublisher.class);
     private final CallTransferService callTransferService = mock(CallTransferService.class);
+    private final VoiceRuntimeMetrics metrics = new VoiceRuntimeMetrics(new SimpleMeterRegistry());
     private final DefaultTwilioMediaStreamService service = new DefaultTwilioMediaStreamService(
             callRepository,
             callPipelineService,
@@ -48,6 +50,7 @@ class DefaultTwilioMediaStreamServiceTest {
             callSessionStore,
             dashboardEventPublisher,
             callTransferService,
+            metrics,
             0.70,
             150,
             0
@@ -183,6 +186,7 @@ class DefaultTwilioMediaStreamServiceTest {
                 callSessionStore,
                 dashboardEventPublisher,
                 callTransferService,
+                metrics,
                 0.70,
                 150,
                 300

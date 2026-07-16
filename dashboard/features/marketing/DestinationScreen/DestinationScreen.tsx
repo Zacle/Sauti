@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
-  ArrowLeftRight,
   ArrowRight,
   Bot,
   CalendarCheck,
@@ -11,9 +10,7 @@ import {
   Clock,
   Globe,
   Moon,
-  SmilePlus,
   Sparkles,
-  UserCheck,
 } from "lucide-react";
 import {
   allDestinations,
@@ -23,7 +20,6 @@ import {
   pageFor,
   pricingPage,
   sectionPathFor,
-  type MenuGroup,
 } from "@/features/marketing/site-map";
 
 type Destination = NonNullable<ReturnType<typeof import("@/features/marketing/site-map").pageFor>>;
@@ -1053,13 +1049,13 @@ function DestinationVisual({ destination, mode }: { destination: VisualDestinati
               <span>Speech Input</span>
               <strong>{languages[langIndex].name}</strong>
             </div>
-            <p className="log-text spoken">"{languages[langIndex].text}"</p>
+            <p className="log-text spoken">&ldquo;{languages[langIndex].text}&rdquo;</p>
             <div className="lang-log-divider" />
             <div className="lang-log-header">
               <span>Sauti Translation</span>
               <strong>English</strong>
             </div>
-            <p className="log-text translation">"{languages[langIndex].translation}"</p>
+            <p className="log-text translation">&ldquo;{languages[langIndex].translation}&rdquo;</p>
           </div>
         </div>
       </div>

@@ -37,6 +37,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
     private final CallSessionStore callSessionStore;
     private final DashboardEventPublisher dashboardEventPublisher;
     private final CallTransferService callTransferService;
+    private final VoiceRuntimeMetrics metrics;
     private final double bargeInConfidenceThreshold;
     private final long bargeInMinAudioMs;
     private final long bargeInGraceMs;
@@ -59,6 +60,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             CallSessionStore callSessionStore,
             DashboardEventPublisher dashboardEventPublisher,
             CallTransferService callTransferService,
+            VoiceRuntimeMetrics metrics,
             @Value("${sauti.barge-in.confidence-threshold:0.70}") double bargeInConfidenceThreshold,
             @Value("${sauti.barge-in.min-audio-ms:150}") long bargeInMinAudioMs,
             @Value("${sauti.barge-in.grace-ms:300}") long bargeInGraceMs
@@ -75,6 +77,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         this.callSessionStore = callSessionStore;
         this.dashboardEventPublisher = dashboardEventPublisher;
         this.callTransferService = callTransferService;
+        this.metrics = metrics;
         this.bargeInConfidenceThreshold = bargeInConfidenceThreshold;
         this.bargeInMinAudioMs = bargeInMinAudioMs;
         this.bargeInGraceMs = bargeInGraceMs;
@@ -110,6 +113,10 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             @Override
             public void onPcmAudio(byte[] pcm16kAudio) {
                 if (firstAudio.compareAndSet(false, true)) {
+                    metrics.recordLatency(
+                            "tts_first_audio", "telephony", metricChannel(session),
+                            System.nanoTime() - ttsOpenedNanos
+                    );
                     LOGGER.info(
                             "Voice latency callSid={} stage=tts_first_audio elapsedMs={}",
                             callSid,
@@ -141,10 +148,16 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             @Override
             public void onError(Throwable error) {
                 LOGGER.warn("Realtime TTS failed for callSid={}", callSid, error);
+                metrics.failure("telephony", metricChannel(session), "tts_stream");
             }
         });
         });
-        sessions.put(callSid, session);
+        var previous = sessions.put(callSid, session);
+        if (previous != null) {
+            previous.close();
+            metrics.sessionEnded("telephony", metricChannel(previous));
+        }
+        metrics.sessionStarted("telephony", metricChannel(session));
         if (call != null) {
             session.attachMaintenanceTask(callMaintenanceExecutor.scheduleAtFixedRate(
                     () -> maintainCall(call, session), 1, 1, TimeUnit.SECONDS
@@ -152,6 +165,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             CompletableFuture.delayedExecutor(call.getAgent().getMaxCallDurationSeconds(), TimeUnit.SECONDS)
                     .execute(() -> {
                         if (sessions.remove(callSid, session)) {
+                            metrics.sessionEnded("telephony", metricChannel(session));
                             var callLanguageCode = callLanguage(call);
                             var farewell = localized(callLanguageCode,
                                     "Asante kwa kupiga simu. Muda wetu umefika mwisho, kwa hiyo nitakata simu sasa. Kwaheri.",
@@ -227,6 +241,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             }).thenApply(realtime -> (RealtimeSttSession) realtime)
                     .exceptionallyCompose(error -> {
                         LOGGER.warn("Telephony Realtime could not connect for callSid={}; using cascade fallback", callSid, error);
+                        metrics.fallback("telephony", metricChannel(callSid), "realtime_connect");
                         return openCascadeStt(callSid, call);
                     });
         }
@@ -248,6 +263,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             @Override
             public void onError(Throwable error) {
                 LOGGER.warn("Realtime STT failed for callSid={}", callSid, error);
+                metrics.failure("telephony", metricChannel(callSid), "stt_stream");
             }
         });
     }
@@ -256,6 +272,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         var session = sessions.get(callSid);
         if (session == null || !session.beginCascadeFallback()) return;
         LOGGER.warn("Telephony Realtime disconnected for callSid={}; activating cascade fallback", callSid, error);
+        metrics.fallback("telephony", metricChannel(session), "realtime_disconnect");
         session.cancelRealtimeResponse();
         if (session.interruptCurrentTurn()) {
             callSessionStore.markInterrupted(callSid);
@@ -359,6 +376,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
 
     private void endSilentCall(Call call, TwilioMediaSession session) {
         if (!sessions.remove(call.getTwilioCallSid(), session)) return;
+        metrics.sessionEnded("telephony", metricChannel(session));
         var language = callLanguage(call);
         var farewell = localized(language,
                 "Asante kwa kupiga simu. Kwa kuwa sikusikii, nitakata simu sasa. Kwaheri.",
@@ -454,6 +472,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             var session = sessions.remove(callSid);
             if (session != null) {
                 session.close();
+                metrics.sessionEnded("telephony", metricChannel(session));
             }
         }
     }
@@ -469,6 +488,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 callRepository.findByTwilioCallSid(callSid)
                         .ifPresent(call -> dashboardEventPublisher.agentSpeaking(call, false));
                 LOGGER.info("Realtime barge-in detected for callSid={}", callSid);
+                metrics.interruption("telephony", metricChannel(session));
             }
         });
     }
@@ -543,6 +563,10 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                     var turn = callPipelineService.processLiveTranscriptTurn(call, transcript, delta -> {
                         if (delta == null || delta.isEmpty()) return;
                         if (streamed.compareAndSet(false, true)) {
+                            metrics.recordLatency(
+                                    "llm_first_text", "telephony", metricChannel(session),
+                                    System.nanoTime() - turnStartedNanos
+                            );
                             LOGGER.info(
                                     "Voice latency callSid={} stage=llm_first_text elapsedMs={}",
                                     callSid,
@@ -562,6 +586,10 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                             callSid,
                             TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - turnStartedNanos),
                             streamed.get()
+                    );
+                    metrics.recordLatency(
+                            "turn_complete", "telephony", metricChannel(session),
+                            System.nanoTime() - turnStartedNanos
                     );
                     if (callTransferService.isPending(call.getId())) {
                         session.setPendingTransfer(call.getId());
@@ -636,8 +664,17 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 callSessionStore.setSpeaking(callSid, false, "");
                 callRepository.findByTwilioCallSid(callSid).ifPresent(call -> dashboardEventPublisher.agentSpeaking(call, false));
                 LOGGER.info("Barge-in detected for callSid={} confidence={} transcript={}", callSid, confidence, transcript);
+                metrics.interruption("telephony", metricChannel(session));
             }
         });
+    }
+
+    private String metricChannel(String callSid) {
+        return metricChannel(sessions.get(callSid));
+    }
+
+    private String metricChannel(TwilioMediaSession session) {
+        return session != null && session.usesL16() ? "telnyx" : "twilio_compatible";
     }
 
     private static final class TwilioMediaSession {

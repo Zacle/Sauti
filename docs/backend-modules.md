@@ -1,23 +1,44 @@
-# Backend Modules
+# Backend module boundaries
 
-The backend is a Spring Boot modular monolith. It builds as one JAR, but package boundaries map to the SRS module table.
+Sauti is intentionally a Spring Boot modular monolith. It deploys as one application, while feature packages remain the unit of ownership and future extraction.
 
-| SRS Module | Java Package | Responsibility |
-| --- | --- | --- |
-| module-auth | `com.sauti.auth` | JWT auth, registration, Redis-backed email verification codes, refresh-token rotation, logout, password reset, future OAuth |
-| module-tenant | `com.sauti.tenant` | Tenant account management, onboarding state |
-| module-agent | `com.sauti.agent` | Agent language, voice, prompt, greeting, schedule, escalation config |
-| module-call | `com.sauti.call` | Twilio webhooks, WebSocket media stream, turn loop |
-| module-nlp | `com.sauti.nlp` | Language detection and future STT/TTS routing |
-| module-llm | `com.sauti.llm` | Agent reasoning, prompt context, structured AI turn decisions |
-| module-calendar | `com.sauti.calendar` | Booking lifecycle, local/webhook calendar sync, future Google Calendar/Calendly integrations |
-| module-analytics | `com.sauti.analytics` | Call aggregation and outcome metrics |
-| module-billing | `com.sauti.billing` | Plan usage and future Lemon Squeezy webhooks |
-| module-api | `com.sauti.api` | REST controllers, CORS, OpenAPI configuration |
+| Java package | Responsibility |
+| --- | --- |
+| `com.sauti.api` | HTTP/WebSocket adapters, request validation, CORS, and OpenAPI. Controllers delegate to feature services and never import repositories. |
+| `com.sauti.auth` | Registration, login, JWT and refresh-token lifecycle, OAuth login, verification, and password reset. |
+| `com.sauti.tenant` | Workspace identity, tenancy, and onboarding state. |
+| `com.sauti.agent` | Agent identity, prompt, voice, languages, schedules, templates, and call behavior. |
+| `com.sauti.call` | Call lifecycle, browser/phone media runtimes, transcripts, recordings, interruption handling, and voice-runtime metrics. |
+| `com.sauti.voice` | Provider-facing voice catalog and preview behavior. |
+| `com.sauti.nlp` | Language detection and speech-processing helpers. |
+| `com.sauti.llm` | LLM routing, prompt context, structured decisions, primary/fallback provider behavior. |
+| `com.sauti.knowledge` | Agent knowledge sources, indexing, and retrieval. |
+| `com.sauti.calendar` | Availability and booking lifecycle. |
+| `com.sauti.integration` | Workspace provider connections, agent enablement, OAuth providers, and durable post-call actions. |
+| `com.sauti.tool` | Explicit, policy-controlled during-call tools and encrypted credentials. |
+| `com.sauti.analytics` | Tenant-scoped call aggregation and outcome metrics. |
+| `com.sauti.billing` | Plans, limits, and usage. |
+| `com.sauti.outbound` | Outbound call orchestration. |
+| `com.sauti.telnyx` | Telnyx-specific call-control and media adapters. |
+| `com.sauti.whatsapp` | WhatsApp webhooks and messaging. |
+| `com.sauti.webhook` | Signed, retryable outbound webhook delivery. |
+| `com.sauti.session` | Session-level state that does not belong to a provider adapter. |
+| `com.sauti.dashboard` | Backend projections used by the dashboard overview. |
+| `com.sauti.shared` | Cross-cutting infrastructure only: production safety, shared errors, and distributed rate limiting. |
 
-Rules:
+## Enforced rules
 
-- Controllers stay in `com.sauti.api`.
-- Business logic stays in the owning module package.
-- Cross-module access should go through services or narrow repository use from orchestration services.
-- New provider integrations should be hidden behind interfaces in their owning module.
+- Controllers stay thin and cannot import `*Repository`; `ApiBoundaryTest` enforces this at build time.
+- Customer-data repository access must be tenant-scoped or be immediately guarded by an owning feature service.
+- Cross-feature calls go through a public service API. Entities and repositories are not a substitute for an application boundary.
+- Provider details stay behind feature-owned interfaces. Domain services must not branch on vendor HTTP payloads.
+- Credentials are encrypted at rest and never returned from APIs or written to logs.
+- Public and authentication traffic uses the shared Redis-backed limiter. Identifiers are hashed and the increment/expiry operation is atomic.
+- Operational metrics use bounded tags only. Never tag a meter with tenant IDs, call IDs, phone numbers, agent IDs, or exception messages.
+- Production starts with the `production` profile. `ProductionSafetyValidator` fails startup when development secrets, fake providers, insecure origins, or disabled webhook verification are detected.
+
+## Dashboard boundaries
+
+The Next.js App Router is an adapter layer. Route `page.tsx` files should remain thin. Feature behavior lives under `dashboard/features/<feature>`, API clients under `dashboard/lib/api`, and shared transport types in `dashboard/types/api.ts`.
+
+ESLint, type checking, and the production build all run in CI. Feature-specific styling should use CSS modules; global styles are reserved for true design tokens and application-wide primitives.

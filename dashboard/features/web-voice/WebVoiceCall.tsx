@@ -54,6 +54,8 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const nativeEndPendingRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
   const transcriptWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const cleanupRef = useRef<() => void>(() => undefined);
+  cleanupRef.current = cleanup;
 
   function updateSpeaking(value: boolean) {
     speakingRef.current = value;
@@ -75,7 +77,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
         setError(caught instanceof Error ? caught.message : "This voice agent is unavailable.");
         setStatus("ended");
       });
-    return () => cleanup();
+    return () => cleanupRef.current();
   }, [publicId]);
 
   async function start() {

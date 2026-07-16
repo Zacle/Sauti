@@ -30,17 +30,19 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   const [accentFilter, setAccentFilter] = useState("all");
   const [accentOpen, setAccentOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const initialSelectionRef = useRef({ value, primaryLanguage, onChange });
 
   useEffect(() => {
+    const initialSelection = initialSelectionRef.current;
     listVoices()
       .then((catalog) => {
         setVoices(catalog.voices);
         setEnabledProviders(catalog.enabledProviders);
         setProviderEnabled(catalog.enabledProviders.length > 0);
-        if (!value || value.startsWith("openai:")) {
-          const cartesiaDefault = catalog.voices.find((voice) => voice.languages.includes(primaryLanguage))
+        if (!initialSelection.value || initialSelection.value.startsWith("openai:")) {
+          const cartesiaDefault = catalog.voices.find((voice) => voice.languages.includes(initialSelection.primaryLanguage))
             ?? catalog.voices[0];
-          if (cartesiaDefault) onChange(cartesiaDefault.id);
+          if (cartesiaDefault) initialSelection.onChange(cartesiaDefault.id);
         }
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load voices."))

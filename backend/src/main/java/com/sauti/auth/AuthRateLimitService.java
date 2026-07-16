@@ -1,40 +1,36 @@
 package com.sauti.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
+import com.sauti.shared.RedisRateLimiter;
 import java.time.Duration;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AuthRateLimitService {
-    private final StringRedisTemplate redisTemplate;
+    private final RedisRateLimiter rateLimiter;
 
-    public AuthRateLimitService(StringRedisTemplate redisTemplate) {
-        this.redisTemplate = redisTemplate;
+    public AuthRateLimitService(RedisRateLimiter rateLimiter) {
+        this.rateLimiter = rateLimiter;
     }
 
     public void checkLogin(HttpServletRequest request) {
-        check("auth:rate:login:" + clientIp(request), 5, Duration.ofMinutes(1));
+        check("auth:login", clientIp(request), 5, Duration.ofMinutes(1));
     }
 
     public void checkForgotPassword(String email) {
-        check("auth:rate:forgot:" + normalize(email), 3, Duration.ofMinutes(5));
+        check("auth:forgot", normalize(email), 3, Duration.ofMinutes(5));
     }
 
     public void checkVerifyEmail(String email) {
-        check("auth:rate:verify:" + normalize(email), 10, Duration.ofMinutes(10));
+        check("auth:verify", normalize(email), 10, Duration.ofMinutes(10));
     }
 
     public void checkResendVerification(String email) {
-        check("auth:rate:resend:" + normalize(email), 3, Duration.ofMinutes(5));
+        check("auth:resend", normalize(email), 3, Duration.ofMinutes(5));
     }
 
-    private void check(String key, int limit, Duration window) {
-        Long count = redisTemplate.opsForValue().increment(key);
-        if (count != null && count == 1L) {
-            redisTemplate.expire(key, window);
-        }
-        if (count != null && count > limit) {
+    private void check(String namespace, String identity, int limit, Duration window) {
+        if (!rateLimiter.tryAcquire(namespace, identity, limit, window)) {
             throw new RateLimitExceededException("Too many attempts. Please try again later.");
         }
     }
