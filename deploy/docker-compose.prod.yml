@@ -10,6 +10,9 @@ services:
       - ${SAUTI_ENV_FILE:-.env.production}
     environment:
       SPRING_PROFILES_ACTIVE: production
+      # Production compose must override stale development values that may
+      # still exist in long-lived server environment files.
+      PROVIDER_MODE: live
       DB_URL: ${DB_URL:?DB_URL is required}
       DB_USER: ${DB_USER:?DB_USER is required}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}

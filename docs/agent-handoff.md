@@ -2740,3 +2740,23 @@ Expected:
   - Not deployed by the coding agent. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 - Follow-up / risk:
   - To activate WhatsApp, set `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, and the Embedded Signup application/configuration IDs. Keep `WHATSAPP_VALIDATE_SIGNATURE=true`.
+
+### 2026-07-17 - Production provider override and deployment diagnostics
+
+- Diagnosed failed deployment run `29531947805` for commit `db707222711e6d5fc2f0d05290d8871e085b6e0a`: CI passed, the remote deploy exhausted its health window, Caddy could not connect to backend management port `8081`, and the workflow rolled back to the previous healthy revision.
+- Fixed the production-mode compatibility gap by setting `PROVIDER_MODE=live` directly in the backend Compose environment. This overrides a stale explicit `PROVIDER_MODE=fake` in long-lived server environment files; the profile-level default alone only handled a missing value.
+- Hardened `deploy.sh` failure handling. Failed container startup, Caddy reload, and health checks now print Compose state plus the backend container state, exit code, OOM flag, restart count, image, and 300 lines of timestamped service logs without printing environment values.
+- Centralized rollback so all post-start failures restore the last successful image tag and reload Caddy consistently.
+- Health polling now stops early when the backend container disappears or leaves the running state instead of emitting Caddy 502 errors for the entire timeout.
+- Files touched:
+  - `deploy/docker-compose.prod.yml`
+  - `deploy/deploy.sh`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `bash -n deploy/deploy.sh` (successful)
+  - `docker-compose.exe --env-file deploy/.env.production.example -f deploy/docker-compose.prod.yml config` with `SAUTI_ENV_FILE` pointed at the absolute example path (successful; rendered backend environment contains `PROVIDER_MODE: live`)
+  - `git diff --check`
+- Deployment:
+  - Not deployed by the coding agent. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up / risk:
+  - After the maintainer pushes this change, monitor the next CI-triggered deployment and verify `https://sauti.uk/health`. If startup still fails, the enhanced diagnostics should expose the actual backend exit reason before rollback.
