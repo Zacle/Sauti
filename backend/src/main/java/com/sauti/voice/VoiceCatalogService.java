@@ -95,6 +95,23 @@ public class VoiceCatalogService {
         return generateAudio(voiceId, normalizedLanguage, text);
     }
 
+    /**
+     * Generates and reuses the short opening prompt without loading the remote
+     * voice catalog first. Call startup already carries a saved Cartesia voice
+     * ID, and avoiding the catalog round trip keeps first audio responsive.
+     */
+    public byte[] cachedCartesiaGreeting(String voiceId, String language, String text) {
+        if (voiceId == null || !voiceId.startsWith(CartesiaRealtimeTextToSpeechClient.VOICE_PREFIX)) {
+            throw new IllegalArgumentException("A Cartesia voice is required for cached greeting audio");
+        }
+        var normalizedLanguage = normalizedSupportedLanguage(language);
+        var greeting = normalizePreviewText(text, normalizedLanguage);
+        return previewCache.computeIfAbsent(
+                new PreviewKey(voiceId, normalizedLanguage, greeting),
+                key -> cartesiaClient.preview(key.voiceId(), key.language(), key.text())
+        );
+    }
+
     public VoiceCatalogResponse list() {
         var snapshot = cached;
         if (snapshot != null && Instant.now().isBefore(cacheExpiresAt)) {
@@ -113,10 +130,9 @@ public class VoiceCatalogService {
     private VoiceCatalogResponse load() {
         var providers = new java.util.ArrayList<String>();
         var voices = new java.util.ArrayList<VoiceOption>();
-        if (!openAiApiKey.isBlank()) {
-            voices.addAll(openAiVoices());
-            providers.add("openai");
-        }
+        // OpenAI Realtime remains the hybrid conversation engine, but its
+        // built-in voices are no longer customer-selectable. Cartesia is the
+        // single voice surface so multilingual behavior stays predictable.
         if (!cartesiaApiKey.isBlank()) {
             voices.addAll(loadCartesiaVoices());
             providers.add("cartesia");

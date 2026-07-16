@@ -208,10 +208,11 @@ class ConversationOrchestratorTest {
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
         var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
         var call = activeCall();
+        when(agentVariableService.businessName(call.getAgent())).thenReturn("X-Fit");
 
         var greeting = orchestrator.generateOpeningGreeting(call, "fr", "voice call");
 
-        assertThat(greeting).isEqualTo("Bonjour, c'est Amina de Demo Clinic. Comment puis-je vous aider ?");
+        assertThat(greeting).isEqualTo("Bonjour, c'est Amina de X-Fit. Comment puis-je vous aider ?");
     }
 
     @Test

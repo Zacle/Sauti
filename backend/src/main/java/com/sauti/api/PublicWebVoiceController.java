@@ -21,6 +21,10 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -36,6 +40,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RestController
 @RequestMapping("/api/v1/public/web-voice")
 public class PublicWebVoiceController {
+    private static final Logger LOGGER = LoggerFactory.getLogger(PublicWebVoiceController.class);
     private static final Set<String> TURN_BASED_LANGUAGES = Set.of("fr", "ar");
     private final AgentRepository agentRepository;
     private final CallRepository callRepository;
@@ -114,17 +119,39 @@ public class PublicWebVoiceController {
         var mode = realtimeMode(call);
         var websocketPath = "hybrid_realtime".equals(mode) ? "/ws/hybrid-voice/" : "/ws/web-voice/";
         var greeting = callPipelineService.openingGreeting(call);
+        var greetingAudio = cachedHybridGreeting(call, greeting, language, mode);
         return new StartWebVoiceSessionResponse(
                 call.getId(),
                 call.getTwilioCallSid(),
                 token,
                 websocketBaseUrl + websocketPath + call.getTwilioCallSid() + "?token=" + token,
                 greeting,
-                null,
+                greetingAudio,
                 16000,
                 language,
                 mode
         );
+    }
+
+    private String cachedHybridGreeting(
+            com.sauti.call.Call call,
+            String greeting,
+            String language,
+            String mode
+    ) {
+        if (!"hybrid_realtime".equals(mode) || greeting == null || greeting.isBlank()) return null;
+        try {
+            var audio = CompletableFuture.supplyAsync(() ->
+                            voiceCatalogService.cachedCartesiaGreeting(
+                                    call.getAgent().getTtsVoiceId(), language, greeting
+                            ))
+                    .completeOnTimeout(null, 1500, TimeUnit.MILLISECONDS)
+                    .join();
+            return audio == null ? null : Base64.getEncoder().encodeToString(audio);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Unable to prepare cached Cartesia greeting for web call={}", call.getId(), exception);
+            return null;
+        }
     }
 
     private String realtimeMode(com.sauti.call.Call call) {

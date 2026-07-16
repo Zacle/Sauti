@@ -79,8 +79,10 @@ sauti:
   realtime:
     openai:
       calls-url: ${OPENAI_REALTIME_CALLS_URL:https://api.openai.com/v1/realtime/calls}
+      websocket-url: ${OPENAI_REALTIME_WEBSOCKET_URL:wss://api.openai.com/v1/realtime}
       model: ${OPENAI_REALTIME_CONVERSATION_MODEL:gpt-realtime-1.5}
       transcription-model: ${OPENAI_REALTIME_TRANSCRIPTION_MODEL:gpt-4o-mini-transcribe}
+      telephony-enabled: ${OPENAI_REALTIME_TELEPHONY_ENABLED:true}
       speech-url: ${OPENAI_SPEECH_URL:https://api.openai.com/v1/audio/speech}
       preview-model: ${OPENAI_TTS_PREVIEW_MODEL:gpt-4o-mini-tts}
   whatsapp:

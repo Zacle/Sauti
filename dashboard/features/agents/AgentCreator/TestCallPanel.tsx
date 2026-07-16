@@ -128,8 +128,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           autoGainControl: true,
         },
       });
-      await prepareAudio(stream);
-      const started = await startTestCall(agentId, voiceId);
+      const [, started] = await Promise.all([
+        prepareAudio(stream),
+        startTestCall(agentId, voiceId),
+      ]);
       callIdRef.current = started.call.id;
       callSidRef.current = started.call.twilioCallSid;
       settingsRef.current = started.settings;
@@ -144,8 +146,20 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       if (started.mode === "openai_realtime" || started.mode === "hybrid_realtime") {
         nativeRealtimeRef.current = true;
         hybridRealtimeRef.current = started.mode === "hybrid_realtime";
-        if (hybridRealtimeRef.current) await connectHybridVoice(started);
-        await connectNativeRealtime(started, stream, hybridRealtimeRef.current);
+        const hybrid = hybridRealtimeRef.current;
+        const cachedGreeting = hybrid ? started.greetingAudioBase64 : null;
+        if (cachedGreeting && started.greeting) {
+          setMessages([{ id: crypto.randomUUID(), role: "agent", text: started.greeting }]);
+        }
+        const greetingPlayback = cachedGreeting
+          ? playEncodedAgentAudio(cachedGreeting)
+          : Promise.resolve(false);
+        await Promise.all([
+          hybrid ? connectHybridVoice(started) : Promise.resolve(),
+          connectNativeRealtime(started, stream, hybrid, cachedGreeting ? "" : started.greeting),
+        ]);
+        const greetingPlayed = await greetingPlayback;
+        if (hybrid && !greetingPlayed) openAiConnectionRef.current?.speakGreeting(started.greeting);
       } else {
         await connectRealtimeVoice(started, stream);
         startVoiceMonitor();
@@ -184,17 +198,24 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     });
   }
 
-  async function connectNativeRealtime(started: StartTestCallResponse, stream: MediaStream, hybrid: boolean) {
+  async function connectNativeRealtime(
+    started: StartTestCallResponse,
+    stream: MediaStream,
+    hybrid: boolean,
+    greeting: string,
+  ) {
     openAiConnectionRef.current = await connectOpenAiRealtime({
       microphone: stream,
-      greeting: started.greeting,
+      greeting,
       outputMode: hybrid ? "text" : "audio",
       bargeInDebounceMs: hybrid ? 180 : 0,
       connectSdp: (offer) => connectTestRealtime(started.call.id, offer),
       playbackContext: audioContextRef.current,
       recordingDestination: recordingDestinationRef.current,
       callbacks: {
-        onConnected: () => updateStatus("listening"),
+        onConnected: () => {
+          if (!agentAudioSourceRef.current) updateStatus("listening");
+        },
         onCallerTranscript: (text) => {
           acceptedCallerTurnsRef.current += 1;
           lastActivityAtRef.current = Date.now();
@@ -663,15 +684,17 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     }
   }
 
-  async function playEncodedAgentAudio(encoded: string) {
+  async function playEncodedAgentAudio(encoded: string): Promise<boolean> {
     updateStatus("speaking");
     try {
       const binary = window.atob(encoded);
       const bytes = new Uint8Array(binary.length);
       for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
       await playAgentAudio(bytes.buffer);
+      return true;
     } catch {
       // Text remains available when browser audio decoding fails.
+      return false;
     } finally {
       if (statusRef.current === "speaking" && !endingRef.current) {
         lastActivityAtRef.current = Date.now();

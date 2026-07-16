@@ -19,6 +19,38 @@ import org.junit.jupiter.api.Test;
 
 class OpenAiRealtimeServiceTest {
     @Test
+    void configuresTelephonyPcmAndAgentSpecificTurnDetectionForCartesia() throws Exception {
+        var orchestrator = mock(ConversationOrchestrator.class);
+        var loader = mock(AgentToolLoader.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        when(call.getAgent()).thenReturn(agent);
+        when(call.getLanguageDetected()).thenReturn("fr");
+        when(agent.getId()).thenReturn(UUID.randomUUID());
+        when(agent.getTtsVoiceId()).thenReturn("cartesia:french-voice");
+        when(agent.getBargeInSensitivity()).thenReturn(0.8);
+        when(agent.getSttEndpointingMs()).thenReturn(410);
+        when(loader.loadForAgent(agent.getId())).thenReturn(List.of());
+        when(orchestrator.realtimeInstructions(call, "fr")).thenReturn("Speak French concisely.");
+        var mapper = new ObjectMapper();
+        var service = new OpenAiRealtimeService(
+                mapper, orchestrator, loader, mock(ToolFulfillmentRouter.class),
+                "server-secret", "http://localhost/unused", "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
+        );
+
+        var configurationNode = mapper.valueToTree(service.telephonySessionConfiguration(call));
+        var configuration = mapper.writeValueAsString(configurationNode);
+
+        assertThat(configuration)
+                .contains("\"output_modalities\":[\"text\"]")
+                .contains("\"silence_duration_ms\":410")
+                .contains("\"interrupt_response\":true")
+                .contains("\"threshold\":0.51");
+        assertThat(configurationNode.at("/audio/input/format/type").asText()).isEqualTo("audio/pcm");
+        assertThat(configurationNode.at("/audio/input/format/rate").asInt()).isEqualTo(24000);
+    }
+
+    @Test
     void createsAProviderBoundRealtimeSessionWithoutExposingTheApiKey() throws Exception {
         var receivedAuthorization = new AtomicReference<String>();
         var receivedBody = new AtomicReference<String>();

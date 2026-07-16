@@ -28,6 +28,7 @@ class DefaultTwilioMediaStreamServiceTest {
     private final AudioCodecConverter audioCodecConverter = mock(AudioCodecConverter.class);
     private final FakeRealtimeSpeechToTextProvider sttProvider = new FakeRealtimeSpeechToTextProvider();
     private final FakeRealtimeTextToSpeechProvider ttsProvider = new FakeRealtimeTextToSpeechProvider();
+    private final TelephonyRealtimeConversationProvider realtimeConversationProvider = mock(TelephonyRealtimeConversationProvider.class);
     private final TwilioMediaFrameFactory frameFactory = new TwilioMediaFrameFactory(new ObjectMapper());
     private final TelnyxMediaFrameFactory telnyxFrameFactory = new TelnyxMediaFrameFactory(new ObjectMapper());
     private final SentenceChunker sentenceChunker = new SentenceChunker();
@@ -40,6 +41,7 @@ class DefaultTwilioMediaStreamServiceTest {
             audioCodecConverter,
             sttProvider,
             ttsProvider,
+            realtimeConversationProvider,
             frameFactory,
             telnyxFrameFactory,
             sentenceChunker,
@@ -174,6 +176,7 @@ class DefaultTwilioMediaStreamServiceTest {
                 audioCodecConverter,
                 sttProvider,
                 ttsProvider,
+                realtimeConversationProvider,
                 frameFactory,
                 telnyxFrameFactory,
                 sentenceChunker,
@@ -229,6 +232,50 @@ class DefaultTwilioMediaStreamServiceTest {
                 "Caller selected keypad option \"Confirm the appointment\" (digits: 1)."
         );
         awaitUntil(() -> ttsProvider.spokenText.contains("Your appointment is confirmed. "));
+    }
+
+    @Test
+    void routesPhoneAudioThroughRealtimeAndStreamsTextToCartesiaWithoutCascadeTurn() {
+        var call = activeCall("CA-REALTIME");
+        call.getAgent().updateTtsVoiceId("cartesia:voice-1");
+        var frames = new CopyOnWriteArrayList<String>();
+        var realtimeSession = mock(TelephonyRealtimeConversationProvider.Session.class);
+        var realtimeListener = new java.util.concurrent.atomic.AtomicReference<TelephonyRealtimeConversationProvider.Listener>();
+        when(realtimeConversationProvider.supports(call)).thenReturn(true);
+        when(realtimeConversationProvider.open(eq(call), any())).thenAnswer(invocation -> {
+            realtimeListener.set(invocation.getArgument(1));
+            return CompletableFuture.completedFuture(realtimeSession);
+        });
+        when(audioCodecConverter.twilioMulaw8kToPcm16k(new byte[] {1, 2}))
+                .thenReturn(new byte[] {10, 20, 30, 40});
+        when(audioCodecConverter.pcm16kToTwilioMulaw8k(new byte[] {5, 6, 7, 8}))
+                .thenReturn(new byte[] {9, 10});
+        when(callRepository.findByTwilioCallSid("CA-REALTIME")).thenReturn(Optional.of(call));
+
+        service.start(
+                "CA-REALTIME",
+                "MZ-REALTIME",
+                new TwilioMediaFormat("audio/x-mulaw", 8000, 1),
+                Map.of(),
+                frames::add
+        );
+        service.acceptInboundAudio("CA-REALTIME", "MZ-REALTIME", "1", "1", "20", new byte[] {1, 2});
+
+        verify(realtimeSession, timeout(1000)).sendPcmAudio(new byte[] {10, 20, 30, 40});
+        realtimeListener.get().onCallerTranscript("I need an appointment");
+        realtimeListener.get().onAgentTextDelta("Certainly. ");
+        realtimeListener.get().onAgentTextDelta("What day works for you?");
+        realtimeListener.get().onAgentTextComplete("Certainly. What day works for you?", false);
+
+        verify(callPipelineService, timeout(1000)).recordRealtimeTranscript(
+                call.getTenant().getId(), call.getId(), "caller", "I need an appointment", false
+        );
+        verify(callPipelineService, timeout(1000)).recordRealtimeTranscript(
+                call.getTenant().getId(), call.getId(), "agent", "Certainly. What day works for you?", false
+        );
+        awaitUntil(() -> ttsProvider.spokenText.contains(""));
+        assertThat(ttsProvider.spokenText).contains("Certainly. What day works for you? ", "");
+        assertThat(frames).anySatisfy(frame -> assertThat(frame).contains("\"event\":\"media\""));
     }
 
     private void awaitUntil(BooleanSupplier condition) {

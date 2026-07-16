@@ -24,6 +24,8 @@ import com.sauti.voice.VoiceCatalogService;
 import java.util.List;
 import java.util.UUID;
 import java.util.Base64;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.CacheControl;
@@ -100,15 +102,36 @@ public class CallController {
         var token = webVoiceTokenService.issue(call.getTwilioCallSid(), agentKey);
         var mode = realtimeMode(call);
         var websocketPath = "hybrid_realtime".equals(mode) ? "/ws/hybrid-voice/" : "/ws/web-voice/";
+        var greetingAudio = cachedHybridGreeting(call, greeting, mode);
         return new StartTestCallResponse(
                 CallResponse.from(call),
                 greeting,
+                greetingAudio,
                 TestCallSettings.from(call.getAgent()),
                 webVoiceWebsocketUrl + websocketPath + call.getTwilioCallSid() + "?token=" + token,
                 token,
                 16000,
                 mode
         );
+    }
+
+    private String cachedHybridGreeting(com.sauti.call.Call call, String greeting, String mode) {
+        if (!"hybrid_realtime".equals(mode) || greeting == null || greeting.isBlank()) return null;
+        try {
+            var language = call.getLanguageDetected() == null
+                    ? call.getAgent().getDefaultLanguage()
+                    : call.getLanguageDetected();
+            var audio = CompletableFuture.supplyAsync(() ->
+                            voiceCatalogService.cachedCartesiaGreeting(
+                                    call.getAgent().getTtsVoiceId(), language, greeting
+                            ))
+                    .completeOnTimeout(null, 1500, TimeUnit.MILLISECONDS)
+                    .join();
+            return audio == null ? null : Base64.getEncoder().encodeToString(audio);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Unable to prepare cached Cartesia greeting for test call={}", call.getId(), exception);
+            return null;
+        }
     }
 
     private String realtimeMode(com.sauti.call.Call call) {

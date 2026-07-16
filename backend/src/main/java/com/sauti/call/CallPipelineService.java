@@ -132,6 +132,18 @@ public class CallPipelineService {
                     return callRepository.save(created);
                 });
         callSessionStore.createIfAbsent(twilioCallSid, CallSession.fromCall(call, ""));
+        if ((!call.isAfterHours() || "answer".equals(agent.getAfterHoursBehavior()))
+                && openingGreeting(call).isBlank()) {
+            var opening = instantGreeting(agent, agent.getDefaultLanguage());
+            if (!opening.isBlank()) {
+                call.appendAgentMessage(agent.getDefaultLanguage(), opening);
+                var turnIndex = callTurnRepository.countByCall_Id(call.getId()) + 1;
+                callTurnRepository.save(new CallTurn(
+                        call, turnIndex, "", opening, agent.getDefaultLanguage(), 0, 0, 0, false
+                ));
+                callRepository.save(call);
+            }
+        }
         dashboardEventPublisher.callStarted(call);
         return call;
     }
@@ -465,7 +477,7 @@ public class CallPipelineService {
                 && hasNoCallerTurns(call)
                 && looksLikeCallScreening(callerTranscript)) {
             String response = "This is " + call.getAgent().getName() + " calling on behalf of "
-                    + call.getTenant().getBusinessName() + " about your requested service.";
+                    + agentBusinessName(call.getAgent()) + " about your requested service.";
             call.appendTurn(call.getAgent().getDefaultLanguage(), callerTranscript, response);
             var turnIndex = callTurnRepository.countByCall_Id(call.getId()) + 1;
             callTurnRepository.save(new CallTurn(call, turnIndex, callerTranscript, response,
@@ -567,13 +579,20 @@ public class CallPipelineService {
             var configured = resolveGreeting(agent).trim();
             if (!configured.isBlank() && !looksLikeGreetingInstruction(configured)) return configured;
         }
-        var business = agent.getTenant().getBusinessName();
+        var business = agentBusinessName(agent);
         return switch (resolvedLanguage) {
             case "fr" -> "Bonjour, c'est " + agent.getName() + " de " + business + ". Comment puis-je vous aider ?";
             case "sw" -> "Habari, ni " + agent.getName() + " kutoka " + business + ". Ninaweza kukusaidiaje?";
             case "ar" -> "مرحبًا، معك " + agent.getName() + " من " + business + ". كيف يمكنني مساعدتك؟";
             default -> "Hello, this is " + agent.getName() + " from " + business + ". How can I help?";
         };
+    }
+
+    private String agentBusinessName(Agent agent) {
+        return agentVariableRepository.findByAgentIdAndKey(agent.getId(), "business_name")
+                .filter(com.sauti.agent.AgentVariable::isFilled)
+                .map(com.sauti.agent.AgentVariable::getValue)
+                .orElse(agent.getTenant().getBusinessName());
     }
 
     private boolean looksLikeGreetingInstruction(String greeting) {

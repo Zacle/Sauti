@@ -16,6 +16,7 @@ export type OpenAiRealtimeConnection = {
   remoteStream: MediaStream;
   close: () => void;
   sendUserText: (text: string) => void;
+  speakGreeting: (text: string) => void;
   cancelResponse: () => void;
 };
 
@@ -193,13 +194,7 @@ export async function connectOpenAiRealtime(options: {
       window.clearTimeout(timeout);
       options.callbacks.onConnected();
       if (options.greeting.trim()) {
-        send(channel, {
-          type: "response.create",
-          response: {
-            instructions: `Say exactly this greeting, with no additions: ${options.greeting.trim()}`,
-            output_modalities: [options.outputMode ?? "audio"],
-          },
-        });
+        requestGreeting(channel, options.greeting, options.outputMode ?? "audio");
       }
       resolve();
     };
@@ -226,6 +221,7 @@ export async function connectOpenAiRealtime(options: {
       });
       send(channel, { type: "response.create" });
     },
+    speakGreeting: (text) => requestGreeting(channel, text, options.outputMode ?? "audio"),
     cancelResponse: () => send(channel, { type: "response.cancel" }),
     close: () => {
       window.clearTimeout(bargeInTimer);
@@ -238,6 +234,18 @@ export async function connectOpenAiRealtime(options: {
       if (audio) audio.srcObject = null;
     },
   };
+}
+
+function requestGreeting(channel: RTCDataChannel, greeting: string, outputMode: "audio" | "text") {
+  const text = greeting.trim();
+  if (!text) return;
+  send(channel, {
+    type: "response.create",
+    response: {
+      instructions: `Say exactly this greeting, with no additions: ${text}`,
+      output_modalities: [outputMode],
+    },
+  });
 }
 
 function send(channel: RTCDataChannel, event: Record<string, unknown>) {

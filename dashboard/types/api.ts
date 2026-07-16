@@ -291,6 +291,7 @@ export type CallTurn = {
 export type StartTestCallResponse = {
   call: Call;
   greeting: string;
+  greetingAudioBase64: string | null;
   websocketUrl: string;
   token: string;
   inputSampleRate: number;

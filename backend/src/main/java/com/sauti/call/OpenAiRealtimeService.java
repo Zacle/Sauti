@@ -77,7 +77,7 @@ public class OpenAiRealtimeService {
         if (sdpOffer == null || sdpOffer.isBlank()) throw new IllegalArgumentException("A WebRTC SDP offer is required");
 
         try {
-            var session = sessionConfiguration(call);
+            var session = sessionConfiguration(call, false);
             var boundary = "----SautiRealtime" + UUID.randomUUID().toString().replace("-", "");
             var body = multipart(boundary, sdpOffer, objectMapper.writeValueAsString(session));
             var request = HttpRequest.newBuilder(URI.create(callsUrl))
@@ -111,28 +111,38 @@ public class OpenAiRealtimeService {
         }
     }
 
-    private Map<String, Object> sessionConfiguration(Call call) {
+    Map<String, Object> telephonySessionConfiguration(Call call) {
+        return sessionConfiguration(call, true);
+    }
+
+    private Map<String, Object> sessionConfiguration(Call call, boolean telephony) {
         var nativeAudio = usesOpenAiVoice(call);
         var input = new LinkedHashMap<String, Object>();
         input.put("noise_reduction", Map.of("type", "near_field"));
+        if (telephony) {
+            input.put("format", Map.of("type", "audio/pcm", "rate", 24000));
+        }
         input.put("transcription", Map.of(
                 "model", transcriptionModel,
                 "language", call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected()
         ));
+        var telephonyThreshold = Math.round(Math.max(0.45, Math.min(0.90,
+                0.83 - (0.4 * call.getAgent().getBargeInSensitivity()))) * 100.0) / 100.0;
+        var telephonySilenceMs = Math.max(250, Math.min(900, call.getAgent().getSttEndpointingMs()));
         input.put("turn_detection", Map.of(
                 "type", "server_vad",
                 // Cartesia playback is captured outside OpenAI's native output
                 // channel. Use a slightly stricter and more patient endpoint in
                 // hybrid mode so playback leakage and natural mid-sentence pauses
                 // do not create a new turn prematurely.
-                "threshold", nativeAudio ? 0.45 : 0.55,
+                "threshold", telephony ? telephonyThreshold : (nativeAudio ? 0.45 : 0.55),
                 "prefix_padding_ms", 250,
-                "silence_duration_ms", nativeAudio ? 320 : 520,
+                "silence_duration_ms", telephony ? telephonySilenceMs : (nativeAudio ? 320 : 520),
                 "create_response", true,
                 // Native Realtime audio can use provider-managed interruption.
                 // Hybrid Cartesia playback is outside OpenAI's audio channel, so
                 // the browser validates sustained caller speech before cancelling.
-                "interrupt_response", nativeAudio
+                "interrupt_response", telephony || nativeAudio
         ));
 
         var tools = agentToolLoader.loadForAgent(call.getAgent().getId()).stream()

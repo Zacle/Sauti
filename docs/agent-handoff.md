@@ -221,6 +221,35 @@ Expected:
 
 ## Change log
 
+### 2026-07-16 - OpenAI Realtime + Cartesia for production phone calls
+
+- Added a server-side OpenAI Realtime WebSocket conversation provider for Twilio, SignalWire, and Telnyx media calls. Phone audio is converted from the existing 16 kHz internal PCM stream to the Realtime API's 24 kHz PCM input, so both μ-law Twilio and L16 Telnyx calls share one provider path.
+- Real phone calls with a saved `cartesia:` voice now use OpenAI Realtime for native audio understanding, transcription, server VAD, reasoning, conversation context, and tool calls, then stream short speakable text phrases through the existing Cartesia Sonic connection. This removes Deepgram and chat-completions from the normal phone-turn critical path.
+- Kept the previous Deepgram -> OpenAI text LLM -> Cartesia pipeline as an automatic fallback. It is selected when Realtime is disabled/unconfigured, when the initial WebSocket connection fails, or once if an established Realtime WebSocket disconnects.
+- Wired agent interruption sensitivity and STT endpointing into phone Realtime server VAD. Caller speech immediately clears queued Twilio/Telnyx media and closes the active Cartesia generation so the agent stops over-talking the caller.
+- Preserved caller-before-agent transcript ordering when OpenAI returns response text before the asynchronous input transcription event. Interrupted partial agent responses are persisted but are not restarted through Cartesia.
+- Reused the existing tenant/agent-scoped Realtime tool router for live bookings and integrations. DTMF selections are inserted into the same Realtime conversation rather than starting a separate chat-completions turn.
+- Added deterministic inbound greetings to phone-call persistence and direct Cartesia playback. The greeting plays while the Realtime and Cartesia sockets warm concurrently, and it is seeded into Realtime conversation context without asking the model to regenerate it.
+- Added `OPENAI_REALTIME_WEBSOCKET_URL` and the guarded `OPENAI_REALTIME_TELEPHONY_ENABLED` switch. The switch defaults to `true`; clearing the OpenAI key or setting it to `false` leaves phone calls on the cascade.
+- Files touched for this change:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/call/TelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeService.java`
+  - `backend/src/main/java/com/sauti/call/DefaultTwilioMediaStreamService.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiRealtimeServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/DefaultTwilioMediaStreamServiceTest.java`
+- Verification:
+  - `\.\gradlew.bat :backend:test --tests "com.sauti.call.OpenAiRealtimeServiceTest" --tests "com.sauti.call.OpenAiTelephonyRealtimeConversationProviderTest" --tests "com.sauti.call.DefaultTwilioMediaStreamServiceTest" --tests "com.sauti.call.CallPipelineServiceTest"`
+  - `\.\gradlew.bat :backend:test` (126 tests passed)
+  - `git diff --check`
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up / risk: automated transport and routing tests pass, but a real Twilio/Telnyx call is still required after CI/CD to measure end-of-speech to first-audio latency and tune each agent's saved endpointing/interruption values. Production must have funded OpenAI Realtime access and a working Cartesia key; the cascade remains available if Realtime cannot connect.
+
 ### 2026-07-15 - Voice picker control typography and focus refinement
 
 - Standardized the voice-engine tabs on the Agent Studio font stack, including consistent title, count, and supporting-copy weights.
@@ -2546,3 +2575,63 @@ Expected:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 - Follow-up / risk:
   - Automated provider streams pass, but a live browser call is still required after CI/CD to tune the 180 ms barge-in debounce and 520 ms hybrid endpoint for the deployment's microphones, speakers, and network conditions.
+
+### 2026-07-16 - Cartesia-only voice surface and masked hybrid startup
+
+- Kept OpenAI Realtime as the internal WebRTC conversation engine for speech understanding, VAD, reasoning, and tools, while removing its built-in voices from the customer-facing catalog. Agent Studio now presents one Cartesia voice library instead of exposing an unreliable native/non-English engine choice.
+- Existing `openai:` selections are replaced in the editor with the first compatible Cartesia voice so they can be reviewed and saved. Runtime support for legacy OpenAI selections remains temporarily intact rather than silently changing already-saved production agents outside the editor.
+- Added exact-greeting Cartesia audio caching keyed by voice, language, and text. Browser test calls and public Web Voice calls can play that audio immediately while the OpenAI WebRTC handshake and warm Cartesia streaming WebSocket connect concurrently behind it.
+- Bounded a greeting cache miss to 1.5 seconds. A slower Cartesia request continues warming the shared cache, while the current call falls back to the existing streamed hybrid greeting instead of blocking startup indefinitely.
+- Parallelized microphone audio preparation with call-session creation in Agent Studio, and AudioContext activation with public session creation. Cartesia and OpenAI connections are also established concurrently rather than sequentially.
+- Added a reusable `speakGreeting` Realtime client operation for the safe fallback path when cached audio is unavailable or cannot be decoded.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/api/PublicWebVoiceController.java`
+  - `backend/src/main/java/com/sauti/call/CallDtos.java`
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `backend/src/test/java/com/sauti/voice/VoiceCatalogServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/types/api.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `\.\gradlew.bat :backend:test --tests "com.sauti.voice.VoiceCatalogServiceTest" --tests "com.sauti.call.OpenAiRealtimeServiceTest" --tests "com.sauti.call.HybridVoiceSessionServiceTest"`
+  - `\.\gradlew.bat :backend:test --rerun-tasks` (successful)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` (successful; 50 routes generated)
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - A live production-like call is still needed to measure cache-hit and cache-miss time-to-first-audio with real Cartesia/OpenAI credentials and network latency.
+  - Saved agents that still carry an `openai:` voice keep the legacy runtime until a maintainer opens, reviews, saves, or explicitly migrates them to a Cartesia voice.
+
+### 2026-07-16 - Agent-scoped business identity and runtime configuration audit
+
+- Made the filled agent variable `business_name` the authoritative identity for instant greetings, generated opening prompts, fallback greetings, system context, and call-screen responses. The tenant/account business name is now only a fallback when the agent has no filled `business_name` variable.
+- Added regression coverage proving an agent for `X-Fit` no longer introduces the tenant account `Tranquil AI`, including both instant browser greetings and generated/fallback opening logic.
+- Audited Agent Studio configuration against the active runtimes:
+  - Main identity, prompt, language, voice, timezone, greeting, static knowledge, safety guardrails, enabled tools, transcript retention, phone recording, operating hours/after-hours behavior, and post-call field selection have active runtime consumers.
+  - Phone/cascade calls actively consume agent interruption sensitivity/grace, Deepgram endpointing/vocabulary/keyterms, maximum duration, silence reminders/end timeout, voicemail/call-screen detection, and DTMF settings.
+  - Agent Studio browser tests consume maximum duration and silence settings, but the hybrid OpenAI Realtime + Cartesia path currently uses fixed VAD/interruption values instead of the saved sensitivity, grace, and endpointing values.
+  - Public hybrid Web Voice does not currently enforce the configured maximum duration/silence reminders, voicemail/call screening, DTMF, or Deepgram-specific vocabulary settings.
+  - Static knowledge text is included in Realtime instructions. Uploaded-document semantic retrieval is query-driven in cascaded turns, but is not refreshed per caller turn inside the current Realtime session.
+  - Post-call summary/success/sentiment/intent run only when transcript retention is enabled and the configured analysis provider is available; integration jobs are still enqueued when analysis is not required.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/AgentVariableService.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `\.\gradlew.bat :backend:test --tests "com.sauti.call.CallPipelineServiceTest" --tests "com.sauti.llm.ConversationOrchestratorTest"`
+  - `\.\gradlew.bat :backend:test --rerun-tasks` (successful)
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up / risk:
+  - The next runtime-alignment change should pass saved interruption/VAD and public silence-duration settings into the hybrid Realtime session, then expose uploaded knowledge retrieval as a safe Realtime tool or refreshable context source.

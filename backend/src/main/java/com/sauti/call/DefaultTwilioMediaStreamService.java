@@ -30,6 +30,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
     private final AudioCodecConverter audioCodecConverter;
     private final RealtimeSpeechToTextProvider sttProvider;
     private final RealtimeTextToSpeechProvider ttsProvider;
+    private final TelephonyRealtimeConversationProvider realtimeConversationProvider;
     private final TwilioMediaFrameFactory frameFactory;
     private final TelnyxMediaFrameFactory telnyxFrameFactory;
     private final SentenceChunker sentenceChunker;
@@ -51,6 +52,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             AudioCodecConverter audioCodecConverter,
             RealtimeSpeechToTextProvider sttProvider,
             RealtimeTextToSpeechProvider ttsProvider,
+            TelephonyRealtimeConversationProvider realtimeConversationProvider,
             TwilioMediaFrameFactory frameFactory,
             TelnyxMediaFrameFactory telnyxFrameFactory,
             SentenceChunker sentenceChunker,
@@ -66,6 +68,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         this.audioCodecConverter = audioCodecConverter;
         this.sttProvider = sttProvider;
         this.ttsProvider = ttsProvider;
+        this.realtimeConversationProvider = realtimeConversationProvider;
         this.frameFactory = frameFactory;
         this.telnyxFrameFactory = telnyxFrameFactory;
         this.sentenceChunker = sentenceChunker;
@@ -90,22 +93,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         }
         var call = callRepository.findByTwilioCallSid(callSid).orElse(null);
         callSessionStore.updateStreamSid(callSid, streamSid);
-        var sttSession = sttProvider.open(call == null ? null : call.getAgent(), new RealtimeTranscriptListener() {
-            @Override
-            public void onPartialTranscript(String transcript, double confidence) {
-                handlePartialTranscript(callSid, transcript, confidence);
-            }
-
-            @Override
-            public void onFinalTranscript(String transcript) {
-                handleFinalTranscript(callSid, transcript);
-            }
-
-            @Override
-            public void onError(Throwable error) {
-                LOGGER.warn("Realtime STT failed for callSid={}", callSid, error);
-            }
-        });
+        var sttSession = openInboundSession(callSid, call);
         var language = call == null ? "" : call.getAgent().getDefaultLanguage();
         var voiceId = call == null ? "" : call.getAgent().getTtsVoiceId();
         TelephonyMediaFrameFactory selectedFrameFactory = "telnyx".equals(parameters.get("_mediaProvider"))
@@ -188,8 +176,93 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 var closeAfterMessage = "closed".equals(call.getAgent().getAfterHoursBehavior());
                 if (closeAfterMessage) callPipelineService.completeActiveCall(callSid, "after_hours");
                 streamTtsResponse(session, afterHoursMessage, closeAfterMessage);
+            } else {
+                var greeting = callPipelineService.openingGreeting(call);
+                if (greeting != null && !greeting.isBlank()) {
+                    // Play the deterministic greeting immediately while the
+                    // Realtime and Cartesia sockets finish warming in parallel.
+                    streamTtsResponse(session, greeting, false);
+                    sttSession.thenAccept(inbound -> {
+                        if (inbound instanceof TelephonyRealtimeConversationProvider.Session realtime) {
+                            realtime.seedAssistantText(greeting);
+                        }
+                    });
+                }
             }
         }
+    }
+
+    private CompletableFuture<RealtimeSttSession> openInboundSession(String callSid, Call call) {
+        if (call != null && realtimeConversationProvider.supports(call)) {
+            return realtimeConversationProvider.open(call, new TelephonyRealtimeConversationProvider.Listener() {
+                @Override
+                public void onCallerSpeechStarted() {
+                    handleRealtimeCallerSpeechStarted(callSid);
+                }
+
+                @Override
+                public void onCallerTranscript(String transcript) {
+                    handleRealtimeCallerTranscript(callSid, transcript);
+                }
+
+                @Override
+                public void onAgentTextDelta(String delta) {
+                    handleRealtimeAgentDelta(callSid, delta);
+                }
+
+                @Override
+                public void onAgentTextComplete(String text, boolean interrupted) {
+                    handleRealtimeAgentComplete(callSid, text, interrupted);
+                }
+
+                @Override
+                public void onError(Throwable error) {
+                    LOGGER.warn("Telephony Realtime failed for callSid={}", callSid, error);
+                }
+
+                @Override
+                public void onDisconnected(Throwable error) {
+                    activateCascadeFallback(callSid, call, error);
+                }
+            }).thenApply(realtime -> (RealtimeSttSession) realtime)
+                    .exceptionallyCompose(error -> {
+                        LOGGER.warn("Telephony Realtime could not connect for callSid={}; using cascade fallback", callSid, error);
+                        return openCascadeStt(callSid, call);
+                    });
+        }
+        return openCascadeStt(callSid, call);
+    }
+
+    private CompletableFuture<RealtimeSttSession> openCascadeStt(String callSid, Call call) {
+        return sttProvider.open(call == null ? null : call.getAgent(), new RealtimeTranscriptListener() {
+            @Override
+            public void onPartialTranscript(String transcript, double confidence) {
+                handlePartialTranscript(callSid, transcript, confidence);
+            }
+
+            @Override
+            public void onFinalTranscript(String transcript) {
+                handleFinalTranscript(callSid, transcript);
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                LOGGER.warn("Realtime STT failed for callSid={}", callSid, error);
+            }
+        });
+    }
+
+    private void activateCascadeFallback(String callSid, Call call, Throwable error) {
+        var session = sessions.get(callSid);
+        if (session == null || !session.beginCascadeFallback()) return;
+        LOGGER.warn("Telephony Realtime disconnected for callSid={}; activating cascade fallback", callSid, error);
+        session.cancelRealtimeResponse();
+        if (session.interruptCurrentTurn()) {
+            callSessionStore.markInterrupted(callSid);
+            callSessionStore.setSpeaking(callSid, false, "");
+            dashboardEventPublisher.agentSpeaking(call, false);
+        }
+        session.replaceSttSession(openCascadeStt(callSid, call));
     }
 
     private String afterHoursMessage(Call call, String language) {
@@ -249,6 +322,12 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         var callerInput = meaning == null || meaning.isBlank()
                 ? "Caller entered keypad digits: " + digits + "."
                 : "Caller selected keypad option \"" + meaning + "\" (digits: " + digits + ").";
+        if (session.sendRealtimeUserText(callerInput)) {
+            callPipelineService.recordRealtimeTranscript(
+                    call.getTenant().getId(), call.getId(), "caller", callerInput, false
+            );
+            return;
+        }
         var turn = callPipelineService.processLiveTranscriptTurn(call, callerInput);
         if (!turn.text().isBlank()) streamTtsResponse(session, turn.text(), false);
     }
@@ -377,6 +456,73 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 session.close();
             }
         }
+    }
+
+    private void handleRealtimeCallerSpeechStarted(String callSid) {
+        var session = sessions.get(callSid);
+        if (session == null) return;
+        session.enqueue(() -> {
+            if (session.interruptCurrentTurn()) {
+                session.cancelRealtimeResponse();
+                callSessionStore.markInterrupted(callSid);
+                callSessionStore.setSpeaking(callSid, false, "");
+                callRepository.findByTwilioCallSid(callSid)
+                        .ifPresent(call -> dashboardEventPublisher.agentSpeaking(call, false));
+                LOGGER.info("Realtime barge-in detected for callSid={}", callSid);
+            }
+        });
+    }
+
+    private void handleRealtimeCallerTranscript(String callSid, String transcript) {
+        if (transcript == null || transcript.isBlank()) return;
+        var session = sessions.get(callSid);
+        if (session == null) return;
+        session.markCallerResponse();
+        session.rememberRealtimeCallerEnding(transcript);
+        callRepository.findByTwilioCallSid(callSid)
+                .filter(Call::isActive)
+                .ifPresent(call -> {
+                    dashboardEventPublisher.transcriptFinal(call, transcript);
+                    callPipelineService.recordRealtimeTranscript(
+                            call.getTenant().getId(), call.getId(), "caller", transcript, false
+                    );
+                });
+    }
+
+    private void handleRealtimeAgentDelta(String callSid, String delta) {
+        if (delta == null || delta.isEmpty()) return;
+        var session = sessions.get(callSid);
+        if (session == null) return;
+        session.enqueue(() -> {
+            if (session.beginRealtimeResponse()) beginTtsResponse(session, false);
+            session.appendRealtimeText(delta);
+        });
+    }
+
+    private void handleRealtimeAgentComplete(String callSid, String text, boolean interrupted) {
+        if (text == null || text.isBlank()) return;
+        var session = sessions.get(callSid);
+        if (session == null) return;
+        session.enqueue(() -> callRepository.findByTwilioCallSid(callSid)
+                .filter(Call::isActive)
+                .ifPresent(call -> {
+                    if (interrupted) {
+                        session.cancelRealtimeResponse();
+                        callPipelineService.recordRealtimeTranscript(
+                                call.getTenant().getId(), call.getId(), "agent", text, true
+                        );
+                        return;
+                    }
+                    if (session.beginRealtimeResponse()) beginTtsResponse(session, false);
+                    var terminal = session.realtimeCallerWasEnding()
+                            && callPipelineService.looksLikeConversationEnding(text);
+                    session.setCloseAfterCurrentMark(terminal);
+                    session.completeRealtimeText(text);
+                    callPipelineService.recordRealtimeTranscript(
+                            call.getTenant().getId(), call.getId(), "agent", text, false
+                    );
+                    if (terminal) callPipelineService.completeActiveCall(callSid, "completed");
+                }));
     }
 
     private void handleFinalTranscript(String callSid, String transcript) {
@@ -523,7 +669,12 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         private ScheduledFuture<?> maintenanceTask;
         private UUID pendingTransferCallId;
         private final StringBuilder dtmfBuffer = new StringBuilder();
+        private final StringBuilder realtimeTextBuffer = new StringBuilder();
         private long dtmfVersion;
+        private boolean realtimeResponseOpen;
+        private boolean realtimeReceivedDelta;
+        private boolean realtimeCallerEnding;
+        private boolean cascadeFallbackActive;
 
         private TwilioMediaSession(
                 String callSid,
@@ -648,12 +799,104 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             enqueue(() -> resolvedSttSession.sendPcmAudio(pcmAudio));
         }
 
+        private synchronized boolean beginCascadeFallback() {
+            if (cascadeFallbackActive) return false;
+            cascadeFallbackActive = true;
+            return true;
+        }
+
+        private void replaceSttSession(CompletableFuture<RealtimeSttSession> replacement) {
+            RealtimeSttSession previous;
+            synchronized (this) {
+                previous = sttSession;
+                sttSession = null;
+            }
+            if (previous != null) previous.close();
+            replacement.whenComplete((next, error) -> {
+                if (error != null || next == null) {
+                    LOGGER.warn("Cascade STT fallback failed for callSid={}", callSid, error);
+                    return;
+                }
+                List<byte[]> queued;
+                synchronized (this) {
+                    sttSession = next;
+                    queued = List.copyOf(pendingPcmAudio);
+                    pendingPcmAudio.clear();
+                }
+                for (var audio : queued) enqueue(() -> next.sendPcmAudio(audio));
+            });
+        }
+
         private void speak(String text, boolean flush) {
             ttsSessionFuture.thenAccept(ttsSession -> {
                 if (ttsSession != null) {
                     enqueue(() -> ttsSession.speak(text, flush));
                 }
             });
+        }
+
+        private synchronized boolean sendRealtimeUserText(String text) {
+            if (!(sttSession instanceof TelephonyRealtimeConversationProvider.Session realtime)) return false;
+            realtime.sendUserText(text);
+            return true;
+        }
+
+        private synchronized boolean beginRealtimeResponse() {
+            if (realtimeResponseOpen) return false;
+            realtimeResponseOpen = true;
+            realtimeReceivedDelta = false;
+            realtimeTextBuffer.setLength(0);
+            return true;
+        }
+
+        private void appendRealtimeText(String delta) {
+            realtimeReceivedDelta = true;
+            realtimeTextBuffer.append(delta);
+            String phrase;
+            while (!(phrase = WebVoiceSessionService.takeSpeakablePhrase(realtimeTextBuffer, false)).isBlank()) {
+                speak(phrase, false);
+            }
+        }
+
+        private void completeRealtimeText(String completeText) {
+            if (!realtimeReceivedDelta && realtimeTextBuffer.isEmpty() && completeText != null) {
+                realtimeTextBuffer.append(completeText);
+            }
+            var remaining = WebVoiceSessionService.takeSpeakablePhrase(realtimeTextBuffer, true);
+            if (!remaining.isBlank()) speak(remaining, false);
+            speak("", true);
+            synchronized (this) {
+                realtimeResponseOpen = false;
+                realtimeReceivedDelta = false;
+                realtimeTextBuffer.setLength(0);
+            }
+        }
+
+        private synchronized void cancelRealtimeResponse() {
+            realtimeResponseOpen = false;
+            realtimeReceivedDelta = false;
+            realtimeTextBuffer.setLength(0);
+        }
+
+        private synchronized void rememberRealtimeCallerEnding(String transcript) {
+            realtimeCallerEnding = transcript != null && !transcript.isBlank()
+                    && looksLikeEndingText(transcript);
+        }
+
+        private synchronized boolean realtimeCallerWasEnding() {
+            return realtimeCallerEnding;
+        }
+
+        private boolean looksLikeEndingText(String transcript) {
+            var normalized = java.text.Normalizer.normalize(transcript, java.text.Normalizer.Form.NFD)
+                    .replaceAll("\\p{M}+", "")
+                    .toLowerCase(java.util.Locale.ROOT);
+            return normalized.matches(".*\\b(goodbye|bye|no thanks|no thank you|nothing else|that is all|all good)\\b.*")
+                    || normalized.contains("au revoir")
+                    || normalized.contains("bonne journee")
+                    || normalized.contains("non merci")
+                    || normalized.contains("kwaheri")
+                    || normalized.contains("orevoir");
         }
 
         private synchronized boolean acceptsTtsGeneration(int generation) {
@@ -771,6 +1014,9 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 closeAfterCurrentMark = false;
                 ttsGeneration++;
                 ttsSessionOpen = false;
+                realtimeResponseOpen = false;
+                realtimeReceivedDelta = false;
+                realtimeTextBuffer.setLength(0);
                 sessionToClose = ttsSessionFuture;
             }
             sessionToClose.thenAccept(ttsSession -> {
@@ -791,7 +1037,15 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
 
         private void close() {
             if (maintenanceTask != null) maintenanceTask.cancel(false);
-            sttSessionFuture.thenAccept(RealtimeSttSession::close);
+            RealtimeSttSession currentStt;
+            synchronized (this) {
+                currentStt = sttSession;
+                sttSession = null;
+            }
+            if (currentStt != null) currentStt.close();
+            sttSessionFuture.thenAccept(initialStt -> {
+                if (initialStt != currentStt) initialStt.close();
+            });
             ttsSessionFuture.thenAccept(ttsSession -> {
                 if (ttsSession != null) {
                     ttsSession.close();

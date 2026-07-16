@@ -303,7 +303,7 @@ public class ConversationOrchestrator {
                 """.formatted(
                 agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt()),
                 language,
-                call.getTenant().getBusinessName(),
+                businessName(call),
                 today(call),
                 intakeNotes.promptBlock(call, callerTranscript),
                 call.getAgent().getPostCallExtractionFields(),
@@ -321,6 +321,7 @@ public class ConversationOrchestrator {
     private String openingPrompt(Call call, String language, String channel) {
         var greetingDirection = resolveAgentText(call, call.getAgent().getGreetingMessage());
         var basePrompt = agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt());
+        var business = businessName(call);
         return """
                 %s
 
@@ -346,19 +347,26 @@ public class ConversationOrchestrator {
                 """.formatted(
                 basePrompt,
                 language,
-                call.getTenant().getBusinessName(),
+                business,
                 channel == null || channel.isBlank() ? "voice call" : channel,
                 greetingDirection.isBlank() ? "Open warmly, introduce yourself by name, and ask how you can help." : greetingDirection,
-                call.getTenant().getBusinessName(),
+                business,
                 call.getAgent().getName(),
-                call.getTenant().getBusinessName(),
+                business,
                 call.getAgent().getName(),
-                call.getTenant().getBusinessName()
+                business
         );
     }
 
     private String resolveAgentText(Call call, String text) {
         return agentVariableService.resolvePrompt(call.getAgent(), text == null ? "" : text);
+    }
+
+    private String businessName(Call call) {
+        var configured = agentVariableService.businessName(call.getAgent());
+        return configured == null || configured.isBlank()
+                ? call.getTenant().getBusinessName()
+                : configured;
     }
 
     private String afterHoursBlock(Call call) {
@@ -457,7 +465,7 @@ public class ConversationOrchestrator {
     private String openingFallback(Call call, String language) {
         var normalizedLanguage = language == null ? "" : language;
         var name = call.getAgent().getName();
-        var business = call.getTenant().getBusinessName();
+        var business = businessName(call);
         if ("fr".equals(normalizedLanguage)) {
             return "Bonjour, c'est " + name + " de " + business + ". Comment puis-je vous aider ?";
         }
@@ -477,7 +485,7 @@ public class ConversationOrchestrator {
             return openingFallback(call, language);
         }
         if (!mentions(candidate, call.getAgent().getName())
-                || !mentions(candidate, call.getTenant().getBusinessName())) {
+                || !mentions(candidate, businessName(call))) {
             return openingFallback(call, language);
         }
         return candidate;

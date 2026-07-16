@@ -162,6 +162,14 @@ public class AgentVariableService {
         return result.toString();
     }
 
+    @Transactional(readOnly = true)
+    public String businessName(Agent agent) {
+        return variableRepository.findByAgentIdAndKey(agent.getId(), "business_name")
+                .filter(AgentVariable::isFilled)
+                .map(AgentVariable::getValue)
+                .orElse(agent.getTenant().getBusinessName());
+    }
+
     private Agent requireOwnedAgent(UUID tenantId, UUID agentId) {
         return agentRepository.findByIdAndTenantId(agentId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Agent not found"));

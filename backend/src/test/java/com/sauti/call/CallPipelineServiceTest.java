@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.sauti.agent.Agent;
 import com.sauti.agent.AgentRepository;
 import com.sauti.agent.AgentVariableRepository;
+import com.sauti.agent.AgentVariable;
 import com.sauti.dashboard.DashboardEventPublisher;
 import com.sauti.llm.ConversationOrchestrator;
 import com.sauti.llm.ConversationTurnResult;
@@ -24,7 +25,7 @@ import org.mockito.ArgumentCaptor;
 
 class CallPipelineServiceTest {
     @Test
-    void startTestCallDoesNotSpeakGreetingGenerationInstructions() {
+    void startTestCallUsesTheAgentBusinessNameInsteadOfTheTenantName() {
         var callRepository = mock(CallRepository.class);
         var callTurnRepository = mock(CallTurnRepository.class);
         var agentRepository = mock(AgentRepository.class);
@@ -36,13 +37,18 @@ class CallPipelineServiceTest {
                 "Prompt"
         );
         agent.activate();
+        var variableRepository = mock(AgentVariableRepository.class);
+        var businessName = new AgentVariable(agent, "business_name", "Business name", null, true);
+        businessName.updateValue("X-Fit");
         when(agentRepository.findByIdAndTenantId(agent.getId(), tenant.getId())).thenReturn(Optional.of(agent));
+        when(variableRepository.findByAgentIdAndKey(agent.getId(), "business_name"))
+                .thenReturn(Optional.of(businessName));
         when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
         var service = new CallPipelineService(
                 callRepository,
                 callTurnRepository,
                 agentRepository,
-                mock(AgentVariableRepository.class),
+                variableRepository,
                 mock(StreamingSttProvider.class),
                 mock(LanguageDetector.class),
                 mock(ConversationOrchestrator.class),
@@ -57,7 +63,7 @@ class CallPipelineServiceTest {
         var turn = ArgumentCaptor.forClass(CallTurn.class);
         verify(callTurnRepository).save(turn.capture());
         assertThat(turn.getValue().getAgentResponse())
-                .isEqualTo("Bonjour, c'est Sarah de Tranquil AI. Comment puis-je vous aider ?");
+                .isEqualTo("Bonjour, c'est Sarah de X-Fit. Comment puis-je vous aider ?");
     }
 
     @Test

@@ -82,6 +82,7 @@ public final class CallDtos {
     public record StartTestCallResponse(
             CallResponse call,
             String greeting,
+            String greetingAudioBase64,
             TestCallSettings settings,
             String websocketUrl,
             String token,

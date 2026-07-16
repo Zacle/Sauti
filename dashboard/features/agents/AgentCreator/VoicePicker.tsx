@@ -29,7 +29,6 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   const [languageFilter, setLanguageFilter] = useState("recommended");
   const [accentFilter, setAccentFilter] = useState("all");
   const [accentOpen, setAccentOpen] = useState(false);
-  const [providerFilter, setProviderFilter] = useState<"all" | "openai" | "cartesia">("all");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -38,9 +37,10 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
         setVoices(catalog.voices);
         setEnabledProviders(catalog.enabledProviders);
         setProviderEnabled(catalog.enabledProviders.length > 0);
-        if (!value) {
-          const realtimeDefault = catalog.voices.find((voice) => voice.id === "openai:marin");
-          if (realtimeDefault) onChange(realtimeDefault.id);
+        if (!value || value.startsWith("openai:")) {
+          const cartesiaDefault = catalog.voices.find((voice) => voice.languages.includes(primaryLanguage))
+            ?? catalog.voices[0];
+          if (cartesiaDefault) onChange(cartesiaDefault.id);
         }
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load voices."))
@@ -83,16 +83,15 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   const filteredVoices = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return voices.filter((voice) => {
-      const matchesProvider = providerFilter === "all" || voice.provider === providerFilter;
       const matchesAccent = accentFilter === "all"
         || voice.traits.accent?.trim().toLowerCase() === accentFilter;
       const matchesQuery = !normalizedQuery
         || `${voice.name} ${voice.description ?? ""} ${Object.values(voice.traits).join(" ")}`
           .toLowerCase()
           .includes(normalizedQuery);
-      return matchesProvider && matchesAccent && matchesQuery;
+      return matchesAccent && matchesQuery;
     });
-  }, [accentFilter, providerFilter, query, voices]);
+  }, [accentFilter, query, voices]);
   const voiceCoverage = useMemo(
     () => Object.fromEntries(visibleLanguages.map((language) => [
       language,
@@ -238,12 +237,10 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               </div>
             </div>
 
-            <div className="voice-engine-tabs" aria-label="Voice engine">
-              <button className={providerFilter === "all" ? "active" : ""} type="button" onClick={() => setProviderFilter("all")}>
-                All engines <span>{voices.length}</span>
-              </button>
-              {enabledProviders.includes("openai") && <button className={providerFilter === "openai" ? "active" : ""} type="button" onClick={() => setProviderFilter("openai")}><b>OpenAI Realtime</b><small>Lowest latency · native speech-to-speech</small></button>}
-              {enabledProviders.includes("cartesia") && <button className={providerFilter === "cartesia" ? "active" : ""} type="button" onClick={() => setProviderFilter("cartesia")}><b>Cartesia</b><small>OpenAI Realtime · Cartesia Sonic voice</small></button>}
+            <div className="voice-engine-summary">
+              <span><Mic2 size={17} /></span>
+              <div><strong>Cartesia voice library</strong><small>Fast multilingual speech, powered by Sauti&apos;s OpenAI Realtime conversation engine.</small></div>
+              <i>{voices.length} voices</i>
             </div>
 
             <div className="voice-language-tabs" aria-label="Voice language">
@@ -267,7 +264,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               {previewError && <div className="voice-preview-error">{previewError}</div>}
               {loading && <div className="voice-picker-state"><LoaderCircle className="spin" size={22} /> Loading available voices...</div>}
               {!loading && error && <div className="voice-picker-state error">{error}<small>Check the configured TTS provider credentials.</small></div>}
-              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure OpenAI or Cartesia credentials in the backend environment.</small></div>}
+              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure Cartesia credentials in the backend environment.</small></div>}
               {!loading && !error && providerEnabled && unsupportedLanguage && (
                 <div className="voice-language-unavailable">
                   <CircleAlert aria-hidden="true" size={20} />
@@ -387,11 +384,11 @@ function compareVoiceQuality(left: VoiceOption, right: VoiceOption, languages: s
 }
 
 function providerRank(provider: string) {
-  return provider === "openai" ? 0 : provider === "cartesia" ? 1 : 2;
+  return provider === "cartesia" ? 0 : 1;
 }
 
 function providerName(provider: string) {
-  return provider === "openai" ? "OpenAI Realtime" : provider === "cartesia" ? "Cartesia" : titleCase(provider);
+  return provider === "cartesia" ? "Cartesia" : titleCase(provider);
 }
 
 function categoryRank(category: string) {

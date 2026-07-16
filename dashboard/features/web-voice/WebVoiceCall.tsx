@@ -86,23 +86,31 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+      streamRef.current = stream;
       const embedded = new URLSearchParams(window.location.search).get("embed") === "1";
       const origin = embedded && document.referrer ? new URL(document.referrer).origin : window.location.origin;
-      const session = await startPublicWebVoiceSession(publicId, consent, origin, language || agent.defaultLanguage);
       const context = new AudioContext();
-      await context.resume();
-      streamRef.current = stream;
       contextRef.current = context;
+      const [session] = await Promise.all([
+        startPublicWebVoiceSession(publicId, consent, origin, language || agent.defaultLanguage),
+        context.resume().then(() => undefined),
+      ]);
       sessionIdRef.current = session.sessionId;
       tokenRef.current = session.token;
       setMode(session.mode);
       if (session.mode === "openai_realtime" || session.mode === "hybrid_realtime") {
         const hybrid = session.mode === "hybrid_realtime";
         hybridRealtimeRef.current = hybrid;
-        if (hybrid) await connectHybridVoice(session.websocketUrl, context);
-        openAiConnectionRef.current = await connectOpenAiRealtime({
+        const cachedGreeting = hybrid ? session.greetingAudioBase64 : null;
+        if (cachedGreeting && session.greeting) {
+          setMessages([{ role: "agent", text: session.greeting }]);
+        }
+        const greetingPlayback = cachedGreeting
+          ? playEncodedAudio(cachedGreeting)
+          : Promise.resolve(false);
+        const realtimeConnection = connectOpenAiRealtime({
           microphone: stream,
-          greeting: session.greeting,
+          greeting: cachedGreeting ? "" : session.greeting,
           outputMode: hybrid ? "text" : "audio",
           bargeInDebounceMs: hybrid ? 180 : 0,
           connectSdp: (offer) => connectPublicRealtime(session.sessionId, session.token, offer),
@@ -149,6 +157,18 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
             ),
           },
         });
+        const [, connection, greetingPlayed] = await Promise.all([
+          hybrid ? connectHybridVoice(session.websocketUrl, context) : Promise.resolve(),
+          realtimeConnection,
+          greetingPlayback,
+        ]);
+        openAiConnectionRef.current = connection;
+        if (hybrid && !greetingPlayed) {
+          setMessages((current) => current.length === 1
+            && current[0]?.role === "agent"
+            && current[0]?.text === session.greeting ? [] : current);
+          connection.speakGreeting(session.greeting);
+        }
         return;
       }
       if (session.mode === "turn") {
@@ -370,9 +390,9 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     source.onended = () => playbackSourcesRef.current.delete(source);
   }
 
-  async function playEncodedAudio(encoded: string) {
+  async function playEncodedAudio(encoded: string): Promise<boolean> {
     const context = contextRef.current;
-    if (!context) return;
+    if (!context) return false;
     updateSpeaking(true);
     try {
       const binary = window.atob(encoded);
@@ -386,6 +406,9 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
         source.onended = () => resolve();
         source.start();
       });
+      return true;
+    } catch {
+      return false;
     } finally {
       updateSpeaking(false);
     }
