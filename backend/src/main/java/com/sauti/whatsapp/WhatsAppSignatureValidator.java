@@ -25,10 +25,9 @@ public class WhatsAppSignatureValidator {
     }
 
     @PostConstruct
-    void warnIfMisconfigured() {
+    void logAvailability() {
         if (validationEnabled && appSecret.isBlank()) {
-            LOGGER.warn("WhatsApp webhook signature validation is enabled but WHATSAPP_APP_SECRET is blank; "
-                    + "all incoming WhatsApp webhook requests will be rejected");
+            LOGGER.info("WhatsApp webhook receiver is disabled because no Meta App Secret is configured");
         }
     }
 

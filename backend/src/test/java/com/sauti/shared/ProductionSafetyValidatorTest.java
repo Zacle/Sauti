@@ -1,12 +1,24 @@
 package com.sauti.shared;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.mock.env.MockEnvironment;
 
 class ProductionSafetyValidatorTest {
+    @Test
+    void productionProfileDefaultsProviderModeToLive() {
+        new ApplicationContextRunner()
+                .withInitializer(new ConfigDataApplicationContextInitializer())
+                .withPropertyValues("spring.profiles.active=production")
+                .run(context -> assertThat(context.getEnvironment().getProperty("sauti.providers.mode"))
+                        .isEqualTo("live"));
+    }
+
     @Test
     void acceptsExplicitSafeProductionConfiguration() {
         var validator = new ProductionSafetyValidator(safeEnvironment());

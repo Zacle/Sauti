@@ -10,5 +10,9 @@ spring:
     cache: true
 
 sauti:
+  providers:
+    # Existing production installations may predate PROVIDER_MODE. Production
+    # must never inherit the development-only `fake` default from application.yml.
+    mode: ${PROVIDER_MODE:live}
   auth:
     expose-dev-tokens: false

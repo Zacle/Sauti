@@ -26,4 +26,9 @@ class WhatsAppSignatureValidatorTest {
     void allowsUnsignedLocalDevelopmentWhenValidationIsDisabled() {
         assertThat(new WhatsAppSignatureValidator("", false).isValid("{}", null)).isTrue();
     }
+
+    @Test
+    void rejectsUnsignedWebhooksWhenOptionalChannelIsNotConfigured() {
+        assertThat(new WhatsAppSignatureValidator("", true).isValid("{}", null)).isFalse();
+    }
 }

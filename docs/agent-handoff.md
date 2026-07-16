@@ -2703,3 +2703,40 @@ Expected:
   - Durable database-backed worker claiming is the next scaling prerequisite before multiple backend replicas process post-call jobs.
   - `AgentCreator.tsx` and `TestCallPanel.tsx` remain large and should be split behind feature hooks in incremental, behavior-preserving changes.
   - Existing Spring test warnings for deprecated `@MockBean` remain outside this change and should migrate to the replacement test annotation before the next Spring Boot major upgrade.
+
+### 2026-07-16 - Production provider-mode compatibility fix
+
+- Fixed the production startup failure introduced by the safety validator on installations whose existing `/opt/sauti/.env.production` predates `PROVIDER_MODE`.
+- The `production` profile now defaults `sauti.providers.mode` to `live` instead of inheriting the development-only `fake` fallback from `application.yml`.
+- An explicitly configured non-live `PROVIDER_MODE` is still honored and rejected by `ProductionSafetyValidator`; the guard has not been weakened.
+- Files touched:
+  - `backend/src/main/resources/application-production.yml`
+  - `backend/src/test/java/com/sauti/shared/ProductionSafetyValidatorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.shared.ProductionSafetyValidatorTest`
+  - `git diff --check`
+- Deployment:
+  - Not deployed by the coding agent. The fix remains uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up / risk:
+  - Maintainers should still add `PROVIDER_MODE=live` to `/opt/sauti/.env.production` during the next environment-maintenance window so the intended mode remains explicit outside the application defaults.
+
+### 2026-07-16 - Optional WhatsApp webhook configuration cleanup
+
+- Kept WhatsApp webhook verification fail-closed when no Meta App Secret is configured; unsigned requests are never accepted in production merely to silence a startup message.
+- Changed the expected optional/unconfigured channel message from a warning to an informational disabled-state message.
+- Unified webhook verification and Embedded Signup on the same Meta App Secret. `WHATSAPP_APP_SECRET` remains canonical, with `WHATSAPP_EMBEDDED_SIGNUP_APP_SECRET` supported as a fallback for existing installations.
+- Clarified the production environment example and added regression coverage for the unconfigured fail-closed behavior.
+- Files touched:
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/whatsapp/WhatsAppSignatureValidator.java`
+  - `backend/src/test/java/com/sauti/whatsapp/WhatsAppSignatureValidatorTest.java`
+  - `deploy/.env.production.example`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.whatsapp.WhatsAppSignatureValidatorTest --tests com.sauti.WhatsAppWebhookSecurityTest`
+  - `git diff --check`
+- Deployment:
+  - Not deployed by the coding agent. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up / risk:
+  - To activate WhatsApp, set `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, and the Embedded Signup application/configuration IDs. Keep `WHATSAPP_VALIDATE_SIGNATURE=true`.

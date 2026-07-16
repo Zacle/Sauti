@@ -88,7 +88,8 @@ sauti:
   whatsapp:
     access-token: ${WHATSAPP_ACCESS_TOKEN:}
     verify-token: ${WHATSAPP_VERIFY_TOKEN:}
-    app-secret: ${WHATSAPP_APP_SECRET:}
+    # Meta uses the same App Secret for Embedded Signup and webhook signatures.
+    app-secret: ${WHATSAPP_APP_SECRET:${WHATSAPP_EMBEDDED_SIGNUP_APP_SECRET:}}
     validate-signature: ${WHATSAPP_VALIDATE_SIGNATURE:true}
     graph-api-base-url: ${WHATSAPP_GRAPH_API_BASE_URL:https://graph.facebook.com/v23.0}
   jwt:
