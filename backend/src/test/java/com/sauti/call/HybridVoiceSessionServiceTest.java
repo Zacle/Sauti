@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -40,8 +41,8 @@ class HybridVoiceSessionServiceTest {
         when(agent.getTtsVoiceId()).thenReturn("cartesia:french-voice");
         when(repository.findByTwilioCallSid("test-hybrid")).thenReturn(Optional.of(call));
         when(socket.isOpen()).thenReturn(true);
-        when(provider.open(eq("fr"), eq("cartesia:french-voice"), any()))
-                .thenReturn(CompletableFuture.completedFuture(tts));
+        var delayedTts = new CompletableFuture<RealtimeTtsSession>();
+        when(provider.open(eq("fr"), eq("cartesia:french-voice"), any())).thenReturn(delayedTts);
         var listener = ArgumentCaptor.forClass(TtsAudioListener.class);
         var service = new HybridVoiceSessionService(repository, provider, new ObjectMapper());
 
@@ -49,11 +50,13 @@ class HybridVoiceSessionServiceTest {
         verify(provider).open(eq("fr"), eq("cartesia:french-voice"), listener.capture());
         service.accept("test-hybrid", "{\"type\":\"tts_delta\",\"text\":\"Bonjour, je peux vous aider avec votre rendez-vous. \"}");
         service.accept("test-hybrid", "{\"type\":\"tts_complete\"}");
+        delayedTts.complete(tts);
         listener.getValue().onPcmAudio(new byte[] {1, 2, 3, 4});
         listener.getValue().onComplete();
 
-        verify(tts, atLeastOnce()).speak(anyString(), eq(false));
-        verify(tts).speak("", true);
+        var writes = inOrder(tts);
+        writes.verify(tts).speak(anyString(), eq(false));
+        writes.verify(tts).speak("", true);
         var binary = ArgumentCaptor.forClass(BinaryMessage.class);
         verify(socket).sendMessage(binary.capture());
         assertThat(binary.getValue().getPayloadLength()).isEqualTo(4);

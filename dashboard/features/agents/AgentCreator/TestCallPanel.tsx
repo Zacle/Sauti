@@ -102,6 +102,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const nativeRealtimeRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
   const nativeEndPendingRef = useRef(false);
+  const transcriptWriteRef = useRef<Promise<void>>(Promise.resolve());
 
   function updateStatus(next: CallStatus) {
     statusRef.current = next;
@@ -188,6 +189,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       microphone: stream,
       greeting: started.greeting,
       outputMode: hybrid ? "text" : "audio",
+      bargeInDebounceMs: hybrid ? 180 : 0,
       connectSdp: (offer) => connectTestRealtime(started.call.id, offer),
       playbackContext: audioContextRef.current,
       recordingDestination: recordingDestinationRef.current,
@@ -198,12 +200,12 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           lastActivityAtRef.current = Date.now();
           setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text }]);
           updateStatus("thinking");
-          void recordTestRealtimeTranscript(started.call.id, "caller", text);
+          queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "caller", text));
         },
         onAgentTranscript: (text, interrupted) => {
           rememberAgentPrompt(text);
           setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text }]);
-          void recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted);
+          queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted));
           if (isFarewell(text)) nativeEndPendingRef.current = true;
         },
         onAgentTextDelta: hybrid ? (delta) => sendHybridEvent({ type: "tts_delta", text: delta }) : undefined,
@@ -239,6 +241,12 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   function sendHybridEvent(payload: Record<string, unknown>) {
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+  }
+
+  function queueTranscriptWrite(write: () => Promise<unknown>) {
+    transcriptWriteRef.current = transcriptWriteRef.current
+      .then(write, write)
+      .then(() => undefined, () => undefined);
   }
 
   function interruptHybridResponse(cancelModel: boolean) {

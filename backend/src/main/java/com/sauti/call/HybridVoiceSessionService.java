@@ -150,17 +150,23 @@ public class HybridVoiceSessionService {
 
     private void speak(HybridSession state, String text, boolean flush) {
         var generation = state.generation;
-        state.tts.thenAccept(tts -> {
-            synchronized (state) {
-                if (tts == null || !state.current(generation)) return;
-                try {
-                    tts.speak(text, flush);
-                } catch (Exception exception) {
-                    LOGGER.warn("Unable to stream hybrid speech for call={}", state.call.getTwilioCallSid(), exception);
-                    sendJson(state, Map.of("type", "error", "message", "The selected voice could not speak."));
-                }
-            }
-        });
+        var targetTts = state.tts;
+        // A response can produce several phrases before Cartesia's WebSocket
+        // finishes opening. CompletableFuture dependants are not FIFO, so chain
+        // every write explicitly and guarantee that the final flush is last.
+        state.ttsWrites = state.ttsWrites
+                .handle((ignored, error) -> null)
+                .thenCompose(ignored -> targetTts.thenAccept(tts -> {
+                    synchronized (state) {
+                        if (tts == null || !state.current(generation)) return;
+                        try {
+                            tts.speak(text, flush);
+                        } catch (Exception exception) {
+                            LOGGER.warn("Unable to stream hybrid speech for call={}", state.call.getTwilioCallSid(), exception);
+                            sendJson(state, Map.of("type", "error", "message", "The selected voice could not speak."));
+                        }
+                    }
+                }));
     }
 
     private void closeTts(HybridSession state) {
@@ -168,6 +174,7 @@ public class HybridVoiceSessionService {
             if (tts != null) tts.close();
         });
         state.tts = CompletableFuture.completedFuture(null);
+        state.ttsWrites = CompletableFuture.completedFuture(null);
     }
 
     private void sendJson(HybridSession state, Map<String, ?> payload) {
@@ -191,6 +198,7 @@ public class HybridVoiceSessionService {
         private final WebSocketSession socket;
         private final StringBuilder textBuffer = new StringBuilder();
         private CompletableFuture<RealtimeTtsSession> tts = CompletableFuture.completedFuture(null);
+        private CompletableFuture<Void> ttsWrites = CompletableFuture.completedFuture(null);
         private int generation;
         private boolean speaking;
         private boolean closed;
@@ -211,6 +219,7 @@ public class HybridVoiceSessionService {
             textBuffer.setLength(0);
             tts.thenAccept(session -> { if (session != null) session.close(); });
             tts = CompletableFuture.completedFuture(null);
+            ttsWrites = CompletableFuture.completedFuture(null);
         }
     }
 }

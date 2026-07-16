@@ -27,6 +27,7 @@ export async function connectOpenAiRealtime(options: {
   playbackContext?: AudioContext | null;
   recordingDestination?: MediaStreamAudioDestinationNode | null;
   outputMode?: "audio" | "text";
+  bargeInDebounceMs?: number;
 }): Promise<OpenAiRealtimeConnection> {
   const peer = new RTCPeerConnection();
   const remoteStream = new MediaStream();
@@ -59,6 +60,27 @@ export async function connectOpenAiRealtime(options: {
   let agentInterrupted = false;
   let textCompletionSent = false;
   let responseActive = false;
+  let pendingCallerTranscriptions = 0;
+  let callerSpeechActive = false;
+  let bargeInTimer = 0;
+  const deferredAgentTranscripts: Array<{ text: string; interrupted: boolean }> = [];
+
+  const deliverAgentTranscript = (text: string, interrupted: boolean) => {
+    if (!text) return;
+    if (pendingCallerTranscriptions > 0) {
+      deferredAgentTranscripts.push({ text, interrupted });
+      return;
+    }
+    options.callbacks.onAgentTranscript(text, interrupted);
+  };
+
+  const flushDeferredAgentTranscripts = () => {
+    if (pendingCallerTranscriptions > 0) return;
+    while (deferredAgentTranscripts.length > 0) {
+      const transcript = deferredAgentTranscripts.shift();
+      if (transcript) options.callbacks.onAgentTranscript(transcript.text, transcript.interrupted);
+    }
+  };
   channel.onmessage = (message) => {
     let event: Record<string, unknown>;
     try { event = JSON.parse(String(message.data)) as Record<string, unknown>; } catch { return; }
@@ -67,6 +89,12 @@ export async function connectOpenAiRealtime(options: {
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
       if (transcript) options.callbacks.onCallerTranscript(transcript);
+      pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
+      flushDeferredAgentTranscripts();
+    }
+    if (type === "conversation.item.input_audio_transcription.failed") {
+      pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
+      flushDeferredAgentTranscripts();
     }
     if (type === "response.output_audio_transcript.delta") {
       responseActive = true;
@@ -74,7 +102,7 @@ export async function connectOpenAiRealtime(options: {
     }
     if (type === "response.output_audio_transcript.done") {
       const transcript = String(event.transcript ?? agentTranscript).trim();
-      if (transcript) options.callbacks.onAgentTranscript(transcript, agentInterrupted);
+      deliverAgentTranscript(transcript, agentInterrupted);
       agentTranscript = "";
       agentInterrupted = false;
     }
@@ -90,7 +118,7 @@ export async function connectOpenAiRealtime(options: {
     if (type === "response.output_text.done") {
       const interrupted = agentInterrupted;
       const transcript = String(event.text ?? agentTranscript).trim();
-      if (transcript) options.callbacks.onAgentTranscript(transcript, interrupted);
+      deliverAgentTranscript(transcript, interrupted);
       agentTranscript = "";
       agentInterrupted = false;
       textCompletionSent = true;
@@ -101,16 +129,33 @@ export async function connectOpenAiRealtime(options: {
     if (type === "response.done" && options.outputMode === "text" && !textCompletionSent) {
       const interrupted = agentInterrupted;
       const transcript = agentTranscript.trim();
-      if (transcript) options.callbacks.onAgentTranscript(transcript, interrupted);
+      deliverAgentTranscript(transcript, interrupted);
       agentTranscript = "";
       agentInterrupted = false;
       textCompletionSent = true;
       options.callbacks.onAgentTextComplete?.(interrupted);
     }
     if (type === "input_audio_buffer.speech_started") {
+      pendingCallerTranscriptions += 1;
+      callerSpeechActive = true;
       const agentWasResponding = responseActive;
-      agentInterrupted = agentWasResponding;
-      options.callbacks.onCallerSpeechStarted(agentWasResponding);
+      const debounceMs = Math.max(0, options.bargeInDebounceMs ?? 0);
+      window.clearTimeout(bargeInTimer);
+      if (debounceMs > 0) {
+        bargeInTimer = window.setTimeout(() => {
+          if (callerSpeechActive) {
+            agentInterrupted = agentWasResponding;
+            options.callbacks.onCallerSpeechStarted(agentWasResponding);
+          }
+        }, debounceMs);
+      } else {
+        agentInterrupted = agentWasResponding;
+        options.callbacks.onCallerSpeechStarted(agentWasResponding);
+      }
+    }
+    if (type === "input_audio_buffer.speech_stopped") {
+      callerSpeechActive = false;
+      window.clearTimeout(bargeInTimer);
     }
     if (type === "response.done") responseActive = false;
     if (type === "output_audio_buffer.started") options.callbacks.onSpeaking(true);
@@ -183,6 +228,7 @@ export async function connectOpenAiRealtime(options: {
     },
     cancelResponse: () => send(channel, { type: "response.cancel" }),
     close: () => {
+      window.clearTimeout(bargeInTimer);
       channel.close();
       peer.close();
       remoteSource?.disconnect();

@@ -112,6 +112,7 @@ public class OpenAiRealtimeService {
     }
 
     private Map<String, Object> sessionConfiguration(Call call) {
+        var nativeAudio = usesOpenAiVoice(call);
         var input = new LinkedHashMap<String, Object>();
         input.put("noise_reduction", Map.of("type", "near_field"));
         input.put("transcription", Map.of(
@@ -120,11 +121,18 @@ public class OpenAiRealtimeService {
         ));
         input.put("turn_detection", Map.of(
                 "type", "server_vad",
-                "threshold", 0.45,
+                // Cartesia playback is captured outside OpenAI's native output
+                // channel. Use a slightly stricter and more patient endpoint in
+                // hybrid mode so playback leakage and natural mid-sentence pauses
+                // do not create a new turn prematurely.
+                "threshold", nativeAudio ? 0.45 : 0.55,
                 "prefix_padding_ms", 250,
-                "silence_duration_ms", 320,
+                "silence_duration_ms", nativeAudio ? 320 : 520,
                 "create_response", true,
-                "interrupt_response", true
+                // Native Realtime audio can use provider-managed interruption.
+                // Hybrid Cartesia playback is outside OpenAI's audio channel, so
+                // the browser validates sustained caller speech before cancelling.
+                "interrupt_response", nativeAudio
         ));
 
         var tools = agentToolLoader.loadForAgent(call.getAgent().getId()).stream()
@@ -137,7 +145,6 @@ public class OpenAiRealtimeService {
                     return definition;
                 })
                 .toList();
-        var nativeAudio = usesOpenAiVoice(call);
         var session = new LinkedHashMap<String, Object>();
         session.put("type", "realtime");
         session.put("model", model);

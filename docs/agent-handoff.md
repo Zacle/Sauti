@@ -2519,3 +2519,30 @@ Expected:
 - Follow-ups / risks:
   - This hybrid path covers browser/Agent Studio WebRTC calls. Telnyx/Twilio phone media still uses the existing server-side cascade until a server-side OpenAI Realtime media bridge or provider SIP path is implemented and load-tested.
   - Automated tests use mocked provider streams; a live environment still needs funded OpenAI Realtime and Cartesia credentials to measure first-audio latency and tune VAD/phrase thresholds under real network conditions.
+
+### 2026-07-16 - Realtime turn ordering and complete hybrid speech
+
+- Buffered agent transcript delivery until the active caller transcription completes. OpenAI Realtime transcription completion events can arrive after response events, so the UI now always inserts the caller turn before its agent response.
+- Serialized browser transcript persistence for Agent Studio and public Web Voice calls. Caller and agent writes can no longer overtake each other on separate HTTP requests, which also preserves the correct server-side turn association.
+- Serialized every Cartesia phrase and final flush behind one per-session write chain. This prevents the flush from overtaking phrases queued while the Cartesia WebSocket is still connecting, which previously could stop spoken responses mid-sentence.
+- Disabled provider-managed response interruption for hybrid Cartesia sessions because Cartesia audio is outside OpenAI's native output channel. Hybrid barge-in now requires 180 ms of sustained caller speech before the browser explicitly cancels the model and Cartesia playback, reducing echo-triggered cutoffs while preserving polite interruption.
+- Made hybrid server VAD more patient and selective (`520 ms` silence, `0.55` threshold) while retaining the faster native OpenAI settings (`320 ms`, `0.45`). This avoids prematurely splitting natural pauses such as “Monday in ... three p.m.” into separate turns.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/HybridVoiceSessionService.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeService.java`
+  - `backend/src/test/java/com/sauti/call/HybridVoiceSessionServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiRealtimeServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `\.\gradlew.bat :backend:test --tests "com.sauti.call.OpenAiRealtimeServiceTest" --tests "com.sauti.call.HybridVoiceSessionServiceTest"`
+  - `\.\gradlew.bat :backend:test --rerun-tasks` (successful)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` was attempted twice but the local Next.js process remained at startup until the command timeout; no compile error was reported. A pre-existing long-running dashboard Node process was present, so CI should confirm the clean production build.
+  - `git diff --check`
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up / risk:
+  - Automated provider streams pass, but a live browser call is still required after CI/CD to tune the 180 ms barge-in debounce and 520 ms hybrid endpoint for the deployment's microphones, speakers, and network conditions.

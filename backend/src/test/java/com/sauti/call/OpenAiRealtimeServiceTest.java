@@ -58,7 +58,9 @@ class OpenAiRealtimeServiceTest {
                     .contains("gpt-realtime-1.5")
                     .contains("openai:marin".substring("openai:".length()))
                     .contains("\"max_output_tokens\":\"inf\"")
-                    .contains("interrupt_response")
+                    .contains("\"threshold\":0.45")
+                    .contains("\"silence_duration_ms\":320")
+                    .contains("\"interrupt_response\":true")
                     .contains("gpt-4o-mini-transcribe");
         } finally {
             server.stop(0);
@@ -99,6 +101,9 @@ class OpenAiRealtimeServiceTest {
             assertThat(receivedBody.get())
                     .contains("\"output_modalities\":[\"text\"]")
                     .contains("\"audio\":{\"input\":")
+                    .contains("\"threshold\":0.55")
+                    .contains("\"silence_duration_ms\":520")
+                    .contains("\"interrupt_response\":false")
                     .doesNotContain("french-voice")
                     .doesNotContain("\"output\":{\"voice\"");
         } finally {

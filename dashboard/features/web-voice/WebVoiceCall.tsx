@@ -53,6 +53,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
   const nativeEndPendingRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
+  const transcriptWriteRef = useRef<Promise<void>>(Promise.resolve());
 
   function updateSpeaking(value: boolean) {
     speakingRef.current = value;
@@ -103,6 +104,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
           microphone: stream,
           greeting: session.greeting,
           outputMode: hybrid ? "text" : "audio",
+          bargeInDebounceMs: hybrid ? 180 : 0,
           connectSdp: (offer) => connectPublicRealtime(session.sessionId, session.token, offer),
           playbackContext: context,
           callbacks: {
@@ -110,11 +112,11 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
             onCallerTranscript: (text) => {
               setMessages((current) => [...current, { role: "visitor", text }]);
               setPartial("");
-              void recordPublicRealtimeTranscript(session.sessionId, session.token, "caller", text);
+              queueTranscriptWrite(() => recordPublicRealtimeTranscript(session.sessionId, session.token, "caller", text));
             },
             onAgentTranscript: (text, interrupted) => {
               setMessages((current) => [...current, { role: "agent", text }]);
-              void recordPublicRealtimeTranscript(session.sessionId, session.token, "agent", text, interrupted);
+              queueTranscriptWrite(() => recordPublicRealtimeTranscript(session.sessionId, session.token, "agent", text, interrupted));
               if (isFarewell(text)) nativeEndPendingRef.current = true;
             },
             onAgentTextDelta: hybrid ? (delta) => sendHybridEvent({ type: "tts_delta", text: delta }) : undefined,
@@ -215,6 +217,12 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   function sendHybridEvent(payload: Record<string, unknown>) {
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+  }
+
+  function queueTranscriptWrite(write: () => Promise<unknown>) {
+    transcriptWriteRef.current = transcriptWriteRef.current
+      .then(write, write)
+      .then(() => undefined, () => undefined);
   }
 
   function startTurnRecording() {
