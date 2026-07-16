@@ -570,6 +570,18 @@ public class CallPipelineService {
                 result = result.replace("{{" + variable.getKey() + "}}", variable.getValue());
             }
         }
+        var tenantBusinessName = agent.getTenant().getBusinessName();
+        var configuredBusinessName = agentBusinessName(agent);
+        if (tenantBusinessName != null
+                && !tenantBusinessName.isBlank()
+                && configuredBusinessName != null
+                && !configuredBusinessName.isBlank()
+                && !tenantBusinessName.equalsIgnoreCase(configuredBusinessName)) {
+            result = result.replaceAll(
+                    "(?i)" + java.util.regex.Pattern.quote(tenantBusinessName),
+                    java.util.regex.Matcher.quoteReplacement(configuredBusinessName)
+            );
+        }
         return result;
     }
 

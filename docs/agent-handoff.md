@@ -221,6 +221,27 @@ Expected:
 
 ## Change log
 
+### 2026-07-16 - Persisted agent business identity and personalisation drawer refinement
+
+- Fixed the remaining account-name leak in saved exact greetings. When an older greeting contains the tenant/account business name literally, call startup now replaces it with the agent's filled `business_name`; generated/instruction-based greetings continue to use the same agent-scoped identity.
+- Changed the personalisation drawer's primary action from a close-only `Done` button to a real `Save details` action for existing agents. It persists existing and newly added variables, refreshes readiness, reports save failures in the drawer, and only then closes. New-agent details still remain in the creation draft and are saved when the agent is created.
+- Redesigned the drawer to match the dark Agent Studio: wider glass panel, stronger hierarchy and progress summary, readable field cards, dark structured service/hours editors, explicit save guidance, responsive mobile layout, and consistent add-variable controls.
+- Added regression coverage for a legacy exact greeting such as `Sarah de Tranquil AI` resolving to the agent business `X-Fit`.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/test/java/com/sauti/call/CallPipelineServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `dashboard/features/agents/AgentVariables/AddVariableForm.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.CallPipelineServiceTest"` (successful)
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location` (successful)
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location` (successful; 50 routes generated)
+  - `git diff --check`
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up / risk: callers created before this correction will receive the right business identity on their next new call; already-persisted call transcripts are historical records and are intentionally unchanged.
+
 ### 2026-07-16 - OpenAI Realtime + Cartesia for production phone calls
 
 - Added a server-side OpenAI Realtime WebSocket conversation provider for Twilio, SignalWire, and Telnyx media calls. Phone audio is converted from the existing 16 kHz internal PCM stream to the Realtime API's 24 kHz PCM input, so both μ-law Twilio and L16 Telnyx calls share one provider path.

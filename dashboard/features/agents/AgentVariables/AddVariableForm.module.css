@@ -13,6 +13,77 @@
   cursor: pointer;
 }
 
+:global(.personalisation-drawer) .trigger {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+  border-color: rgba(38, 220, 207, 0.26);
+  border-style: dashed;
+  color: #35ded2;
+  background: rgba(8, 87, 91, 0.13);
+  font-size: 0.78rem;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+:global(.personalisation-drawer) .trigger:hover {
+  border-color: rgba(42, 225, 212, 0.55);
+  color: #bffaf5;
+  background: rgba(8, 105, 105, 0.22);
+}
+
+:global(.personalisation-drawer) .form {
+  border-color: rgba(91, 151, 199, 0.2);
+  color: #dce9f4;
+  background: #071b2e;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.2);
+}
+
+:global(.personalisation-drawer) .form header div > span,
+:global(.personalisation-drawer) .required i {
+  color: #e3edf5;
+}
+
+:global(.personalisation-drawer) .form header small,
+:global(.personalisation-drawer) .form small,
+:global(.personalisation-drawer) .form label {
+  color: #8097aa;
+}
+
+:global(.personalisation-drawer) .form header .icon {
+  color: #31dfd3;
+  background: rgba(8, 105, 105, 0.2);
+}
+
+:global(.personalisation-drawer) .form header button,
+:global(.personalisation-drawer) .cancel {
+  border-color: rgba(91, 151, 199, 0.2);
+  color: #9cb0c1;
+  background: #0a2238;
+}
+
+:global(.personalisation-drawer) .tip {
+  border-color: rgba(38, 220, 207, 0.17);
+  color: #8098ab;
+  background: rgba(8, 87, 91, 0.12);
+}
+
+:global(.personalisation-drawer) .form input:not([type="checkbox"]),
+:global(.personalisation-drawer) .form textarea,
+:global(.personalisation-drawer) .keyInput {
+  border-color: rgba(91, 151, 199, 0.23);
+  color: #e2edf5;
+  background: #081d32;
+}
+
+:global(.personalisation-drawer) .form input::placeholder,
+:global(.personalisation-drawer) .form textarea::placeholder {
+  color: #617b91;
+}
+
+:global(.personalisation-drawer) .form footer {
+  border-top-color: rgba(91, 151, 199, 0.14);
+}
+
 .form {
   margin-top: 22px;
   padding: 22px;

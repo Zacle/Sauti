@@ -891,6 +891,7 @@ export function AgentCreator({
           </div>
           {showPersonalisation && (
             <PersonalisationDrawer
+              agentSaved={Boolean(agentId)}
               countryName={countryName}
               values={variableValues}
               variables={agentVariables}
@@ -900,6 +901,7 @@ export function AgentCreator({
                 setVariableValues((current) => ({ ...current, [key]: value }));
               }}
               onClose={() => setShowPersonalisation(false)}
+              onSave={savePersonalisation}
             />
           )}
           {showDelete && loadedAgent && (
@@ -943,6 +945,46 @@ export function AgentCreator({
     }]);
     setVariableValues((current) => ({ ...current, [variable.key]: variable.value }));
     setError("");
+  }
+
+  async function savePersonalisation() {
+    if (!agentId) {
+      setShowPersonalisation(false);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const persistedValues = Object.fromEntries(
+        Object.entries(variableValues).filter(([key]) => existingVariableKeys.includes(key)),
+      );
+      if (Object.keys(persistedValues).length) {
+        await updateAgentVariables(agentId, persistedValues);
+      }
+      const newVariables = customVariables.filter((variable) => !existingVariableKeys.includes(variable.key));
+      for (const variable of newVariables) {
+        await createAgentVariable(agentId, {
+          key: variable.key,
+          label: variable.label,
+          description: variable.description,
+          value: variableValues[variable.key] ?? "",
+          required: variable.required,
+        });
+      }
+      setExistingVariableKeys((current) => Array.from(new Set([
+        ...current,
+        ...newVariables.map((variable) => variable.key),
+      ])));
+      setReadiness(await getAgentReadiness(agentId));
+      setSaved(true);
+      setShowPersonalisation(false);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Unable to save business details.";
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setBusy(false);
+    }
   }
 }
 
@@ -2126,48 +2168,74 @@ function VariablesSettings({
 }
 
 function PersonalisationDrawer({
+  agentSaved,
   variables,
   values,
   countryName,
   onChange,
   onAdd,
   onClose,
+  onSave,
 }: {
+  agentSaved: boolean;
   variables: AgentVariableDefinition[];
   values: Record<string, string>;
   countryName: string;
   onChange: (key: string, value: string) => void;
   onAdd: (variable: CreateAgentVariable) => void;
   onClose: () => void;
+  onSave: () => Promise<void>;
 }) {
   const completed = variables.filter((variable) => values[variable.key]?.trim()).length;
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  async function finish() {
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onSave();
+    } catch (caught) {
+      setSaveError(caught instanceof Error ? caught.message : "Unable to save business details.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="personalisation-drawer-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
       <aside aria-label="Agent personalisation" className="personalisation-drawer">
         <header>
-          <div><span>Business details</span><h2>Personalise this agent</h2><p>These values replace matching <code>{"{{variables}}"}</code> in the prompt at call time.</p></div>
+          <div className="personalisation-heading"><span><Sparkles size={13} /> Business details</span><h2>Personalise this agent</h2><p>Give this agent the facts it should use during every conversation. Values are inserted wherever matching <code>{"{{variables}}"}</code> appear.</p></div>
           <button aria-label="Close personalisation" onClick={onClose} type="button"><X size={19} /></button>
         </header>
-        <div className="personalisation-progress"><span>{completed} of {variables.length} complete</span><i><span style={{ width: `${variables.length ? completed / variables.length * 100 : 0}%` }} /></i></div>
-        <AddVariableForm onAdd={onAdd} />
-        {variables.length ? (
-          <div className="personalisation-drawer-fields">
-            {variables.map((variable) => (
-              <VariableValueField
-                countryName={countryName}
-                key={variable.key}
-                variable={variable}
-                value={values[variable.key] ?? ""}
-                onChange={(value) => onChange(variable.key, value)}
-              />
-            ))}
+        <div className="personalisation-body">
+          <div className="personalisation-progress">
+            <div><strong>{completed} of {variables.length}</strong><span>details completed</span></div>
+            <span>{variables.length ? Math.round(completed / variables.length * 100) : 0}%</span>
+            <i><span style={{ width: `${variables.length ? completed / variables.length * 100 : 0}%` }} /></i>
           </div>
-        ) : <div className="personalisation-empty">No business details yet. Add a variable to reference it from the prompt.</div>}
+          <AddVariableForm onAdd={onAdd} />
+          {variables.length ? (
+            <div className="personalisation-drawer-fields">
+              {variables.map((variable) => (
+                <VariableValueField
+                  countryName={countryName}
+                  key={variable.key}
+                  variable={variable}
+                  value={values[variable.key] ?? ""}
+                  onChange={(value) => onChange(variable.key, value)}
+                />
+              ))}
+            </div>
+          ) : <div className="personalisation-empty">No business details yet. Add a variable to reference it from the prompt.</div>}
+          {saveError && <div className="personalisation-save-error"><CircleAlert size={16} /> {saveError}</div>}
+        </div>
         <footer>
-          <span>Changes are saved with the agent configuration.</span>
-          <button className="console-primary-button" onClick={onClose} type="button">Done</button>
+          <span>{agentSaved ? "Save these details before starting a new test call." : "These details will be saved when you create the agent."}</span>
+          <button className="console-primary-button" disabled={saving} onClick={() => void finish()} type="button">{saving ? <><LoaderCircle className="spin" size={16} /> Saving...</> : agentSaved ? "Save details" : "Done"}</button>
         </footer>
       </aside>
     </div>
