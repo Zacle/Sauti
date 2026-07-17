@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.AgentRepository;
 import com.sauti.tool.AgentToolRepository;
+import com.sauti.tool.CalendarCredentialRepository;
 import com.sauti.tool.CredentialEncryption;
 import com.sauti.tool.WebhookDestinationValidator;
 import jakarta.persistence.EntityNotFoundException;
@@ -12,11 +13,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class IntegrationService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(IntegrationService.class);
     private final ObjectMapper objectMapper;
     private final CredentialEncryption encryption;
     private final IntegrationCatalog catalog;
@@ -25,12 +31,14 @@ public class IntegrationService {
     private final IntegrationDeliveryRepository deliveries;
     private final AgentRepository agents;
     private final AgentToolRepository agentTools;
+    private final CalendarCredentialRepository calendarCredentials;
     private final WebhookDestinationValidator webhookValidator;
 
     public IntegrationService(ObjectMapper objectMapper, CredentialEncryption encryption,
                               IntegrationCatalog catalog, IntegrationConnectionRepository connections,
                               AgentIntegrationRepository bindings, IntegrationDeliveryRepository deliveries,
                               AgentRepository agents, AgentToolRepository agentTools,
+                              CalendarCredentialRepository calendarCredentials,
                               WebhookDestinationValidator webhookValidator) {
         this.objectMapper = objectMapper;
         this.encryption = encryption;
@@ -40,6 +48,7 @@ public class IntegrationService {
         this.deliveries = deliveries;
         this.agents = agents;
         this.agentTools = agentTools;
+        this.calendarCredentials = calendarCredentials;
         this.webhookValidator = webhookValidator;
     }
 
@@ -90,10 +99,7 @@ public class IntegrationService {
                 .forEach(binding -> {
                     binding.disconnect();
                     if ("google_calendar".equals(connection.getProvider())) {
-                        agentTools.findByAgent_IdOrderByDisplayOrderAsc(binding.getAgentId()).stream()
-                                .filter(tool -> java.util.Set.of("check_availability", "book_slot",
-                                        "reschedule_booking", "cancel_booking").contains(tool.getToolName()))
-                                .forEach(com.sauti.tool.AgentTool::disconnectCalendar);
+                        synchronizeGoogleCalendarTools(tenantId, binding.getAgentId(), false);
                     } else {
                         var affectedTools = toolNamesFor(connection.getProvider());
                         agentTools.findByAgent_IdOrderByDisplayOrderAsc(binding.getAgentId()).stream()
@@ -173,11 +179,43 @@ public class IntegrationService {
                 agents.save(agent);
             });
         }
-        var toolNames = toolNamesFor(entry.provider());
-        agentTools.findByAgent_IdOrderByDisplayOrderAsc(agentId).stream()
-                .filter(tool -> toolNames.contains(tool.getToolName()))
-                .forEach(tool -> tool.configureForDraft(request.enabled(), null));
+        if ("google_calendar".equals(entry.provider())) {
+            synchronizeGoogleCalendarTools(tenantId, agentId, request.enabled());
+        } else {
+            var toolNames = toolNamesFor(entry.provider());
+            agentTools.findByAgent_IdOrderByDisplayOrderAsc(agentId).stream()
+                    .filter(tool -> toolNames.contains(tool.getToolName()))
+                    .forEach(tool -> tool.configureForDraft(request.enabled(), null));
+        }
         return bindingResponse(entry, saved);
+    }
+
+    /** Repairs bindings created before workspace connections and tool links were synchronized. */
+    @EventListener(ApplicationReadyEvent.class)
+    @Transactional
+    public void reconcileGoogleCalendarBindings() {
+        bindings.findAllByProviderAndEnabledTrue("google_calendar").forEach(binding -> {
+            try {
+                var connection = binding.getConnectionId() == null ? null
+                        : connections.findByIdAndTenantId(binding.getConnectionId(), binding.getTenantId()).orElse(null);
+                if (connection != null && "connected".equals(connection.getStatus())) {
+                    synchronizeGoogleCalendarTools(binding.getTenantId(), binding.getAgentId(), true);
+                    return;
+                }
+                binding.disconnect();
+                synchronizeGoogleCalendarTools(binding.getTenantId(), binding.getAgentId(), false);
+            } catch (RuntimeException exception) {
+                binding.disconnect();
+                try {
+                    synchronizeGoogleCalendarTools(binding.getTenantId(), binding.getAgentId(), false);
+                } catch (RuntimeException cleanupException) {
+                    LOGGER.debug("Unable to clear stale Google Calendar tools for agentId={}",
+                            binding.getAgentId(), cleanupException);
+                }
+                LOGGER.warn("Disabled inconsistent Google Calendar binding for agentId={}: {}",
+                        binding.getAgentId(), exception.getMessage());
+            }
+        });
     }
 
     @Transactional(readOnly = true)
@@ -249,7 +287,7 @@ public class IntegrationService {
 
     private BindingResponse bindingResponse(IntegrationCatalog.Entry entry, AgentIntegration binding) {
         IntegrationConnection connection = binding == null || binding.getConnectionId() == null ? null
-                : connections.findById(binding.getConnectionId()).orElse(null);
+                : connections.findByIdAndTenantId(binding.getConnectionId(), binding.getTenantId()).orElse(null);
         var last = binding == null ? null
                 : deliveries.findFirstByAgentIntegrationIdOrderByCreatedAtDesc(binding.getId()).orElse(null);
         return new BindingResponse(entry.provider(), entry.name(), binding != null && binding.isEnabled(),
@@ -276,6 +314,29 @@ public class IntegrationService {
             case "custom_webhook" -> List.of("call_custom_webhook");
             default -> List.of();
         };
+    }
+
+    private void synchronizeGoogleCalendarTools(UUID tenantId, UUID agentId, boolean enabled) {
+        var agent = agents.findByIdAndTenantId(agentId, tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
+        var tools = agentTools.findByAgent_IdOrderByDisplayOrderAsc(agentId).stream()
+                .filter(tool -> toolNamesFor("google_calendar").contains(tool.getToolName()))
+                .toList();
+        if (!enabled) {
+            tools.forEach(com.sauti.tool.AgentTool::disconnectCalendar);
+            if ("Google Calendar".equals(agent.getCalendarProvider())) {
+                agent.updateCalendarProvider("Set up later");
+                agents.save(agent);
+            }
+            return;
+        }
+        var credential = calendarCredentials
+                .findAllByTenant_IdAndProviderOrderByCreatedAtDesc(tenantId, "google")
+                .stream().findFirst()
+                .orElseThrow(() -> new IllegalStateException("Reconnect Google Calendar before enabling this agent"));
+        tools.forEach(tool -> tool.connectCalendar("google", credential.getId()));
+        agent.updateCalendarProvider("Google Calendar");
+        agents.save(agent);
     }
 
     private void validate(IntegrationCatalog.Entry entry, Map<String, Object> configuration,

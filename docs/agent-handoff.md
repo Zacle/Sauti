@@ -221,6 +221,28 @@ Expected:
 
 ## Change log
 
+### 2026-07-17 - Unified Google Calendar agent integration state
+
+- Fixed the Google Calendar inconsistency where the integration marketplace could show a workspace connection enabled for an agent while Agent Studio reported `Not connected`. Agent Studio now reads the same tenant-scoped agent-integration binding used by the marketplace instead of independently inferring connection state from legacy tool fields.
+- Enabling Google Calendar for an agent now also links that workspace's encrypted Calendar credential to all Calendar booking tools (`check_availability`, `book_slot`, `reschedule_booking`, and `cancel_booking`) and sets the agent's active calendar provider. Disabling or disconnecting it clears those runtime tool links, so the displayed state and actual call behavior cannot diverge.
+- Added an application-start reconciliation for bindings created before these two state paths were synchronized. Valid enabled bindings are repaired automatically; bindings without a usable connected workspace credential are safely disabled and logged instead of remaining falsely enabled.
+- Kept connection lookup tenant-scoped when building integration responses.
+- The Agent Studio `Manage`/`Connect` action now opens the selected agent's Google Calendar configuration in the marketplace.
+- Files touched:
+  - `backend/src/main/java/com/sauti/integration/IntegrationRepositories.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationService.java`
+  - `backend/src/test/java/com/sauti/integration/IntegrationServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.integration.IntegrationServiceTest"` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: a legacy enabled binding that has no usable tenant Calendar credential will be disabled at startup and must be reconnected through Google OAuth. A real Google account should still be used to test availability and event creation before recording the verification demo.
+
 ### 2026-07-17 - Transcript-gated voice turns and deterministic silence handling
 
 - Fixed unsolicited consecutive agent turns in OpenAI Realtime and OpenAI + Cartesia hybrid calls. Realtime sessions now set `create_response=false`; Sauti requests `response.create` only after a usable final caller transcript is received. Empty VAD/transcription failures no longer advance the conversation.

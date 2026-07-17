@@ -69,7 +69,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { VoicePicker } from "./VoicePicker";
 import { TestCallPanel } from "./TestCallPanel";
 import { AddVariableForm } from "../AgentVariables/AddVariableForm";
-import { getGoogleCalendarStatus, type GoogleCalendarStatus } from "@/lib/api/integrations";
+import { getAgentIntegrations, type AgentIntegration } from "@/lib/api/integrations";
 import { DeleteAgentDialog } from "@/features/agents/DeleteAgentDialog/DeleteAgentDialog";
 import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
 
@@ -2155,12 +2155,22 @@ function PersonalisationDrawer({
 }
 
 function IntegrationsSettings({ agentId, bookingEnabled }: { agentId?: string; bookingEnabled: boolean }) {
-  const [calendarStatus, setCalendarStatus] = useState<GoogleCalendarStatus | null>(null);
+  const [calendarIntegration, setCalendarIntegration] = useState<AgentIntegration | null>(null);
 
   useEffect(() => {
     if (!agentId) return;
-    getGoogleCalendarStatus(agentId).then(setCalendarStatus).catch(() => setCalendarStatus(null));
+    getAgentIntegrations(agentId)
+      .then((integrations) => setCalendarIntegration(
+        integrations.find((integration) => integration.provider === "google_calendar") ?? null,
+      ))
+      .catch(() => setCalendarIntegration(null));
   }, [agentId]);
+
+  const calendarConnected = calendarIntegration?.connectionStatus === "connected";
+  const calendarEnabled = calendarConnected && calendarIntegration?.enabled === true;
+  const calendarLabel = calendarEnabled
+    ? "Connected"
+    : calendarConnected ? "Connected · disabled" : "Not connected";
 
   return (
     <>
@@ -2172,9 +2182,9 @@ function IntegrationsSettings({ agentId, bookingEnabled }: { agentId?: string; b
         <article>
           <span className="integration-card-icon"><CalendarCheck size={21} /></span>
           <div><h3>Google Calendar</h3><p>Check availability and create confirmed booking events during calls.</p><small>{bookingEnabled ? "Used by appointment-booking tools" : "Enable appointment booking to use this tool"}</small></div>
-          <i className={calendarStatus?.connected ? "connected" : ""}>{calendarStatus?.connected ? "Connected" : "Not connected"}</i>
+          <i className={calendarEnabled ? "connected" : ""}>{calendarLabel}</i>
           {agentId
-            ? <Link href={`/dashboard/integrations?provider=google&agentId=${agentId}`}>{calendarStatus?.connected ? "Manage" : "Connect"} <ExternalLink size={14} /></Link>
+            ? <Link href={`/dashboard/integrations?provider=google_calendar&agentId=${agentId}`}>{calendarConnected ? "Manage" : "Connect"} <ExternalLink size={14} /></Link>
             : <button disabled type="button">Connect after saving</button>}
         </article>
         <article>

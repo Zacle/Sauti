@@ -17,6 +17,7 @@ interface AgentIntegrationRepository extends JpaRepository<AgentIntegration, UUI
     List<AgentIntegration> findAllByTenantIdAndAgentIdAndEnabledTrue(UUID tenantId, UUID agentId);
     List<AgentIntegration> findAllByTenantIdAndConnectionId(UUID tenantId, UUID connectionId);
     Optional<AgentIntegration> findByTenantIdAndAgentIdAndProvider(UUID tenantId, UUID agentId, String provider);
+    List<AgentIntegration> findAllByProviderAndEnabledTrue(String provider);
 }
 
 interface PostCallJobRepository extends JpaRepository<PostCallJob, UUID> {

@@ -122,6 +122,12 @@ export function IntegrationsPage() {
     getAgentIntegrations(agentId).then(setBindings).catch(showError);
   }, [agentId, loading]);
 
+  useEffect(() => {
+    if (!loading && agentId && searchParams.get("provider") === "google_calendar") {
+      setCalendarEditing(true);
+    }
+  }, [agentId, loading, searchParams]);
+
   function showError(caught: unknown) {
     setError(caught instanceof Error ? caught.message : "Unable to load integrations.");
   }
