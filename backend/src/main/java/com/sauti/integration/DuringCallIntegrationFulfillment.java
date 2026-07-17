@@ -56,6 +56,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
             return switch (toolCall.name()) {
                 case "send_whatsapp_message" -> whatsapp(call, toolCall);
                 case "lookup_google_sheet_row" -> sheets(call, toolCall);
+                case "update_google_sheet_row" -> updateSheet(call, toolCall);
                 case "request_mpesa_payment" -> mpesa(call, toolCall);
                 case "check_mpesa_payment" -> checkMpesa(call, toolCall);
                 case "call_custom_webhook" -> webhook(call, toolCall);
@@ -101,6 +102,44 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
             }
         }
         return LlmToolResult.success(toolCall, Map.of("found", false));
+    }
+
+    private LlmToolResult updateSheet(Call call, LlmToolCall toolCall) throws Exception {
+        if (!Boolean.TRUE.equals(toolCall.arguments().get("confirmed"))) {
+            return LlmToolResult.error(toolCall, "The caller must explicitly confirm the spreadsheet update");
+        }
+        var runtime = integrations.runtime(call.getTenant().getId(), call.getAgent().getId(), "google_sheets");
+        var config = runtime.configuration();
+        var spreadsheet = required(config, "spreadsheetId");
+        var range = required(config, "range");
+        var token = oauth.accessToken(call.getTenant().getId(), call.getAgent().getId(), "google_sheets");
+        var response = send(HttpRequest.newBuilder(URI.create("https://sheets.googleapis.com/v4/spreadsheets/"
+                        + encode(spreadsheet) + "/values/" + encode(range)))
+                .header("Authorization", "Bearer " + token).GET().build());
+        var rows = objectMapper.readTree(response.body()).path("values");
+        var lookup = string(toolCall.arguments().get("lookup_value"));
+        int lookupIndex = integer(config.get("lookupColumn"), 0);
+        int rowIndex = -1;
+        for (int index = 0; index < rows.size(); index++) {
+            if (rows.path(index).path(lookupIndex).asText().equalsIgnoreCase(lookup)) {
+                rowIndex = firstRow(range) + index;
+                break;
+            }
+        }
+        if (rowIndex < 0) return LlmToolResult.success(toolCall, Map.of("found", false, "updated", false));
+        var replacements = toolCall.arguments().get("replacement_values");
+        if (!(replacements instanceof List<?> values) || values.isEmpty()) {
+            return LlmToolResult.error(toolCall, "Replacement row values are required");
+        }
+        var targetRange = rowRange(range, rowIndex);
+        var updateUrl = "https://sheets.googleapis.com/v4/spreadsheets/" + encode(spreadsheet)
+                + "/values/" + encode(targetRange) + "?valueInputOption=USER_ENTERED";
+        send(HttpRequest.newBuilder(URI.create(updateUrl))
+                .header("Authorization", "Bearer " + token)
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(Map.of("values", List.of(values)))))
+                .build());
+        return LlmToolResult.success(toolCall, Map.of("found", true, "updated", true, "row", rowIndex));
     }
 
     private LlmToolResult mpesa(Call call, LlmToolCall toolCall) throws Exception {
@@ -235,5 +274,21 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     private static String string(Object value) { return value == null ? "" : String.valueOf(value).trim(); }
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    private static int firstRow(String range) {
+        var match = java.util.regex.Pattern.compile("![A-Za-z]+(\\d+)").matcher(range);
+        return match.find() ? Integer.parseInt(match.group(1)) : 1;
+    }
+
+    private static String rowRange(String range, int row) {
+        var sheet = range.contains("!") ? range.substring(0, range.indexOf('!') + 1) : "";
+        var coordinates = range.contains("!") ? range.substring(range.indexOf('!') + 1) : range;
+        var columns = java.util.regex.Pattern.compile("([A-Za-z]+)(?:\\d*)?(?::([A-Za-z]+)(?:\\d*)?)?")
+                .matcher(coordinates);
+        if (!columns.matches()) throw new IllegalArgumentException("Configured sheet range must use A1 notation");
+        var start = columns.group(1);
+        var end = columns.group(2) == null ? start : columns.group(2);
+        return sheet + start + row + ":" + end + row;
     }
 }

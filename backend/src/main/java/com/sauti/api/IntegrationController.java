@@ -10,6 +10,7 @@ import com.sauti.integration.IntegrationService.ConnectionResponse;
 import com.sauti.integration.IntegrationService.DeliveryResponse;
 import com.sauti.integration.ProviderOAuthService;
 import com.sauti.integration.WhatsAppEmbeddedSignupService;
+import com.sauti.calendar.GoogleCalendarIntegrationService;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -36,15 +37,18 @@ public class IntegrationController {
     private final ProviderOAuthService oauth;
     private final WhatsAppEmbeddedSignupService whatsappSignup;
     private final String dashboardBaseUrl;
+    private final GoogleCalendarIntegrationService googleCalendar;
 
     public IntegrationController(IntegrationCatalog catalog, IntegrationService service,
                                  ProviderOAuthService oauth,
                                  WhatsAppEmbeddedSignupService whatsappSignup,
+                                 GoogleCalendarIntegrationService googleCalendar,
                                  @Value("${sauti.dashboard.base-url}") String dashboardBaseUrl) {
         this.catalog = catalog;
         this.service = service;
         this.oauth = oauth;
         this.whatsappSignup = whatsappSignup;
+        this.googleCalendar = googleCalendar;
         this.dashboardBaseUrl = dashboardBaseUrl;
     }
 
@@ -84,7 +88,17 @@ public class IntegrationController {
     }
 
     @PostMapping("/integrations/connections/{id}/test")
-    ConnectionResponse test(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id) {
+    ConnectionResponse test(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id,
+                            @RequestParam(required = false) UUID agentId) {
+        var provider = service.connectionProvider(user.tenantId(), id);
+        if ("google_sheets".equals(provider)) {
+            if (agentId == null) throw new IllegalArgumentException("agentId is required to test Google Sheets");
+            return service.test(user.tenantId(), id, () -> oauth.testGoogleSheets(user.tenantId(), agentId));
+        }
+        if ("google_calendar".equals(provider)) {
+            if (agentId == null) throw new IllegalArgumentException("agentId is required to test Google Calendar");
+            return service.test(user.tenantId(), id, () -> googleCalendar.test(user.tenantId(), agentId));
+        }
         return service.test(user.tenantId(), id);
     }
 

@@ -6,6 +6,7 @@ import com.sauti.call.Call;
 import com.sauti.call.CallRepository;
 import com.sauti.dashboard.DashboardEventPublisher;
 import com.sauti.outbound.OutboundCallService;
+import com.sauti.tool.CalendarProviderFactory;
 import com.sauti.webhook.WebhookDeliveryService;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
@@ -18,27 +19,27 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final AgentRepository agentRepository;
     private final CallRepository callRepository;
-    private final CalendarProvider calendarProvider;
     private final DashboardEventPublisher dashboardEventPublisher;
     private final WebhookDeliveryService webhookDeliveryService;
     private final OutboundCallService outboundCallService;
+    private final CalendarProviderFactory calendarProviderFactory;
 
     public BookingService(
             BookingRepository bookingRepository,
             AgentRepository agentRepository,
             CallRepository callRepository,
-            CalendarProvider calendarProvider,
             DashboardEventPublisher dashboardEventPublisher,
             WebhookDeliveryService webhookDeliveryService,
-            OutboundCallService outboundCallService
+            OutboundCallService outboundCallService,
+            CalendarProviderFactory calendarProviderFactory
     ) {
         this.bookingRepository = bookingRepository;
         this.agentRepository = agentRepository;
         this.callRepository = callRepository;
-        this.calendarProvider = calendarProvider;
         this.dashboardEventPublisher = dashboardEventPublisher;
         this.webhookDeliveryService = webhookDeliveryService;
         this.outboundCallService = outboundCallService;
+        this.calendarProviderFactory = calendarProviderFactory;
     }
 
     @Transactional(readOnly = true)
@@ -54,7 +55,7 @@ public class BookingService {
 
     @Transactional
     public Booking create(UUID tenantId, CreateBookingRequest request) {
-        return create(tenantId, request, calendarProvider);
+        return create(tenantId, request, calendarProviderFactory.forAgent(request.agentId()));
     }
 
     @Transactional
@@ -76,7 +77,7 @@ public class BookingService {
                 request.callerName(),
                 request.callerPhone(),
                 request.serviceType(),
-                request.appointmentAt()
+                request.appointmentAt(), request.durationMinutes() == null ? 60 : request.durationMinutes()
         ));
         booking.markSynced(provider.createEvent(booking).externalEventId());
         dashboardEventPublisher.bookingCreated(booking);
@@ -88,8 +89,18 @@ public class BookingService {
     @Transactional
     public Booking cancel(UUID tenantId, UUID bookingId) {
         var booking = get(tenantId, bookingId);
+        calendarProviderFactory.forAgent(booking.getAgent().getId()).deleteEvent(booking);
         booking.cancel();
         webhookDeliveryService.bookingCancelled(booking);
+        return booking;
+    }
+
+    @Transactional
+    public Booking reschedule(UUID tenantId, UUID bookingId, BookingDtos.RescheduleBookingRequest request) {
+        var booking = get(tenantId, bookingId);
+        booking.reschedule(request.appointmentAt(), request.durationMinutes() == null
+                ? booking.getDurationMinutes() : request.durationMinutes());
+        calendarProviderFactory.forAgent(booking.getAgent().getId()).updateEvent(booking);
         return booking;
     }
 }

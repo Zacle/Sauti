@@ -49,6 +49,11 @@ public class IntegrationService {
                 .map(this::response).toList();
     }
 
+    @Transactional(readOnly = true)
+    public String connectionProvider(UUID tenantId, UUID id) {
+        return requireConnection(tenantId, id).getProvider();
+    }
+
     @Transactional
     public ConnectionResponse create(UUID tenantId, ConnectionRequest request) {
         var entry = catalog.require(normalize(request.provider()));
@@ -84,6 +89,17 @@ public class IntegrationService {
         bindings.findAllByTenantIdAndConnectionId(tenantId, id).stream()
                 .forEach(binding -> {
                     binding.disconnect();
+                    if ("google_calendar".equals(connection.getProvider())) {
+                        agentTools.findByAgent_IdOrderByDisplayOrderAsc(binding.getAgentId()).stream()
+                                .filter(tool -> java.util.Set.of("check_availability", "book_slot",
+                                        "reschedule_booking", "cancel_booking").contains(tool.getToolName()))
+                                .forEach(com.sauti.tool.AgentTool::disconnectCalendar);
+                    } else {
+                        var affectedTools = toolNamesFor(connection.getProvider());
+                        agentTools.findByAgent_IdOrderByDisplayOrderAsc(binding.getAgentId()).stream()
+                                .filter(tool -> affectedTools.contains(tool.getToolName()))
+                                .forEach(tool -> tool.configureForDraft(false, null));
+                    }
                     if ("whatsapp".equals(connection.getProvider())) {
                         agents.findByIdAndTenantId(binding.getAgentId(), tenantId).ifPresent(agent -> {
                             agent.configureWhatsApp(false, null);
@@ -96,9 +112,15 @@ public class IntegrationService {
 
     @Transactional
     public ConnectionResponse test(UUID tenantId, UUID id) {
+        return test(tenantId, id, () -> { });
+    }
+
+    @Transactional
+    public ConnectionResponse test(UUID tenantId, UUID id, Runnable liveProbe) {
         var connection = requireConnection(tenantId, id);
         try {
             validate(catalog.require(connection.getProvider()), map(connection.getConfiguration()), decrypt(connection));
+            liveProbe.run();
             connection.testSucceeded();
         } catch (RuntimeException exception) {
             connection.testFailed(exception.getMessage());
@@ -151,13 +173,7 @@ public class IntegrationService {
                 agents.save(agent);
             });
         }
-        var toolNames = switch (entry.provider()) {
-            case "whatsapp" -> List.of("send_whatsapp_message");
-            case "google_sheets" -> List.of("lookup_google_sheet_row");
-            case "mpesa" -> List.of("request_mpesa_payment", "check_mpesa_payment");
-            case "custom_webhook" -> List.of("call_custom_webhook");
-            default -> List.<String>of();
-        };
+        var toolNames = toolNamesFor(entry.provider());
         agentTools.findByAgent_IdOrderByDisplayOrderAsc(agentId).stream()
                 .filter(tool -> toolNames.contains(tool.getToolName()))
                 .forEach(tool -> tool.configureForDraft(request.enabled(), null));
@@ -249,6 +265,17 @@ public class IntegrationService {
                         && !connection.getEncryptedCredentials().isBlank(),
                 map(connection.getConfiguration()), connection.getExternalAccountId(),
                 connection.getLastTestedAt(), connection.getLastError(), connection.getCreatedAt());
+    }
+
+    private List<String> toolNamesFor(String provider) {
+        return switch (provider) {
+            case "whatsapp" -> List.of("send_whatsapp_message");
+            case "google_calendar" -> List.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking");
+            case "google_sheets" -> List.of("lookup_google_sheet_row", "update_google_sheet_row");
+            case "mpesa" -> List.of("request_mpesa_payment", "check_mpesa_payment");
+            case "custom_webhook" -> List.of("call_custom_webhook");
+            default -> List.of();
+        };
     }
 
     private void validate(IntegrationCatalog.Entry entry, Map<String, Object> configuration,

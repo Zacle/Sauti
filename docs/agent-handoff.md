@@ -221,6 +221,61 @@ Expected:
 
 ## Change log
 
+### 2026-07-17 - Spring test mock annotation migration
+
+- Replaced Spring Boot's deprecated `@MockBean` usages with Spring Framework's supported `@MockitoBean` test-context override annotation. This removes the Spring Boot 3.4+ removal warning without changing the mocked service behavior.
+- Files touched:
+  - `backend/src/test/java/com/sauti/AuthAgentFlowTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `./gradlew.bat :backend:test --tests "com.sauti.AuthAgentFlowTest"` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-ups/risks: none for this migration; no deprecated `@MockBean` or `@SpyBean` usage remains under `backend/src/test/java`.
+
+### 2026-07-17 - Google Calendar and Sheets verification readiness
+
+- Closed the verification-critical Google integration gaps without adding Google Drive access or other broader OAuth scopes.
+- Calendar availability now uses each agent's configured weekly operating hours, including closed and overnight days, rather than a fixed 09:00-17:00 window.
+- Added booking duration persistence and synchronized Google Calendar lifecycle operations: create, reschedule with `PATCH`, and cancel with `DELETE`. Both the REST booking API and voice-agent tools use the same provider-aware path.
+- Added `reschedule_booking` and `cancel_booking` voice tools and an application-start backfill so existing agents receive newly introduced default tools. Connected Calendar credentials and enabled Sheets lookup state are propagated to the new tools.
+- Added workspace Calendar ID selection (`primary` by default), live Calendar free/busy testing, and an integration dialog for configuring/testing the selected calendar.
+- Added real Google Sheets connection testing against the configured spreadsheet/range. The integration Test action now includes the selected agent so OAuth runtime configuration is validated against Google, not only checked for non-empty fields.
+- Added a caller-confirmed `update_google_sheet_row` tool. It finds the configured lookup value and replaces the matching A1 row with `USER_ENTERED`; post-call append and during-call lookup remain available.
+- Disabling Google Calendar now deactivates its tools. Disconnecting the workspace connection also clears Calendar credentials from affected agent tools so a disconnected agent cannot keep using Google.
+- Added clearer Google Sheets configuration placeholders for the spreadsheet ID, A1 range, lookup column, returned columns, and append columns.
+- Added Flyway migration `V31__booking_duration.sql`; production deployment must run it through the normal CI/CD release.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/OperatingHoursSchedule.java`
+  - `backend/src/main/java/com/sauti/api/BookingController.java`
+  - `backend/src/main/java/com/sauti/api/GoogleCalendarIntegrationController.java`
+  - `backend/src/main/java/com/sauti/api/IntegrationController.java`
+  - `backend/src/main/java/com/sauti/calendar/*`
+  - `backend/src/main/java/com/sauti/integration/DuringCallIntegrationFulfillment.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationService.java`
+  - `backend/src/main/java/com/sauti/integration/ProviderOAuthService.java`
+  - `backend/src/main/java/com/sauti/tool/*`
+  - `backend/src/main/resources/db/migration/V31__booking_duration.sql`
+  - `backend/src/test/java/com/sauti/AuthAgentFlowTest.java`
+  - `backend/src/test/java/com/sauti/agent/OperatingHoursScheduleTest.java`
+  - `backend/src/test/java/com/sauti/calendar/GoogleCalendarProviderTest.java`
+  - `dashboard/features/dashboard/data/preview-data.ts`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `dashboard/lib/api/bookings.ts`
+  - `dashboard/lib/api/integrations.ts`
+  - `dashboard/types/api.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test` (successful; 137 tests)
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location` (successful)
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location` (successful; 50 routes generated)
+  - `git diff --check` (successful)
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up / risk:
+  - A real Google OAuth account was not available to the coding agent, so the new live-test controls must be exercised against a dedicated verification Calendar and Sheet before recording the Google review video.
+  - Calendar selection is workspace-connection scoped. Changing it affects agents sharing that Google Calendar credential.
+  - Sheets row updates deliberately replace a complete configured row and require explicit caller confirmation. Arbitrary spreadsheet creation/deletion is intentionally not implemented because Sauti does not need it and should not claim it during verification.
+  - Keep the declared scopes limited to `calendar.events`, `calendar.freebusy`, and `spreadsheets`; do not add full Google Drive access.
+
 ### 2026-07-16 - Persisted agent business identity and personalisation drawer refinement
 
 - Fixed the remaining account-name leak in saved exact greetings. When an older greeting contains the tenant/account business name literally, call startup now replaces it with the agent's filled `business_name`; generated/instruction-based greetings continue to use the same agent-scoped identity.

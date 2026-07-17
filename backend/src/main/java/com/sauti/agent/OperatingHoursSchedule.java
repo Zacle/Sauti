@@ -3,8 +3,12 @@ package com.sauti.agent;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -67,6 +71,26 @@ public final class OperatingHoursSchedule {
         }
     }
 
+    public static List<TimeRange> rangesFor(String value, LocalDate date, ZoneId timezone) {
+        if (value == null || value.isBlank() || "always".equals(value) || "workspace".equals(value)) {
+            var start = date.atStartOfDay(timezone).toOffsetDateTime();
+            return List.of(new TimeRange(start, start.plusDays(1)));
+        }
+        if ("weekdays".equals(value)) {
+            if (date.getDayOfWeek() == DayOfWeek.SATURDAY || date.getDayOfWeek() == DayOfWeek.SUNDAY) return List.of();
+            return List.of(range(date, LocalTime.of(9, 0), LocalTime.of(17, 0), timezone));
+        }
+        var day = parse(value).get(date.getDayOfWeek().name().toLowerCase(Locale.ROOT));
+        if (day == null || !day.enabled()) return List.of();
+        return List.of(range(date, LocalTime.parse(day.start()), LocalTime.parse(day.end()), timezone));
+    }
+
+    private static TimeRange range(LocalDate date, LocalTime startTime, LocalTime endTime, ZoneId timezone) {
+        var start = date.atTime(startTime).atZone(timezone).toOffsetDateTime();
+        var endDate = endTime.isAfter(startTime) ? date : date.plusDays(1);
+        return new TimeRange(start, endDate.atTime(endTime).atZone(timezone).toOffsetDateTime());
+    }
+
     private static Map<String, DaySchedule> parse(String value) {
         try {
             return OBJECT_MAPPER.readValue(value, TYPE);
@@ -84,5 +108,8 @@ public final class OperatingHoursSchedule {
     }
 
     public record DaySchedule(boolean enabled, String start, String end) {
+    }
+
+    public record TimeRange(OffsetDateTime start, OffsetDateTime end) {
     }
 }

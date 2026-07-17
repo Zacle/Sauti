@@ -1,0 +1,1 @@
+ALTER TABLE bookings ADD COLUMN duration_minutes INT NOT NULL DEFAULT 60;

@@ -176,6 +176,31 @@ public class ProviderOAuthService {
         }
     }
 
+    public void testGoogleSheets(UUID tenantId, UUID agentId) {
+        var runtime = integrations.runtime(tenantId, agentId, "google_sheets");
+        var spreadsheetId = text(runtime.configuration().get("spreadsheetId"));
+        var range = text(runtime.configuration().get("range"));
+        if (spreadsheetId.isBlank() || range.isBlank()) {
+            throw new IllegalStateException("Spreadsheet ID and range must be configured before testing");
+        }
+        var url = "https://sheets.googleapis.com/v4/spreadsheets/" + encode(spreadsheetId)
+                + "/values/" + encode(range) + "?majorDimension=ROWS";
+        try {
+            var response = httpClient.send(HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofSeconds(20))
+                    .header("Authorization", "Bearer " + accessToken(tenantId, agentId, "google_sheets"))
+                    .GET().build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) {
+                throw new IllegalStateException("Google Sheets test failed with HTTP " + response.statusCode());
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Google Sheets test was interrupted", exception);
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException("Google Sheets could not be reached", exception);
+        }
+    }
+
     private Provider requireConfigured(String providerName) {
         var provider = providers.get(providerName);
         if (provider == null) throw new IllegalArgumentException("Provider does not support OAuth");

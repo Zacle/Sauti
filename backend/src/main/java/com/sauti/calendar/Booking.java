@@ -46,6 +46,9 @@ public class Booking extends Auditable {
     @Column(nullable = false)
     private OffsetDateTime appointmentAt;
 
+    @Column(nullable = false)
+    private int durationMinutes = 60;
+
     private String externalEventId;
 
     @Column(nullable = false)
@@ -57,7 +60,8 @@ public class Booking extends Auditable {
     protected Booking() {
     }
 
-    public Booking(Tenant tenant, Agent agent, Call call, String callerName, String callerPhone, String serviceType, OffsetDateTime appointmentAt) {
+    public Booking(Tenant tenant, Agent agent, Call call, String callerName, String callerPhone, String serviceType,
+                   OffsetDateTime appointmentAt, int durationMinutes) {
         this.id = UUID.randomUUID();
         this.tenant = tenant;
         this.agent = agent;
@@ -67,10 +71,17 @@ public class Booking extends Auditable {
         this.serviceType = serviceType;
         this.bookedAt = OffsetDateTime.now();
         this.appointmentAt = appointmentAt;
+        this.durationMinutes = durationMinutes <= 0 ? 60 : durationMinutes;
     }
 
     public void cancel() {
         this.status = "cancelled";
+    }
+
+    public void reschedule(OffsetDateTime appointmentAt, int durationMinutes) {
+        this.appointmentAt = appointmentAt;
+        this.durationMinutes = durationMinutes <= 0 ? this.durationMinutes : durationMinutes;
+        this.status = "confirmed";
     }
 
     public void markSynced(String externalEventId) {
@@ -112,6 +123,8 @@ public class Booking extends Auditable {
     public OffsetDateTime getAppointmentAt() {
         return appointmentAt;
     }
+
+    public int getDurationMinutes() { return durationMinutes; }
 
     public String getExternalEventId() {
         return externalEventId;

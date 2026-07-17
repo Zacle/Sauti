@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.junit.jupiter.api.Test;
 
 class OperatingHoursScheduleTest {
@@ -51,5 +53,17 @@ class OperatingHoursScheduleTest {
         assertThatThrownBy(() -> OperatingHoursSchedule.validate("not-json"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("valid weekly schedule");
+    }
+
+    @Test
+    void exposesBookingRangesForConfiguredDaysAndClosedDays() {
+        var monday = OperatingHoursSchedule.rangesFor(WEEKLY, LocalDate.of(2026, 7, 6), ZoneId.of("Africa/Kinshasa"));
+        var tuesday = OperatingHoursSchedule.rangesFor(WEEKLY, LocalDate.of(2026, 7, 7), ZoneId.of("Africa/Kinshasa"));
+
+        assertThat(monday).singleElement().satisfies(range -> {
+            assertThat(range.start().toLocalTime()).isEqualTo(java.time.LocalTime.of(9, 0));
+            assertThat(range.end().toLocalTime()).isEqualTo(java.time.LocalTime.of(17, 0));
+        });
+        assertThat(tuesday).isEmpty();
     }
 }

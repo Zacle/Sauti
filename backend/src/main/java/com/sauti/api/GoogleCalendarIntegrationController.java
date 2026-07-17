@@ -10,6 +10,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.servlet.view.RedirectView;
 
 @RestController
@@ -56,4 +59,21 @@ public class GoogleCalendarIntegrationController {
                 dashboardBaseUrl + "/dashboard/integrations?agentId=" + agentId + "&calendar=connected"
         );
     }
+
+    @PutMapping("/selection")
+    GoogleCalendarIntegrationService.Status select(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam UUID agentId,
+            @RequestBody CalendarSelection request
+    ) {
+        return service.selectCalendar(user.tenantId(), agentId, request.calendarId());
+    }
+
+    @PostMapping("/test")
+    Map<String, Object> test(@AuthenticationPrincipal AuthenticatedUser user, @RequestParam UUID agentId) {
+        service.test(user.tenantId(), agentId);
+        return Map.of("connected", true, "tested", true);
+    }
+
+    record CalendarSelection(String calendarId) {}
 }

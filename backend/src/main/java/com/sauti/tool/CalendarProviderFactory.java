@@ -10,15 +10,18 @@ public class CalendarProviderFactory {
     private final CalendarProvider defaultCalendarProvider;
     private final CalendarCredentialRepository calendarCredentialRepository;
     private final GoogleCalendarApiClient googleCalendarApiClient;
+    private final AgentToolRepository agentToolRepository;
 
     public CalendarProviderFactory(
             CalendarProvider defaultCalendarProvider,
             CalendarCredentialRepository calendarCredentialRepository,
-            GoogleCalendarApiClient googleCalendarApiClient
+            GoogleCalendarApiClient googleCalendarApiClient,
+            AgentToolRepository agentToolRepository
     ) {
         this.defaultCalendarProvider = defaultCalendarProvider;
         this.calendarCredentialRepository = calendarCredentialRepository;
         this.googleCalendarApiClient = googleCalendarApiClient;
+        this.agentToolRepository = agentToolRepository;
     }
 
     public CalendarProvider forTool(AgentTool toolConfig) {
@@ -34,5 +37,14 @@ public class CalendarProviderFactory {
             return new GoogleCalendarProvider(credential, googleCalendarApiClient);
         }
         throw new IllegalStateException("Calendar provider is not connected: " + calendarType);
+    }
+
+    public CalendarProvider forAgent(java.util.UUID agentId) {
+        return agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agentId).stream()
+                .filter(tool -> "google".equalsIgnoreCase(tool.getCalendarType())
+                        && tool.getCalendarCredentialId() != null)
+                .findFirst()
+                .map(this::forTool)
+                .orElse(defaultCalendarProvider);
     }
 }

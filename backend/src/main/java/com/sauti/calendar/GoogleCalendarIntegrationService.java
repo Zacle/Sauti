@@ -42,6 +42,7 @@ public class GoogleCalendarIntegrationService {
     private final AgentVariableService variableService;
     private final CredentialEncryption encryption;
     private final IntegrationService integrationService;
+    private final GoogleCalendarApiClient apiClient;
     private final String clientId;
     private final String clientSecret;
     private final String redirectUri;
@@ -56,6 +57,7 @@ public class GoogleCalendarIntegrationService {
             AgentVariableService variableService,
             CredentialEncryption encryption,
             IntegrationService integrationService,
+            GoogleCalendarApiClient apiClient,
             @Value("${sauti.calendar.google.client-id:}") String clientId,
             @Value("${sauti.calendar.google.client-secret:}") String clientSecret,
             @Value("${sauti.calendar.google.redirect-uri:}") String redirectUri,
@@ -69,6 +71,7 @@ public class GoogleCalendarIntegrationService {
         this.variableService = variableService;
         this.encryption = encryption;
         this.integrationService = integrationService;
+        this.apiClient = apiClient;
         this.clientId = blank(clientId);
         this.clientSecret = blank(clientSecret);
         this.redirectUri = blank(redirectUri);
@@ -130,7 +133,8 @@ public class GoogleCalendarIntegrationService {
                 "refreshToken", token.refreshToken()
         ), java.util.Map.of("calendarId", "primary"));
         toolRepository.findByAgent_IdOrderByDisplayOrderAsc(agent.getId()).stream()
-                .filter(tool -> Set.of("check_availability", "book_slot").contains(tool.getToolName()))
+                .filter(tool -> Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking")
+                        .contains(tool.getToolName()))
                 .forEach(tool -> tool.connectCalendar("google", credential.getId()));
         agent.updateCalendarProvider("Google Calendar");
         variableService.updateIfPresent(agent.getId(), "calendar_provider", "Google Calendar");
@@ -153,6 +157,34 @@ public class GoogleCalendarIntegrationService {
                 tool == null ? null : tool.getCalendarCredentialId(),
                 tool == null ? null : "primary"
         );
+    }
+
+    @Transactional
+    public Status selectCalendar(UUID tenantId, UUID agentId, String calendarId) {
+        var normalized = calendarId == null || calendarId.isBlank() ? "primary" : calendarId.trim();
+        var tool = connectedTool(tenantId, agentId);
+        var credential = credentialRepository.findByIdAndTenant_Id(tool.getCalendarCredentialId(), tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Calendar credential not found"));
+        credential.selectCalendar(normalized);
+        credentialRepository.save(credential);
+        apiClient.test(credential, tool.getAgent().getTimezone());
+        return status(tenantId, agentId);
+    }
+
+    @Transactional(readOnly = true)
+    public void test(UUID tenantId, UUID agentId) {
+        var tool = connectedTool(tenantId, agentId);
+        var credential = credentialRepository.findByIdAndTenant_Id(tool.getCalendarCredentialId(), tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Calendar credential not found"));
+        apiClient.test(credential, tool.getAgent().getTimezone());
+    }
+
+    private com.sauti.tool.AgentTool connectedTool(UUID tenantId, UUID agentId) {
+        agentRepository.findByIdAndTenantId(agentId, tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
+        return toolRepository.findByAgent_IdOrderByDisplayOrderAsc(agentId).stream()
+                .filter(tool -> "google".equals(tool.getCalendarType()) && tool.getCalendarCredentialId() != null)
+                .findFirst().orElseThrow(() -> new IllegalStateException("Google Calendar is not connected for this agent"));
     }
 
     public boolean isConfigured() {

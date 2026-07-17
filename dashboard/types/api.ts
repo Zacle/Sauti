@@ -328,6 +328,7 @@ export type Booking = {
   serviceType: string;
   bookedAt: string;
   appointmentAt: string;
+  durationMinutes: number;
   externalEventId: string | null;
   status: string;
   confirmationSent: boolean;

@@ -29,6 +29,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             return switch (toolCall.name()) {
                 case "check_availability" -> LlmToolResult.success(toolCall, checkAvailability(call, toolCall.arguments(), provider));
                 case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(call, toolCall, provider));
+                case "reschedule_booking" -> LlmToolResult.success(toolCall, reschedule(call, toolCall));
+                case "cancel_booking" -> LlmToolResult.success(toolCall, cancel(call, toolCall));
                 default -> LlmToolResult.error(toolCall, "Unrecognised calendar tool: " + toolCall.name());
             };
         } catch (RuntimeException exception) {
@@ -64,7 +66,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                         requiredStringArg(toolCall.arguments(), "caller_name"),
                         stringArg(toolCall.arguments(), "caller_phone", call.getCallerNumber()),
                         requiredStringArg(toolCall.arguments(), "service_type"),
-                        OffsetDateTime.parse(requiredStringArg(toolCall.arguments(), "appointment_at"))
+                        OffsetDateTime.parse(requiredStringArg(toolCall.arguments(), "appointment_at")),
+                        intArg(toolCall.arguments(), "duration_minutes", 60)
                 ),
                 provider
         );
@@ -73,6 +76,22 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 "externalEventId", booking.getExternalEventId() == null ? "" : booking.getExternalEventId(),
                 "confirmationCode", confirmationCode(booking.getId())
         );
+    }
+
+    private Map<String, Object> reschedule(Call call, LlmToolCall toolCall) {
+        var booking = bookingService.reschedule(call.getTenant().getId(),
+                UUID.fromString(requiredStringArg(toolCall.arguments(), "booking_id")),
+                new com.sauti.calendar.BookingDtos.RescheduleBookingRequest(
+                        OffsetDateTime.parse(requiredStringArg(toolCall.arguments(), "appointment_at")),
+                        intArg(toolCall.arguments(), "duration_minutes", 60)));
+        return Map.of("bookingId", booking.getId(), "appointmentAt", booking.getAppointmentAt().toString(),
+                "updated", true);
+    }
+
+    private Map<String, Object> cancel(Call call, LlmToolCall toolCall) {
+        var booking = bookingService.cancel(call.getTenant().getId(),
+                UUID.fromString(requiredStringArg(toolCall.arguments(), "booking_id")));
+        return Map.of("bookingId", booking.getId(), "cancelled", true);
     }
 
     private String stringArg(Map<String, Object> arguments, String name, String defaultValue) {

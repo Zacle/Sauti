@@ -121,6 +121,12 @@ public class AgentTool extends Auditable {
         this.isActive = true;
     }
 
+    public void disconnectCalendar() {
+        this.calendarType = "noop_calendar";
+        this.calendarCredentialId = null;
+        this.isActive = false;
+    }
+
     public UUID getId() {
         return id;
     }

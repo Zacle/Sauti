@@ -15,16 +15,20 @@ import {
   createIntegrationConnection,
   deleteIntegrationConnection,
   getAgentIntegrations,
+  getGoogleCalendarStatus,
   getIntegrationCatalog,
   getIntegrationConnections,
   getWhatsAppSignupConfiguration,
   getWhatsAppTemplates,
   putAgentIntegration,
+  selectGoogleCalendar,
+  testGoogleCalendar,
   testIntegrationConnection,
   updateIntegrationConnection,
   type AgentIntegration,
   type IntegrationCatalogEntry,
   type IntegrationConnection,
+  type GoogleCalendarStatus,
   type WhatsAppSignupConfiguration,
   type WhatsAppTemplate,
 } from "@/lib/api/integrations";
@@ -88,6 +92,7 @@ export function IntegrationsPage() {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<IntegrationCatalogEntry | null>(null);
   const [whatsappEditing, setWhatsappEditing] = useState(false);
+  const [calendarEditing, setCalendarEditing] = useState(false);
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -189,7 +194,7 @@ export function IntegrationsPage() {
 
   async function testConnection(connection: IntegrationConnection) {
     setBusy(connection.provider);
-    try { await testIntegrationConnection(connection.id); await refresh(agentId); }
+    try { await testIntegrationConnection(connection.id, agentId); await refresh(agentId); }
     catch (caught) { showError(caught); } finally { setBusy(""); }
   }
 
@@ -272,6 +277,8 @@ export function IntegrationsPage() {
                     || (!(binding?.enabled ?? false) && !entry.authorizationConfigured)}
                   onChange={(event) => void toggle(entry, event.target.checked)} /><span /> Agent enabled</label>
                 <div className={styles.actions}>
+                  {entry.provider === "google_calendar" && connection && <button
+                    onClick={() => setCalendarEditing(true)} title="Configure calendar"><Settings2 size={15} /></button>}
                   {entry.requiresConnection && entry.provider !== "google_calendar" && <button
                     disabled={!entry.authorizationConfigured}
                     onClick={() => {
@@ -306,8 +313,54 @@ export function IntegrationsPage() {
           await refresh(agentId);
         }}
       />}
+      {calendarEditing && <GoogleCalendarDialog agentId={agentId} onClose={() => setCalendarEditing(false)}
+        onSaved={async () => { setCalendarEditing(false); await refresh(agentId); }} />}
     </div>
   );
+}
+
+function GoogleCalendarDialog({ agentId, onClose, onSaved }: {
+  agentId: string; onClose: () => void; onSaved: () => Promise<void>;
+}) {
+  const [status, setStatus] = useState<GoogleCalendarStatus | null>(null);
+  const [calendarId, setCalendarId] = useState("primary");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getGoogleCalendarStatus(agentId).then((loaded) => {
+      setStatus(loaded);
+      setCalendarId(loaded.calendarId || "primary");
+    }).catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load Calendar settings."));
+  }, [agentId]);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setError("");
+    try { await selectGoogleCalendar(agentId, calendarId); await onSaved(); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save Calendar settings."); setBusy(false); }
+  }
+
+  async function test() {
+    setBusy(true); setError("");
+    try { await testGoogleCalendar(agentId); setError("Connection verified with Google Calendar."); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Calendar test failed."); }
+    finally { setBusy(false); }
+  }
+
+  return <div className={styles.backdrop} onMouseDown={onClose}>
+    <form className={styles.dialog} onSubmit={(event) => void save(event)} onMouseDown={(event) => event.stopPropagation()}>
+      <header><div><h2>Configure Google Calendar</h2><p>Choose the writable calendar used by this workspace connection.</p></div>
+        <button type="button" onClick={onClose}><X size={18} /></button></header>
+      <div className={styles.formFields}><label><span>Calendar ID</span>
+        <input required value={calendarId} onChange={(event) => setCalendarId(event.target.value)}
+          placeholder="primary or calendar-id@group.calendar.google.com" />
+        <small>Use “primary” for the connected account’s main calendar.</small>
+      </label></div>
+      {error && <div className={error.startsWith("Connection verified") ? styles.success : styles.formError}>{error}</div>}
+      <footer><button type="button" disabled={busy || !status?.connected} onClick={() => void test()}>Test live connection</button>
+        <button className={styles.primary} disabled={busy || !status?.connected}>{busy ? "Saving…" : "Save calendar"}</button></footer>
+    </form>
+  </div>;
 }
 
 type MetaSignupSession = { wabaId: string; phoneNumberId: string };
@@ -638,6 +691,11 @@ function categoryIcon(category: string) {
 }
 
 function placeholderFor(provider: string, field: string) {
+  if (provider === "google_sheets" && field === "spreadsheetId") return "1AbCdEf… from the Google Sheets URL";
+  if (provider === "google_sheets" && field === "range") return "Calls!A:E";
+  if (provider === "google_sheets" && field === "lookupColumn") return "0";
+  if (provider === "google_sheets" && field === "returnColumns") return "0, 1, 2";
+  if (provider === "google_sheets" && field === "appendColumns") return "startedAt, callerPhone, outcome, summary, sentiment";
   if (provider === "calendly" && field === "eventTypeUri") return "https://api.calendly.com/event_types/...";
   if (provider === "calendly" && field === "bookingTitle") return "Appointment with {{caller_name}}";
   return "";

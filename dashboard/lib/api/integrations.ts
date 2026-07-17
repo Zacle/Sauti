@@ -20,6 +20,20 @@ export function authorizeGoogleCalendar(agentId: string) {
   );
 }
 
+export function selectGoogleCalendar(agentId: string, calendarId: string) {
+  return apiRequest<GoogleCalendarStatus>(
+    `/integrations/google-calendar/selection?agentId=${encodeURIComponent(agentId)}`,
+    { method: "PUT", body: JSON.stringify({ calendarId }) },
+  );
+}
+
+export function testGoogleCalendar(agentId: string) {
+  return apiRequest<{ connected: boolean; tested: boolean }>(
+    `/integrations/google-calendar/test?agentId=${encodeURIComponent(agentId)}`,
+    { method: "POST" },
+  );
+}
+
 export type IntegrationCatalogEntry = {
   provider: string;
   name: string;
@@ -99,8 +113,9 @@ export function updateIntegrationConnection(id: string, body: {
   });
 }
 
-export function testIntegrationConnection(id: string) {
-  return apiRequest<IntegrationConnection>(`/integrations/connections/${id}/test`, { method: "POST" });
+export function testIntegrationConnection(id: string, agentId?: string) {
+  const query = agentId ? `?agentId=${encodeURIComponent(agentId)}` : "";
+  return apiRequest<IntegrationConnection>(`/integrations/connections/${id}/test${query}`, { method: "POST" });
 }
 
 export function deleteIntegrationConnection(id: string) {

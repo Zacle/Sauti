@@ -66,7 +66,7 @@ public class GoogleCalendarApiClient {
 
     public String createEvent(CalendarCredential credential, Booking booking) {
         var start = booking.getAppointmentAt();
-        var end = start.plusHours(1);
+        var end = start.plusMinutes(booking.getDurationMinutes());
         var body = objectMapper.createObjectNode()
                 .put("summary", booking.getServiceType() + " — " + booking.getCallerName())
                 .put("description", "Booked by Sauti. Caller: " + booking.getCallerPhone());
@@ -83,6 +83,35 @@ public class GoogleCalendarApiClient {
         } catch (Exception exception) {
             throw new IllegalStateException("Google Calendar event response was invalid", exception);
         }
+    }
+
+    public void updateEvent(CalendarCredential credential, Booking booking) {
+        if (booking.getExternalEventId() == null || booking.getExternalEventId().isBlank()) {
+            throw new IllegalArgumentException("Booking is not linked to a Google Calendar event");
+        }
+        var start = booking.getAppointmentAt();
+        var end = start.plusMinutes(booking.getDurationMinutes());
+        var body = objectMapper.createObjectNode()
+                .put("summary", booking.getServiceType() + " — " + booking.getCallerName())
+                .put("description", "Booked by Sauti. Caller: " + booking.getCallerPhone());
+        body.putObject("start").put("dateTime", start.toString()).put("timeZone", booking.getAgent().getTimezone());
+        body.putObject("end").put("dateTime", end.toString()).put("timeZone", booking.getAgent().getTimezone());
+        var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential))
+                + "/events/" + encode(booking.getExternalEventId());
+        send(credential, HttpRequest.newBuilder(URI.create(endpoint))
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(body.toString())));
+    }
+
+    public void deleteEvent(CalendarCredential credential, String eventId) {
+        if (eventId == null || eventId.isBlank()) return;
+        var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential)) + "/events/" + encode(eventId);
+        send(credential, HttpRequest.newBuilder(URI.create(endpoint)).DELETE());
+    }
+
+    public void test(CalendarCredential credential, String timezone) {
+        var now = OffsetDateTime.now();
+        busy(credential, now, now.plusDays(1), timezone);
     }
 
     private String send(CalendarCredential credential, HttpRequest.Builder builder) {

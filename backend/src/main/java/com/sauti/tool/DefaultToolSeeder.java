@@ -26,8 +26,19 @@ public class DefaultToolSeeder {
                         "appointment_at", property("string", "Confirmed ISO-8601 appointment datetime", "date-time"),
                         "caller_name", property("string", "Caller full name", ""),
                         "caller_phone", property("string", "Caller phone number", "phone"),
-                        "service_type", property("string", "Service being booked", "")
+                        "service_type", property("string", "Service being booked", ""),
+                        "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("appointment_at", "caller_name", "caller_phone", "service_type")), "sauti_calendar", "noop_calendar", 20);
+        seed(agent, "reschedule_booking", "Reschedule a booking only after the caller confirms the new time.",
+                schema(Map.of(
+                        "booking_id", property("string", "Sauti booking ID returned when the appointment was booked", ""),
+                        "appointment_at", property("string", "Confirmed new ISO-8601 appointment datetime", "date-time"),
+                        "duration_minutes", property("integer", "Appointment duration in minutes", "")
+                ), List.of("booking_id", "appointment_at")), "sauti_calendar", "noop_calendar", 21);
+        seed(agent, "cancel_booking", "Cancel a booking only after the caller explicitly confirms cancellation.",
+                schema(Map.of(
+                        "booking_id", property("string", "Sauti booking ID returned when the appointment was booked", "")
+                ), List.of("booking_id")), "sauti_calendar", "noop_calendar", 22);
         seed(agent, "send_confirmation_sms", "Send a booking confirmation SMS. If SMS is unavailable, explain that "
                         + "to the caller and offer WhatsApp when that tool is available.",
                 schema(Map.of(
@@ -47,6 +58,12 @@ public class DefaultToolSeeder {
         seed(agent, "lookup_google_sheet_row", "Look up a configured Google Sheets row.",
                 schema(Map.of("lookup_value", property("string", "Value in the configured lookup column", "")),
                         List.of("lookup_value")), "sauti_integration", null, 70);
+        seed(agent, "update_google_sheet_row", "Replace a matching configured Google Sheets row after explicit caller confirmation.",
+                schema(Map.of(
+                        "lookup_value", property("string", "Value in the configured lookup column", ""),
+                        "replacement_values", arrayProperty("Complete replacement row values in configured column order"),
+                        "confirmed", property("boolean", "True only after the caller explicitly confirms the update", "")
+                ), List.of("lookup_value", "replacement_values", "confirmed")), "sauti_integration", null, 71);
         seed(agent, "request_mpesa_payment", "Request a caller-confirmed M-Pesa STK Push. If the result is pending, "
                         + "ask the caller to wait briefly and use check_mpesa_payment before claiming success.",
                 schema(Map.of(
@@ -64,18 +81,40 @@ public class DefaultToolSeeder {
         seed(agent, "call_custom_webhook", "Send structured data to the workspace's configured HTTPS webhook.",
                 schema(Map.of("payload", property("object", "Structured request payload", "")),
                         List.of("payload")), "sauti_integration", null, 90);
+        synchronizeAddedTools(agent);
+    }
+
+    private void synchronizeAddedTools(Agent agent) {
+        var tools = agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agent.getId());
+        var bookingTool = tools.stream().filter(tool -> "book_slot".equals(tool.getToolName())).findFirst().orElse(null);
+        if (bookingTool != null) {
+            tools.stream().filter(tool -> Set.of("reschedule_booking", "cancel_booking").contains(tool.getToolName()))
+                    .forEach(tool -> {
+                        if ("google".equalsIgnoreCase(bookingTool.getCalendarType())
+                                && bookingTool.getCalendarCredentialId() != null) {
+                            tool.connectCalendar("google", bookingTool.getCalendarCredentialId());
+                        } else {
+                            tool.configureForDraft(agent.isBookingEnabled(), "noop_calendar");
+                        }
+                    });
+        }
+        var lookup = tools.stream().filter(tool -> "lookup_google_sheet_row".equals(tool.getToolName())).findFirst().orElse(null);
+        if (lookup != null) {
+            tools.stream().filter(tool -> "update_google_sheet_row".equals(tool.getToolName()))
+                    .forEach(tool -> tool.configureForDraft(lookup.isActive(), null));
+        }
     }
 
     public void configureOnboardingDraft(Agent agent) {
         var activeTools = new java.util.HashSet<>(Set.of("end_call"));
         if (agent.isBookingEnabled()) {
-            activeTools.addAll(Set.of("check_availability", "book_slot", "send_confirmation_sms"));
+            activeTools.addAll(Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking", "send_confirmation_sms"));
         }
         if (agent.getHumanTransferNumber() != null && !agent.getHumanTransferNumber().isBlank()) {
             activeTools.add("transfer_to_human");
         }
         agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agent.getId()).forEach(tool -> {
-            String calendarType = Set.of("check_availability", "book_slot").contains(tool.getToolName())
+            String calendarType = Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking").contains(tool.getToolName())
                     ? "noop_calendar"
                     : null;
             tool.configureForDraft(activeTools.contains(tool.getToolName()), calendarType);
@@ -100,5 +139,9 @@ public class DefaultToolSeeder {
             return Map.of("type", type, "description", description);
         }
         return Map.of("type", type, "description", description, "format", format);
+    }
+
+    private Map<String, Object> arrayProperty(String description) {
+        return Map.of("type", "array", "description", description, "items", Map.of("type", "string"));
     }
 }

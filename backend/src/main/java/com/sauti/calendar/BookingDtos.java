@@ -1,6 +1,8 @@
 package com.sauti.calendar;
 
 import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.OffsetDateTime;
@@ -16,9 +18,15 @@ public final class BookingDtos {
             @NotBlank String callerName,
             @NotBlank String callerPhone,
             @NotBlank String serviceType,
-            @Future @NotNull OffsetDateTime appointmentAt
+            @Future @NotNull OffsetDateTime appointmentAt,
+            @Min(5) @Max(480) Integer durationMinutes
     ) {
     }
+
+    public record RescheduleBookingRequest(
+            @Future @NotNull OffsetDateTime appointmentAt,
+            @Min(5) @Max(480) Integer durationMinutes
+    ) {}
 
     public record BookingResponse(
             UUID id,
@@ -29,6 +37,7 @@ public final class BookingDtos {
             String serviceType,
             OffsetDateTime bookedAt,
             OffsetDateTime appointmentAt,
+            int durationMinutes,
             String externalEventId,
             String status,
             boolean confirmationSent
@@ -43,6 +52,7 @@ public final class BookingDtos {
                     booking.getServiceType(),
                     booking.getBookedAt(),
                     booking.getAppointmentAt(),
+                    booking.getDurationMinutes(),
                     booking.getExternalEventId(),
                     booking.getStatus(),
                     booking.isConfirmationSent()

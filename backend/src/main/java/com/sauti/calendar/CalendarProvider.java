@@ -9,4 +9,11 @@ public interface CalendarProvider {
     List<CalendarAvailabilitySlot> availability(Agent agent, LocalDate date, int durationMinutes, ZoneId timezone);
 
     CalendarSyncResult createEvent(Booking booking);
+
+    default CalendarSyncResult updateEvent(Booking booking) {
+        return new CalendarSyncResult(booking.getExternalEventId());
+    }
+
+    default void deleteEvent(Booking booking) {
+    }
 }
