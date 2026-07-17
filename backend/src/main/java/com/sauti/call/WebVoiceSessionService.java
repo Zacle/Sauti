@@ -160,7 +160,7 @@ public class WebVoiceSessionService {
 
     private void onPartial(BrowserSession state, String transcript, double confidence) {
         if (transcript == null || transcript.isBlank()) return;
-        state.markCallerActivity();
+        state.beginCallerSpeech();
         sendJson(state, Map.of("type", "transcript_partial", "text", transcript, "confidence", confidence));
         var sensitivity = state.call.getAgent().getBargeInSensitivity();
         var threshold = Math.max(0.45, Math.min(0.90, 0.83 - (0.4 * sensitivity)));
@@ -174,7 +174,7 @@ public class WebVoiceSessionService {
     }
 
     private void onFinal(BrowserSession state, String transcript) {
-        if (transcript == null || transcript.isBlank() || !state.call.isActive()) return;
+        if (!CallerTranscriptGuard.accepts(transcript) || !state.call.isActive()) return;
         state.markCallerActivity();
         state.finishCallerSpeech();
         sendJson(state, Map.of("type", "transcript_final", "text", transcript));
@@ -300,8 +300,8 @@ public class WebVoiceSessionService {
         }
         if (state.speaking) return;
         long silence = state.silentSeconds();
-        var reminderSeconds = Math.max(state.awaitingDictatedDetail ? 25 : 15, agent.getReminderAfterSilenceSeconds());
-        var finalGraceSeconds = Math.max(20, reminderSeconds);
+        var reminderSeconds = Math.max(30, agent.getReminderAfterSilenceSeconds());
+        var finalGraceSeconds = 30;
         var endSilenceSeconds = Math.max(agent.getEndCallOnSilenceSeconds(), reminderSeconds + finalGraceSeconds);
         if (state.shouldEndAfterFinalReminder(finalGraceSeconds, agent.getMaxReminders())
                 || silence >= endSilenceSeconds) {
@@ -500,6 +500,10 @@ public class WebVoiceSessionService {
         private synchronized void markCallerActivity() {
             markActivity();
             remindersSent = 0;
+            if (callerSpeechStartedNanos == 0) callerSpeechStartedNanos = System.nanoTime();
+        }
+
+        private synchronized void beginCallerSpeech() {
             if (callerSpeechStartedNanos == 0) callerSpeechStartedNanos = System.nanoTime();
         }
 

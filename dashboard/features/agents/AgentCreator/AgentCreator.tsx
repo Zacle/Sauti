@@ -304,8 +304,8 @@ export function AgentCreator({
   const [llmTier, setLlmTier] = useState<"standard" | "advanced">("standard");
   const [bargeInSensitivity, setBargeInSensitivity] = useState(0.7);
   const [bargeInGraceMs, setBargeInGraceMs] = useState(300);
-  const [endCallOnSilenceSeconds, setEndCallOnSilenceSeconds] = useState(600);
-  const [reminderAfterSilenceSeconds, setReminderAfterSilenceSeconds] = useState(10);
+  const [endCallOnSilenceSeconds, setEndCallOnSilenceSeconds] = useState(60);
+  const [reminderAfterSilenceSeconds, setReminderAfterSilenceSeconds] = useState(30);
   const [maxReminders, setMaxReminders] = useState(1);
   const [detectVoicemail, setDetectVoicemail] = useState(true);
   const [handleCallScreening, setHandleCallScreening] = useState(true);
@@ -1763,9 +1763,9 @@ function CallBehaviorSettings(props: {
         </div>
       )}
       <RangeSetting label="Maximum call duration" detail="End calls that exceed this duration." value={Number(props.maxDuration)} min={1} max={60} step={1} suffix={`${props.maxDuration} min`} onChange={(value) => props.onMaxDuration(String(value))} />
-      <RangeSetting label="End call on silence" detail="End an unattended call after sustained silence." value={props.endCallOnSilenceSeconds} min={30} max={900} step={30} suffix={`${Math.round(props.endCallOnSilenceSeconds / 60)} min`} onChange={props.onEndCallOnSilenceSeconds} />
+      <RangeSetting label="End call on silence" detail="End an unattended call after sustained silence." value={props.endCallOnSilenceSeconds} min={60} max={900} step={30} suffix={`${Math.round(props.endCallOnSilenceSeconds / 60)} min`} onChange={props.onEndCallOnSilenceSeconds} />
       <div className="studio-form-grid advanced-grid">
-        <label>Reminder after silence<div className="input-with-suffix"><input type="number" min="5" max="600" value={props.reminderAfterSilenceSeconds} onChange={(event) => props.onReminderAfterSilenceSeconds(Number(event.target.value))} /><span>seconds</span></div></label>
+        <label>Reminder after silence<div className="input-with-suffix"><input type="number" min="30" max="600" value={props.reminderAfterSilenceSeconds} onChange={(event) => props.onReminderAfterSilenceSeconds(Number(event.target.value))} /><span>seconds</span></div></label>
         <label>Maximum reminders<input type="number" min="0" max="10" value={props.maxReminders} onChange={(event) => props.onMaxReminders(Number(event.target.value))} /></label>
       </div>
       <div className="studio-setting-group">

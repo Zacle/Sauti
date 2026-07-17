@@ -126,7 +126,7 @@ public class OpenAiRealtimeService {
                 "model", transcriptionModel,
                 "language", call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected()
         ));
-        var telephonyThreshold = Math.round(Math.max(0.45, Math.min(0.90,
+        var telephonyThreshold = Math.round(Math.max(0.60, Math.min(0.90,
                 0.83 - (0.4 * call.getAgent().getBargeInSensitivity()))) * 100.0) / 100.0;
         var telephonySilenceMs = Math.max(250, Math.min(900, call.getAgent().getSttEndpointingMs()));
         input.put("turn_detection", Map.of(
@@ -135,14 +135,16 @@ public class OpenAiRealtimeService {
                 // channel. Use a slightly stricter and more patient endpoint in
                 // hybrid mode so playback leakage and natural mid-sentence pauses
                 // do not create a new turn prematurely.
-                "threshold", telephony ? telephonyThreshold : (nativeAudio ? 0.45 : 0.55),
+                "threshold", telephony ? telephonyThreshold : (nativeAudio ? 0.55 : 0.60),
                 "prefix_padding_ms", 250,
                 "silence_duration_ms", telephony ? telephonySilenceMs : (nativeAudio ? 320 : 520),
-                "create_response", true,
-                // Native Realtime audio can use provider-managed interruption.
-                // Hybrid Cartesia playback is outside OpenAI's audio channel, so
-                // the browser validates sustained caller speech before cancelling.
-                "interrupt_response", telephony || nativeAudio
+                // A response is requested only after a non-empty final caller
+                // transcript is accepted. Provider-managed responses could run
+                // on noise/empty VAD turns and make the agent speak twice.
+                "create_response", false,
+                // Sauti validates sustained caller speech before cancelling
+                // either native OpenAI audio or external Cartesia playback.
+                "interrupt_response", false
         ));
 
         var tools = agentToolLoader.loadForAgent(call.getAgent().getId()).stream()

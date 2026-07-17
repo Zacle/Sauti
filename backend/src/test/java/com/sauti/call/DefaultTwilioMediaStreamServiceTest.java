@@ -278,6 +278,7 @@ class DefaultTwilioMediaStreamServiceTest {
                 call.getTenant().getId(), call.getId(), "agent", "Certainly. What day works for you?", false
         );
         awaitUntil(() -> ttsProvider.spokenText.contains(""));
+        awaitUntil(() -> frames.stream().anyMatch(frame -> frame.contains("\"event\":\"media\"")));
         assertThat(ttsProvider.spokenText).contains("Certainly. What day works for you? ", "");
         assertThat(frames).anySatisfy(frame -> assertThat(frame).contains("\"event\":\"media\""));
     }

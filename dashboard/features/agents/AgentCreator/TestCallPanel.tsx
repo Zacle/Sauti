@@ -46,8 +46,8 @@ const DEFAULT_SETTINGS: TestSettings = {
   bargeInGraceMs: 300,
   sttEndpointingMs: 300,
   maxCallDurationSeconds: 300,
-  endCallOnSilenceSeconds: 600,
-  reminderAfterSilenceSeconds: 10,
+  endCallOnSilenceSeconds: 60,
+  reminderAfterSilenceSeconds: 30,
   maxReminders: 1,
   detectVoicemail: true,
   handleCallScreening: true,
@@ -249,6 +249,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             || Boolean(context && playbackTimeRef.current > context.currentTime + 0.03)
           );
           updateStatus("capturing");
+          if (!hybrid && agentWasResponding) {
+            openAiConnectionRef.current?.cancelResponse();
+          }
           if (hybrid && (agentWasResponding || cartesiaStillAudible)) {
             interruptHybridResponse(agentWasResponding);
           }

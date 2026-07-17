@@ -121,6 +121,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private boolean responseInterrupted;
         private boolean textCompleted;
         private int pendingCallerTranscriptions;
+        private boolean callerSpeechActive;
+        private boolean callerSpeechNotified;
         private final java.util.ArrayDeque<AgentCompletion> deferredAgentCompletions = new java.util.ArrayDeque<>();
 
         RealtimeWebSocketListener(
@@ -187,15 +189,34 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     case "input_audio_buffer.speech_started" -> {
                         pendingCallerTranscriptions++;
                         if (responseActive) responseInterrupted = true;
-                        listener.onCallerSpeechStarted();
+                        synchronized (this) {
+                            callerSpeechActive = true;
+                            callerSpeechNotified = false;
+                        }
+                    }
+                    case "input_audio_buffer.speech_stopped" -> {
+                        synchronized (this) {
+                            callerSpeechActive = false;
+                        }
+                    }
+                    case "conversation.item.input_audio_transcription.delta" -> {
+                        var transcriptDelta = event.path("delta").asText("");
+                        if (CallerTranscriptGuard.accepts(transcriptDelta)) notifyActiveCallerSpeechStarted();
                     }
                     case "conversation.item.input_audio_transcription.completed" -> {
                         var transcript = event.path("transcript").asText("").trim();
-                        if (!transcript.isBlank()) listener.onCallerTranscript(transcript);
+                        if (CallerTranscriptGuard.accepts(transcript)) {
+                            notifyCallerSpeechStarted();
+                            listener.onCallerTranscript(transcript);
+                            var activeSession = session;
+                            if (activeSession != null) activeSession.requestResponse();
+                        }
+                        finishCallerTurn();
                         pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
                         flushDeferredAgentCompletions();
                     }
                     case "conversation.item.input_audio_transcription.failed" -> {
+                        finishCallerTurn();
                         pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
                         flushDeferredAgentCompletions();
                     }
@@ -224,6 +245,22 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             } catch (Exception exception) {
                 listener.onError(exception);
             }
+        }
+
+        private synchronized void notifyActiveCallerSpeechStarted() {
+            if (!callerSpeechActive) return;
+            notifyCallerSpeechStarted();
+        }
+
+        private synchronized void notifyCallerSpeechStarted() {
+            if (callerSpeechNotified) return;
+            callerSpeechNotified = true;
+            listener.onCallerSpeechStarted();
+        }
+
+        private synchronized void finishCallerTurn() {
+            callerSpeechActive = false;
+            callerSpeechNotified = false;
         }
 
         private void completeText(String providerText) {
@@ -346,6 +383,10 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         @Override
         public void cancelResponse() {
             send(Map.of("type", "response.cancel"));
+        }
+
+        void requestResponse() {
+            send(Map.of("type", "response.create"));
         }
 
         private synchronized void send(Map<String, ?> event) {

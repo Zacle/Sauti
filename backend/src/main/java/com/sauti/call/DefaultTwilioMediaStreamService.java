@@ -351,10 +351,11 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
 
     private void maintainCall(Call call, TwilioMediaSession session) {
         if (sessions.get(call.getTwilioCallSid()) != session || !call.isActive()) return;
+        if (session.isAgentBusy()) return;
         long silentSeconds = session.silentSeconds();
         var agent = call.getAgent();
-        var reminderSeconds = Math.max(15, agent.getReminderAfterSilenceSeconds());
-        var finalGraceSeconds = Math.max(20, reminderSeconds);
+        var reminderSeconds = Math.max(30, agent.getReminderAfterSilenceSeconds());
+        var finalGraceSeconds = 30;
         var endSilenceSeconds = Math.max(agent.getEndCallOnSilenceSeconds(), reminderSeconds + finalGraceSeconds);
         if (session.shouldEndAfterFinalReminder(finalGraceSeconds, agent.getMaxReminders())
                 || silentSeconds >= endSilenceSeconds) {
@@ -480,21 +481,23 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
     private void handleRealtimeCallerSpeechStarted(String callSid) {
         var session = sessions.get(callSid);
         if (session == null) return;
-        session.enqueue(() -> {
-            if (session.interruptCurrentTurn()) {
-                session.cancelRealtimeResponse();
-                callSessionStore.markInterrupted(callSid);
-                callSessionStore.setSpeaking(callSid, false, "");
-                callRepository.findByTwilioCallSid(callSid)
-                        .ifPresent(call -> dashboardEventPublisher.agentSpeaking(call, false));
-                LOGGER.info("Realtime barge-in detected for callSid={}", callSid);
-                metrics.interruption("telephony", metricChannel(session));
-            }
-        });
+        // The provider invokes this only after sustained speech or an accepted
+        // final transcript. Run synchronously so model cancellation is ordered
+        // before the provider requests the next response.
+        session.cancelRealtimeModelResponse();
+        if (session.interruptCurrentTurn()) {
+            session.cancelRealtimeResponse();
+            callSessionStore.markInterrupted(callSid);
+            callSessionStore.setSpeaking(callSid, false, "");
+            callRepository.findByTwilioCallSid(callSid)
+                    .ifPresent(call -> dashboardEventPublisher.agentSpeaking(call, false));
+            LOGGER.info("Realtime barge-in detected for callSid={}", callSid);
+            metrics.interruption("telephony", metricChannel(session));
+        }
     }
 
     private void handleRealtimeCallerTranscript(String callSid, String transcript) {
-        if (transcript == null || transcript.isBlank()) return;
+        if (!CallerTranscriptGuard.accepts(transcript)) return;
         var session = sessions.get(callSid);
         if (session == null) return;
         session.markCallerResponse();
@@ -546,7 +549,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
     }
 
     private void handleFinalTranscript(String callSid, String transcript) {
-        if (transcript == null || transcript.isBlank()) {
+        if (!CallerTranscriptGuard.accepts(transcript)) {
             return;
         }
         var session = sessions.get(callSid);
@@ -777,7 +780,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         private void recordInboundAudio(long mulawBytes, long pcmBytes) {
             inboundMulawBytes += mulawBytes;
             inboundPcmBytes += pcmBytes;
-            markActivity();
         }
 
         private synchronized void markActivity() {
@@ -791,6 +793,10 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
 
         private synchronized long silentSeconds() {
             return TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - lastActivityNanos);
+        }
+
+        private synchronized boolean isAgentBusy() {
+            return speaking || realtimeResponseOpen;
         }
 
         private synchronized boolean canSendReminder(int afterSeconds, int maximum) {
@@ -878,6 +884,12 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             return true;
         }
 
+        private synchronized void cancelRealtimeModelResponse() {
+            if (sttSession instanceof TelephonyRealtimeConversationProvider.Session realtime) {
+                realtime.cancelResponse();
+            }
+        }
+
         private synchronized boolean beginRealtimeResponse() {
             if (realtimeResponseOpen) return false;
             realtimeResponseOpen = true;
@@ -944,9 +956,10 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             outboundMediaSender.send(frame);
         }
 
-        private void markReceived(String markName) {
+        private synchronized void markReceived(String markName) {
             lastMarkName = markName;
             speaking = false;
+            markActivity();
         }
 
         private synchronized void setPendingTransfer(UUID callId) {
@@ -996,6 +1009,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             this.currentMarkName = markName;
             this.speaking = true;
             this.agentTurnStartedMediaTimestampMs = lastInboundMediaTimestampMs;
+            markActivity();
         }
 
         private void setCloseAfterCurrentMark(boolean closeAfterCurrentMark) {

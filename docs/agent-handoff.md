@@ -221,6 +221,34 @@ Expected:
 
 ## Change log
 
+### 2026-07-17 - Transcript-gated voice turns and deterministic silence handling
+
+- Fixed unsolicited consecutive agent turns in OpenAI Realtime and OpenAI + Cartesia hybrid calls. Realtime sessions now set `create_response=false`; Sauti requests `response.create` only after a usable final caller transcript is received. Empty VAD/transcription failures no longer advance the conversation.
+- Added a shared backend caller-transcript guard for blank, punctuation-only, and explicit non-speech captions while retaining valid short replies such as “Oui”, “Mhm”, and phone numbers. The browser Realtime client applies the equivalent guard before requesting a response.
+- Raised Realtime VAD thresholds. Telephony barge-in now requires recognized transcript content (streaming delta or accepted final transcript), while browser calls use a 180 ms sustained-speech debounce. Provider VAD noise can no longer immediately interrupt playback; validated speech cancels the current OpenAI response and Cartesia stream in a deterministic order before the next response is requested.
+- Fixed phone silence tracking. Raw inbound media frames—including Telnyx's configured idle-silence frames—no longer count as caller activity. The silence clock resets only for accepted caller transcripts, DTMF input, and agent playback boundaries, and it does not advance while the agent is speaking.
+- Standardized the default unattended-call flow: prompt once after 30 seconds without an accepted reply, then end after a further 30 seconds. New agents use 30/60-second defaults; Flyway `V32` migrates only agents still using the original untouched 10/600-second default pair.
+- Applied the same accepted-transcript and 30-second minimum reminder policy to cascaded browser voice sessions. Browser partial transcripts can participate in barge-in timing without resetting the silence clock.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/Agent.java`
+  - `backend/src/main/java/com/sauti/call/CallerTranscriptGuard.java`
+  - `backend/src/main/java/com/sauti/call/DefaultTwilioMediaStreamService.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeService.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/call/WebVoiceSessionService.java`
+  - `backend/src/main/resources/db/migration/V32__default_silence_turn_policy.sql`
+  - affected backend voice-runtime tests
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - browser/test call presentation and default-setting files
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test` - passed.
+  - targeted telephony turn-order and media-stream tests after the final concurrency adjustment - passed.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow; production must apply Flyway `V32` through that workflow.
+- Known follow-up/risk: provider VAD behavior must be validated with a quiet real phone call and with low-volume French/Arabic speech. If a carrier path has unusually low input gain, tune the provider threshold deliberately rather than re-enabling automatic response creation.
+
 ### 2026-07-17 - Production Docker build storage hardening
 
 - Fixed the infrastructure failure where Gradle could not write its binary store or `last-build.bin` during the backend Docker build. The application `bootJar` itself remains healthy; the failure occurred in exhausted or unsafe Docker/Gradle build storage.

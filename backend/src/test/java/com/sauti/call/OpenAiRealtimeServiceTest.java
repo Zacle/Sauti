@@ -44,8 +44,9 @@ class OpenAiRealtimeServiceTest {
         assertThat(configuration)
                 .contains("\"output_modalities\":[\"text\"]")
                 .contains("\"silence_duration_ms\":410")
-                .contains("\"interrupt_response\":true")
-                .contains("\"threshold\":0.51");
+                .contains("\"create_response\":false")
+                .contains("\"interrupt_response\":false")
+                .contains("\"threshold\":0.6");
         assertThat(configurationNode.at("/audio/input/format/type").asText()).isEqualTo("audio/pcm");
         assertThat(configurationNode.at("/audio/input/format/rate").asInt()).isEqualTo(24000);
     }
@@ -90,9 +91,10 @@ class OpenAiRealtimeServiceTest {
                     .contains("gpt-realtime-1.5")
                     .contains("openai:marin".substring("openai:".length()))
                     .contains("\"max_output_tokens\":\"inf\"")
-                    .contains("\"threshold\":0.45")
+                    .contains("\"threshold\":0.55")
                     .contains("\"silence_duration_ms\":320")
-                    .contains("\"interrupt_response\":true")
+                    .contains("\"create_response\":false")
+                    .contains("\"interrupt_response\":false")
                     .contains("gpt-4o-mini-transcribe");
         } finally {
             server.stop(0);
@@ -133,8 +135,9 @@ class OpenAiRealtimeServiceTest {
             assertThat(receivedBody.get())
                     .contains("\"output_modalities\":[\"text\"]")
                     .contains("\"audio\":{\"input\":")
-                    .contains("\"threshold\":0.55")
+                    .contains("\"threshold\":0.6")
                     .contains("\"silence_duration_ms\":520")
+                    .contains("\"create_response\":false")
                     .contains("\"interrupt_response\":false")
                     .doesNotContain("french-voice")
                     .doesNotContain("\"output\":{\"voice\"");

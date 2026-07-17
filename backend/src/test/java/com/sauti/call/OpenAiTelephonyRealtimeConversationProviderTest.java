@@ -1,7 +1,9 @@
 package com.sauti.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.http.WebSocket;
@@ -12,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 class OpenAiTelephonyRealtimeConversationProviderTest {
     @Test
-    void defersAgentCompletionUntilCallerTranscriptArrives() {
+    void requestsAResponseOnlyAfterCallerTranscriptArrives() {
         var events = new ArrayList<String>();
         var listener = new RecordingListener(events);
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
@@ -23,24 +25,53 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 Map.of()
         );
         var webSocket = mock(WebSocket.class);
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
 
         socketListener.onText(webSocket, "{\"type\":\"input_audio_buffer.speech_started\"}", true);
-        socketListener.onText(webSocket, "{\"type\":\"response.created\"}", true);
-        socketListener.onText(webSocket, "{\"type\":\"response.output_text.delta\",\"delta\":\"I can help.\"}", true);
-        socketListener.onText(webSocket, "{\"type\":\"response.output_text.done\",\"text\":\"I can help.\"}", true);
-
-        assertThat(events).containsExactly("speech", "delta:I can help.");
+        assertThat(events).isEmpty();
+        socketListener.onText(webSocket,
+                "{\"type\":\"conversation.item.input_audio_transcription.delta\",\"delta\":\"Please\"}",
+                true);
+        assertThat(events).containsExactly("speech");
+        socketListener.onText(webSocket, "{\"type\":\"input_audio_buffer.speech_stopped\"}", true);
+        verify(session, never()).requestResponse();
 
         socketListener.onText(webSocket,
                 "{\"type\":\"conversation.item.input_audio_transcription.completed\",\"transcript\":\"Please book Monday\"}",
                 true);
 
+        assertThat(events).containsExactly("speech", "caller:Please book Monday");
+        verify(session).requestResponse();
+
+        socketListener.onText(webSocket, "{\"type\":\"response.created\"}", true);
+        socketListener.onText(webSocket, "{\"type\":\"response.output_text.delta\",\"delta\":\"I can help.\"}", true);
+        socketListener.onText(webSocket, "{\"type\":\"response.output_text.done\",\"text\":\"I can help.\"}", true);
+
         assertThat(events).containsExactly(
-                "speech",
-                "delta:I can help.",
-                "caller:Please book Monday",
-                "agent:I can help.:false"
+                "speech", "caller:Please book Monday", "delta:I can help.", "agent:I can help.:false"
         );
+    }
+
+    @Test
+    void ignoresAnEmptyVadTurnWithoutStartingAnAgentResponse() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var webSocket = mock(WebSocket.class);
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(webSocket, "{\"type\":\"input_audio_buffer.speech_started\"}", true);
+        socketListener.onText(webSocket, "{\"type\":\"input_audio_buffer.speech_stopped\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\",\"transcript\":\" [silence] \"}",
+                true);
+
+        assertThat(events).isEmpty();
+        verify(session, never()).requestResponse();
     }
 
     @Test

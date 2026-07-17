@@ -147,6 +147,9 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
               );
               updateSpeaking(false);
               setPartial("Listening...");
+              if (!hybrid && agentWasResponding) {
+                openAiConnectionRef.current?.cancelResponse();
+              }
               if (hybrid && (agentWasResponding || cartesiaStillAudible)) {
                 if (agentWasResponding) openAiConnectionRef.current?.cancelResponse();
                 clearPlayback();

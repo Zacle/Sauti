@@ -89,7 +89,12 @@ export async function connectOpenAiRealtime(options: {
     if (type === "response.created") responseActive = true;
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
-      if (transcript) options.callbacks.onCallerTranscript(transcript);
+      if (isMeaningfulCallerTranscript(transcript)) {
+        options.callbacks.onCallerTranscript(transcript);
+        // The session disables provider-managed response creation. Only a
+        // usable final transcript is allowed to advance the conversation.
+        send(channel, { type: "response.create" });
+      }
       pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
       flushDeferredAgentTranscripts();
     }
@@ -140,7 +145,7 @@ export async function connectOpenAiRealtime(options: {
       pendingCallerTranscriptions += 1;
       callerSpeechActive = true;
       const agentWasResponding = responseActive;
-      const debounceMs = Math.max(0, options.bargeInDebounceMs ?? 0);
+      const debounceMs = Math.max(180, options.bargeInDebounceMs ?? 0);
       window.clearTimeout(bargeInTimer);
       if (debounceMs > 0) {
         bargeInTimer = window.setTimeout(() => {
@@ -234,6 +239,20 @@ export async function connectOpenAiRealtime(options: {
       if (audio) audio.srcObject = null;
     },
   };
+}
+
+function isMeaningfulCallerTranscript(transcript: string) {
+  const normalized = transcript
+    .normalize("NFKC")
+    .trim()
+    .replace(/^[\s\p{P}]+|[\s\p{P}]+$/gu, "")
+    .toLocaleLowerCase();
+  if (!/[\p{L}\p{N}]/u.test(normalized)) return false;
+  const caption = normalized.replace(/^[\[(<{]+|[\])> }]+$/gu, "").trim();
+  return !new Set([
+    "silence", "no speech", "inaudible", "unintelligible",
+    "background noise", "music", "blank audio", "audio unclear",
+  ]).has(caption);
 }
 
 function requestGreeting(channel: RTCDataChannel, greeting: string, outputMode: "audio" | "text") {

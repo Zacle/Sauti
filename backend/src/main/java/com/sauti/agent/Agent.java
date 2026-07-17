@@ -102,9 +102,9 @@ public class Agent extends Auditable {
     @Column(nullable = false)
     private int bargeInGraceMs = 300;
     @Column(nullable = false)
-    private int endCallOnSilenceSeconds = 600;
+    private int endCallOnSilenceSeconds = 60;
     @Column(nullable = false)
-    private int reminderAfterSilenceSeconds = 10;
+    private int reminderAfterSilenceSeconds = 30;
     @Column(nullable = false)
     private int maxReminders = 1;
     @Column(nullable = false)
@@ -444,8 +444,8 @@ public class Agent extends Auditable {
     ) {
         this.bargeInSensitivity = clamp(bargeInSensitivity == null ? 0.70 : bargeInSensitivity, 0, 1);
         this.bargeInGraceMs = range(bargeInGraceMs, 0, 3000, 300);
-        this.endCallOnSilenceSeconds = range(endCallOnSilenceSeconds, 30, 3600, 600);
-        this.reminderAfterSilenceSeconds = range(reminderAfterSilenceSeconds, 5, 600, 10);
+        this.endCallOnSilenceSeconds = range(endCallOnSilenceSeconds, 60, 3600, 60);
+        this.reminderAfterSilenceSeconds = range(reminderAfterSilenceSeconds, 30, 600, 30);
         this.maxReminders = range(maxReminders, 0, 10, 1);
         this.detectVoicemail = detectVoicemail == null || detectVoicemail;
         this.handleCallScreening = handleCallScreening == null || handleCallScreening;
