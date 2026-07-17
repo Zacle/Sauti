@@ -127,7 +127,7 @@ class ConversationOrchestratorTest {
             LlmToolCall toolCall = invocation.getArgument(1);
             assertThat(toolCall.arguments())
                     .containsEntry("date", "2026-07-18")
-                    .containsEntry("time_preference", "midi");
+                    .containsEntry("time_preference", "12:00");
             return LlmToolResult.success(toolCall, Map.of("status", "requested_time_available"));
         });
 

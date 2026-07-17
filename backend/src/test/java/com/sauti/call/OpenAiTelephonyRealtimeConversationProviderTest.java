@@ -151,6 +151,35 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void speaksTheDeterministicAvailabilityDecisionWithoutAskingTheModelToRewriteIt() {
+        var events = new ArrayList<String>();
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        var spoken = "That time is available. Would you like me to continue with the booking?";
+        when(realtimeService.executeTool(eq(call), eq("availability-1"), eq("check_availability"), anyString()))
+                .thenReturn(new com.sauti.llm.LlmToolResult(
+                        "availability-1", "check_availability", true,
+                        Map.of("status", "requested_time_available", "spokenResponse", spoken), ""
+                ));
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call, new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.function_call_arguments.done\","
+                        + "\"call_id\":\"availability-1\",\"name\":\"check_availability\","
+                        + "\"arguments\":\"{\\\"date\\\":\\\"2026-07-20\\\"}\"}", true);
+
+        verify(realtimeService, timeout(1_000)).executeTool(
+                eq(call), eq("availability-1"), eq("check_availability"), anyString()
+        );
+        verify(session, never()).requestToolResultResponse();
+        assertThat(events).containsExactly("delta:" + spoken, "agent:" + spoken + ":false");
+    }
+
+    @Test
     void cancelsAnUnsolicitedAgentResponse() {
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
                 new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),

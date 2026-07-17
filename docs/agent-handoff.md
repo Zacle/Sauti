@@ -3012,3 +3012,32 @@ Expected:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 - Follow-ups / risks:
   - Existing Google Calendar connections are not re-authorized by this code change. After CI deployment, use the marketplace's `Test live connection` action once for the selected agent. If it fails, reconnect Google Calendar so the new OAuth validation runs and the refresh token/scopes are renewed.
+
+### 2026-07-18 - Deterministic availability decisions and resilient Google Calendar calls
+
+- Fixed the main failure shown in the French and English transcripts: natural Realtime arguments such as `demain à midi`, `Monday at 5 p.m.`, missing date fields, and dotted A.M./P.M. values are normalized into the strict calendar contract before tool routing. The normalizer also recovers the latest accepted caller transcript when the model emits incomplete tool arguments.
+- Reordered availability evaluation so configured business hours are authoritative and evaluated before Google Calendar. Closed days and requested appointments that would extend past closing time are answered immediately without a provider request.
+- Converted Google/provider availability outages into a successful, structured `calendar_temporarily_unavailable` decision. This prevents an upstream error from entering the model as an open-ended failure while still making it explicit that no appointment was booked.
+- Added deterministic caller-safe availability speech in English, French, Arabic, and Swahili. Browser OpenAI audio, browser OpenAI + Cartesia, phone OpenAI + Cartesia, and cascaded production providers now use that response directly instead of asking the model to reinterpret dates, times, alternatives, or failure state.
+- Preserved the local heuristic provider's follow-up pass because it uses that pass to persist its booking draft; production model providers remain on the lower-latency deterministic path.
+- Added a one-time OAuth refresh and retry when Google rejects an apparently unexpired access token with HTTP 401.
+- Added controlled missing-date clarification instead of exposing a tool error when no usable date can be resolved.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/GoogleCalendarApiClient.java`
+  - `backend/src/main/java/com/sauti/call/{OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/main/java/com/sauti/llm/{ConversationOrchestrator,LlmToolCallingProvider,LocalToolCallingLlmProvider}.java`
+  - `backend/src/main/java/com/sauti/tool/{AvailabilityRequestNormalizer,AvailabilitySpeechRenderer,SautiCalendarFulfillment}.java`
+  - related tests under `backend/src/test/java/com/sauti/{call,llm,tool}`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused normalizer, calendar fulfillment, Realtime service, phone Realtime, orchestrator, and end-to-end auth/agent-flow tests (successful)
+  - `\.\gradlew.bat :backend:test --no-daemon` (successful; 169 tests, up to date after the completed full run)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` (successful; 50 routes generated)
+  - `git diff --check` (successful; only expected line-ending notices)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - Automated tests cover normalization, business-hours-first behavior, deterministic speech, provider degradation, and Realtime routing. A live Google call still requires real credentials and cannot be simulated locally.
+  - After CI deployment, run `Test live connection` for Google Calendar on each affected agent. Any pre-existing OAuth grant that lacks `calendar.freebusy` or has an invalid refresh token must be reconnected once; the new runtime retry cannot add scopes to an old grant.

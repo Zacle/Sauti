@@ -18,10 +18,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
 public class SautiCalendarFulfillment implements ToolFulfillment {
+    private static final Logger LOGGER = LoggerFactory.getLogger(SautiCalendarFulfillment.class);
     private static final Pattern SPOKEN_TIME = Pattern.compile(
             "(?<!\\d)(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?(?!\\d)",
             Pattern.CASE_INSENSITIVE
@@ -37,10 +40,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     @Override
     public LlmToolResult execute(Call call, AgentTool toolConfig, LlmToolCall toolCall) {
         try {
-            var provider = calendarProviderFactory.forTool(toolConfig);
             return switch (toolCall.name()) {
-                case "check_availability" -> LlmToolResult.success(toolCall, checkAvailability(call, toolCall.arguments(), provider));
-                case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(call, toolCall, provider));
+                case "check_availability" -> LlmToolResult.success(toolCall, checkAvailability(call, toolCall.arguments(), toolConfig));
+                case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(call, toolCall, calendarProviderFactory.forTool(toolConfig)));
                 case "reschedule_booking" -> LlmToolResult.success(toolCall, reschedule(call, toolCall));
                 case "cancel_booking" -> LlmToolResult.success(toolCall, cancel(call, toolCall));
                 default -> LlmToolResult.error(toolCall, "Unrecognised calendar tool: " + toolCall.name());
@@ -50,24 +52,43 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         }
     }
 
-    private Map<String, Object> checkAvailability(Call call, Map<String, Object> arguments, com.sauti.calendar.CalendarProvider provider) {
+    private Map<String, Object> checkAvailability(Call call, Map<String, Object> arguments, AgentTool toolConfig) {
         var timezone = ZoneId.of(stringArg(arguments, "timezone", call.getAgent().getTimezone()));
-        var date = LocalDate.parse(requiredStringArg(arguments, "date"));
+        var rawDate = stringArg(arguments, "date", "");
+        final LocalDate date;
+        try {
+            date = rawDate.isBlank() ? null : LocalDate.parse(rawDate);
+        } catch (java.time.format.DateTimeParseException exception) {
+            return missingDate(call, timezone);
+        }
+        if (date == null) return missingDate(call, timezone);
         var duration = intArg(arguments, "duration_minutes", 60);
         var operatingRanges = OperatingHoursSchedule.rangesFor(
                 call.getAgent().getOperatingHours(), date, timezone
         );
-        var availableSlots = provider.availability(call.getAgent(), date, duration, timezone);
         var requestedTimeText = stringArg(arguments, "time_preference", "");
         var requestedTime = parseRequestedTime(requestedTimeText);
         var requestedStart = requestedTime.map(time -> date.atTime(time).atZone(timezone).toOffsetDateTime());
         var withinOperatingHours = requestedStart.map(start -> operatingRanges.stream().anyMatch(range ->
                 !start.isBefore(range.start()) && !start.plusMinutes(duration).isAfter(range.end())
         )).orElse(null);
-        var matchingSlot = requestedStart.flatMap(start -> availableSlots.stream()
+        var businessOpen = !operatingRanges.isEmpty();
+        var calendarLive = true;
+        List<com.sauti.calendar.CalendarAvailabilitySlot> availableSlots = List.of();
+        if (businessOpen && !Boolean.FALSE.equals(withinOperatingHours)) {
+            try {
+                var provider = calendarProviderFactory.forTool(toolConfig);
+                availableSlots = provider.availability(call.getAgent(), date, duration, timezone);
+            } catch (RuntimeException exception) {
+                calendarLive = false;
+                LOGGER.warn("Live calendar availability failed for call {} and agent {}: {}",
+                        call.getId(), call.getAgent().getId(), exception.getMessage());
+            }
+        }
+        var slots = availableSlots;
+        var matchingSlot = requestedStart.flatMap(start -> slots.stream()
                 .filter(slot -> slot.start().isEqual(start))
                 .findFirst());
-        var businessOpen = !operatingRanges.isEmpty();
         var result = new LinkedHashMap<String, Object>();
         result.put("date", date.toString());
         result.put("timezone", timezone.toString());
@@ -82,18 +103,33 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         if (withinOperatingHours != null) result.put("requestedTimeWithinOperatingHours", withinOperatingHours);
         if (requestedTime.isPresent()) result.put("requestedTimeAvailable", matchingSlot.isPresent());
         matchingSlot.ifPresent(slot -> result.put("matchingSlot", slotMap(slot)));
-        result.put("totalAvailableSlots", availableSlots.size());
-        result.put("slots", relevantSlots(availableSlots, requestedTime));
+        result.put("calendarLive", calendarLive);
+        result.put("totalAvailableSlots", slots.size());
+        result.put("slots", relevantSlots(slots, requestedTime));
         result.put("nextOpenBusinessWindows", nextOpenBusinessWindows(call, date, timezone));
         result.put("status", !businessOpen
                 ? "closed_by_business_hours"
-                : availableSlots.isEmpty()
+                : Boolean.FALSE.equals(withinOperatingHours)
+                    ? "outside_business_hours"
+                    : !calendarLive
+                        ? "calendar_temporarily_unavailable"
+                : slots.isEmpty()
                     ? "calendar_fully_booked"
                     : requestedTime.isPresent() && matchingSlot.isEmpty()
                         ? "requested_time_unavailable"
                         : requestedTime.isPresent()
                             ? "requested_time_available"
                             : "slots_available");
+        result.put("spokenResponse", AvailabilitySpeechRenderer.render(call, result));
+        return Map.copyOf(result);
+    }
+
+    private Map<String, Object> missingDate(Call call, ZoneId timezone) {
+        var result = new LinkedHashMap<String, Object>();
+        result.put("status", "needs_date");
+        result.put("timezone", timezone.toString());
+        result.put("calendarLive", true);
+        result.put("spokenResponse", AvailabilitySpeechRenderer.render(call, result));
         return Map.copyOf(result);
     }
 

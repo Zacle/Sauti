@@ -111,6 +111,26 @@ export async function connectOpenAiRealtime(options: {
           deliverToolFailure(name);
           return;
         }
+        const deterministicResponse = toolSpokenResponse(name, result);
+        if (deterministicResponse) {
+          if (options.outputMode === "text") {
+            send(channel, {
+              type: "conversation.item.create",
+              item: {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: deterministicResponse }],
+              },
+            });
+            options.callbacks.onAgentTextDelta?.(deterministicResponse);
+            options.callbacks.onAgentTextComplete?.(false);
+            deliverAgentTranscript(deterministicResponse, false);
+          } else {
+            expectedResponses += 1;
+            requestExactToolResponse(channel, deterministicResponse);
+          }
+          return;
+        }
         expectedResponses += 1;
         requestToolResultResponse(channel);
       })
@@ -407,6 +427,24 @@ function requestToolResultResponse(channel: RTCDataChannel) {
   });
 }
 
+function requestExactToolResponse(channel: RTCDataChannel, response: string) {
+  send(channel, {
+    type: "response.create",
+    response: {
+      instructions: `Say exactly this sentence with no additions or omissions: ${response}`,
+      tool_choice: "none",
+    },
+  });
+}
+
+function toolSpokenResponse(name: string, result: Record<string, unknown>) {
+  if (name !== "check_availability" || result.success === false) return "";
+  const payload = result.result;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
+  const response = (payload as Record<string, unknown>).spokenResponse;
+  return typeof response === "string" ? response.trim() : "";
+}
+
 function isStructuredPayload(text: string) {
   const normalized = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
   return (normalized.startsWith("{") && normalized.endsWith("}"))
@@ -436,7 +474,7 @@ function localizedAvailabilityClarification(language?: string) {
 
 function localizedAvailabilityFailure(language?: string) {
   switch (language?.toLocaleLowerCase()) {
-    case "fr": return "Je ne peux pas confirmer le calendrier en direct pour le moment. Le creneau demande n'est pas reserve.";
+    case "fr": return "Je ne peux pas confirmer la disponibilité pour le moment. Le créneau demandé n’est pas réservé.";
     case "ar": return "تعذر تأكيد التقويم المباشر الآن. الموعد المطلوب غير محجوز.";
     case "sw": return "Siwezi kuthibitisha kalenda kwa sasa. Muda ulioomba haujawekwa nafasi.";
     default: return "I cannot confirm the live calendar right now. Your requested time is not booked.";

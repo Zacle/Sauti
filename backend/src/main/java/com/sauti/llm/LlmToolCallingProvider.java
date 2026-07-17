@@ -12,4 +12,9 @@ public interface LlmToolCallingProvider {
         }
         return response;
     }
+
+    /** Local deterministic providers may need one follow-up pass to persist draft state. */
+    default boolean requiresAvailabilityFollowUpForState() {
+        return false;
+    }
 }

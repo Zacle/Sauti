@@ -407,10 +407,33 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     listener.onAgentTextComplete(safeText, false);
                     return;
                 }
+                var deterministicResponse = toolSpokenResponse(result);
+                if (!deterministicResponse.isBlank()) {
+                    send(webSocket, Map.of(
+                            "type", "conversation.item.create",
+                            "item", Map.of(
+                                    "type", "message",
+                                    "role", "assistant",
+                                    "content", java.util.List.of(Map.of(
+                                            "type", "output_text",
+                                            "text", deterministicResponse
+                                    ))
+                            )
+                    ));
+                    listener.onAgentTextDelta(deterministicResponse);
+                    listener.onAgentTextComplete(deterministicResponse, false);
+                    return;
+                }
                 var activeSession = session;
                 if (activeSession != null) activeSession.requestToolResultResponse();
                 else send(webSocket, Map.of("type", "response.create"));
             });
+        }
+
+        private String toolSpokenResponse(com.sauti.llm.LlmToolResult result) {
+            if (!"check_availability".equals(result.name())) return "";
+            var value = result.result().get("spokenResponse");
+            return value == null ? "" : value.toString().trim();
         }
 
         private String write(Object value) {

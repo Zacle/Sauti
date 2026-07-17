@@ -116,8 +116,12 @@ public class GoogleCalendarApiClient {
 
     private String send(CalendarCredential credential, HttpRequest.Builder builder) {
         try {
-            var request = builder.header("Authorization", "Bearer " + accessToken(credential)).build();
+            var request = builder.setHeader("Authorization", "Bearer " + accessToken(credential)).build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 401) {
+                request = builder.setHeader("Authorization", "Bearer " + refreshAccessToken(credential)).build();
+                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            }
             if (response.statusCode() / 100 != 2) {
                 throw new IllegalStateException("Google Calendar request failed with status " + response.statusCode());
             }
@@ -134,6 +138,10 @@ public class GoogleCalendarApiClient {
         if (credential.getTokenExpiry() == null || credential.getTokenExpiry().isAfter(OffsetDateTime.now().plusSeconds(60))) {
             return encryption.decrypt(credential.getAccessToken());
         }
+        return refreshAccessToken(credential);
+    }
+
+    private synchronized String refreshAccessToken(CalendarCredential credential) {
         var refreshToken = encryption.decrypt(credential.getRefreshToken());
         if (refreshToken.isBlank()) throw new IllegalStateException("Reconnect Google Calendar to renew access");
         var body = "client_id=" + encode(clientId)

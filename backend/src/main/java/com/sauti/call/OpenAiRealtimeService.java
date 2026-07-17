@@ -6,7 +6,9 @@ import com.sauti.llm.ConversationOrchestrator;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
 import com.sauti.tool.AgentToolLoader;
+import com.sauti.tool.AvailabilityRequestNormalizer;
 import com.sauti.tool.ToolFulfillmentRouter;
+import com.sauti.session.CallSessionStore;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -31,6 +33,7 @@ public class OpenAiRealtimeService {
     private final ConversationOrchestrator conversationOrchestrator;
     private final AgentToolLoader agentToolLoader;
     private final ToolFulfillmentRouter toolRouter;
+    private final CallSessionStore callSessionStore;
     private final HttpClient httpClient;
     private final String apiKey;
     private final String callsUrl;
@@ -42,6 +45,7 @@ public class OpenAiRealtimeService {
             ConversationOrchestrator conversationOrchestrator,
             AgentToolLoader agentToolLoader,
             ToolFulfillmentRouter toolRouter,
+            CallSessionStore callSessionStore,
             @Value("${spring.ai.openai.api-key:}") String apiKey,
             @Value("${sauti.realtime.openai.calls-url:https://api.openai.com/v1/realtime/calls}") String callsUrl,
             @Value("${sauti.realtime.openai.model:gpt-realtime-1.5}") String model,
@@ -51,6 +55,7 @@ public class OpenAiRealtimeService {
         this.conversationOrchestrator = conversationOrchestrator;
         this.agentToolLoader = agentToolLoader;
         this.toolRouter = toolRouter;
+        this.callSessionStore = callSessionStore;
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.callsUrl = callsUrl;
         this.model = model;
@@ -121,7 +126,11 @@ public class OpenAiRealtimeService {
             Map<String, Object> arguments = argumentsJson == null || argumentsJson.isBlank()
                     ? Map.of()
                     : objectMapper.readValue(argumentsJson, new TypeReference<>() { });
-            var result = toolRouter.route(call, new LlmToolCall(callId, name, arguments));
+            var toolCall = new LlmToolCall(callId, name, arguments);
+            if ("check_availability".equals(name)) {
+                toolCall = AvailabilityRequestNormalizer.normalize(call, toolCall, latestCallerTranscript(call));
+            }
+            var result = toolRouter.route(call, toolCall);
             if (!result.success()) {
                 LOGGER.warn("Realtime tool failed callId={} tool={} reason={}", call.getId(), name, result.error());
             }
@@ -130,6 +139,21 @@ public class OpenAiRealtimeService {
             LOGGER.warn("Realtime tool execution failed callId={} tool={}", call.getId(), name, exception);
             return new LlmToolResult(callId, name, false, Map.of(), "The requested action could not be completed");
         }
+    }
+
+    private String latestCallerTranscript(Call call) {
+        try {
+            var history = callSessionStore.conversationHistory(call.getTwilioCallSid());
+            for (int index = history.size() - 1; index >= 0; index--) {
+                var message = history.get(index);
+                if ("user".equals(message.role()) && message.content() != null && !message.content().isBlank()) {
+                    return message.content();
+                }
+            }
+        } catch (RuntimeException exception) {
+            LOGGER.debug("Realtime caller context unavailable for callId={}", call.getId(), exception);
+        }
+        return "";
     }
 
     Map<String, Object> telephonySessionConfiguration(Call call) {

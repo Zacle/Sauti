@@ -23,6 +23,11 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
     }
 
     @Override
+    public boolean requiresAvailabilityFollowUpForState() {
+        return true;
+    }
+
+    @Override
     public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
         if (hasSuccessfulTool(context, "transfer_to_human")) {
             return new LlmToolTurnResponse(transferResponse(context.language(), context.agent().humanTransferNumber()), List.of());

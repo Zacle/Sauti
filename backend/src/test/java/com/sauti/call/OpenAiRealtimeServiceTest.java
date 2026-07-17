@@ -35,6 +35,7 @@ class OpenAiRealtimeServiceTest {
         var mapper = new ObjectMapper();
         var service = new OpenAiRealtimeService(
                 mapper, orchestrator, loader, mock(ToolFulfillmentRouter.class),
+                mock(com.sauti.session.CallSessionStore.class),
                 "server-secret", "http://localhost/unused", "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
         );
 
@@ -78,6 +79,7 @@ class OpenAiRealtimeServiceTest {
             when(orchestrator.realtimeInstructions(call, "fr")).thenReturn("Speak French concisely.");
             var service = new OpenAiRealtimeService(
                     new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
+                    mock(com.sauti.session.CallSessionStore.class),
                     "server-secret", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/realtime/calls",
                     "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
             );
@@ -126,6 +128,7 @@ class OpenAiRealtimeServiceTest {
             when(orchestrator.realtimeInstructions(call, "fr")).thenReturn("Speak French concisely.");
             var service = new OpenAiRealtimeService(
                     new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
+                    mock(com.sauti.session.CallSessionStore.class),
                     "server-secret", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/realtime/calls",
                     "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
             );

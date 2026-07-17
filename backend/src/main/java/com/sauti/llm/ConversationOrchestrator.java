@@ -11,6 +11,7 @@ import com.sauti.agent.OperatingHoursSchedule;
 import com.sauti.knowledge.KnowledgeRetrievalService;
 import com.sauti.session.CallSessionStore;
 import com.sauti.tool.AgentToolLoader;
+import com.sauti.tool.AvailabilityRequestNormalizer;
 import com.sauti.tool.ToolFulfillmentRouter;
 import java.util.ArrayList;
 import java.util.List;
@@ -138,11 +139,18 @@ public class ConversationOrchestrator {
                 callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, responseToolCalls);
                 var loopResults = new ArrayList<LlmToolResult>();
                 for (var toolCall : responseToolCalls) {
-                    var result = toolFulfillmentRouter.route(call, toolCall);
+                    var normalizedToolCall = AvailabilityRequestNormalizer.normalize(call, toolCall, callerTranscript);
+                    var result = toolFulfillmentRouter.route(call, normalizedToolCall);
                     loopResults.add(result);
                     allToolResults.add(result);
                     messages.add(ConversationMessage.toolResult(result));
                     callSessionStore.appendToolResult(call.getTwilioCallSid(), result);
+                    var deterministicResponse = deterministicToolResponse(result);
+                    if (!deterministicResponse.isBlank()) {
+                        textDeltaConsumer.accept(deterministicResponse);
+                        callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), deterministicResponse, List.of());
+                        return new ConversationTurnResult(deterministicResponse, outcome(allToolResults));
+                    }
                 }
                 latestToolResults = List.copyOf(loopResults);
             }
@@ -162,6 +170,13 @@ public class ConversationOrchestrator {
             callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), fallbackText, List.of());
         }
         return new ConversationTurnResult(fallbackText, outcome(allToolResults));
+    }
+
+    private String deterministicToolResponse(LlmToolResult result) {
+        if (llmProvider.requiresAvailabilityFollowUpForState()) return "";
+        if (!result.success() || !"check_availability".equals(result.name())) return "";
+        var response = result.result().get("spokenResponse");
+        return response == null ? "" : voiceReadyText(response.toString());
     }
 
     private boolean requiresAvailabilityCheck(
