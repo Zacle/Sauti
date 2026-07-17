@@ -67,7 +67,10 @@ public class AgentVariableService {
 
     @Transactional
     public void updateIfPresent(UUID agentId, String key, String value) {
-        variableRepository.findByAgentIdAndKey(agentId, key).ifPresent(variable -> variable.updateValue(value));
+        variableRepository.findByAgentIdAndKey(agentId, key).ifPresent(variable -> {
+            variable.updateValue(value);
+            syncStructuredSetting(variable.getAgent(), key, value);
+        });
     }
 
     @Transactional
@@ -150,6 +153,13 @@ public class AgentVariableService {
         values.put("timezone", agent.getTimezone());
         variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId())
                 .forEach(variable -> values.put(variable.getKey(), variable.getValue()));
+        // Agent fields drive runtime behavior and must override stale onboarding variables.
+        if (agent.getCalendarProvider() != null && !agent.getCalendarProvider().isBlank()) {
+            values.put("calendar_provider", agent.getCalendarProvider());
+        }
+        if (agent.getRoutingPolicy() != null && !agent.getRoutingPolicy().isBlank()) {
+            values.put("routing_policy", agent.getRoutingPolicy());
+        }
 
         var matcher = PLACEHOLDER.matcher(prompt);
         var result = new StringBuffer();

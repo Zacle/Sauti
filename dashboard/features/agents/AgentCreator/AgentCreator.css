@@ -4621,6 +4621,81 @@
   box-shadow: 0 0 0 3px rgba(39, 222, 209, 0.09);
 }
 
+.structured-variable-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.structured-variable-options > button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-height: 76px;
+  padding: 13px;
+  border: 1px solid rgba(91, 151, 199, 0.2);
+  border-radius: 13px;
+  color: #b5c5d2;
+  background: #071a2d;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.structured-variable-options > button:hover {
+  border-color: rgba(39, 222, 209, 0.46);
+  background: #09223a;
+  transform: translateY(-1px);
+}
+
+.structured-variable-options > button.selected {
+  border-color: #24d8cc;
+  color: #eafffd;
+  background: linear-gradient(145deg, rgba(10, 75, 86, 0.72), rgba(7, 40, 61, 0.94));
+  box-shadow: 0 0 0 2px rgba(39, 222, 209, 0.08), 0 12px 28px rgba(0, 0, 0, 0.14);
+}
+
+.structured-variable-options > button > span:first-child {
+  display: grid;
+  width: 19px;
+  height: 19px;
+  place-items: center;
+  margin-top: 1px;
+  border: 1px solid #526e84;
+  border-radius: 50%;
+  color: #032327;
+  background: #081e32;
+}
+
+.structured-variable-options > button.selected > span:first-child {
+  border-color: #36e4d8;
+  background: #36e4d8;
+  box-shadow: 0 0 14px rgba(54, 228, 216, 0.22);
+}
+
+.structured-variable-options > button > span:last-child {
+  display: grid;
+  gap: 4px;
+}
+
+.structured-variable-options strong {
+  color: inherit;
+  font-size: 0.77rem;
+  font-weight: 620;
+}
+
+.structured-variable-options small {
+  color: #718a9f;
+  font-size: 0.66rem;
+  line-height: 1.42;
+}
+
+.structured-variable-options > button.selected small {
+  color: #96b8c5;
+}
+
 .personalisation-drawer .personalise-field > small {
   color: #718a9f;
   font-size: 0.72rem;
@@ -4748,6 +4823,10 @@
   .personalisation-drawer .weekly-hours-row > div {
     grid-column: 1 / -1;
     margin-left: 31px;
+  }
+
+  .structured-variable-options {
+    grid-template-columns: 1fr;
   }
 
   .personalisation-drawer > footer {

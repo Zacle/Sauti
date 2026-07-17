@@ -221,6 +221,32 @@ Expected:
 
 ## Change log
 
+### 2026-07-17 - Canonical calendar prompt settings and structured selectors
+
+- Fixed stale appointment prompts that still rendered `Set up later` after Google Calendar was connected. Runtime prompt resolution now treats the agent's calendar provider and routing policy as canonical, overriding obsolete onboarding-variable values.
+- Google Calendar enablement and startup reconciliation now synchronize all three representations together: agent settings, prompt variables, and calendar tool credentials. Google Calendar selects `Fixed calendar` routing automatically; disconnecting the active Google destination resets both settings to `Set up later`.
+- Internal structured-variable updates now update the corresponding agent fields as well as the visible variable value, preventing future drift regardless of which settings screen initiated the change.
+- Replaced free-text calendar destination and meeting-routing inputs in Agent Studio personalisation with accessible selected option cards. Calendar choices automatically select the valid routing default, use clearer customer-facing labels, and collapse to one column on small screens.
+- Shared the structured option definitions between the Agent Studio drawer and the dedicated business-details screen, and made both screens initialize from canonical agent settings. The calendar readiness link now targets the correct `google_calendar` provider.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/AgentVariableService.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationService.java`
+  - `backend/src/test/java/com/sauti/agent/AgentVariableServiceTest.java`
+  - `backend/src/test/java/com/sauti/integration/IntegrationServiceTest.java`
+  - `dashboard/features/agents/domain/structured-agent-settings.ts`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `dashboard/features/agents/AgentVariables/AgentVariablesPage.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - targeted `AgentVariableServiceTest` and `IntegrationServiceTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+  - `git diff --check` - passed before the handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: visual browser automation was unavailable in the coding environment. The production build validates the component and CSS, but the option-card layout should receive a quick signed-in desktop/mobile smoke test after CI/CD deployment.
+
 ### 2026-07-17 - Unified Google Calendar agent integration state
 
 - Fixed the Google Calendar inconsistency where the integration marketplace could show a workspace connection enabled for an agent while Agent Studio reported `Not connected`. Agent Studio now reads the same tenant-scoped agent-integration binding used by the marketplace instead of independently inferring connection state from legacy tool fields.

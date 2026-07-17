@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.Agent;
 import com.sauti.agent.AgentRepository;
+import com.sauti.agent.AgentVariableService;
 import com.sauti.tool.AgentTool;
 import com.sauti.tool.AgentToolRepository;
 import com.sauti.tool.CalendarCredential;
@@ -51,6 +52,7 @@ class IntegrationServiceTest {
                 objectMapper, encryption, new IntegrationCatalog(), connections, bindings,
                 mock(IntegrationDeliveryRepository.class), mock(AgentRepository.class),
                 mock(AgentToolRepository.class), mock(CalendarCredentialRepository.class),
+                mock(AgentVariableService.class),
                 mock(WebhookDestinationValidator.class));
 
         service.connectOAuth(tenantId, agentId, "google_sheets", Map.of(
@@ -77,6 +79,7 @@ class IntegrationServiceTest {
         var agents = mock(AgentRepository.class);
         var tools = mock(AgentToolRepository.class);
         var credentials = mock(CalendarCredentialRepository.class);
+        var agentVariables = mock(AgentVariableService.class);
         var tenantId = UUID.randomUUID();
         var agentId = UUID.randomUUID();
         var agent = mock(Agent.class);
@@ -103,7 +106,7 @@ class IntegrationServiceTest {
 
         var service = new IntegrationService(
                 objectMapper, encryption, new IntegrationCatalog(), connections, bindings, deliveries,
-                agents, tools, credentials, mock(WebhookDestinationValidator.class)
+                agents, tools, credentials, agentVariables, mock(WebhookDestinationValidator.class)
         );
 
         var result = service.configure(tenantId, agentId, new IntegrationService.BindingRequest(
@@ -114,6 +117,9 @@ class IntegrationServiceTest {
         assertThat(result.connectionStatus()).isEqualTo("connected");
         verify(tool).connectCalendar("google", credentialId);
         verify(agent).updateCalendarProvider("Google Calendar");
+        verify(agent).updateRoutingPolicy("Fixed calendar");
+        verify(agentVariables).updateIfPresent(agentId, "calendar_provider", "Google Calendar");
+        verify(agentVariables).updateIfPresent(agentId, "routing_policy", "Fixed calendar");
         verify(agents).save(agent);
     }
 
@@ -126,6 +132,7 @@ class IntegrationServiceTest {
         var agents = mock(AgentRepository.class);
         var tools = mock(AgentToolRepository.class);
         var credentials = mock(CalendarCredentialRepository.class);
+        var agentVariables = mock(AgentVariableService.class);
         var tenantId = UUID.randomUUID();
         var agentId = UUID.randomUUID();
         var agent = mock(Agent.class);
@@ -150,7 +157,7 @@ class IntegrationServiceTest {
 
         var service = new IntegrationService(
                 objectMapper, encryption, new IntegrationCatalog(), connections, bindings,
-                mock(IntegrationDeliveryRepository.class), agents, tools, credentials,
+                mock(IntegrationDeliveryRepository.class), agents, tools, credentials, agentVariables,
                 mock(WebhookDestinationValidator.class)
         );
 
@@ -159,5 +166,8 @@ class IntegrationServiceTest {
         assertThat(binding.isEnabled()).isTrue();
         verify(tool).connectCalendar("google", credentialId);
         verify(agent).updateCalendarProvider("Google Calendar");
+        verify(agent).updateRoutingPolicy("Fixed calendar");
+        verify(agentVariables).updateIfPresent(agentId, "calendar_provider", "Google Calendar");
+        verify(agentVariables).updateIfPresent(agentId, "routing_policy", "Fixed calendar");
     }
 }

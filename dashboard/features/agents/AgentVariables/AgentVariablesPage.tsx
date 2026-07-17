@@ -4,34 +4,17 @@ import styles from "./AgentVariablesPage.module.css";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CalendarCheck, Check, CircleAlert, Clock3, Globe2, LoaderCircle, PhoneCall, Route, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Check, CircleAlert, Clock3, Globe2, LoaderCircle, PhoneCall, Route, Sparkles, Trash2, type LucideIcon } from "lucide-react";
 import { activateAgent, createAgentVariable, deleteAgent, getAgent, getAgentReadiness, listAgentVariables, updateAgentVariables } from "@/lib/api/agents";
 import type { Agent, AgentReadiness, AgentVariable, CreateAgentVariable } from "@/types/api";
 import { AddVariableForm } from "./AddVariableForm";
 import { DeleteAgentDialog } from "@/features/agents/DeleteAgentDialog/DeleteAgentDialog";
+import { structuredAgentSetting, type StructuredAgentSetting, type StructuredAgentSettingKey } from "@/features/agents/domain/structured-agent-settings";
 
-const structuredChoices = {
-  calendar_provider: {
-    title: "Calendar destination",
-    description: "Choose where confirmed bookings should be sent. Credentials are connected separately.",
-    icon: CalendarCheck,
-    options: [
-      ["Google Calendar", "Sync availability and events after connecting Google."],
-      ["Calendly", "Use your Calendly event types after connecting it."],
-      ["Custom webhook", "Send booking requests to your own scheduling API."],
-      ["Set up later", "Keep using test availability while designing the agent."],
-    ],
-  },
-  routing_policy: {
-    title: "Meeting routing",
-    description: "Routing decides which calendar receives a booking when an agent can use more than one.",
-    icon: Route,
-    options: [
-      ["Fixed calendar", "Send every booking to one selected calendar."],
-      ["Set up later", "Choose routing after connecting your calendar or team."],
-    ],
-  },
-} as const;
+const structuredIcons: Record<StructuredAgentSettingKey, LucideIcon> = {
+  calendar_provider: CalendarCheck,
+  routing_policy: Route,
+};
 
 export function AgentVariablesPage({ agentId }: { agentId: string }) {
   const router = useRouter();
@@ -52,7 +35,11 @@ export function AgentVariablesPage({ agentId }: { agentId: string }) {
         setAgent(loadedAgent);
         setVariables(loadedVariables);
         setReadiness(loadedReadiness);
-        setValues(Object.fromEntries(loadedVariables.map((variable) => [variable.key, variable.value])));
+        setValues({
+          ...Object.fromEntries(loadedVariables.map((variable) => [variable.key, variable.value])),
+          ...(loadedAgent.calendarProvider ? { calendar_provider: loadedAgent.calendarProvider } : {}),
+          ...(loadedAgent.routingPolicy ? { routing_policy: loadedAgent.routingPolicy } : {}),
+        });
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load this agent."))
       .finally(() => setLoading(false));
@@ -148,7 +135,7 @@ export function AgentVariablesPage({ agentId }: { agentId: string }) {
             <div className={styles.readiness}>
               <header><div><span>Activation checklist</span><h3>{readiness.active ? "Agent is active" : readiness.readyToActivate ? "Ready to activate" : "Finish setup"}</h3></div><i>{[readiness.businessDetailsComplete, readiness.calendarConfigured, readiness.channelConfigured, readiness.active].filter(Boolean).length}/4</i></header>
               <SetupCheck label="Business details" done={readiness.businessDetailsComplete} detail={readiness.businessDetailsComplete ? "Required values are complete" : readiness.missingRequiredVariables.join(", ")} />
-              <SetupCheck label="Calendar connection" done={readiness.calendarConfigured} detail={readiness.calendarRequired ? (readiness.calendarConfigured ? "Booking destination connected" : "Required for appointment booking") : "Not required for this agent"} href={!readiness.calendarConfigured ? `/dashboard/integrations?provider=google&agentId=${agentId}` : undefined} />
+              <SetupCheck label="Calendar connection" done={readiness.calendarConfigured} detail={readiness.calendarRequired ? (readiness.calendarConfigured ? "Booking destination connected" : "Required for appointment booking") : "Not required for this agent"} href={!readiness.calendarConfigured ? `/dashboard/integrations?provider=google_calendar&agentId=${agentId}` : undefined} />
               <SetupCheck
                 label="Live channel"
                 done={readiness.channelConfigured}
@@ -178,14 +165,21 @@ export function AgentVariablesPage({ agentId }: { agentId: string }) {
           <div className={styles.fields}>
             {variables.map((variable) => {
               const filled = Boolean(values[variable.key]?.trim());
-              const structured = structuredChoices[variable.key as keyof typeof structuredChoices];
+              const structured = structuredAgentSetting(variable.key);
               if (structured) {
                 return (
                   <ChoiceSetting
                     config={structured}
+                    icon={structuredIcons[variable.key as StructuredAgentSettingKey]}
                     key={variable.key}
                     value={values[variable.key] ?? ""}
-                    onChange={(value) => setValues((current) => ({ ...current, [variable.key]: value }))}
+                    onChange={(value) => setValues((current) => ({
+                      ...current,
+                      [variable.key]: value,
+                      ...(variable.key === "calendar_provider"
+                        ? { routing_policy: value === "Set up later" ? "Set up later" : "Fixed calendar" }
+                        : {}),
+                    }))}
                   />
                 );
               }
@@ -234,14 +228,15 @@ function SetupCheck({
 
 function ChoiceSetting({
   config,
+  icon: Icon,
   value,
   onChange,
 }: {
-  config: typeof structuredChoices[keyof typeof structuredChoices];
+  config: StructuredAgentSetting;
+  icon: LucideIcon;
   value: string;
   onChange: (value: string) => void;
 }) {
-  const Icon = config.icon;
   return (
     <section className={styles.choiceSetting}>
       <header>
@@ -249,17 +244,17 @@ function ChoiceSetting({
         <div><h3>{config.title}</h3><p>{config.description}</p></div>
       </header>
       <div className={styles.choiceGrid}>
-        {config.options.map(([option, description]) => {
-          const selected = value === option;
+        {config.options.map((option) => {
+          const selected = value === option.value;
           return (
             <button
               className={selected ? styles.selectedChoice : ""}
-              key={option}
-              onClick={() => onChange(option)}
+              key={option.value}
+              onClick={() => onChange(option.value)}
               type="button"
             >
               <span className={styles.choiceRadio}>{selected && <Check size={13} />}</span>
-              <span><strong>{option}</strong><small>{description}</small></span>
+              <span><strong>{option.label}</strong><small>{option.description}</small></span>
             </button>
           );
         })}

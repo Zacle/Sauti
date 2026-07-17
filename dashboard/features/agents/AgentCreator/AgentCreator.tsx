@@ -72,6 +72,7 @@ import { AddVariableForm } from "../AgentVariables/AddVariableForm";
 import { getAgentIntegrations, type AgentIntegration } from "@/lib/api/integrations";
 import { DeleteAgentDialog } from "@/features/agents/DeleteAgentDialog/DeleteAgentDialog";
 import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
+import { structuredAgentSetting, type StructuredAgentSetting } from "@/features/agents/domain/structured-agent-settings";
 
 type Template = {
   id: string;
@@ -426,7 +427,11 @@ export function AgentCreator({
         setPostCallExtractionFields(agent.postCallExtractionFields);
         setCustomVariables(definitions);
         setExistingVariableKeys(definitions.map((variable) => variable.key));
-        setVariableValues(Object.fromEntries(variables.map((variable) => [variable.key, variable.value])));
+        setVariableValues({
+          ...Object.fromEntries(variables.map((variable) => [variable.key, variable.value])),
+          ...(agent.calendarProvider ? { calendar_provider: agent.calendarProvider } : {}),
+          ...(agent.routingPolicy ? { routing_policy: agent.routingPolicy } : {}),
+        });
         setStage("studio");
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load this agent."))
@@ -2138,7 +2143,12 @@ function PersonalisationDrawer({
                   key={variable.key}
                   variable={variable}
                   value={values[variable.key] ?? ""}
-                  onChange={(value) => onChange(variable.key, value)}
+                  onChange={(value) => {
+                    onChange(variable.key, value);
+                    if (variable.key === "calendar_provider") {
+                      onChange("routing_policy", value === "Set up later" ? "Set up later" : "Fixed calendar");
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -2226,6 +2236,7 @@ function VariableValueField({
   onChange: (value: string) => void;
 }) {
   const kind = variableKind(variable.key);
+  const structured = structuredAgentSetting(variable.key);
   const filled = Boolean(value.trim());
   const error = variableValueError(variable, value);
   return (
@@ -2234,7 +2245,9 @@ function VariableValueField({
         {variable.label}
         <i className={filled && !error ? "filled" : ""}>{error ? "Check value" : filled ? "Complete" : variable.required ? "Required" : "Optional"}</i>
       </span>
-      {kind === "services" ? (
+      {structured ? (
+        <StructuredVariableInput config={structured} value={value} onChange={onChange} />
+      ) : kind === "services" ? (
         <ServiceChipInput value={value} onChange={onChange} />
       ) : kind === "hours" ? (
         <WeeklyHoursInput value={value} onChange={onChange} />
@@ -2248,6 +2261,37 @@ function VariableValueField({
         />
       )}
       <small className={error ? "field-error" : ""}>{error || variable.description}</small>
+    </div>
+  );
+}
+
+function StructuredVariableInput({
+  config,
+  value,
+  onChange,
+}: {
+  config: StructuredAgentSetting;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="structured-variable-options" role="radiogroup" aria-label={config.title}>
+      {config.options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            aria-checked={selected}
+            className={selected ? "selected" : ""}
+            key={option.value}
+            onClick={() => onChange(option.value)}
+            role="radio"
+            type="button"
+          >
+            <span>{selected && <Check size={13} />}</span>
+            <span><strong>{option.label}</strong><small>{option.description}</small></span>
+          </button>
+        );
+      })}
     </div>
   );
 }

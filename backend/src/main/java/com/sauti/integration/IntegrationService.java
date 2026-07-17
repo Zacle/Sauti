@@ -3,6 +3,7 @@ package com.sauti.integration;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.AgentRepository;
+import com.sauti.agent.AgentVariableService;
 import com.sauti.tool.AgentToolRepository;
 import com.sauti.tool.CalendarCredentialRepository;
 import com.sauti.tool.CredentialEncryption;
@@ -32,6 +33,7 @@ public class IntegrationService {
     private final AgentRepository agents;
     private final AgentToolRepository agentTools;
     private final CalendarCredentialRepository calendarCredentials;
+    private final AgentVariableService agentVariables;
     private final WebhookDestinationValidator webhookValidator;
 
     public IntegrationService(ObjectMapper objectMapper, CredentialEncryption encryption,
@@ -39,6 +41,7 @@ public class IntegrationService {
                               AgentIntegrationRepository bindings, IntegrationDeliveryRepository deliveries,
                               AgentRepository agents, AgentToolRepository agentTools,
                               CalendarCredentialRepository calendarCredentials,
+                              AgentVariableService agentVariables,
                               WebhookDestinationValidator webhookValidator) {
         this.objectMapper = objectMapper;
         this.encryption = encryption;
@@ -49,6 +52,7 @@ public class IntegrationService {
         this.agents = agents;
         this.agentTools = agentTools;
         this.calendarCredentials = calendarCredentials;
+        this.agentVariables = agentVariables;
         this.webhookValidator = webhookValidator;
     }
 
@@ -326,6 +330,9 @@ public class IntegrationService {
             tools.forEach(com.sauti.tool.AgentTool::disconnectCalendar);
             if ("Google Calendar".equals(agent.getCalendarProvider())) {
                 agent.updateCalendarProvider("Set up later");
+                agent.updateRoutingPolicy("Set up later");
+                agentVariables.updateIfPresent(agentId, "calendar_provider", "Set up later");
+                agentVariables.updateIfPresent(agentId, "routing_policy", "Set up later");
                 agents.save(agent);
             }
             return;
@@ -336,6 +343,9 @@ public class IntegrationService {
                 .orElseThrow(() -> new IllegalStateException("Reconnect Google Calendar before enabling this agent"));
         tools.forEach(tool -> tool.connectCalendar("google", credential.getId()));
         agent.updateCalendarProvider("Google Calendar");
+        agent.updateRoutingPolicy("Fixed calendar");
+        agentVariables.updateIfPresent(agentId, "calendar_provider", "Google Calendar");
+        agentVariables.updateIfPresent(agentId, "routing_policy", "Fixed calendar");
         agents.save(agent);
     }
 
