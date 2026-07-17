@@ -89,11 +89,13 @@ export async function connectPublicRealtime(sessionId: string, token: string, sd
 }
 
 export async function recordPublicRealtimeTranscript(sessionId: string, token: string, role: "caller" | "agent", text: string, interrupted = false) {
-  await fetch(`/api/v1/public/web-voice/sessions/${encodeURIComponent(sessionId)}/realtime/transcript`, {
+  const response = await fetch(`/api/v1/public/web-voice/sessions/${encodeURIComponent(sessionId)}/realtime/transcript`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ role, text, interrupted }),
   });
+  if (!response.ok) throw new Error("Unable to prepare the next voice response.");
+  return response.json() as Promise<{ instructions: string }>;
 }
 
 export async function executePublicRealtimeTool(sessionId: string, token: string, callId: string, name: string, argumentsJson: string) {

@@ -30,6 +30,8 @@ export async function connectOpenAiRealtime(options: {
   outputMode?: "audio" | "text";
   bargeInDebounceMs?: number;
   availabilityToolEnabled?: boolean;
+  prepareCallerResponse?: (text: string) => Promise<string | null>;
+  responseLanguage?: string;
 }): Promise<OpenAiRealtimeConnection> {
   const peer = new RTCPeerConnection();
   const remoteStream = new MediaStream();
@@ -65,10 +67,14 @@ export async function connectOpenAiRealtime(options: {
   let pendingCallerTranscriptions = 0;
   let callerSpeechActive = false;
   let bargeInTimer = 0;
+  let requiredAvailabilityToolPending = false;
+  let currentOutputItemId = "";
+  let textOutputDisposition: "unknown" | "speech" | "structured" = "unknown";
+  let expectedResponses = 0;
   const deferredAgentTranscripts: Array<{ text: string; interrupted: boolean }> = [];
 
   const deliverAgentTranscript = (text: string, interrupted: boolean) => {
-    if (!text) return;
+    if (!text || isStructuredPayload(text)) return;
     if (pendingCallerTranscriptions > 0) {
       deferredAgentTranscripts.push({ text, interrupted });
       return;
@@ -83,18 +89,95 @@ export async function connectOpenAiRealtime(options: {
       if (transcript) options.callbacks.onAgentTranscript(transcript.text, transcript.interrupted);
     }
   };
+
+  const executeToolCall = (callId: string, name: string, argumentsJson: string) => {
+    requiredAvailabilityToolPending = false;
+    void options.callbacks.executeTool(callId, name, argumentsJson)
+      .then((result) => {
+        send(channel, {
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) },
+        });
+        expectedResponses += 1;
+        send(channel, { type: "response.create" });
+      })
+      .catch(() => {
+        send(channel, {
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: callId, output: JSON.stringify({ success: false }) },
+        });
+        expectedResponses += 1;
+        send(channel, { type: "response.create" });
+      });
+  };
+
+  const recoverRequiredToolText = (text: string) => {
+    const parsed = parseStructuredObject(text);
+    if (currentOutputItemId) {
+      send(channel, { type: "conversation.item.delete", item_id: currentOutputItemId });
+    }
+    if (!parsed) {
+      const clarification = localizedAvailabilityClarification(options.responseLanguage);
+      options.callbacks.onAgentTextDelta?.(clarification);
+      options.callbacks.onAgentTextComplete?.(false);
+      deliverAgentTranscript(clarification, false);
+      requiredAvailabilityToolPending = false;
+      return;
+    }
+    const callId = `recovered-availability-${crypto.randomUUID()}`;
+    const argumentsJson = JSON.stringify(parsed);
+    send(channel, {
+      type: "conversation.item.create",
+      item: { type: "function_call", call_id: callId, name: "check_availability", arguments: argumentsJson },
+    });
+    executeToolCall(callId, "check_availability", argumentsJson);
+  };
+
+  const prepareAndRequestCallerResponse = (transcript: string) => {
+    const request = async () => {
+      try {
+        const instructions = await options.prepareCallerResponse?.(transcript);
+        if (instructions?.trim()) {
+          send(channel, { type: "session.update", session: { instructions } });
+        }
+      } catch {
+        // The active Realtime session still has its original safe instructions.
+      }
+      requiredAvailabilityToolPending = Boolean(options.availabilityToolEnabled)
+        && requiresAvailabilityCheck(transcript);
+      expectedResponses += 1;
+      requestCallerResponse(channel, requiredAvailabilityToolPending);
+    };
+    void request();
+  };
+
   channel.onmessage = (message) => {
     let event: Record<string, unknown>;
     try { event = JSON.parse(String(message.data)) as Record<string, unknown>; } catch { return; }
     const type = String(event.type ?? "");
-    if (type === "response.created") responseActive = true;
+    if (type === "response.created") {
+      if (expectedResponses <= 0) {
+        send(channel, { type: "response.cancel" });
+        responseActive = false;
+        return;
+      }
+      expectedResponses -= 1;
+      responseActive = true;
+      currentOutputItemId = "";
+      textOutputDisposition = "unknown";
+      agentTranscript = "";
+    }
+    if (type === "response.output_item.added") {
+      const item = event.item as { id?: string; type?: string } | undefined;
+      if (item?.type === "message") currentOutputItemId = item.id ?? "";
+    }
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
       if (isMeaningfulCallerTranscript(transcript)) {
         options.callbacks.onCallerTranscript(transcript);
         // The session disables provider-managed response creation. Only a
         // usable final transcript is allowed to advance the conversation.
-        requestCallerResponse(channel, transcript, Boolean(options.availabilityToolEnabled));
+        prepareAndRequestCallerResponse(transcript);
       }
       pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
       flushDeferredAgentTranscripts();
@@ -119,12 +202,29 @@ export async function connectOpenAiRealtime(options: {
         responseActive = true;
         textCompletionSent = false;
         agentTranscript += delta;
-        options.callbacks.onAgentTextDelta?.(delta);
+        if (textOutputDisposition === "unknown") {
+          const leading = agentTranscript.trimStart().charAt(0);
+          if (leading === "{" || leading === "[") textOutputDisposition = "structured";
+          else if (leading) textOutputDisposition = "speech";
+          if (textOutputDisposition === "speech" && !requiredAvailabilityToolPending) {
+            options.callbacks.onAgentTextDelta?.(agentTranscript);
+          }
+        } else if (textOutputDisposition === "speech" && !requiredAvailabilityToolPending) {
+          options.callbacks.onAgentTextDelta?.(delta);
+        }
       }
     }
     if (type === "response.output_text.done") {
       const interrupted = agentInterrupted;
       const transcript = String(event.text ?? agentTranscript).trim();
+      if (requiredAvailabilityToolPending || textOutputDisposition === "structured" || isStructuredPayload(transcript)) {
+        agentTranscript = "";
+        agentInterrupted = false;
+        textCompletionSent = true;
+        if (requiredAvailabilityToolPending) recoverRequiredToolText(transcript);
+        else options.callbacks.onError("The provider returned an invalid structured voice response. Please try again.");
+        return;
+      }
       deliverAgentTranscript(transcript, interrupted);
       agentTranscript = "";
       agentInterrupted = false;
@@ -136,6 +236,14 @@ export async function connectOpenAiRealtime(options: {
     if (type === "response.done" && options.outputMode === "text" && !textCompletionSent) {
       const interrupted = agentInterrupted;
       const transcript = agentTranscript.trim();
+      if (requiredAvailabilityToolPending || textOutputDisposition === "structured" || isStructuredPayload(transcript)) {
+        agentTranscript = "";
+        agentInterrupted = false;
+        textCompletionSent = true;
+        if (requiredAvailabilityToolPending) recoverRequiredToolText(transcript);
+        else options.callbacks.onError("The provider returned an invalid structured voice response. Please try again.");
+        return;
+      }
       deliverAgentTranscript(transcript, interrupted);
       agentTranscript = "";
       agentInterrupted = false;
@@ -171,21 +279,7 @@ export async function connectOpenAiRealtime(options: {
       const callId = String(event.call_id ?? "");
       const name = String(event.name ?? "");
       const argumentsJson = String(event.arguments ?? "{}");
-      void options.callbacks.executeTool(callId, name, argumentsJson)
-        .then((result) => {
-          send(channel, {
-            type: "conversation.item.create",
-            item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) },
-          });
-          send(channel, { type: "response.create" });
-        })
-        .catch(() => {
-          send(channel, {
-            type: "conversation.item.create",
-            item: { type: "function_call_output", call_id: callId, output: JSON.stringify({ success: false }) },
-          });
-          send(channel, { type: "response.create" });
-        });
+      executeToolCall(callId, name, argumentsJson);
     }
     if (type === "error") {
       const error = event.error as { message?: string } | undefined;
@@ -200,6 +294,7 @@ export async function connectOpenAiRealtime(options: {
       window.clearTimeout(timeout);
       options.callbacks.onConnected();
       if (options.greeting.trim()) {
+        expectedResponses += 1;
         requestGreeting(channel, options.greeting, options.outputMode ?? "audio");
       }
       resolve();
@@ -225,9 +320,12 @@ export async function connectOpenAiRealtime(options: {
         type: "conversation.item.create",
         item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
       });
-      requestCallerResponse(channel, text, Boolean(options.availabilityToolEnabled));
+      prepareAndRequestCallerResponse(text);
     },
-    speakGreeting: (text) => requestGreeting(channel, text, options.outputMode ?? "audio"),
+    speakGreeting: (text) => {
+      expectedResponses += 1;
+      requestGreeting(channel, text, options.outputMode ?? "audio");
+    },
     cancelResponse: () => send(channel, { type: "response.cancel" }),
     close: () => {
       window.clearTimeout(bargeInTimer);
@@ -268,8 +366,8 @@ function requestGreeting(channel: RTCDataChannel, greeting: string, outputMode: 
   });
 }
 
-function requestCallerResponse(channel: RTCDataChannel, transcript: string, availabilityToolEnabled: boolean) {
-  if (availabilityToolEnabled && requiresAvailabilityCheck(transcript)) {
+function requestCallerResponse(channel: RTCDataChannel, requireAvailabilityTool: boolean) {
+  if (requireAvailabilityTool) {
     send(channel, {
       type: "response.create",
       response: {
@@ -280,6 +378,33 @@ function requestCallerResponse(channel: RTCDataChannel, transcript: string, avai
     return;
   }
   send(channel, { type: "response.create" });
+}
+
+function isStructuredPayload(text: string) {
+  const normalized = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  return (normalized.startsWith("{") && normalized.endsWith("}"))
+    || (normalized.startsWith("[") && normalized.endsWith("]"));
+}
+
+function parseStructuredObject(text: string): Record<string, unknown> | null {
+  if (!isStructuredPayload(text)) return null;
+  try {
+    const parsed = JSON.parse(text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function localizedAvailabilityClarification(language?: string) {
+  switch (language?.toLocaleLowerCase()) {
+    case "fr": return "Je n’ai pas pu vérifier ce créneau. Pouvez-vous répéter la date et l’heure, s’il vous plaît ?";
+    case "ar": return "لم أتمكن من التحقق من هذا الموعد. هل يمكنك تكرار التاريخ والوقت من فضلك؟";
+    case "sw": return "Sikuweza kuthibitisha muda huo. Tafadhali rudia tarehe na saa.";
+    default: return "I couldn’t verify that time. Could you repeat the date and time, please?";
+  }
 }
 
 function requiresAvailabilityCheck(transcript: string) {

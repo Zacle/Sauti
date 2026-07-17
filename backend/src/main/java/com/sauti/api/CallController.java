@@ -19,6 +19,7 @@ import com.sauti.call.OpenAiRealtimeService;
 import com.sauti.call.CartesiaRealtimeTextToSpeechClient;
 import com.sauti.call.RealtimeDtos.RealtimeToolRequest;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
+import com.sauti.call.RealtimeDtos.RealtimeTranscriptResponse;
 import com.sauti.voice.VoiceCatalogService;
 import java.util.List;
 import java.util.UUID;
@@ -153,13 +154,15 @@ public class CallController {
     }
 
     @PostMapping("/{id}/realtime/transcript")
-    @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.NO_CONTENT)
-    void recordRealtimeTranscript(
+    RealtimeTranscriptResponse recordRealtimeTranscript(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID id,
             @RequestBody RealtimeTranscriptRequest request
     ) {
         callPipelineService.recordRealtimeTranscript(user.tenantId(), id, request.role(), request.text(), request.interrupted());
+        if (!"caller".equalsIgnoreCase(request.role())) return new RealtimeTranscriptResponse("");
+        var call = callQueryService.get(user.tenantId(), id);
+        return new RealtimeTranscriptResponse(openAiRealtimeService.realtimeInstructions(call, request.text()));
     }
 
     @PostMapping("/{id}/realtime/tool")

@@ -116,6 +116,10 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
           outputMode: hybrid ? "text" : "audio",
           bargeInDebounceMs: hybrid ? 180 : 0,
           availabilityToolEnabled: session.availabilityToolEnabled,
+          responseLanguage: session.language,
+          prepareCallerResponse: (text) => recordPublicRealtimeTranscript(
+            session.sessionId, session.token, "caller", text,
+          ).then((response) => response.instructions),
           connectSdp: (offer) => connectPublicRealtime(session.sessionId, session.token, offer),
           playbackContext: context,
           callbacks: {
@@ -123,7 +127,6 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
             onCallerTranscript: (text) => {
               setMessages((current) => [...current, { role: "visitor", text }]);
               setPartial("");
-              queueTranscriptWrite(() => recordPublicRealtimeTranscript(session.sessionId, session.token, "caller", text));
             },
             onAgentTranscript: (text, interrupted) => {
               setMessages((current) => [...current, { role: "agent", text }]);

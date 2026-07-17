@@ -122,6 +122,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private boolean responseActive;
         private boolean responseInterrupted;
         private boolean textCompleted;
+        private boolean requiredAvailabilityToolPending;
+        private String currentOutputItemId = "";
         private int pendingCallerTranscriptions;
         private boolean callerSpeechActive;
         private boolean callerSpeechNotified;
@@ -185,9 +187,23 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 var type = event.path("type").asText("");
                 switch (type) {
                     case "response.created" -> {
+                        var activeSession = session;
+                        if (activeSession != null && !activeSession.consumeExpectedResponse()) {
+                            activeSession.cancelResponse();
+                            responseActive = false;
+                            return;
+                        }
                         responseActive = true;
                         responseInterrupted = false;
                         textCompleted = false;
+                        currentOutputItemId = "";
+                        agentText.setLength(0);
+                    }
+                    case "response.output_item.added" -> {
+                        var item = event.path("item");
+                        if ("message".equals(item.path("type").asText(""))) {
+                            currentOutputItemId = item.path("id").asText("");
+                        }
                     }
                     case "input_audio_buffer.speech_started" -> {
                         pendingCallerTranscriptions++;
@@ -213,10 +229,13 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             listener.onCallerTranscript(transcript);
                             var activeSession = session;
                             if (activeSession != null) {
+                                activeSession.updateInstructions(realtimeService.realtimeInstructions(call, transcript));
                                 if (availabilityToolEnabled
                                         && AvailabilityIntentDetector.requiresAvailabilityCheck(transcript)) {
+                                    requiredAvailabilityToolPending = true;
                                     activeSession.requestResponseWithRequiredTool("check_availability");
                                 } else {
+                                    requiredAvailabilityToolPending = false;
                                     activeSession.requestResponse();
                                 }
                             }
@@ -234,14 +253,32 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         var delta = event.path("delta").asText("");
                         if (!delta.isEmpty()) {
                             agentText.append(delta);
-                            if (!responseInterrupted) listener.onAgentTextDelta(delta);
+                            if (!responseInterrupted && !requiredAvailabilityToolPending) {
+                                listener.onAgentTextDelta(delta);
+                            }
                         }
                     }
-                    case "response.output_text.done" -> completeText(event.path("text").asText(""));
-                    case "response.function_call_arguments.done" -> executeTool(webSocket, event);
+                    case "response.output_text.done" -> {
+                        if (requiredAvailabilityToolPending) {
+                            recoverRequiredAvailabilityTool(webSocket, event.path("text").asText(""));
+                        } else {
+                            completeText(event.path("text").asText(""));
+                        }
+                    }
+                    case "response.function_call_arguments.done" -> {
+                        requiredAvailabilityToolPending = false;
+                        executeTool(webSocket, event);
+                    }
                     case "response.done" -> {
                         responseActive = false;
-                        if (!textCompleted && agentText.length() > 0) completeText("");
+                        if (!textCompleted && agentText.length() > 0) {
+                            if (requiredAvailabilityToolPending
+                                    || VoiceOutputGuard.isStructuredPayload(agentText.toString())) {
+                                recoverRequiredAvailabilityTool(webSocket, "");
+                            } else {
+                                completeText("");
+                            }
+                        }
                     }
                     case "error" -> {
                         var error = event.path("error");
@@ -297,9 +334,54 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         private void executeTool(WebSocket webSocket, JsonNode event) {
-            var callId = event.path("call_id").asText("");
-            var name = event.path("name").asText("");
-            var arguments = event.path("arguments").asText("{}");
+            executeTool(
+                    webSocket,
+                    event.path("call_id").asText(""),
+                    event.path("name").asText(""),
+                    event.path("arguments").asText("{}")
+            );
+        }
+
+        private void recoverRequiredAvailabilityTool(WebSocket webSocket, String providerText) {
+            var finalText = providerText == null || providerText.isBlank()
+                    ? agentText.toString().trim()
+                    : providerText.trim();
+            agentText.setLength(0);
+            textCompleted = true;
+            requiredAvailabilityToolPending = false;
+            if (!currentOutputItemId.isBlank()) {
+                send(webSocket, Map.of("type", "conversation.item.delete", "item_id", currentOutputItemId));
+            }
+            var arguments = VoiceOutputGuard.parseObject(objectMapper, finalText);
+            if (arguments.isEmpty()) {
+                listener.onAgentTextComplete(
+                        VoiceOutputGuard.safeAvailabilityClarification(responseLanguage()),
+                        false
+                );
+                return;
+            }
+            var callId = "recovered-availability-" + java.util.UUID.randomUUID();
+            var argumentsJson = write(arguments.get());
+            send(webSocket, Map.of(
+                    "type", "conversation.item.create",
+                    "item", Map.of(
+                            "type", "function_call",
+                            "call_id", callId,
+                            "name", "check_availability",
+                            "arguments", argumentsJson
+                    )
+            ));
+            executeTool(webSocket, callId, "check_availability", argumentsJson);
+        }
+
+        private String responseLanguage() {
+            var detected = call.getLanguageDetected();
+            return detected == null || detected.isBlank()
+                    ? call.getAgent().getDefaultLanguage()
+                    : detected;
+        }
+
+        private void executeTool(WebSocket webSocket, String callId, String name, String arguments) {
             CompletableFuture.runAsync(() -> {
                 var result = realtimeService.executeTool(call, callId, name, arguments);
                 send(webSocket, Map.of(
@@ -310,7 +392,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                 "output", write(result)
                         )
                 ));
-                send(webSocket, Map.of("type", "response.create"));
+                var activeSession = session;
+                if (activeSession != null) activeSession.requestResponse();
+                else send(webSocket, Map.of("type", "response.create"));
             });
         }
 
@@ -346,6 +430,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final WebSocket webSocket;
         private final ObjectMapper objectMapper;
         private final ScheduledFuture<?> keepAliveTask;
+        private final java.util.concurrent.atomic.AtomicInteger expectedResponses = new java.util.concurrent.atomic.AtomicInteger();
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
         OpenAiTelephonySession(
@@ -396,7 +481,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             "content", java.util.List.of(Map.of("type", "input_text", "text", text.trim()))
                     )
             ));
-            send(Map.of("type", "response.create"));
+            requestResponse();
         }
 
         @Override
@@ -405,10 +490,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         void requestResponse() {
+            expectedResponses.incrementAndGet();
             send(Map.of("type", "response.create"));
         }
 
         void requestResponseWithRequiredTool(String toolName) {
+            expectedResponses.incrementAndGet();
             send(Map.of(
                     "type", "response.create",
                     "response", Map.of(
@@ -416,6 +503,22 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             "tool_choice", Map.of("type", "function", "name", toolName)
                     )
             ));
+        }
+
+        void updateInstructions(String instructions) {
+            if (instructions == null || instructions.isBlank()) return;
+            send(Map.of(
+                    "type", "session.update",
+                    "session", Map.of("instructions", instructions)
+            ));
+        }
+
+        boolean consumeExpectedResponse() {
+            while (true) {
+                var current = expectedResponses.get();
+                if (current <= 0) return false;
+                if (expectedResponses.compareAndSet(current, current - 1)) return true;
+            }
         }
 
         private synchronized void send(Map<String, ?> event) {

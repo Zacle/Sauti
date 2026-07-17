@@ -137,7 +137,13 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
 
     private Optional<LocalTime> parseRequestedTime(String raw) {
         if (raw == null || raw.isBlank()) return Optional.empty();
-        var normalized = raw.toLowerCase(java.util.Locale.ROOT).replace(".", "");
+        var normalized = java.text.Normalizer.normalize(raw, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .toLowerCase(java.util.Locale.ROOT)
+                .replace(".", "")
+                .trim();
+        if (normalized.matches(".*\\b(midi|noon)\\b.*")) return Optional.of(LocalTime.NOON);
+        if (normalized.matches(".*\\b(minuit|midnight)\\b.*")) return Optional.of(LocalTime.MIDNIGHT);
         var matcher = SPOKEN_TIME.matcher(normalized);
         if (!matcher.find()) return Optional.empty();
         try {

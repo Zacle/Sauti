@@ -73,6 +73,23 @@ class CallIntakeNoteServiceTest {
                 .containsEntry("phone_repetition_hint", "the number contains three consecutive 1 digits");
     }
 
+    @Test
+    void replacesTheOldNumberWhenCallerRestartsThenAppendsTheRemainingDigits() {
+        var repository = mock(CallTurnRepository.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        var history = List.of(
+                turn("mon numero est zero un un cinq sept cinq trois quatre quatre un", "Est-ce exact ?"),
+                turn("non c'est zero un un un", "Pouvez-vous me donner a nouveau tout le numero lentement ?"),
+                turn("zero un un un", "Merci, je note zero, un, un, un. Pouvez-vous continuer ?")
+        );
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId)).thenReturn(history);
+
+        assertThat(new CallIntakeNoteService(repository).notes(call, "5-6-5-3-4-4-1"))
+                .containsEntry("caller_phone", "01115653441");
+    }
+
     private CallTurn turn(String caller, String agent) {
         var turn = mock(CallTurn.class);
         when(turn.getCallerTranscript()).thenReturn(caller);

@@ -88,7 +88,10 @@ public class CallIntakeNoteService {
                 || (phoneCandidate.length() > 0 && digitOnlyFragment(normalized));
         if (phoneContext && !digits.isBlank()) {
             var restart = normalized.matches(".*\\b(no|non|restart|recommencer|correction|commence par|depuis le debut|a zero)\\b.*");
-            var requestedCompleteNumber = previous.matches(".*(numero complet|redonner le numero|repeat the (?:complete |full )?number).*");
+            var requestedCompleteNumber = previous.matches(
+                    ".*(numero complet|redonner le numero|donner a nouveau (?:tout )?le numero|"
+                            + "repeter (?:tout )?le numero|repeat the (?:complete |full )?number).*"
+            );
             if (restart || requestedCompleteNumber || (PHONE_CONTEXT.matcher(callerText).find() && digits.length() >= 7)) {
                 phoneCandidate.setLength(0);
             }

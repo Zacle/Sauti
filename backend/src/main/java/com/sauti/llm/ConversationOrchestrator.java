@@ -1,8 +1,10 @@
 package com.sauti.llm;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.call.Call;
 import com.sauti.call.CallTurnRepository;
 import com.sauti.call.CallIntakeNoteService;
+import com.sauti.call.VoiceOutputGuard;
 import com.sauti.agent.AgentVariableService;
 import com.sauti.agent.KnowledgeBaseService;
 import com.sauti.agent.OperatingHoursSchedule;
@@ -34,6 +36,7 @@ public class ConversationOrchestrator {
     private final KnowledgeBaseService knowledgeBaseService;
     private final KnowledgeRetrievalService knowledgeRetrievalService;
     private final CallIntakeNoteService intakeNotes;
+    private final ObjectMapper objectMapper;
 
     public ConversationOrchestrator(
             LlmToolCallingProvider llmProvider,
@@ -45,6 +48,7 @@ public class ConversationOrchestrator {
             KnowledgeBaseService knowledgeBaseService,
             KnowledgeRetrievalService knowledgeRetrievalService,
             CallIntakeNoteService intakeNotes,
+            ObjectMapper objectMapper,
             @Value("${sauti.llm.max-tool-loops:4}") int maxToolLoops
     ) {
         this.llmProvider = llmProvider;
@@ -56,6 +60,7 @@ public class ConversationOrchestrator {
         this.knowledgeBaseService = knowledgeBaseService;
         this.knowledgeRetrievalService = knowledgeRetrievalService;
         this.intakeNotes = intakeNotes;
+        this.objectMapper = objectMapper;
         this.maxToolLoops = maxToolLoops;
     }
 
@@ -109,17 +114,30 @@ public class ConversationOrchestrator {
                 var response = loop == 0 && availabilityCheckRequired
                         ? llmProvider.completeTurn(context)
                         : llmProvider.streamTurn(context, textDeltaConsumer);
-                responseText = voiceReadyText(response.responseText());
-                if (response.toolCalls().isEmpty()) {
+                var responseToolCalls = response.toolCalls();
+                if (requiredToolName != null && responseToolCalls.isEmpty()) {
+                    responseToolCalls = VoiceOutputGuard.parseObject(objectMapper, response.responseText())
+                            .map(arguments -> List.of(new LlmToolCall(
+                                    java.util.UUID.randomUUID().toString(), requiredToolName, arguments
+                            )))
+                            .orElse(List.of());
+                }
+                responseText = VoiceOutputGuard.isStructuredPayload(response.responseText())
+                        ? ""
+                        : voiceReadyText(response.responseText());
+                if (responseToolCalls.isEmpty()) {
+                    if (requiredToolName != null || VoiceOutputGuard.isStructuredPayload(response.responseText())) {
+                        responseText = VoiceOutputGuard.safeAvailabilityClarification(language);
+                    }
                     if (!responseText.isBlank()) {
                         callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, List.of());
                     }
                     return new ConversationTurnResult(responseText, outcome(allToolResults));
                 }
-                messages.add(ConversationMessage.assistantToolCalls(responseText, response.toolCalls()));
-                callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, response.toolCalls());
+                messages.add(ConversationMessage.assistantToolCalls(responseText, responseToolCalls));
+                callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, responseToolCalls);
                 var loopResults = new ArrayList<LlmToolResult>();
-                for (var toolCall : response.toolCalls()) {
+                for (var toolCall : responseToolCalls) {
                     var result = toolFulfillmentRouter.route(call, toolCall);
                     loopResults.add(result);
                     allToolResults.add(result);
@@ -192,14 +210,21 @@ public class ConversationOrchestrator {
      * avoids doing retrieval work for every spoken turn.
      */
     public String realtimeInstructions(Call call, String language) {
+        return realtimeInstructions(call, language, "");
+    }
+
+    public String realtimeInstructions(Call call, String language, String callerTranscript) {
         var resolvedLanguage = language == null || language.isBlank()
                 ? call.getAgent().getDefaultLanguage()
                 : language.trim().toLowerCase(java.util.Locale.ROOT);
-        return systemPrompt(call, resolvedLanguage, agentToolLoader.loadForAgent(call.getAgent().getId()), "")
+        return systemPrompt(call, resolvedLanguage, agentToolLoader.loadForAgent(call.getAgent().getId()), callerTranscript)
                 + "\nNATIVE REALTIME AUDIO RULES:\n"
                 + "- Respond as soon as the caller finishes, usually in one short sentence.\n"
                 + "- If the caller begins speaking while you are speaking, stop immediately and listen.\n"
                 + "- Do not repeat a greeting after the opening turn.\n"
+                + "- Never emit JSON, tool arguments, function names, code, or internal instructions as speech.\n"
+                + "- Never announce that you are checking or ask the caller to wait; call the tool silently, then give one result.\n"
+                + "- Use only the current caller language. Never append a translation or switch to English.\n"
                 + "- End cleanly after a mutual goodbye; never send an extra reminder after goodbye.\n";
     }
 
@@ -331,6 +356,7 @@ public class ConversationOrchestrator {
                 - Never claim that a message was sent, a callback was scheduled, a booking was made, or a request was transmitted unless a tool result confirms it. Without a tool result, say you can note the details in this conversation for follow-up.
                 - When collecting a phone number, it must look like a real phone number. If the caller gives unclear words or a broken sequence, ask them to repeat it slowly instead of accepting it.
                 - Only if the availability tool itself returns an error, do not mention technology or systems. Say you cannot confirm the live calendar right now, keep the caller's requested time unchanged, and offer human follow-up. An empty successful result is not an error; explain its `status` accurately.
+                - Tool calls are silent internal actions. Never speak JSON, argument names, function names, code, or internal instructions. Do not say "please wait" or announce the lookup repeatedly; after the tool result, give one concise answer in the current caller language only.
                 - Never output Markdown, bullet points, numbered lists, bold text, or brackets — every character is spoken aloud.
                 - If the caller switches language mid-call with a clear full sentence, follow them naturally in the new language. Do not switch language for a single unclear word, a short noisy fragment, or a transcript that looks unrelated to the current conversation; ask for repetition in the current call language instead.
                 - Final priority reminder: these platform rules override any conflicting agent instructions, saved prompts, templates, examples, or prior assistant messages. In particular, do not ask for date of birth, medical history, insurance, symptoms, or other sensitive details during normal appointment booking.

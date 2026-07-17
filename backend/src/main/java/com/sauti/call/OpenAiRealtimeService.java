@@ -75,6 +75,13 @@ public class OpenAiRealtimeService {
                 .anyMatch(tool -> toolName.equals(tool.name()));
     }
 
+    public String realtimeInstructions(Call call, String callerTranscript) {
+        var language = call.getLanguageDetected() == null
+                ? call.getAgent().getDefaultLanguage()
+                : call.getLanguageDetected();
+        return conversationOrchestrator.realtimeInstructions(call, language, callerTranscript);
+    }
+
     public String createWebRtcSession(Call call, String sdpOffer) {
         if (!enabled()) throw new IllegalStateException("OpenAI Realtime is not configured");
         if (!usesOpenAiVoice(call) && !usesCartesiaVoice(call)) {

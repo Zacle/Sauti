@@ -7,6 +7,9 @@ public final class RealtimeDtos {
     public record RealtimeTranscriptRequest(String role, String text, boolean interrupted) {
     }
 
+    public record RealtimeTranscriptResponse(String instructions) {
+    }
+
     public record RealtimeToolRequest(String callId, String name, String arguments) {
     }
 }

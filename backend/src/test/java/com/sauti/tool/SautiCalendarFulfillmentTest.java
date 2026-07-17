@@ -73,6 +73,30 @@ class SautiCalendarFulfillmentTest {
         assertThat(matching.get("start")).startsWith("2026-07-22T15:00");
     }
 
+    @Test
+    void interpretsFrenchMidiAsAnExactNoonRequest() {
+        var openHours = """
+                {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
+                """;
+        var slot = new CalendarAvailabilitySlot(
+                OffsetDateTime.parse("2026-07-22T12:00:00Z"),
+                OffsetDateTime.parse("2026-07-22T13:00:00Z"),
+                "12:00"
+        );
+        var fixture = fixture(openHours, List.of(slot));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "availability-midi", "check_availability",
+                Map.of("date", "2026-07-22", "time_preference", "midi", "duration_minutes", 60)
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "requested_time_available")
+                .containsEntry("requestedTime", "12:00")
+                .containsEntry("requestedTimeAvailable", true);
+    }
+
     private Fixture fixture(String hours, List<CalendarAvailabilitySlot> slots) {
         var factory = mock(CalendarProviderFactory.class);
         var bookingService = mock(BookingService.class);

@@ -212,6 +212,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       outputMode: hybrid ? "text" : "audio",
       bargeInDebounceMs: hybrid ? 180 : 0,
       availabilityToolEnabled: started.availabilityToolEnabled,
+      responseLanguage: started.call.languageDetected ?? undefined,
+      prepareCallerResponse: (text) => recordTestRealtimeTranscript(started.call.id, "caller", text)
+        .then((response) => response.instructions),
       connectSdp: (offer) => connectTestRealtime(started.call.id, offer),
       playbackContext: audioContextRef.current,
       recordingDestination: recordingDestinationRef.current,
@@ -224,7 +227,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           lastActivityAtRef.current = Date.now();
           setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text }]);
           updateStatus("thinking");
-          queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "caller", text));
         },
         onAgentTranscript: (text, interrupted) => {
           rememberAgentPrompt(text);
@@ -505,7 +507,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       // Realtime sessions are governed by the backend's single silence policy.
       // Keep this legacy timer only for prerecorded/fallback calls; running both
       // produced duplicate reminder and farewell agent turns.
-      if (currentStatus === "listening" && !socketRef.current) {
+      if (currentStatus === "listening" && !nativeRealtimeRef.current && !socketRef.current) {
         const silentFor = wallClock - lastActivityAtRef.current;
         const reminderDelayMs = Math.max(
           settings.reminderAfterSilenceSeconds * 1000,
@@ -778,7 +780,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text: transcript }]);
     updateStatus("thinking");
     if (nativeRealtimeRef.current && openAiConnectionRef.current) {
-      await recordTestRealtimeTranscript(activeCallId, "caller", transcript);
       openAiConnectionRef.current.sendUserText(transcript);
       return;
     }

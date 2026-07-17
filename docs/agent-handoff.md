@@ -2950,3 +2950,36 @@ Expected:
 - Follow-ups / risks:
   - A live call with real Google Calendar credentials is still required to verify actual provider availability and measure time-to-first-audio; automated tests cover business-hour filtering, exact-time matching, forced tool selection, and runtime routing.
   - The OpenAI developer-docs MCP server was added to the local Codex configuration during implementation and requires a Codex restart before its tools become available in a future session.
+
+### 2026-07-17 - Prevent structured tool payloads and duplicate Realtime speech
+
+- Fixed a production-facing Realtime regression where a provider could return required calendar arguments as ordinary JSON text. Structured payloads are now detected before TTS or transcript persistence, removed from the Realtime conversation, converted into the intended `check_availability` call, and followed by one natural tool-backed response.
+- Added the same structured-output guard to the cascaded orchestrator and the transcript persistence boundary so provider protocol data cannot become caller-facing speech or contaminate later conversation history.
+- Added an explicit expected-response gate in browser and phone Realtime sessions. Unsolicited provider responses are cancelled, preventing the agent from speaking twice without a new caller turn or tool result.
+- Refreshes Realtime session instructions after each accepted caller transcript with the latest authoritative intake notes. This helps the agent retain corrected names, phone digits, service, date, and time instead of reverting to an older candidate.
+- Removed a duplicate transcript write for typed browser-test turns.
+- Improved phone-number restart handling so a caller-requested full restart replaces the rejected candidate and later digit fragments append to the replacement. The transcript regression now preserves `01115653441` instead of reusing the model's earlier `7`.
+- Added exact localized time normalization for French `midi`/`minuit` and English `noon`/`midnight`, so `demain a midi` checks 12:00 rather than only checking the day.
+- Reinforced voice prompts to keep tool actions silent, return one concise answer, and remain in the active caller language.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/{CallController,PublicWebVoiceController}.java`
+  - `backend/src/main/java/com/sauti/call/{CallIntakeNoteService,CallPipelineService,OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider,RealtimeDtos,VoiceOutputGuard}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - related regression tests under `backend/src/test/java/com/sauti/{call,llm,tool}`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/lib/api/{calls,public-web-voice}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused structured-output, phone-Realtime, intake-note, orchestrator, and calendar tests (successful)
+  - `.\gradlew.bat :backend:test` (successful)
+  - `npm.cmd run lint` (successful; zero warnings)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` (successful; 50 routes generated)
+  - `git diff --check` (successful; only expected line-ending notices)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - A live Cartesia browser test and a live Telnyx phone call with real Google Calendar credentials should validate the provider-specific event ordering and time-to-first-audio. Automated tests reproduce and block the leaked `{"date": ..., "time_preference": "midi"}` path.

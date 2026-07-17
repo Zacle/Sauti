@@ -12,6 +12,8 @@ import com.sauti.session.CallSessionStore;
 import jakarta.persistence.EntityNotFoundException;
 import java.time.OffsetDateTime;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -19,6 +21,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 @Service
 public class CallPipelineService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CallPipelineService.class);
     private static final Consumer<String> NO_TEXT_DELTAS = ignored -> { };
     private final CallRepository callRepository;
     private final CallTurnRepository callTurnRepository;
@@ -312,6 +315,10 @@ public class CallPipelineService {
             return;
         }
         if (!"agent".equalsIgnoreCase(role)) return;
+        if (VoiceOutputGuard.isStructuredPayload(text)) {
+            LOGGER.warn("Blocked structured provider payload from agent transcript for callId={}", callId);
+            return;
+        }
 
         var previous = callTurnRepository.findFirstByCall_IdOrderByTurnIndexDesc(callId).orElse(null);
         if (previous != null && previous.getCallerTranscript().isBlank()
