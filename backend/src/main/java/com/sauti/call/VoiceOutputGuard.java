@@ -36,6 +36,24 @@ public final class VoiceOutputGuard {
         };
     }
 
+    public static String safeAvailabilityFailure(String language) {
+        return switch (language == null ? "en" : language.toLowerCase(java.util.Locale.ROOT)) {
+            case "fr" -> "Je ne peux pas confirmer le calendrier en direct pour le moment. Le creneau demande n'est pas reserve.";
+            case "ar" -> "تعذر تأكيد التقويم المباشر الآن. الموعد المطلوب غير محجوز.";
+            case "sw" -> "Siwezi kuthibitisha kalenda kwa sasa. Muda ulioomba haujawekwa nafasi.";
+            default -> "I cannot confirm the live calendar right now. Your requested time is not booked.";
+        };
+    }
+
+    /** OpenAI Realtime limits function call IDs to 32 characters. */
+    public static String realtimeCallId(String prefix) {
+        var normalizedPrefix = prefix == null ? "call" : prefix.replaceAll("[^A-Za-z0-9_-]", "");
+        if (normalizedPrefix.isBlank()) normalizedPrefix = "call";
+        normalizedPrefix = normalizedPrefix.substring(0, Math.min(normalizedPrefix.length(), 8));
+        var random = java.util.UUID.randomUUID().toString().replace("-", "");
+        return normalizedPrefix + "_" + random.substring(0, 31 - normalizedPrefix.length());
+    }
+
     public static String unwrapCodeFence(String text) {
         if (text == null) return "";
         var normalized = text.trim();

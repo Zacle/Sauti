@@ -18,10 +18,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class OpenAiRealtimeService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(OpenAiRealtimeService.class);
     public static final String VOICE_PREFIX = "openai:";
 
     private final ObjectMapper objectMapper;
@@ -118,8 +121,13 @@ public class OpenAiRealtimeService {
             Map<String, Object> arguments = argumentsJson == null || argumentsJson.isBlank()
                     ? Map.of()
                     : objectMapper.readValue(argumentsJson, new TypeReference<>() { });
-            return toolRouter.route(call, new LlmToolCall(callId, name, arguments));
+            var result = toolRouter.route(call, new LlmToolCall(callId, name, arguments));
+            if (!result.success()) {
+                LOGGER.warn("Realtime tool failed callId={} tool={} reason={}", call.getId(), name, result.error());
+            }
+            return result;
         } catch (Exception exception) {
+            LOGGER.warn("Realtime tool execution failed callId={} tool={}", call.getId(), name, exception);
             return new LlmToolResult(callId, name, false, Map.of(), "The requested action could not be completed");
         }
     }

@@ -146,13 +146,42 @@ public class CallIntakeNoteService {
     }
 
     private String weekday(String text) {
-        for (var day : new String[]{"lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"}) {
+        for (var relative : new String[]{"aujourd'hui", "demain", "today", "tomorrow"}) {
+            if (text.contains(relative)) return relative;
+        }
+        for (var day : new String[]{
+                "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
+                "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+        }) {
             if (text.contains(day)) return day;
         }
         return "";
     }
 
     private String spokenTime(String text) {
+        var clock = Pattern.compile(
+                "(?<!\\d)([01]?\\d|2[0-3])(?::([0-5]\\d))\\s*(a\\.?m\\.?|p\\.?m\\.?)?",
+                Pattern.CASE_INSENSITIVE
+        ).matcher(text);
+        if (clock.find()) {
+            var hour = Integer.parseInt(clock.group(1));
+            var minute = Integer.parseInt(clock.group(2));
+            var meridiem = clock.group(3) == null ? "" : clock.group(3).replace(".", "");
+            if ("pm".equalsIgnoreCase(meridiem) && hour < 12) hour += 12;
+            if ("am".equalsIgnoreCase(meridiem) && hour == 12) hour = 0;
+            return "%02d:%02d".formatted(hour, minute);
+        }
+        var meridiemHour = Pattern.compile(
+                "(?<!\\d)(1[0-2]|0?[1-9])\\s*(a\\.?m\\.?|p\\.?m\\.?)",
+                Pattern.CASE_INSENSITIVE
+        ).matcher(text);
+        if (meridiemHour.find()) {
+            var hour = Integer.parseInt(meridiemHour.group(1));
+            var meridiem = meridiemHour.group(2).replace(".", "");
+            if ("pm".equalsIgnoreCase(meridiem) && hour < 12) hour += 12;
+            if ("am".equalsIgnoreCase(meridiem) && hour == 12) hour = 0;
+            return "%02d:00".formatted(hour);
+        }
         var numeric = Pattern.compile("(?<!\\d)([01]?\\d|2[0-3])\\s*(?:h|heures?)").matcher(text);
         if (numeric.find()) return "%02d:00".formatted(Integer.parseInt(numeric.group(1)));
         var words = Map.of("seize", 16, "dix sept", 17, "dix-sept", 17, "fifteen", 15, "sixteen", 16, "seventeen", 17);

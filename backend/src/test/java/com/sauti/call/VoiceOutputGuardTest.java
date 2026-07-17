@@ -24,4 +24,12 @@ class VoiceOutputGuardTest {
                 "Je verifie les disponibilites pour demain midi."
         )).isFalse();
     }
+
+    @Test
+    void createsRealtimeCallIdsWithinTheProviderLimit() {
+        var callId = VoiceOutputGuard.realtimeCallId("recovered-availability");
+
+        assertThat(callId).hasSizeLessThanOrEqualTo(32)
+                .matches("[A-Za-z0-9_-]+");
+    }
 }

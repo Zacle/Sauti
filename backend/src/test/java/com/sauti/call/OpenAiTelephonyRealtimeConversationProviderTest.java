@@ -7,6 +7,7 @@ import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 
@@ -15,6 +16,11 @@ import java.net.http.WebSocket;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 
 class OpenAiTelephonyRealtimeConversationProviderTest {
@@ -135,11 +141,13 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 true);
 
         assertThat(events).containsExactly("speech", "caller:Demain a midi");
+        var recoveredCallId = ArgumentCaptor.forClass(String.class);
         verify(realtimeService, timeout(1_000)).executeTool(
-                eq(call), anyString(), eq("check_availability"),
+                eq(call), recoveredCallId.capture(), eq("check_availability"),
                 eq("{\"date\":\"2030-01-15\",\"time_preference\":\"12:00\"}")
         );
-        verify(session, timeout(1_000)).requestResponse();
+        assertThat(recoveredCallId.getValue()).hasSizeLessThanOrEqualTo(32);
+        verify(session, timeout(1_000)).requestToolResultResponse();
     }
 
     @Test
@@ -154,6 +162,29 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         socketListener.onText(mock(WebSocket.class), "{\"type\":\"response.created\"}", true);
 
         verify(session).cancelResponse();
+    }
+
+    @Test
+    void instructionUpdatesDeclareARealtimeSession() throws Exception {
+        var webSocket = mock(WebSocket.class);
+        when(webSocket.sendText(anyString(), eq(true)))
+                .thenReturn(CompletableFuture.completedFuture(webSocket));
+        var executor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> keepAlive = mock(ScheduledFuture.class);
+        when(executor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenAnswer(ignored -> keepAlive);
+        var session = new OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession(
+                webSocket, new ObjectMapper(), executor
+        );
+
+        session.updateInstructions("Stay concise.");
+
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(webSocket, timeout(1_000)).sendText(payload.capture(), eq(true));
+        var event = new ObjectMapper().readTree(payload.getValue());
+        assertThat(event.path("type").asText()).isEqualTo("session.update");
+        assertThat(event.path("session").path("type").asText()).isEqualTo("realtime");
+        assertThat(event.path("session").path("instructions").asText()).isEqualTo("Stay concise.");
     }
 
     @Test

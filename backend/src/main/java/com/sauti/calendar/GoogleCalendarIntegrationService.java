@@ -128,6 +128,10 @@ public class GoogleCalendarIntegrationService {
             credential = existing;
         }
         credentialRepository.save(credential);
+        // Do not mark or bind an OAuth connection that cannot actually read
+        // free/busy data. A failure rolls this transaction back and surfaces
+        // during the OAuth callback instead of appearing later in a live call.
+        apiClient.test(credential, agent.getTimezone());
         integrationService.connectOAuth(context.tenantId(), agent.getId(), "google_calendar", java.util.Map.of(
                 "accessToken", token.accessToken(),
                 "refreshToken", token.refreshToken()

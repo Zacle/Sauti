@@ -360,7 +360,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 );
                 return;
             }
-            var callId = "recovered-availability-" + java.util.UUID.randomUUID();
+            var callId = VoiceOutputGuard.realtimeCallId("avail");
             var argumentsJson = write(arguments.get());
             send(webSocket, Map.of(
                     "type", "conversation.item.create",
@@ -383,7 +383,14 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         private void executeTool(WebSocket webSocket, String callId, String name, String arguments) {
             CompletableFuture.runAsync(() -> {
-                var result = realtimeService.executeTool(call, callId, name, arguments);
+                com.sauti.llm.LlmToolResult result;
+                try {
+                    result = realtimeService.executeTool(call, callId, name, arguments);
+                } catch (RuntimeException exception) {
+                    result = new com.sauti.llm.LlmToolResult(
+                            callId, name, false, Map.of(), "Tool execution failed"
+                    );
+                }
                 send(webSocket, Map.of(
                         "type", "conversation.item.create",
                         "item", Map.of(
@@ -392,8 +399,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                 "output", write(result)
                         )
                 ));
+                if (!result.success()) {
+                    var safeText = "check_availability".equals(name)
+                            ? VoiceOutputGuard.safeAvailabilityFailure(responseLanguage())
+                            : VoiceOutputGuard.safeAvailabilityClarification(responseLanguage());
+                    listener.onAgentTextDelta(safeText);
+                    listener.onAgentTextComplete(safeText, false);
+                    return;
+                }
                 var activeSession = session;
-                if (activeSession != null) activeSession.requestResponse();
+                if (activeSession != null) activeSession.requestToolResultResponse();
                 else send(webSocket, Map.of("type", "response.create"));
             });
         }
@@ -491,7 +506,27 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         void requestResponse() {
             expectedResponses.incrementAndGet();
-            send(Map.of("type", "response.create"));
+            send(Map.of(
+                    "type", "response.create",
+                    "response", Map.of(
+                            "instructions", "Answer once in the current caller language using only configured facts. "
+                                    + "Do not invent services, classes, examples, or completed actions. Preserve names, "
+                                    + "phone digits, dates, and times exactly."
+                    )
+            ));
+        }
+
+        void requestToolResultResponse() {
+            expectedResponses.incrementAndGet();
+            send(Map.of(
+                    "type", "response.create",
+                    "response", Map.of(
+                            "instructions", "Give one concise answer based only on the tool output and in the current "
+                                    + "caller language. Preserve the requested date and time exactly. Availability does "
+                                    + "not mean booked or held. Never invent a callback, booking, service, or alternative time.",
+                            "tool_choice", "none"
+                    )
+            ));
         }
 
         void requestResponseWithRequiredTool(String toolName) {
@@ -509,7 +544,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             if (instructions == null || instructions.isBlank()) return;
             send(Map.of(
                     "type", "session.update",
-                    "session", Map.of("instructions", instructions)
+                    "session", Map.of("type", "realtime", "instructions", instructions)
             ));
         }
 

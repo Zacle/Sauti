@@ -90,6 +90,19 @@ class CallIntakeNoteServiceTest {
                 .containsEntry("caller_phone", "01115653441");
     }
 
+    @Test
+    void preservesAnEnglishRelativeDayAndExactPmTime() {
+        var repository = mock(CallTurnRepository.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId)).thenReturn(List.of());
+
+        assertThat(new CallIntakeNoteService(repository).notes(call, "Tomorrow 08:00 p.m."))
+                .containsEntry("preferred_day", "tomorrow")
+                .containsEntry("preferred_time", "20:00");
+    }
+
     private CallTurn turn(String caller, String agent) {
         var turn = mock(CallTurn.class);
         when(turn.getCallerTranscript()).thenReturn(caller);

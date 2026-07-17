@@ -2983,3 +2983,32 @@ Expected:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 - Follow-ups / risks:
   - A live Cartesia browser test and a live Telnyx phone call with real Google Calendar credentials should validate the provider-specific event ordering and time-to-first-audio. Automated tests reproduce and block the leaked `{"date": ..., "time_preference": "midi"}` path.
+
+### 2026-07-17 - Realtime protocol compliance and calendar failure safety
+
+- Fixed the two Realtime protocol errors observed after structured availability recovery:
+  - partial `session.update` events now include `session.type = realtime`, as required by the current OpenAI Realtime schema;
+  - recovered function-call IDs are restricted to the provider's 32-character limit.
+- Calendar tool failures no longer return to the model for an improvised response. Browser and phone hybrid runtimes now speak a deterministic, localized statement that the live calendar could not be confirmed and that the requested time is not booked.
+- Successful availability results receive turn-specific constraints: preserve the exact requested date/time, use only the tool output, and never claim that availability means a booking, hold, or callback.
+- Ordinary Realtime responses now reiterate that configured facts are authoritative and prohibit invented classes, services, examples, actions, or altered caller details.
+- Extended authoritative intake notes to retain English relative days and exact 12/24-hour clock values. `Tomorrow 08:00 p.m.` is stored as `tomorrow` at `20:00`, preventing later substitution with another time.
+- New Google Calendar OAuth connections now run a live free/busy probe before being marked connected or attached to agent tools. Failed scopes, disabled API access, or unusable credentials roll back instead of appearing connected until a live call.
+- Added safe server-side logging for failed Realtime tool execution without logging credentials or tool arguments.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/GoogleCalendarIntegrationService.java`
+  - `backend/src/main/java/com/sauti/call/{CallIntakeNoteService,OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider,VoiceOutputGuard}.java`
+  - related regression tests under `backend/src/test/java/com/sauti/call`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Realtime protocol, intake-note, calendar fulfillment/provider, and integration synchronization tests (successful)
+  - `npm.cmd run lint` (successful; zero warnings)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` (successful; 50 routes generated)
+  - `.\gradlew.bat :backend:test` (successful)
+  - `git diff --check` (successful; only expected line-ending notices)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - Existing Google Calendar connections are not re-authorized by this code change. After CI deployment, use the marketplace's `Test live connection` action once for the selected agent. If it fails, reconnect Google Calendar so the new OAuth validation runs and the refresh token/scopes are renewed.

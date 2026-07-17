@@ -90,6 +90,15 @@ export async function connectOpenAiRealtime(options: {
     }
   };
 
+  const deliverToolFailure = (name: string) => {
+    const failure = name === "check_availability"
+      ? localizedAvailabilityFailure(options.responseLanguage)
+      : localizedAvailabilityClarification(options.responseLanguage);
+    options.callbacks.onAgentTextDelta?.(failure);
+    options.callbacks.onAgentTextComplete?.(false);
+    deliverAgentTranscript(failure, false);
+  };
+
   const executeToolCall = (callId: string, name: string, argumentsJson: string) => {
     requiredAvailabilityToolPending = false;
     void options.callbacks.executeTool(callId, name, argumentsJson)
@@ -98,16 +107,19 @@ export async function connectOpenAiRealtime(options: {
           type: "conversation.item.create",
           item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) },
         });
+        if (result.success === false) {
+          deliverToolFailure(name);
+          return;
+        }
         expectedResponses += 1;
-        send(channel, { type: "response.create" });
+        requestToolResultResponse(channel);
       })
       .catch(() => {
         send(channel, {
           type: "conversation.item.create",
           item: { type: "function_call_output", call_id: callId, output: JSON.stringify({ success: false }) },
         });
-        expectedResponses += 1;
-        send(channel, { type: "response.create" });
+        deliverToolFailure(name);
       });
   };
 
@@ -124,7 +136,7 @@ export async function connectOpenAiRealtime(options: {
       requiredAvailabilityToolPending = false;
       return;
     }
-    const callId = `recovered-availability-${crypto.randomUUID()}`;
+    const callId = realtimeCallId("avail");
     const argumentsJson = JSON.stringify(parsed);
     send(channel, {
       type: "conversation.item.create",
@@ -138,7 +150,7 @@ export async function connectOpenAiRealtime(options: {
       try {
         const instructions = await options.prepareCallerResponse?.(transcript);
         if (instructions?.trim()) {
-          send(channel, { type: "session.update", session: { instructions } });
+          send(channel, { type: "session.update", session: { type: "realtime", instructions } });
         }
       } catch {
         // The active Realtime session still has its original safe instructions.
@@ -377,7 +389,22 @@ function requestCallerResponse(channel: RTCDataChannel, requireAvailabilityTool:
     });
     return;
   }
-  send(channel, { type: "response.create" });
+  send(channel, {
+    type: "response.create",
+    response: {
+      instructions: "Answer once in the current caller language using only configured facts. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly.",
+    },
+  });
+}
+
+function requestToolResultResponse(channel: RTCDataChannel) {
+  send(channel, {
+    type: "response.create",
+    response: {
+      instructions: "Give one concise answer based only on the tool output and in the current caller language. Preserve the requested date and time exactly. Availability does not mean booked or held. Never invent a callback, booking, service, or alternative time.",
+      tool_choice: "none",
+    },
+  });
 }
 
 function isStructuredPayload(text: string) {
@@ -405,6 +432,21 @@ function localizedAvailabilityClarification(language?: string) {
     case "sw": return "Sikuweza kuthibitisha muda huo. Tafadhali rudia tarehe na saa.";
     default: return "I couldn’t verify that time. Could you repeat the date and time, please?";
   }
+}
+
+function localizedAvailabilityFailure(language?: string) {
+  switch (language?.toLocaleLowerCase()) {
+    case "fr": return "Je ne peux pas confirmer le calendrier en direct pour le moment. Le creneau demande n'est pas reserve.";
+    case "ar": return "تعذر تأكيد التقويم المباشر الآن. الموعد المطلوب غير محجوز.";
+    case "sw": return "Siwezi kuthibitisha kalenda kwa sasa. Muda ulioomba haujawekwa nafasi.";
+    default: return "I cannot confirm the live calendar right now. Your requested time is not booked.";
+  }
+}
+
+function realtimeCallId(prefix: string) {
+  const normalizedPrefix = prefix.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 8) || "call";
+  const random = crypto.randomUUID().replaceAll("-", "");
+  return `${normalizedPrefix}_${random.slice(0, 31 - normalizedPrefix.length)}`;
 }
 
 function requiresAvailabilityCheck(transcript: string) {
