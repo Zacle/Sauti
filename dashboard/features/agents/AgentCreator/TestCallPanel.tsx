@@ -211,6 +211,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       greeting,
       outputMode: hybrid ? "text" : "audio",
       bargeInDebounceMs: hybrid ? 180 : 0,
+      availabilityToolEnabled: started.availabilityToolEnabled,
       connectSdp: (offer) => connectTestRealtime(started.call.id, offer),
       playbackContext: audioContextRef.current,
       recordingDestination: recordingDestinationRef.current,

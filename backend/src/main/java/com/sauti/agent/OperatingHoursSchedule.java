@@ -11,6 +11,7 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public final class OperatingHoursSchedule {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -83,6 +84,24 @@ public final class OperatingHoursSchedule {
         var day = parse(value).get(date.getDayOfWeek().name().toLowerCase(Locale.ROOT));
         if (day == null || !day.enabled()) return List.of();
         return List.of(range(date, LocalTime.parse(day.start()), LocalTime.parse(day.end()), timezone));
+    }
+
+    public static String describe(String value) {
+        if (value == null || value.isBlank() || "always".equals(value) || "workspace".equals(value)) {
+            return "No restricted business hours are configured.";
+        }
+        if ("weekdays".equals(value)) {
+            return "Monday-Friday 09:00-17:00; Saturday-Sunday closed.";
+        }
+        var schedule = parse(value);
+        return java.util.Arrays.stream(DayOfWeek.values())
+                .map(day -> {
+                    var configured = schedule.get(day.name().toLowerCase(Locale.ROOT));
+                    var label = day.name().substring(0, 1) + day.name().substring(1).toLowerCase(Locale.ROOT);
+                    if (configured == null || !configured.enabled()) return label + " closed";
+                    return label + " " + configured.start() + "-" + configured.end();
+                })
+                .collect(Collectors.joining("; ")) + ".";
     }
 
     private static TimeRange range(LocalDate date, LocalTime startTime, LocalTime endTime, ZoneId timezone) {

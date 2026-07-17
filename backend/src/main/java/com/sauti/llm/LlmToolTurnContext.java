@@ -13,6 +13,7 @@ public record LlmToolTurnContext(
         UUID callId,
         String callSid,
         List<LlmToolDefinition> tools,
-        List<LlmToolResult> toolResults
+        List<LlmToolResult> toolResults,
+        String requiredToolName
 ) {
 }

@@ -29,6 +29,7 @@ export async function connectOpenAiRealtime(options: {
   recordingDestination?: MediaStreamAudioDestinationNode | null;
   outputMode?: "audio" | "text";
   bargeInDebounceMs?: number;
+  availabilityToolEnabled?: boolean;
 }): Promise<OpenAiRealtimeConnection> {
   const peer = new RTCPeerConnection();
   const remoteStream = new MediaStream();
@@ -93,7 +94,7 @@ export async function connectOpenAiRealtime(options: {
         options.callbacks.onCallerTranscript(transcript);
         // The session disables provider-managed response creation. Only a
         // usable final transcript is allowed to advance the conversation.
-        send(channel, { type: "response.create" });
+        requestCallerResponse(channel, transcript, Boolean(options.availabilityToolEnabled));
       }
       pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
       flushDeferredAgentTranscripts();
@@ -224,7 +225,7 @@ export async function connectOpenAiRealtime(options: {
         type: "conversation.item.create",
         item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
       });
-      send(channel, { type: "response.create" });
+      requestCallerResponse(channel, text, Boolean(options.availabilityToolEnabled));
     },
     speakGreeting: (text) => requestGreeting(channel, text, options.outputMode ?? "audio"),
     cancelResponse: () => send(channel, { type: "response.cancel" }),
@@ -265,6 +266,28 @@ function requestGreeting(channel: RTCDataChannel, greeting: string, outputMode: 
       output_modalities: [outputMode],
     },
   });
+}
+
+function requestCallerResponse(channel: RTCDataChannel, transcript: string, availabilityToolEnabled: boolean) {
+  if (availabilityToolEnabled && requiresAvailabilityCheck(transcript)) {
+    send(channel, {
+      type: "response.create",
+      response: {
+        instructions: "Call the required availability tool before speaking. Preserve the caller's exact date and time.",
+        tool_choice: { type: "function", name: "check_availability" },
+      },
+    });
+    return;
+  }
+  send(channel, { type: "response.create" });
+}
+
+function requiresAvailabilityCheck(transcript: string) {
+  const normalized = transcript.normalize("NFKC").toLocaleLowerCase();
+  return /availab|disponib|créneau|creneau|موعد/u.test(normalized)
+    || /\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|aujourd'hui|demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/iu.test(normalized)
+    || /\b(?:[01]?\d|2[0-3]):[0-5]\d\b|\b(?:1[0-2]|0?[1-9])\s*(?:a\.?m\.?|p\.?m\.?)\b/iu.test(normalized)
+    || /(?:اليوم|غد[ًًا]?|الاثنين|الثلاثاء|الأربعاء|الخميس|الجمعة|السبت|الأحد)/u.test(normalized);
 }
 
 function send(channel: RTCDataChannel, event: Record<string, unknown>) {

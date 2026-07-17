@@ -43,7 +43,8 @@ class LocalToolCallingLlmProviderTest {
                 UUID.randomUUID(),
                 "CA123",
                 List.of(),
-                List.of()
+                List.of(),
+                null
         );
     }
 }

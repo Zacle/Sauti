@@ -36,7 +36,9 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(SpringAiToolCallingLlmProvider.class);
     // Voice turns need fast first-token latency. Do not enable Gemini thinking here.
     private static final int GEMINI_THINKING_BUDGET = 0;
-    private static final int MAX_OUTPUT_TOKENS = 120;
+    // Brevity is enforced by the voice prompt. Keep enough headroom so a tool-backed
+    // answer or graceful close is never hard-truncated in the middle of a sentence.
+    private static final int MAX_OUTPUT_TOKENS = 220;
     private static final double VOICE_TEMPERATURE = 0.45;
 
     private final ObjectMapper objectMapper;
@@ -142,7 +144,7 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
             Consumer<String> textDeltaConsumer
     ) {
         var callbacks = context.tools().stream().map(this::toolCallback).toList();
-        var prompt = new Prompt(messages(context), options(modelName, provider, callbacks));
+        var prompt = new Prompt(messages(context), options(modelName, provider, callbacks, context.requiredToolName()));
         var text = new StringBuilder();
         var streamedToolCalls = new java.util.concurrent.atomic.AtomicReference<AssistantMessage>();
         chatModel.stream(prompt).toStream().forEach(response -> {
@@ -183,7 +185,7 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
         var callbacks = context.tools().stream().map(this::toolCallback).toList();
         var response = chatModel.call(new Prompt(
                 messages(context),
-                options(modelName, provider, callbacks)
+                options(modelName, provider, callbacks, context.requiredToolName())
         ));
         var output = response.getResult().getOutput();
         return new LlmToolTurnResponse(output.getText() == null ? "" : output.getText(), toolCalls(output));
@@ -266,24 +268,37 @@ public class SpringAiToolCallingLlmProvider implements LlmToolCallingProvider {
         };
     }
 
-    private ChatOptions options(String modelName, ModelProvider provider, List<ToolCallback> callbacks) {
+    private ChatOptions options(
+            String modelName,
+            ModelProvider provider,
+            List<ToolCallback> callbacks,
+            String requiredToolName
+    ) {
         if (provider == ModelProvider.OPENAI) {
-            return OpenAiChatOptions.builder()
+            var builder = OpenAiChatOptions.builder()
                     .model(modelName)
                     .maxTokens(MAX_OUTPUT_TOKENS)
                     .temperature(VOICE_TEMPERATURE)
                     .toolCallbacks(callbacks)
-                    .internalToolExecutionEnabled(false)
-                    .build();
+                    .internalToolExecutionEnabled(false);
+            if (requiredToolName != null && !requiredToolName.isBlank()) {
+                // The orchestrator passes only the named tool for this decision,
+                // so OpenAI's required mode cannot select an unrelated action.
+                builder.toolChoice("required");
+            }
+            return builder.build();
         }
-        return GoogleGenAiChatOptions.builder()
+        var builder = GoogleGenAiChatOptions.builder()
                 .model(modelName)
                 .maxOutputTokens(MAX_OUTPUT_TOKENS)
                 .temperature(VOICE_TEMPERATURE)
                 .thinkingBudget(GEMINI_THINKING_BUDGET)
                 .toolCallbacks(callbacks)
-                .internalToolExecutionEnabled(false)
-                .build();
+                .internalToolExecutionEnabled(false);
+        if (requiredToolName != null && !requiredToolName.isBlank()) {
+            builder.toolName(requiredToolName);
+        }
+        return builder.build();
     }
 
     private static ChatModel createGeminiModel(String modelName, String apiKey) {

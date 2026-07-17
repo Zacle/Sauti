@@ -2,6 +2,7 @@ package com.sauti.call;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sauti.llm.AvailabilityIntentDetector;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -114,6 +115,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final Call call;
         private final Listener listener;
         private final Map<String, Object> sessionConfiguration;
+        private final boolean availabilityToolEnabled;
         private final StringBuilder payload = new StringBuilder();
         private final StringBuilder agentText = new StringBuilder();
         private volatile OpenAiTelephonySession session;
@@ -137,6 +139,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             this.call = call;
             this.listener = listener;
             this.sessionConfiguration = sessionConfiguration;
+            this.availabilityToolEnabled = hasConfiguredTool(sessionConfiguration, "check_availability");
         }
 
         void attach(OpenAiTelephonySession session) {
@@ -209,7 +212,14 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             notifyCallerSpeechStarted();
                             listener.onCallerTranscript(transcript);
                             var activeSession = session;
-                            if (activeSession != null) activeSession.requestResponse();
+                            if (activeSession != null) {
+                                if (availabilityToolEnabled
+                                        && AvailabilityIntentDetector.requiresAvailabilityCheck(transcript)) {
+                                    activeSession.requestResponseWithRequiredTool("check_availability");
+                                } else {
+                                    activeSession.requestResponse();
+                                }
+                            }
                         }
                         finishCallerTurn();
                         pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
@@ -321,6 +331,15 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         private record AgentCompletion(String text, boolean interrupted) { }
+
+        private static boolean hasConfiguredTool(Map<String, Object> configuration, String name) {
+            var configuredTools = configuration.get("tools");
+            if (!(configuredTools instanceof Iterable<?> tools)) return false;
+            for (var tool : tools) {
+                if (tool instanceof Map<?, ?> definition && name.equals(definition.get("name"))) return true;
+            }
+            return false;
+        }
     }
 
     static final class OpenAiTelephonySession implements Session {
@@ -387,6 +406,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         void requestResponse() {
             send(Map.of("type", "response.create"));
+        }
+
+        void requestResponseWithRequiredTool(String toolName) {
+            send(Map.of(
+                    "type", "response.create",
+                    "response", Map.of(
+                            "instructions", "Call the required availability tool before speaking. Preserve the caller's exact date and time.",
+                            "tool_choice", Map.of("type", "function", "name", toolName)
+                    )
+            ));
         }
 
         private synchronized void send(Map<String, ?> event) {

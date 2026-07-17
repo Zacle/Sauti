@@ -69,6 +69,12 @@ public class OpenAiRealtimeService {
                 && call.getAgent().getTtsVoiceId().startsWith(CartesiaRealtimeTextToSpeechClient.VOICE_PREFIX);
     }
 
+    public boolean hasTool(Call call, String toolName) {
+        if (call == null || toolName == null || toolName.isBlank()) return false;
+        return agentToolLoader.loadForAgent(call.getAgent().getId()).stream()
+                .anyMatch(tool -> toolName.equals(tool.name()));
+    }
+
     public String createWebRtcSession(Call call, String sdpOffer) {
         if (!enabled()) throw new IllegalStateException("OpenAI Realtime is not configured");
         if (!usesOpenAiVoice(call) && !usesCartesiaVoice(call)) {

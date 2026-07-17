@@ -2,18 +2,30 @@ package com.sauti.tool;
 
 import com.sauti.calendar.BookingDtos.CreateBookingRequest;
 import com.sauti.calendar.BookingService;
+import com.sauti.agent.OperatingHoursSchedule;
 import com.sauti.call.Call;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class SautiCalendarFulfillment implements ToolFulfillment {
+    private static final Pattern SPOKEN_TIME = Pattern.compile(
+            "(?<!\\d)(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?(?!\\d)",
+            Pattern.CASE_INSENSITIVE
+    );
     private final CalendarProviderFactory calendarProviderFactory;
     private final BookingService bookingService;
 
@@ -42,19 +54,105 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         var timezone = ZoneId.of(stringArg(arguments, "timezone", call.getAgent().getTimezone()));
         var date = LocalDate.parse(requiredStringArg(arguments, "date"));
         var duration = intArg(arguments, "duration_minutes", 60);
-        var slots = provider.availability(call.getAgent(), date, duration, timezone)
-                .stream()
-                .map(slot -> Map.of(
-                        "start", slot.start().toString(),
-                        "end", slot.end().toString(),
-                        "displayString", slot.displayString()
-                ))
-                .toList();
-        return Map.of(
-                "slots", slots,
-                "timezone", timezone.toString(),
-                "durationMinutes", duration
+        var operatingRanges = OperatingHoursSchedule.rangesFor(
+                call.getAgent().getOperatingHours(), date, timezone
         );
+        var availableSlots = provider.availability(call.getAgent(), date, duration, timezone);
+        var requestedTimeText = stringArg(arguments, "time_preference", "");
+        var requestedTime = parseRequestedTime(requestedTimeText);
+        var requestedStart = requestedTime.map(time -> date.atTime(time).atZone(timezone).toOffsetDateTime());
+        var withinOperatingHours = requestedStart.map(start -> operatingRanges.stream().anyMatch(range ->
+                !start.isBefore(range.start()) && !start.plusMinutes(duration).isAfter(range.end())
+        )).orElse(null);
+        var matchingSlot = requestedStart.flatMap(start -> availableSlots.stream()
+                .filter(slot -> slot.start().isEqual(start))
+                .findFirst());
+        var businessOpen = !operatingRanges.isEmpty();
+        var result = new LinkedHashMap<String, Object>();
+        result.put("date", date.toString());
+        result.put("timezone", timezone.toString());
+        result.put("durationMinutes", duration);
+        result.put("businessHoursSummary", OperatingHoursSchedule.describe(call.getAgent().getOperatingHours()));
+        result.put("businessOpenOnRequestedDate", businessOpen);
+        result.put("operatingWindows", operatingRanges.stream().map(range -> Map.of(
+                "start", range.start().toString(),
+                "end", range.end().toString()
+        )).toList());
+        result.put("requestedTime", requestedTime.map(LocalTime::toString).orElse(requestedTimeText));
+        if (withinOperatingHours != null) result.put("requestedTimeWithinOperatingHours", withinOperatingHours);
+        if (requestedTime.isPresent()) result.put("requestedTimeAvailable", matchingSlot.isPresent());
+        matchingSlot.ifPresent(slot -> result.put("matchingSlot", slotMap(slot)));
+        result.put("totalAvailableSlots", availableSlots.size());
+        result.put("slots", relevantSlots(availableSlots, requestedTime));
+        result.put("nextOpenBusinessWindows", nextOpenBusinessWindows(call, date, timezone));
+        result.put("status", !businessOpen
+                ? "closed_by_business_hours"
+                : availableSlots.isEmpty()
+                    ? "calendar_fully_booked"
+                    : requestedTime.isPresent() && matchingSlot.isEmpty()
+                        ? "requested_time_unavailable"
+                        : requestedTime.isPresent()
+                            ? "requested_time_available"
+                            : "slots_available");
+        return Map.copyOf(result);
+    }
+
+    private List<Map<String, String>> relevantSlots(
+            List<com.sauti.calendar.CalendarAvailabilitySlot> slots,
+            Optional<LocalTime> requestedTime
+    ) {
+        var ordered = slots.stream();
+        if (requestedTime.isPresent()) {
+            var preferred = requestedTime.get();
+            ordered = ordered.sorted(Comparator.comparingLong(slot -> Math.abs(
+                    ChronoUnit.MINUTES.between(preferred, slot.start().toLocalTime())
+            )));
+        }
+        return ordered.limit(12).map(this::slotMap).toList();
+    }
+
+    private Map<String, String> slotMap(com.sauti.calendar.CalendarAvailabilitySlot slot) {
+        return Map.of(
+                "start", slot.start().toString(),
+                "end", slot.end().toString(),
+                "displayString", slot.displayString()
+        );
+    }
+
+    private List<Map<String, String>> nextOpenBusinessWindows(Call call, LocalDate requestedDate, ZoneId timezone) {
+        var windows = new java.util.ArrayList<Map<String, String>>();
+        for (int offset = 1; offset <= 14 && windows.size() < 3; offset++) {
+            var date = requestedDate.plusDays(offset);
+            for (var range : OperatingHoursSchedule.rangesFor(call.getAgent().getOperatingHours(), date, timezone)) {
+                windows.add(Map.of(
+                        "date", date.toString(),
+                        "opens", range.start().toLocalTime().toString(),
+                        "closes", range.end().toLocalTime().toString()
+                ));
+                if (windows.size() == 3) break;
+            }
+        }
+        return List.copyOf(windows);
+    }
+
+    private Optional<LocalTime> parseRequestedTime(String raw) {
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        var normalized = raw.toLowerCase(java.util.Locale.ROOT).replace(".", "");
+        var matcher = SPOKEN_TIME.matcher(normalized);
+        if (!matcher.find()) return Optional.empty();
+        try {
+            var hour = Integer.parseInt(matcher.group(1));
+            var minute = matcher.group(2) == null ? 0 : Integer.parseInt(matcher.group(2));
+            var meridiem = matcher.group(3);
+            if (meridiem != null) {
+                if (hour < 1 || hour > 12) return Optional.empty();
+                if ("pm".equalsIgnoreCase(meridiem) && hour < 12) hour += 12;
+                if ("am".equalsIgnoreCase(meridiem) && hour == 12) hour = 0;
+            }
+            return Optional.of(LocalTime.of(hour, minute));
+        } catch (RuntimeException exception) {
+            return Optional.empty();
+        }
     }
 
     private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, com.sauti.calendar.CalendarProvider provider) {

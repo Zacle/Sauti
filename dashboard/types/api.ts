@@ -296,6 +296,7 @@ export type StartTestCallResponse = {
   token: string;
   inputSampleRate: number;
   mode: "openai_realtime" | "hybrid_realtime" | "cascade";
+  availabilityToolEnabled: boolean;
   settings: {
     bargeInSensitivity: number;
     bargeInGraceMs: number;

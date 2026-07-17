@@ -75,6 +75,26 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void requiresTheAvailabilityToolBeforeRespondingToAnExactTime() {
+        var tools = List.of(Map.of("type", "function", "name", "check_availability"));
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(new ArrayList<>()), Map.of("tools", tools)
+        );
+        var webSocket = mock(WebSocket.class);
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                        + "\"transcript\":\"Wednesday at 3 P.M.\"}",
+                true);
+
+        verify(session).requestResponseWithRequiredTool("check_availability");
+        verify(session, never()).requestResponse();
+    }
+
+    @Test
     void convertsSixteenKilohertzPcmToTwentyFourKilohertzPcm() {
         var input = new byte[] {0, 0, 10, 0, 20, 0, 30, 0};
 

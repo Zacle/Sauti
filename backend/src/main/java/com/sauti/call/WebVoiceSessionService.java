@@ -239,16 +239,21 @@ public class WebVoiceSessionService {
         var boundary = -1;
         for (int index = 0; index < buffer.length(); index++) {
             var current = buffer.charAt(index);
-            if (index >= 24 && (current == '.' || current == '?' || current == '!' || current == ',' || current == ';' || current == ':')) {
+            if (SentenceChunker.isSentenceBoundary(buffer, index, false)
+                    || (index >= 72 && (current == ';' || current == ':' || current == '—'))
+                    || (index >= 120 && current == ',')) {
                 boundary = index + 1;
                 break;
             }
         }
-        if (boundary < 0 && buffer.length() >= 72) {
-            boundary = buffer.lastIndexOf(" ", 72);
-            if (boundary < 40) boundary = -1;
+        if (boundary < 0 && buffer.length() >= 170) {
+            boundary = buffer.lastIndexOf(" ", 150);
+            if (boundary < 100) boundary = -1;
         }
         if (boundary < 0) return "";
+        while (boundary < buffer.length() && Character.isWhitespace(buffer.charAt(boundary))) {
+            boundary++;
+        }
         var phrase = buffer.substring(0, boundary).trim();
         buffer.delete(0, boundary);
         return phrase.isBlank() ? "" : phrase + " ";

@@ -37,21 +37,18 @@ class SentenceChunkerTest {
     }
 
     @Test
-    void splitsLongClausesAtNaturalPunctuation() {
+    void keepsACompleteSpokenSentenceTogetherAcrossCommas() {
         var text = "I hear you, and that makes sense because this is a fairly detailed request, "
                 + "so let me check the next useful step for you.";
 
         assertThat(chunker.chunks(text))
-                .containsExactly(
-                        "I hear you, and that makes sense because this is a fairly detailed request, ",
-                        "so let me check the next useful step for you. "
-                );
+                .containsExactly(text + " ");
     }
 
     @Test
     void doesNotSplitKnownAbbreviations() {
-        assertThat(chunker.chunks("Book for Mr. Smith. Dr. Diallo is available. M. Diallo veut un rendez-vous."))
-                .containsExactly("Book for Mr. Smith. ", "Dr. Diallo is available. ", "M. Diallo veut un rendez-vous. ");
+        assertThat(chunker.chunks("Book for Mr. Smith at 3 P.M. Dr. Diallo is available. M. Diallo veut un rendez-vous."))
+                .containsExactly("Book for Mr. Smith at 3 P.M. Dr. Diallo is available. ", "M. Diallo veut un rendez-vous. ");
     }
 
     @Test

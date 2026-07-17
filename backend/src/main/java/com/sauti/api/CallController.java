@@ -106,7 +106,8 @@ public class CallController {
                 webVoiceWebsocketUrl + websocketPath + call.getTwilioCallSid() + "?token=" + token,
                 token,
                 16000,
-                mode
+                mode,
+                openAiRealtimeService.hasTool(call, "check_availability")
         );
     }
 

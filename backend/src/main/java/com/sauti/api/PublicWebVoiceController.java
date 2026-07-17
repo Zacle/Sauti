@@ -125,7 +125,8 @@ public class PublicWebVoiceController {
                 greetingAudio,
                 16000,
                 language,
-                mode
+                mode,
+                openAiRealtimeService.hasTool(call, "check_availability")
         );
     }
 

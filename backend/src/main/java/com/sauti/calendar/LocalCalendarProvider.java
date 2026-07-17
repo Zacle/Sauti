@@ -1,10 +1,10 @@
 package com.sauti.calendar;
 
 import com.sauti.agent.Agent;
+import com.sauti.agent.OperatingHoursSchedule;
 import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -14,21 +14,21 @@ import org.springframework.stereotype.Component;
 public class LocalCalendarProvider implements CalendarProvider {
     @Override
     public List<CalendarAvailabilitySlot> availability(Agent agent, LocalDate date, int durationMinutes, ZoneId timezone) {
-        return List.of(
-                slot(date, LocalTime.of(9, 0), durationMinutes, timezone),
-                slot(date, LocalTime.of(10, 30), durationMinutes, timezone),
-                slot(date, LocalTime.of(14, 0), durationMinutes, timezone),
-                slot(date, LocalTime.of(15, 30), durationMinutes, timezone)
-        );
+        var slots = new ArrayList<CalendarAvailabilitySlot>();
+        for (var range : OperatingHoursSchedule.rangesFor(agent.getOperatingHours(), date, timezone)) {
+            for (var cursor = range.start(); !cursor.plusMinutes(durationMinutes).isAfter(range.end()); cursor = cursor.plusMinutes(30)) {
+                slots.add(new CalendarAvailabilitySlot(
+                        cursor,
+                        cursor.plusMinutes(durationMinutes),
+                        cursor.toLocalTime().toString()
+                ));
+            }
+        }
+        return List.copyOf(slots);
     }
 
     @Override
     public CalendarSyncResult createEvent(Booking booking) {
         return new CalendarSyncResult("local-" + booking.getId());
-    }
-
-    private CalendarAvailabilitySlot slot(LocalDate date, LocalTime time, int durationMinutes, ZoneId timezone) {
-        var start = OffsetDateTime.of(date, time, timezone.getRules().getOffset(date.atTime(time)));
-        return new CalendarAvailabilitySlot(start, start.plusMinutes(durationMinutes), time.toString());
     }
 }

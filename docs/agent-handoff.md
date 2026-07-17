@@ -2909,3 +2909,44 @@ Expected:
   - Not deployed by the coding agent. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 - Follow-up / risk:
   - After the maintainer pushes this change, monitor the next CI-triggered deployment and verify `https://sauti.uk/health`. If startup still fails, the enhanced diagnostics should expose the actual backend exit reason before rollback.
+
+### 2026-07-17 - Complete speech chunks and authoritative calendar availability
+
+- Fixed streamed Cartesia speech segmentation so abbreviations such as `P.M.`, `A.M.`, `e.g.`, and `U.S.` are not mistaken for sentence endings. Short comma fragments are no longer sent as standalone speech, while complete sentences can still begin playback without waiting for the whole response.
+- Raised the cascaded LLM output ceiling from 120 to 220 tokens to prevent the provider from cutting a valid response in the middle of a sentence; prompt rules still keep spoken turns brief.
+- Added a shared multilingual availability-intent detector for English, French, and Arabic dates/times.
+- Made availability checks authoritative across every runtime:
+  - cascaded turns buffer the availability decision before speech and require `check_availability`;
+  - browser OpenAI Realtime and hybrid OpenAI + Cartesia sessions force the specific function through per-response `tool_choice`;
+  - phone OpenAI Realtime + Cartesia sessions apply the same forced tool choice before responding.
+- Exposed whether `check_availability` is configured in browser/public session start responses so non-booking agents are not forced to call a missing tool.
+- Enriched `check_availability` results with operating windows, requested time, exact-match status, nearby slots, and next open business windows. The result now distinguishes closed hours, a fully booked calendar, an unavailable requested time, and an available requested time.
+- Preserved exact spoken times such as `3 P.M.` as `15:00`; the agent is explicitly forbidden from silently changing them to another slot.
+- Made the local calendar preview obey the agent's operating hours instead of returning fixed sample times on closed days.
+- Added operating-hours context and anti-hallucination rules to the conversation prompt so agents do not invent classes, services, treatments, prices, or schedules.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/OperatingHoursSchedule.java`
+  - `backend/src/main/java/com/sauti/api/{CallController,PublicWebVoiceController}.java`
+  - `backend/src/main/java/com/sauti/calendar/LocalCalendarProvider.java`
+  - `backend/src/main/java/com/sauti/call/{CallDtos,OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider,SentenceChunker,WebVoiceDtos,WebVoiceSessionService}.java`
+  - `backend/src/main/java/com/sauti/llm/{AvailabilityIntentDetector,ConversationOrchestrator,LlmToolTurnContext,SpringAiToolCallingLlmProvider}.java`
+  - `backend/src/main/java/com/sauti/tool/{DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - related tests under `backend/src/test/java/com/sauti/{agent,calendar,call,llm,tool}`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/lib/api/public-web-voice.ts`
+  - `dashboard/types/api.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - targeted backend calendar, speech-buffer, orchestrator, and Realtime tests (successful)
+  - `.\gradlew.bat :backend:test` (successful; 153 tests)
+  - `npm.cmd run lint` (successful; zero warnings)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` (successful; 50 routes generated)
+  - `git diff --check` (successful; only expected line-ending notices)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - A live call with real Google Calendar credentials is still required to verify actual provider availability and measure time-to-first-audio; automated tests cover business-hour filtering, exact-time matching, forced tool selection, and runtime routing.
+  - The OpenAI developer-docs MCP server was added to the local Codex configuration during implementation and requires a Codex restart before its tools become available in a future session.

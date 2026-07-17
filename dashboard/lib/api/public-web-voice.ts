@@ -18,6 +18,7 @@ export type WebVoiceSession = {
   inputSampleRate: number;
   language: string;
   mode: "openai_realtime" | "hybrid_realtime" | "realtime" | "turn";
+  availabilityToolEnabled: boolean;
 };
 
 export type WebVoiceAudioTurn = {

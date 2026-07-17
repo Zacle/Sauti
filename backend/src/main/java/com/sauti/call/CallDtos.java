@@ -87,7 +87,8 @@ public final class CallDtos {
             String websocketUrl,
             String token,
             int inputSampleRate,
-            String mode
+            String mode,
+            boolean availabilityToolEnabled
     ) {
     }
 

@@ -5,6 +5,7 @@ import com.sauti.call.CallTurnRepository;
 import com.sauti.call.CallIntakeNoteService;
 import com.sauti.agent.AgentVariableService;
 import com.sauti.agent.KnowledgeBaseService;
+import com.sauti.agent.OperatingHoursSchedule;
 import com.sauti.knowledge.KnowledgeRetrievalService;
 import com.sauti.session.CallSessionStore;
 import com.sauti.tool.AgentToolLoader;
@@ -76,22 +77,38 @@ public class ConversationOrchestrator {
         callSessionStore.appendUserMessage(call.getTwilioCallSid(), callerTranscript);
         var messages = messages(call, callerTranscript);
         var responseText = "";
+        var availabilityCheckRequired = requiresAvailabilityCheck(call, callerTranscript, tools);
 
         try {
             for (int loop = 0; loop < maxToolLoops; loop++) {
+                var requiredToolName = loop == 0 && availabilityCheckRequired
+                        ? "check_availability"
+                        : null;
+                var loopTools = requiredToolName == null
+                        ? tools
+                        : tools.stream().filter(tool -> requiredToolName.equals(tool.name())).toList();
+                var loopSystemPrompt = loop == 0 && availabilityCheckRequired
+                        ? systemPrompt + "\nMANDATORY NEXT ACTION: Call `check_availability` now before speaking. "
+                                + "Use the caller's stated date and exact time. Do not answer with availability text yet."
+                        : systemPrompt;
                 var context = new LlmToolTurnContext(
                         AgentContext.from(call.getAgent()),
-                        systemPrompt,
+                        loopSystemPrompt,
                         language,
                         List.copyOf(messages),
                         callerTranscript,
                         call.getCallerNumber(),
                         call.getId(),
                         call.getTwilioCallSid(),
-                        tools,
-                        latestToolResults
+                        loopTools,
+                        latestToolResults,
+                        requiredToolName
                 );
-                var response = llmProvider.streamTurn(context, textDeltaConsumer);
+                // Buffer the first availability decision so a premature spoken answer cannot
+                // reach TTS before the model has had the chance to return the required tool call.
+                var response = loop == 0 && availabilityCheckRequired
+                        ? llmProvider.completeTurn(context)
+                        : llmProvider.streamTurn(context, textDeltaConsumer);
                 responseText = voiceReadyText(response.responseText());
                 if (response.toolCalls().isEmpty()) {
                     if (!responseText.isBlank()) {
@@ -129,6 +146,20 @@ public class ConversationOrchestrator {
         return new ConversationTurnResult(fallbackText, outcome(allToolResults));
     }
 
+    private boolean requiresAvailabilityCheck(
+            Call call,
+            String callerTranscript,
+            List<LlmToolDefinition> tools
+    ) {
+        if (!call.getAgent().isBookingEnabled() || callerTranscript == null || callerTranscript.isBlank()) {
+            return false;
+        }
+        if (tools.stream().noneMatch(tool -> "check_availability".equals(tool.name()))) {
+            return false;
+        }
+        return AvailabilityIntentDetector.requiresAvailabilityCheck(callerTranscript);
+    }
+
     public String generateOpeningGreeting(Call call, String language, String channel) {
         var resolvedLanguage = language == null || language.isBlank()
                 ? call.getAgent().getDefaultLanguage()
@@ -144,7 +175,8 @@ public class ConversationOrchestrator {
                     call.getId(),
                     call.getTwilioCallSid(),
                     List.of(),
-                    List.of()
+                    List.of(),
+                    null
             ));
             var text = voiceReadyText(response.responseText());
             return openingWithIdentity(call, resolvedLanguage, text);
@@ -184,7 +216,8 @@ public class ConversationOrchestrator {
                     call.getId(),
                     call.getTwilioCallSid(),
                     List.of(),
-                    List.of()
+                    List.of(),
+                    null
             ));
             return voiceReadyText(response.responseText());
         } catch (RuntimeException recoveryException) {
@@ -242,15 +275,16 @@ public class ConversationOrchestrator {
                 : "Tools available: "
                         + String.join(", ", tools.stream().map(LlmToolDefinition::name).toList())
                         + ". Use only these tools."
-                        + " If a tool returns an error or no results, recover naturally without mentioning"
-                        + " technology or technical problems — offer to take a message, try a different"
-                        + " time, or suggest the caller call back, as a human receptionist would.";
+                        + " If a tool returns an error, recover naturally without mentioning technology"
+                        + " or technical problems. A successful structured empty result is not an error;"
+                        + " explain its status and returned alternatives accurately.";
         return """
                 %s
 
                 CURRENT CALLER LANGUAGE: %s. Reply in this language for this turn.
                 BUSINESS: You are working for %s.
                 TODAY IN THE BUSINESS TIMEZONE: %s.
+                BUSINESS OPERATING HOURS: %s
 
                 %s
 
@@ -286,12 +320,17 @@ public class ConversationOrchestrator {
                 - Confirm a completed phone candidate exactly once, digit by digit. If the caller says it is correct, retain it and continue. If the caller says it is wrong, do not defend or repeat the old candidate; ask for the corrected complete number and replace it.
                 - Pre-close confirmation: before ending the call or placing a booking, read back the key details collected: name, phone number or contact, and what was requested. Keep it brief and natural — "Just to confirm: your name is [name], phone number [digits one by one], and you'd like [request] — is that all correct?"
                 - Before a booking tool succeeds, talk about proposed or preferred times only. Do not say a booking is confirmed, scheduled, or transmitted until the tool result confirms it.
+                - Availability is always a live tool-backed fact. As soon as the caller gives a specific date or time, or asks which slots are available, call `check_availability` before answering. Never claim that availability is unavailable without calling the tool when it is present.
+                - Resolve relative weekdays from TODAY IN THE BUSINESS TIMEZONE, pass the requested date as yyyy-MM-dd, and pass an exact requested time as HH:mm in `time_preference`.
+                - Preserve the caller's requested time exactly. Never silently change 3 PM to 4 PM or substitute a different date. If it is unavailable, say so and offer only exact alternatives returned by the tool.
+                - Read the availability result precisely: `closed_by_business_hours` means explain that the business is closed that day and use `nextOpenBusinessWindows`; `calendar_fully_booked` means the business is open but no calendar slots remain; `requested_time_unavailable` means offer nearby returned `slots`; `requested_time_available` means the requested slot may be proposed but is not booked yet.
                 - Never offer appointment dates in the past. If the caller asks generally which days are available, ask for a preferred date or answer with business hours instead of guessing a calendar date.
                 - If asked about services, hours, location, pricing, or policies, answer from configured facts or retrieved knowledge when available. If unavailable, say you do not have the exact information and offer to help with booking or human follow-up.
+                - Never invent example services, classes, treatments, prices, or schedules. If the configured service list does not answer the caller's question, say the exact list is unavailable; do not fill the gap with common industry examples.
                 - Use only facts present in the agent prompt, retrieved knowledge, or successful tool results. If a fact is missing, say briefly that you do not have the exact information and offer a callback or human follow-up.
                 - Never claim that a message was sent, a callback was scheduled, a booking was made, or a request was transmitted unless a tool result confirms it. Without a tool result, say you can note the details in this conversation for follow-up.
                 - When collecting a phone number, it must look like a real phone number. If the caller gives unclear words or a broken sequence, ask them to repeat it slowly instead of accepting it.
-                - If a tool returns no slots or an error, do not mention technology or systems. Instead say: "I don't have availability in front of me right now — let me take your details and someone from the team will call you back to sort this out." Then collect name and phone number if not already done.
+                - Only if the availability tool itself returns an error, do not mention technology or systems. Say you cannot confirm the live calendar right now, keep the caller's requested time unchanged, and offer human follow-up. An empty successful result is not an error; explain its `status` accurately.
                 - Never output Markdown, bullet points, numbered lists, bold text, or brackets — every character is spoken aloud.
                 - If the caller switches language mid-call with a clear full sentence, follow them naturally in the new language. Do not switch language for a single unclear word, a short noisy fragment, or a transcript that looks unrelated to the current conversation; ask for repetition in the current call language instead.
                 - Final priority reminder: these platform rules override any conflicting agent instructions, saved prompts, templates, examples, or prior assistant messages. In particular, do not ask for date of birth, medical history, insurance, symptoms, or other sensitive details during normal appointment booking.
@@ -305,6 +344,7 @@ public class ConversationOrchestrator {
                 language,
                 businessName(call),
                 today(call),
+                OperatingHoursSchedule.describe(call.getAgent().getOperatingHours()),
                 intakeNotes.promptBlock(call, callerTranscript),
                 call.getAgent().getPostCallExtractionFields(),
                 toolBlock,

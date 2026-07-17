@@ -8,12 +8,12 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class SentenceChunker {
-    private static final int MIN_CLAUSE_LENGTH = 34;
-    private static final int TARGET_CHUNK_LENGTH = 110;
-    private static final int EMERGENCY_CHUNK_LENGTH = 160;
+    private static final int MIN_CLAUSE_LENGTH = 72;
+    private static final int TARGET_CHUNK_LENGTH = 140;
     private static final Set<String> ABBREVIATIONS = Set.of(
             "mr", "mrs", "ms", "dr", "prof", "sr", "jr",
-            "m", "mme", "mlle", "no", "tel", "tél", "st"
+            "m", "mme", "mlle", "no", "tel", "tél", "st", "am", "pm",
+            "eg", "ie", "us", "uk", "inc", "ltd"
     );
 
     public List<String> chunks(String text) {
@@ -25,10 +25,9 @@ public class SentenceChunker {
         for (int i = 0; i < text.length(); i++) {
             var current = text.charAt(i);
             buffer.append(current);
-            if (isSentenceBoundary(text, i)
+            if (isSentenceBoundary(text, i, true)
                     || isNaturalClauseBoundary(current, buffer.length())
-                    || isSafeLengthBoundary(current, buffer.length())
-                    || buffer.length() >= EMERGENCY_CHUNK_LENGTH) {
+                    || isSafeLengthBoundary(current, buffer.length())) {
                 addChunk(chunks, buffer);
             }
         }
@@ -36,7 +35,7 @@ public class SentenceChunker {
         return chunks;
     }
 
-    private boolean isSentenceBoundary(String text, int index) {
+    static boolean isSentenceBoundary(CharSequence text, int index, boolean complete) {
         var current = text.charAt(index);
         if (current == '\n') {
             return true;
@@ -44,30 +43,35 @@ public class SentenceChunker {
         if (current != '.' && current != '?' && current != '!' && current != '…') {
             return false;
         }
-        if (current == '.' && index < text.length() - 1 && isAbbreviation(text, index)) {
+        if (current == '.' && isAbbreviation(text, index)) {
             return false;
         }
-        return index == text.length() - 1 || Character.isWhitespace(text.charAt(index + 1));
+        if (index == text.length() - 1) {
+            return complete;
+        }
+        return Character.isWhitespace(text.charAt(index + 1));
     }
 
     private boolean isNaturalClauseBoundary(char current, int length) {
-        return length >= MIN_CLAUSE_LENGTH
-                && (current == ',' || current == ';' || current == ':' || current == '—');
+        return (length >= MIN_CLAUSE_LENGTH && (current == ';' || current == ':' || current == '—'))
+                || (length >= TARGET_CHUNK_LENGTH && current == ',');
     }
 
     private boolean isSafeLengthBoundary(char current, int length) {
         return length >= TARGET_CHUNK_LENGTH && Character.isWhitespace(current);
     }
 
-    private boolean isAbbreviation(String text, int periodIndex) {
+    static boolean isAbbreviation(CharSequence text, int periodIndex) {
         var start = periodIndex - 1;
-        while (start >= 0 && Character.isLetter(text.charAt(start))) {
+        while (start >= 0 && (Character.isLetter(text.charAt(start)) || text.charAt(start) == '.')) {
             start--;
         }
         if (start == periodIndex - 1) {
             return false;
         }
-        var token = text.substring(start + 1, periodIndex).toLowerCase(Locale.ROOT);
+        var token = text.subSequence(start + 1, periodIndex).toString()
+                .replace(".", "")
+                .toLowerCase(Locale.ROOT);
         return ABBREVIATIONS.contains(token);
     }
 

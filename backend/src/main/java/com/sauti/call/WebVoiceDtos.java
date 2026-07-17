@@ -34,7 +34,8 @@ public final class WebVoiceDtos {
             String greetingAudioBase64,
             int inputSampleRate,
             String language,
-            String mode
+            String mode,
+            boolean availabilityToolEnabled
     ) {
     }
 

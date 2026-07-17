@@ -2,6 +2,7 @@ package com.sauti.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,11 +13,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import reactor.core.publisher.Flux;
 
 class SpringAiToolCallingLlmProviderFailoverTest {
@@ -68,6 +71,34 @@ class SpringAiToolCallingLlmProviderFailoverTest {
         assertThat(deltas).containsExactly("Gemini stream");
     }
 
+    @Test
+    void requiresTheOnlyConfiguredToolForMandatoryOpenAiDecisions() {
+        var openAi = mock(ChatModel.class);
+        var gemini = mock(ChatModel.class);
+        var emptyResponse = response("");
+        when(openAi.call(any(Prompt.class))).thenReturn(emptyResponse);
+        var provider = provider(openAi, gemini);
+        var context = new LlmToolTurnContext(
+                new AgentContext(UUID.randomUUID(), "Sarah", true, "UTC", null, List.of(), "standard"),
+                "Call check_availability before speaking.",
+                "en",
+                List.of(new ConversationMessage("user", "Wednesday at 3 P.M.")),
+                "Wednesday at 3 P.M.",
+                "+15551234567",
+                UUID.randomUUID(),
+                "test-call",
+                List.of(new LlmToolDefinition("check_availability", "Check live availability", java.util.Map.of())),
+                List.of(),
+                "check_availability"
+        );
+
+        provider.completeTurn(context);
+
+        var prompt = ArgumentCaptor.forClass(Prompt.class);
+        verify(openAi, atLeastOnce()).call(prompt.capture());
+        assertThat(((OpenAiChatOptions) prompt.getValue().getOptions()).getToolChoice()).isEqualTo("required");
+    }
+
     private SpringAiToolCallingLlmProvider provider(ChatModel openAi, ChatModel gemini) {
         return new SpringAiToolCallingLlmProvider(
                 new ObjectMapper(),
@@ -89,7 +120,8 @@ class SpringAiToolCallingLlmProviderFailoverTest {
                 UUID.randomUUID(),
                 "test-call",
                 List.of(),
-                List.of()
+                List.of(),
+                null
         );
     }
 

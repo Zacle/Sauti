@@ -15,10 +15,10 @@ public class DefaultToolSeeder {
     }
 
     public void seedDefaults(Agent agent) {
-        seed(agent, "check_availability", "Check available appointment slots before confirming a time.",
+        seed(agent, "check_availability", "Always check live calendar availability and business opening hours after the caller gives a date or time, before proposing or confirming a slot.",
                 schema(Map.of(
                         "date", property("string", "Preferred date in yyyy-MM-dd format", "date"),
-                        "time_preference", property("string", "Preferred time, such as morning or 14:00", ""),
+                        "time_preference", property("string", "Exact preferred time in HH:mm when provided, otherwise a period such as morning", ""),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("date")), "sauti_calendar", "noop_calendar", 10);
         seed(agent, "book_slot", "Book an appointment in the configured calendar.",

@@ -66,4 +66,14 @@ class OperatingHoursScheduleTest {
         });
         assertThat(tuesday).isEmpty();
     }
+
+    @Test
+    void describesTheConfiguredWeekForConversationContext() {
+        assertThat(OperatingHoursSchedule.describe(WEEKLY))
+                .contains("Monday 09:00-17:00")
+                .contains("Tuesday closed")
+                .contains("Friday 20:00-02:00");
+        assertThat(OperatingHoursSchedule.describe("weekdays"))
+                .isEqualTo("Monday-Friday 09:00-17:00; Saturday-Sunday closed.");
+    }
 }
