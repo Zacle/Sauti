@@ -36,6 +36,69 @@ if [[ -f .deployed-image-tag ]]; then
   previous_tag="$(<.deployed-image-tag)"
 fi
 
+docker_root_dir() {
+  docker info --format '{{.DockerRootDir}}' 2>/dev/null || printf '%s\n' /var/lib/docker
+}
+
+docker_storage_path() {
+  local root
+  root="$(docker_root_dir)"
+  if df -Pk "${root}" >/dev/null 2>&1; then
+    printf '%s\n' "${root}"
+  else
+    # Some non-root deploy users can access Docker through its socket but
+    # cannot stat DockerRootDir directly. It normally resides on `/`.
+    printf '%s\n' /
+  fi
+}
+
+available_kib() {
+  df -Pk "$(docker_storage_path)" | awk 'NR == 2 { print $4 }'
+}
+
+prune_old_sauti_images() {
+  local keep_tag_1="${1:-}"
+  local keep_tag_2="${2:-}"
+  local repository tag
+
+  while read -r repository tag; do
+    if [[ ( "${repository}" == "sauti-backend" || "${repository}" == "sauti-dashboard" ) \
+      && "${tag}" != "${keep_tag_1}" \
+      && "${tag}" != "${keep_tag_2}" \
+      && "${tag}" != "<none>" ]]; then
+      docker image rm "${repository}:${tag}" || true
+    fi
+  done < <(docker image ls --format '{{.Repository}} {{.Tag}}')
+}
+
+prepare_build_storage() {
+  local minimum_kib=$((4 * 1024 * 1024))
+  local available
+
+  echo "Docker storage before cleanup:"
+  df -h "$(docker_storage_path)"
+
+  # Failed builds never reach the post-deploy cleanup. Reclaim stale caches and
+  # old commit-tagged Sauti images before asking Gradle and Next.js to build.
+  docker builder prune -f --filter 'until=168h'
+  docker image prune -f --filter 'until=168h'
+  prune_old_sauti_images "${previous_tag}"
+
+  available="$(available_kib)"
+  if (( available < minimum_kib )); then
+    echo "Less than 4 GiB is available; removing all unused build cache."
+    docker builder prune -af
+    docker image prune -f
+    available="$(available_kib)"
+  fi
+
+  echo "Docker storage available for build: $((available / 1024)) MiB"
+  if (( available < minimum_kib )); then
+    echo "Insufficient Docker storage: at least 4 GiB is required for a reliable production build."
+    exit 1
+  fi
+}
+
 deployment_diagnostics() {
   echo "Deployment diagnostics (no environment values are printed):"
   "${compose[@]}" ps -a || true
@@ -66,6 +129,7 @@ rollback() {
     --adapter caddyfile || true
 }
 
+prepare_build_storage
 "${compose[@]}" build --pull backend dashboard
 "${compose[@]}" pull caddy
 if ! "${compose[@]}" up -d --remove-orphans; then
@@ -112,5 +176,6 @@ if [[ "${healthy}" != "true" ]]; then
 fi
 
 printf '%s\n' "${IMAGE_TAG}" > .deployed-image-tag
+prune_old_sauti_images "${IMAGE_TAG}" "${previous_tag}"
 docker image prune -f --filter "until=168h"
 echo "Sauti ${IMAGE_TAG} is healthy at https://${domain}"

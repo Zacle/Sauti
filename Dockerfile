@@ -1,10 +1,16 @@
+# syntax=docker/dockerfile:1
+
 FROM gradle:8.10.2-jdk17 AS backend-build
 WORKDIR /workspace
-COPY settings.gradle gradlew.bat ./
-COPY gradle ./gradle
-COPY backend ./backend
-COPY docs/agent-templates.md ./docs/agent-templates.md
-RUN gradle :backend:bootJar --no-daemon
+COPY --chown=gradle:gradle settings.gradle gradlew.bat ./
+COPY --chown=gradle:gradle gradle ./gradle
+COPY --chown=gradle:gradle backend ./backend
+COPY --chown=gradle:gradle docs/agent-templates.md ./docs/agent-templates.md
+RUN --mount=type=cache,id=sauti-gradle-home,target=/home/gradle/.gradle,sharing=locked,uid=1000,gid=1000 \
+    gradle :backend:bootJar \
+      --no-daemon \
+      --project-cache-dir /tmp/sauti-gradle-project-cache \
+    && rm -rf /tmp/sauti-gradle-project-cache
 
 FROM eclipse-temurin:17-jre
 WORKDIR /app

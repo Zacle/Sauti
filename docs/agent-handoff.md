@@ -221,6 +221,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-17 - Production Docker build storage hardening
+
+- Fixed the infrastructure failure where Gradle could not write its binary store or `last-build.bin` during the backend Docker build. The application `bootJar` itself remains healthy; the failure occurred in exhausted or unsafe Docker/Gradle build storage.
+- The backend Docker build now uses a BuildKit cache mount with locked sharing for Gradle's user home, writes the per-build project cache to disposable `/tmp` storage, and copies sources with explicit `gradle` ownership. This prevents concurrent cache writers and avoids persisting fragile project state under `/workspace/.gradle`.
+- Production deployment now reclaims stale BuildKit cache, dangling images, and superseded commit-tagged Sauti images before building. It preserves the currently deployed image for rollback, performs a more aggressive unused-build-cache cleanup only when storage is low, and fails early with a clear message when less than 4 GiB remains.
+- After a successful release, cleanup retains both the newly deployed tag and the immediately previous rollback tag.
+- Files touched:
+  - `Dockerfile`
+  - `deploy/deploy.sh`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `bash -n deploy/deploy.sh` - passed.
+  - `.\gradlew.bat :backend:bootJar --no-daemon` - passed.
+  - `git diff --check` - passed.
+  - The Dockerfile could not be executed locally because Docker Desktop was not running; CI/CD must exercise the BuildKit cache mount on the production builder.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: the next CI/CD run will intentionally discard old unused build state and may take longer if dependencies must be downloaded again. If the preflight still reports less than 4 GiB, the VPS filesystem itself must be expanded or non-Docker data must be reviewed by the maintainer rather than weakening the guard.
+
 ### 2026-07-17 - Spring test mock annotation migration
 
 - Replaced Spring Boot's deprecated `@MockBean` usages with Spring Framework's supported `@MockitoBean` test-context override annotation. This removes the Spring Boot 3.4+ removal warning without changing the mocked service behavior.
