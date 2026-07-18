@@ -5536,32 +5536,56 @@
 .booking-custom-field > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid rgba(91, 151, 199, 0.22);
+  border-radius: 13px;
+  background: rgba(5, 22, 39, 0.78);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.booking-custom-field > div:focus-within {
+  border-color: rgba(39, 222, 209, 0.58);
+  background: #081f35;
+  box-shadow: 0 0 0 3px rgba(39, 222, 209, 0.08);
 }
 
 .agent-studio-form .booking-custom-field input {
   min-height: 40px;
-  border-radius: 10px;
+  padding: 0 12px;
+  border: 0 !important;
+  border-radius: 9px;
+  color: #e2edf5;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 0.76rem;
 }
+
+.agent-studio-form .booking-custom-field input::placeholder { color: #607a90; }
 
 .booking-custom-field button {
   display: inline-flex;
   min-height: 40px;
   align-items: center;
   gap: 6px;
-  padding: 0 13px;
-  border: 1px solid rgba(36, 222, 210, 0.48);
-  border-radius: 10px;
-  color: #31ded2;
-  background: rgba(7, 102, 105, 0.18);
+  justify-content: center;
+  padding: 0 15px;
+  border: 1px solid rgba(52, 228, 214, 0.5);
+  border-radius: 9px;
+  color: #042c33;
+  background: linear-gradient(135deg, #2bd9cf, #56e5cf);
+  box-shadow: 0 6px 18px rgba(29, 207, 194, 0.12);
   font: inherit;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 750;
   cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
 }
 
-.booking-custom-field button:disabled { cursor: not-allowed; opacity: 0.4; }
-.booking-custom-field > small { color: #6d859a; font-size: 0.65rem; }
-.booking-custom-field code { color: #35dcd1; }
+.booking-custom-field button:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 9px 22px rgba(29, 207, 194, 0.18); }
+.booking-custom-field button:disabled { border-color: rgba(91, 151, 199, 0.16); color: #5f778c; background: rgba(13, 42, 64, 0.72); box-shadow: none; cursor: not-allowed; }
+.booking-custom-field > small { width: max-content; padding: 4px 7px; border: 1px solid rgba(45, 220, 207, 0.16); border-radius: 7px; color: #71899e; background: rgba(6, 32, 50, 0.6); font-size: 0.62rem; }
+.booking-custom-field code { color: #35dcd1; font-family: inherit; font-weight: 700; }
 
 .booking-notification-settings {
   padding-top: 2px;

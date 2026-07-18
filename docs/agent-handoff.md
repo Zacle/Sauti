@@ -3388,3 +3388,19 @@ Expected:
   - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-18 - Refine custom booking fields and Analytics agent scope
+
+- Reworked the Main settings custom booking-field entry into one cohesive input/action surface with a shared focus ring, clearer placeholder contrast, an active teal Add field action, a restrained disabled state, and a compact normalized-key preview.
+- Rebuilt the Analytics agent selector as an integrated scope control. Its label, selected agent, included-agent context, icon, and dropdown affordance now read as one component instead of a detached label beside a generic field.
+- Added an optional trigger styling hook to the shared Radix-based `DarkSelect`, allowing feature-specific composition without weakening the shared dropdown behavior or duplicating select logic.
+- Files touched:
+  - `dashboard/components/DarkSelect/DarkSelect.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `dashboard/features/analytics/presentation/AnalyticsPage.tsx`
+  - `dashboard/features/analytics/presentation/AnalyticsPage.module.css`
+- Verification:
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

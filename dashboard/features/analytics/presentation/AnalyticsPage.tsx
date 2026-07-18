@@ -95,8 +95,6 @@ export function AnalyticsPage() {
     };
   }, [range.from, range.to, agentId, refreshKey]);
 
-  const selectedAgentName = agentId ? agents.find((agent) => agent.id === agentId)?.name ?? "Selected agent" : "All agents";
-
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -120,14 +118,11 @@ export function AnalyticsPage() {
           ))}
         </div>
         <div className={styles.selectField}>
-          <span>Agent</span>
-          <DarkSelect ariaLabel="Filter analytics by agent" icon={<UsersRound size={16} />} value={agentId || "all"}
+          <span className={styles.selectLabel}>Agent scope</span>
+          <DarkSelect ariaLabel="Filter analytics by agent" icon={<UsersRound size={18} />} triggerClassName={styles.agentSelectTrigger} value={agentId || "all"}
             onValueChange={(value) => setAgentId(value === "all" ? "" : value)}
             options={[{ value: "all", label: "All agents" }, ...agents.map((agent) => ({ value: agent.id, label: agent.name }))]} />
-        </div>
-        <div className={styles.filterMeta}>
-          <strong>{range.label}</strong>
-          <small>{selectedAgentName}</small>
+          <small className={styles.selectHint}>{agentId ? "Focused agent view" : `${agents.length || "All"} agents included`}</small>
         </div>
       </section>
 

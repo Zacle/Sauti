@@ -7,16 +7,17 @@ import styles from "./DarkSelect.module.css";
 
 export type DarkSelectOption = { value: string; label: string };
 
-export function DarkSelect({ ariaLabel, icon, options, value, onValueChange }: {
+export function DarkSelect({ ariaLabel, icon, options, triggerClassName, value, onValueChange }: {
   ariaLabel: string;
   icon?: ReactNode;
   options: DarkSelectOption[];
+  triggerClassName?: string;
   value: string;
   onValueChange: (value: string) => void;
 }) {
   return (
     <Select.Root value={value} onValueChange={onValueChange}>
-      <Select.Trigger className={styles.trigger} aria-label={ariaLabel}>
+      <Select.Trigger className={`${styles.trigger} ${triggerClassName ?? ""}`.trim()} aria-label={ariaLabel}>
         {icon && <span className={styles.icon}>{icon}</span>}
         <Select.Value className={styles.value} />
         <Select.Icon className={styles.chevron}><ChevronDown size={16} /></Select.Icon>
