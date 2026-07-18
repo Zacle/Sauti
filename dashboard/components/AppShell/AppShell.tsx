@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   BarChart3,
-  Bell,
   Bot,
   CalendarDays,
   ChevronDown,
@@ -25,6 +24,7 @@ import {
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
+import { NotificationMenu } from "@/features/notifications/presentation/NotificationMenu";
 
 const navigation = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -82,7 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button className="mobile-menu" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu size={20} /></button>
           <label className="console-search"><Search size={17} /><input aria-label="Search workspace" placeholder="Search calls, agents, bookings..." /><kbd>⌘ K</kbd></label>
           <div className="console-top-actions">
-            <button className="top-icon-button" aria-label="Notifications"><Bell size={18} /></button>
+            <NotificationMenu />
             <Link className="test-agent-button" href="/agents/new"><Sparkles size={16} /> Test agent</Link>
             <span className="profile-avatar">{tenant?.businessName?.slice(0, 1).toUpperCase() ?? "S"}</span>
           </div>

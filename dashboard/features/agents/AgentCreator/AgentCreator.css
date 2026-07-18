@@ -5567,12 +5567,135 @@
   padding-top: 2px;
 }
 
+.main-settings-page .add-language-control {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 5px;
+  border: 1px solid rgba(91, 151, 199, 0.2);
+  border-radius: 13px;
+  background: rgba(5, 22, 39, 0.78);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.main-settings-page .add-language-control:focus-within {
+  border-color: rgba(39, 222, 209, 0.54);
+  background: #081f35;
+  box-shadow: 0 0 0 3px rgba(39, 222, 209, 0.08);
+}
+
+.main-settings-page .add-language-control input {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0 !important;
+  border-radius: 9px;
+  color: #e2edf5;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 0.76rem;
+}
+
+.main-settings-page .add-language-control button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  padding: 0 15px;
+  border: 1px solid rgba(42, 226, 212, 0.62);
+  border-radius: 9px;
+  color: #022623;
+  background: linear-gradient(135deg, #22d7ca, #4de3d1);
+  box-shadow: 0 8px 22px rgba(27, 205, 194, 0.16);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.main-settings-page .add-language-control button:hover:not(:disabled) {
+  color: #011c1b;
+  background: linear-gradient(135deg, #38e3d5, #68e9d9);
+  transform: translateY(-1px);
+}
+
+.main-settings-page .add-language-control button:disabled {
+  border-color: rgba(91, 151, 199, 0.13);
+  color: #587287;
+  background: rgba(17, 51, 72, 0.44);
+  box-shadow: none;
+  opacity: 1;
+}
+
+.booking-notification-email {
+  display: grid;
+  gap: 7px;
+  padding-top: 3px;
+}
+
+.booking-notification-email > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #9cb0c0;
+  font-size: 0.71rem;
+  font-weight: 570;
+}
+
+.booking-notification-email > span small {
+  padding: 3px 7px;
+  border: 1px solid rgba(91, 151, 199, 0.16);
+  border-radius: 999px;
+  color: #69849a;
+  font-size: 0.55rem;
+  font-weight: 570;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.agent-studio-form .booking-notification-email input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid rgba(91, 151, 199, 0.23);
+  border-radius: 11px;
+  outline: none;
+  color: #e5eff6;
+  background: linear-gradient(180deg, rgba(9, 32, 53, 0.96), rgba(6, 24, 41, 0.96));
+  font: inherit;
+  font-size: 0.76rem;
+  caret-color: #2ce0d4;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.agent-studio-form .booking-notification-email input::placeholder {
+  color: #536f85;
+}
+
+.agent-studio-form .booking-notification-email input:hover {
+  border-color: rgba(39, 222, 209, 0.4);
+  background: #092239;
+}
+
+.agent-studio-form .booking-notification-email input:focus {
+  border-color: #28ddd1;
+  background: #0a263f;
+  box-shadow: 0 0 0 3px rgba(39, 222, 209, 0.09);
+}
+
+.booking-notification-email > small {
+  color: #668197;
+  font-size: 0.63rem;
+}
+
 @media (max-width: 760px) {
   .main-settings-page .main-settings-card { padding: 16px; }
   .booking-field-picker > header { align-items: stretch; flex-direction: column; }
   .booking-field-picker > header > span { align-self: flex-start; }
   .booking-custom-field > div { grid-template-columns: 1fr; }
   .booking-custom-field button { justify-content: center; }
+  .main-settings-page .add-language-control { grid-template-columns: 1fr; }
+  .main-settings-page .add-language-control button { width: 100%; }
 }
 .agent-studio .web-voice-settings{overflow:hidden;padding:22px 0 0;border:1px solid rgba(83,145,193,.2);border-radius:18px;background:linear-gradient(145deg,rgba(8,29,49,.78),rgba(5,20,35,.74))}
 .agent-studio .web-voice-settings>h3,.agent-studio .web-voice-settings>p{padding-inline:22px}

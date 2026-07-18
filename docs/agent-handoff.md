@@ -3362,3 +3362,29 @@ Expected:
   - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-18 - Add durable booking notifications and polish Main settings inputs
+
+- Replaced the decorative header bell with a tenant-scoped notification inbox. Dashboard-enabled booking alerts are persisted after the booking transaction commits, delivered live over the existing dashboard WebSocket, and refreshed by a 30-second polling fallback.
+- Added an unread badge, readable confirmed/follow-up booking cards, appointment and booking-reference context, mark-as-read on open, mark-all-read, empty/loading/error states, responsive positioning, and a direct Bookings link. Read state is stored server-side and survives refreshes and devices.
+- Added authenticated notification list/read/read-all endpoints, tenant-scoped repository queries, a Flyway `V34` notification table and indexes, and a focused booking-notification service test. Email notification delivery remains independently controlled by the agent's Email channel.
+- Restyled the Main settings language-code field as a unified focusable control with a proper teal action button and responsive stacked state. Restyled the booking notification email with a rounded dark input, clear optional-override badge, focus/hover states, and explicit workspace-owner fallback copy.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/WorkspaceNotificationController.java`
+  - `backend/src/main/java/com/sauti/calendar/{BookingNotificationService,BookingService}.java`
+  - `backend/src/main/java/com/sauti/notification/*`
+  - `backend/src/main/resources/db/migration/V34__workspace_notifications.sql`
+  - `backend/src/test/java/com/sauti/notification/WorkspaceNotificationServiceTest.java`
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/features/agents/AgentCreator/{AgentCreator.tsx,AgentCreator.css}`
+  - `dashboard/features/notifications/presentation/{NotificationMenu.tsx,NotificationMenu.module.css}`
+  - `dashboard/lib/api/notifications.ts`
+  - `dashboard/types/api.ts`
+- Verification:
+  - `.\gradlew.bat :backend:test` (successful)
+  - focused `WorkspaceNotificationServiceTest` after its final cleanup (successful)
+  - `.\gradlew.bat :backend:compileJava` after the final listener resilience change (successful)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

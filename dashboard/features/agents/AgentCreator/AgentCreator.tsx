@@ -1702,7 +1702,7 @@ function MainSettings(props: {
               setLanguageCodeToAdd("");
             }}
             type="button"
-          >Add language</button>
+          ><Plus size={15} /> Add language</button>
         </div>
         {props.supportedLanguages.filter((code) => !LANGUAGE_OPTIONS.some(([known]) => known === code)).length > 0 && (
           <div className="studio-language-options custom-language-options">
@@ -1745,15 +1745,16 @@ function MainSettings(props: {
               </div>
             </div>
             {props.bookingNotificationChannels.includes("email") && (
-              <label>
-                Notification email
+              <label className="booking-notification-email">
+                <span>Notification email <small>Optional override</small></span>
                 <input
-                  inputMode="email"
-                  onChange={(event) => props.onBookingNotificationRecipient(event.target.value)}
-                  placeholder="Defaults to the workspace owner email"
-                  type="email"
-                  value={props.bookingNotificationRecipient}
-                />
+                    inputMode="email"
+                    onChange={(event) => props.onBookingNotificationRecipient(event.target.value)}
+                    placeholder="owner@business.com"
+                    type="email"
+                    value={props.bookingNotificationRecipient}
+                  />
+                <small>Leave blank to notify the workspace owner.</small>
               </label>
             )}
           </div>

@@ -5,7 +5,6 @@ import com.sauti.agent.AgentRepository;
 import com.sauti.calendar.BookingDtos.CreateBookingRequest;
 import com.sauti.call.Call;
 import com.sauti.call.CallRepository;
-import com.sauti.dashboard.DashboardEventPublisher;
 import com.sauti.outbound.OutboundCallService;
 import com.sauti.tool.CalendarProviderFactory;
 import com.sauti.webhook.WebhookDeliveryService;
@@ -21,7 +20,6 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final AgentRepository agentRepository;
     private final CallRepository callRepository;
-    private final DashboardEventPublisher dashboardEventPublisher;
     private final WebhookDeliveryService webhookDeliveryService;
     private final OutboundCallService outboundCallService;
     private final CalendarProviderFactory calendarProviderFactory;
@@ -32,7 +30,6 @@ public class BookingService {
             BookingRepository bookingRepository,
             AgentRepository agentRepository,
             CallRepository callRepository,
-            DashboardEventPublisher dashboardEventPublisher,
             WebhookDeliveryService webhookDeliveryService,
             OutboundCallService outboundCallService,
             CalendarProviderFactory calendarProviderFactory,
@@ -42,7 +39,6 @@ public class BookingService {
         this.bookingRepository = bookingRepository;
         this.agentRepository = agentRepository;
         this.callRepository = callRepository;
-        this.dashboardEventPublisher = dashboardEventPublisher;
         this.webhookDeliveryService = webhookDeliveryService;
         this.outboundCallService = outboundCallService;
         this.calendarProviderFactory = calendarProviderFactory;
@@ -117,7 +113,6 @@ public class BookingService {
         } catch (RuntimeException exception) {
             booking.markSyncFailed(exception.getMessage());
         }
-        dashboardEventPublisher.bookingCreated(booking);
         webhookDeliveryService.bookingCreated(booking);
         outboundCallService.scheduleReminder(booking);
         eventPublisher.publishEvent(new BookingNotificationService.BookingCreatedEvent(booking.getId()));

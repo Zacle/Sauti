@@ -15,6 +15,24 @@ export type AuthSession = {
   tenant: Tenant;
 };
 
+export type WorkspaceNotification = {
+  id: string;
+  type: "booking.confirmed" | "booking.follow_up_required" | string;
+  title: string;
+  message: string;
+  href: string;
+  resourceType: string;
+  resourceId: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  readAt: string | null;
+};
+
+export type WorkspaceNotificationList = {
+  notifications: WorkspaceNotification[];
+  unreadCount: number;
+};
+
 export type OnboardingStatus = {
   registered: boolean;
   emailVerified: boolean;

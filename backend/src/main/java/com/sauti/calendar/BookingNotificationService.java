@@ -1,5 +1,7 @@
 package com.sauti.calendar;
 
+import com.sauti.dashboard.DashboardEventPublisher;
+import com.sauti.notification.WorkspaceNotificationService;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,24 +20,40 @@ public class BookingNotificationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingNotificationService.class);
 
     private final BookingRepository bookingRepository;
+    private final WorkspaceNotificationService workspaceNotificationService;
+    private final DashboardEventPublisher dashboardEventPublisher;
     private final JavaMailSender mailSender;
     private final String fromAddress;
 
     public BookingNotificationService(
             BookingRepository bookingRepository,
+            WorkspaceNotificationService workspaceNotificationService,
+            DashboardEventPublisher dashboardEventPublisher,
             JavaMailSender mailSender,
             @Value("${sauti.email.from:no-reply@sauti.uk}") String fromAddress
     ) {
         this.bookingRepository = bookingRepository;
+        this.workspaceNotificationService = workspaceNotificationService;
+        this.dashboardEventPublisher = dashboardEventPublisher;
         this.mailSender = mailSender;
         this.fromAddress = fromAddress;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void bookingCreated(BookingCreatedEvent event) {
         var booking = bookingRepository.findById(event.bookingId()).orElse(null);
-        if (booking == null || !booking.getAgent().getBookingNotificationChannels().contains("email")) return;
+        if (booking == null) return;
+        if (booking.getAgent().getBookingNotificationChannels().contains("dashboard")) {
+            try {
+                workspaceNotificationService.bookingCreated(booking.getId());
+            } catch (RuntimeException exception) {
+                LOGGER.warn("Dashboard booking notification failed bookingId={}: {}",
+                        booking.getId(), exception.getMessage());
+            }
+        }
+        dashboardEventPublisher.bookingCreated(booking);
+        if (!booking.getAgent().getBookingNotificationChannels().contains("email")) return;
         var configured = booking.getAgent().getBookingNotificationRecipient();
         var recipient = configured == null || configured.isBlank()
                 ? booking.getTenant().getEmail()
