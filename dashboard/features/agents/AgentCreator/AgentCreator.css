@@ -4354,6 +4354,11 @@
   color: #078c86;
 }
 
+.personalise-field-label i.required,
+.personalise-field-label i.invalid {
+  color: #dc2626;
+}
+
 .personalise-fields input,
 .variable-settings-list input,
 .personalisation-drawer-fields input {
@@ -4648,6 +4653,13 @@
   border-color: rgba(35, 220, 207, 0.2);
   color: #36ded2;
   background: rgba(8, 105, 105, 0.16);
+}
+
+.personalisation-drawer .personalise-field-label i.required,
+.personalisation-drawer .personalise-field-label i.invalid {
+  border-color: rgba(248, 113, 113, 0.38);
+  color: #ff7b7b;
+  background: rgba(127, 29, 29, 0.24);
 }
 
 .personalisation-drawer-fields input {

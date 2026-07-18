@@ -2395,11 +2395,12 @@ function VariableValueField({
   const structured = structuredAgentSetting(variable.key);
   const filled = Boolean(value.trim());
   const error = variableValueError(variable, value);
+  const status = error ? "invalid" : filled ? "filled" : variable.required ? "required" : "optional";
   return (
     <div className={`personalise-field ${error ? "invalid" : ""}`}>
       <span className="personalise-field-label">
         {variable.label}
-        <i className={filled && !error ? "filled" : ""}>{error ? "Check value" : filled ? "Complete" : variable.required ? "Required" : "Optional"}</i>
+        <i className={status}>{error ? "Check value" : filled ? "Complete" : variable.required ? "Required" : "Optional"}</i>
       </span>
       {structured ? (
         <StructuredVariableInput config={structured} value={value} onChange={onChange} />

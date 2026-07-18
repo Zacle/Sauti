@@ -3281,3 +3281,15 @@ Expected:
 - Follow-ups / risks:
   - E-commerce cart recovery supports outbound behavior only when an authorized outbound campaign supplies a consented contact; selecting the template does not itself start outbound calling.
   - Support templates define safe ticket/intake behavior, but actual ticket creation still depends on the owner connecting and enabling a compatible integration or custom webhook for that agent.
+
+### 2026-07-18 - Distinguish required personalisation fields in red
+
+- Changed unfilled required-field badges in the agent personalisation form and drawer from the shared amber treatment to a red danger treatment. Optional fields remain amber, completed fields remain teal, and invalid values use the same red visual language as required attention states.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+- Verification:
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
