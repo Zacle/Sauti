@@ -350,6 +350,13 @@ public class ConversationOrchestrator {
         var resolvedAgentPrompt = agentVariableService.resolvePrompt(
                 call.getAgent(), call.getAgent().getSystemPrompt()
         );
+        var configuredBusinessInformation = java.util.Objects.requireNonNullElse(
+                agentVariableService.conversationContext(call.getAgent()), ""
+        );
+        if (!configuredBusinessInformation.isBlank()) {
+            resolvedAgentPrompt += "\n\nCONFIGURED BUSINESS INFORMATION — use all relevant required and optional facts:\n"
+                    + configuredBusinessInformation;
+        }
         var effectiveHours = OperatingHoursSchedule.effective(call.getAgent(), resolvedAgentPrompt);
         var toolBlock = tools.isEmpty()
                 ? "You have no tools available for this call."

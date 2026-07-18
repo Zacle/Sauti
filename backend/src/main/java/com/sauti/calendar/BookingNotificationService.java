@@ -44,7 +44,8 @@ public class BookingNotificationService {
     public void bookingCreated(BookingCreatedEvent event) {
         var booking = bookingRepository.findById(event.bookingId()).orElse(null);
         if (booking == null) return;
-        if (booking.getAgent().getBookingNotificationChannels().contains("dashboard")) {
+        var calendarSyncFailed = "pending_owner_action".equals(booking.getCalendarSyncStatus());
+        if (calendarSyncFailed || booking.getAgent().getBookingNotificationChannels().contains("dashboard")) {
             try {
                 workspaceNotificationService.bookingCreated(booking.getId());
             } catch (RuntimeException exception) {
@@ -62,7 +63,8 @@ public class BookingNotificationService {
             var message = new SimpleMailMessage();
             message.setFrom(fromAddress);
             message.setTo(recipient);
-            message.setSubject("New Sauti booking " + booking.getBookingReference());
+            message.setSubject((calendarSyncFailed ? "Calendar follow-up required for " : "New Sauti booking ")
+                    + booking.getBookingReference());
             message.setText("""
                     A booking was captured by %s.
 
@@ -72,12 +74,14 @@ public class BookingNotificationService {
                     Service: %s
                     Appointment: %s
                     Calendar status: %s
+                    %s
 
                     Review or update this booking in the Sauti Bookings dashboard.
                     """.formatted(
                     booking.getAgent().getName(), booking.getBookingReference(), booking.getCallerName(),
                     booking.getCallerPhone(), booking.getServiceType(), booking.getAppointmentAt(),
-                    booking.getCalendarSyncStatus()
+                    booking.getCalendarSyncStatus(),
+                    calendarSyncFailed ? "Calendar issue: " + booking.getCalendarSyncError() : ""
             ));
             mailSender.send(message);
         } catch (RuntimeException exception) {

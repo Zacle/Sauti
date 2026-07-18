@@ -107,6 +107,13 @@ public class Booking extends Auditable {
         this.calendarSyncError = null;
     }
 
+    public void markLocalOnly() {
+        this.externalEventId = null;
+        this.calendarSyncStatus = "not_configured";
+        this.calendarSyncError = null;
+        this.status = "confirmed";
+    }
+
     public void markSyncFailed(String error) {
         this.calendarSyncStatus = "pending_owner_action";
         this.calendarSyncError = error == null || error.isBlank() ? "Calendar synchronization failed" : error;

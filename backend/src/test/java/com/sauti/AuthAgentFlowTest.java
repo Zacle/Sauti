@@ -251,7 +251,8 @@ class AuthAgentFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[1].callerName").value("Fatou"))
                 .andExpect(jsonPath("$[1].serviceType").value("Consultation"))
-                .andExpect(jsonPath("$[1].externalEventId").isString());
+                .andExpect(jsonPath("$[1].externalEventId").doesNotExist())
+                .andExpect(jsonPath("$[1].calendarSyncStatus").value("not_configured"));
 
         mvc.perform(get("/api/v1/calls")
                         .header("Authorization", "Bearer " + token))

@@ -78,6 +78,36 @@ class AgentVariableServiceTest {
     }
 
     @Test
+    void businessHoursVariableUpdatesTheRuntimeAvailabilitySchedule() {
+        var repository = mock(AgentVariableRepository.class);
+        var agent = new Agent(new Tenant("Hairy", "owner@example.com", "KE"), "Ailsa", "Hello", "Prompt");
+        var hours = new AgentVariable(agent, "business_hours", "Business hours", null, true);
+        when(repository.findByAgentIdAndKey(agent.getId(), "business_hours")).thenReturn(Optional.of(hours));
+        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+        var schedule = "Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00; Thu 09:00-17:00; Fri 09:00-17:00";
+
+        service.updateIfPresent(agent.getId(), "business_hours", schedule);
+
+        assertThat(agent.getOperatingHours()).isEqualTo(schedule);
+        assertThat(OperatingHoursSchedule.describe(agent.getOperatingHours()))
+                .contains("Monday 09:00-17:00")
+                .contains("Sunday closed");
+    }
+
+    @Test
+    void afterHoursVariableUpdatesTheRuntimeCallBehavior() {
+        var repository = mock(AgentVariableRepository.class);
+        var agent = new Agent(new Tenant("Hairy", "owner@example.com", "KE"), "Ailsa", "Hello", "Prompt");
+        var behavior = new AgentVariable(agent, "after_hours_behavior", "After-hours behavior", null, true);
+        when(repository.findByAgentIdAndKey(agent.getId(), "after_hours_behavior")).thenReturn(Optional.of(behavior));
+        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+
+        service.updateIfPresent(agent.getId(), "after_hours_behavior", "take_message");
+
+        assertThat(agent.getAfterHoursBehavior()).isEqualTo("take_message");
+    }
+
+    @Test
     void legacySystemManagedFieldsUseRuntimeValuesAndDoNotBlockReadiness() {
         var repository = mock(AgentVariableRepository.class);
         var agent = new Agent(new Tenant("Demo Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");
@@ -122,5 +152,24 @@ class AgentVariableServiceTest {
         var service = new AgentVariableService(repository, mock(AgentRepository.class));
 
         assertThat(service.businessName(agent)).isEqualTo("X-Fit");
+    }
+
+    @Test
+    void exposesFilledRequiredAndOptionalBusinessFactsToConversationContext() {
+        var repository = mock(AgentVariableRepository.class);
+        var agent = new Agent(new Tenant("Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");
+        var required = new AgentVariable(agent, "business_address", "Business address", null, true);
+        required.updateValue("12 Main Street");
+        var optional = new AgentVariable(agent, "parking_instructions", "Parking instructions", null, false);
+        optional.updateValue("Use the rear entrance");
+        var emptyOptional = new AgentVariable(agent, "booking_link", "Booking link", null, false);
+        when(repository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
+                .thenReturn(List.of(required, optional, emptyOptional));
+        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+
+        assertThat(service.conversationContext(agent))
+                .contains("- Business address: 12 Main Street")
+                .contains("- Parking instructions: Use the rear entrance")
+                .doesNotContain("Booking link");
     }
 }

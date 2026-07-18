@@ -137,7 +137,8 @@ export function NotificationMenu() {
 
 function NotificationRow({ notification, onRead, onClose }: { notification: WorkspaceNotification; onRead: (notification: WorkspaceNotification) => Promise<void>; onClose: () => void }) {
   const unread = !notification.readAt;
-  const followUp = notification.type === "booking.follow_up_required";
+  const actionRequired = notification.type === "booking.follow_up_required"
+    || notification.type === "booking.calendar_sync_failed";
   const appointmentAt = typeof notification.payload.appointmentAt === "string" ? notification.payload.appointmentAt : "";
   const reference = typeof notification.payload.bookingReference === "string" ? notification.payload.bookingReference : "";
   return (
@@ -146,7 +147,7 @@ function NotificationRow({ notification, onRead, onClose }: { notification: Work
       href={notification.href}
       onClick={() => { void onRead(notification); onClose(); }}
     >
-      <span className={`${styles.icon} ${followUp ? styles.warning : ""}`}>{followUp ? <CalendarClock size={18} /> : <CalendarCheck2 size={18} />}</span>
+      <span className={`${styles.icon} ${actionRequired ? styles.warning : ""}`}>{actionRequired ? <CalendarClock size={18} /> : <CalendarCheck2 size={18} />}</span>
       <span className={styles.copy}>
         <span><strong>{notification.title}</strong>{unread && <i aria-label="Unread" />}</span>
         <small>{notification.message}</small>

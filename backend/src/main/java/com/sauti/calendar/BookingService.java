@@ -11,12 +11,19 @@ import com.sauti.webhook.WebhookDeliveryService;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import java.util.UUID;
+import java.util.Objects;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class BookingService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(BookingService.class);
     private final BookingRepository bookingRepository;
     private final AgentRepository agentRepository;
     private final CallRepository callRepository;
@@ -25,6 +32,7 @@ public class BookingService {
     private final CalendarProviderFactory calendarProviderFactory;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final TransactionTemplate requiresNewTransaction;
 
     public BookingService(
             BookingRepository bookingRepository,
@@ -34,7 +42,8 @@ public class BookingService {
             OutboundCallService outboundCallService,
             CalendarProviderFactory calendarProviderFactory,
             ObjectMapper objectMapper,
-            ApplicationEventPublisher eventPublisher
+            ApplicationEventPublisher eventPublisher,
+            PlatformTransactionManager transactionManager
     ) {
         this.bookingRepository = bookingRepository;
         this.agentRepository = agentRepository;
@@ -44,6 +53,8 @@ public class BookingService {
         this.calendarProviderFactory = calendarProviderFactory;
         this.objectMapper = objectMapper;
         this.eventPublisher = eventPublisher;
+        this.requiresNewTransaction = new TransactionTemplate(transactionManager);
+        this.requiresNewTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Transactional(readOnly = true)
@@ -72,16 +83,18 @@ public class BookingService {
         }
     }
 
-    @Transactional
     public Booking create(UUID tenantId, CreateBookingRequest request) {
-        var agent = agentRepository.findByIdAndTenantId(request.agentId(), tenantId)
-                .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
-        CalendarProvider provider = providerFor(agent);
-        return create(tenantId, request, provider);
+        var booking = persistLocalBooking(tenantId, request);
+        return synchronizeCreatedBooking(booking, providerFor(booking.getAgent()));
     }
 
-    @Transactional
     public Booking create(UUID tenantId, CreateBookingRequest request, CalendarProvider provider) {
+        var booking = persistLocalBooking(tenantId, request);
+        return synchronizeCreatedBooking(booking, provider);
+    }
+
+    private Booking persistLocalBooking(UUID tenantId, CreateBookingRequest request) {
+        return Objects.requireNonNull(requiresNewTransaction.execute(status -> {
         var agent = agentRepository.findByIdAndTenantId(request.agentId(), tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
         if (!agent.isBookingEnabled()) {
@@ -92,7 +105,7 @@ public class BookingService {
             call = callRepository.findByIdAndTenantId(request.callId(), tenantId)
                     .orElseThrow(() -> new EntityNotFoundException("Call not found"));
         }
-        var booking = bookingRepository.save(new Booking(
+        return bookingRepository.saveAndFlush(new Booking(
                 agent.getTenant(),
                 agent,
                 call,
@@ -103,20 +116,52 @@ public class BookingService {
                 request.appointmentAt(), request.durationMinutes() == null ? 60 : request.durationMinutes(),
                 json(request.capturedData())
         ));
+        }));
+    }
+
+    private Booking synchronizeCreatedBooking(Booking localBooking, CalendarProvider provider) {
+        var integrationConfigured = hasExternalCalendar(localBooking.getAgent());
+        String externalEventId = null;
+        String syncError = null;
         try {
-            if (provider == null) throw new IllegalStateException("No calendar provider is connected");
-            var externalEventId = provider.createEvent(booking).externalEventId();
-            if (externalEventId == null || externalEventId.isBlank()) {
+            if (integrationConfigured && provider == null) {
+                throw new IllegalStateException("The selected calendar integration is not connected");
+            }
+            if (integrationConfigured) externalEventId = provider.createEvent(localBooking).externalEventId();
+            if (!integrationConfigured) externalEventId = null;
+            if (integrationConfigured && (externalEventId == null || externalEventId.isBlank())) {
                 throw new IllegalStateException("Calendar provider did not return an event identifier");
             }
-            booking.markSynced(externalEventId);
         } catch (RuntimeException exception) {
-            booking.markSyncFailed(exception.getMessage());
+            syncError = safeSyncError(exception);
         }
-        webhookDeliveryService.bookingCreated(booking);
-        outboundCallService.scheduleReminder(booking);
-        eventPublisher.publishEvent(new BookingNotificationService.BookingCreatedEvent(booking.getId()));
+
+        var finalExternalEventId = externalEventId;
+        var finalSyncError = syncError;
+        var booking = Objects.requireNonNull(requiresNewTransaction.execute(status -> {
+            var persisted = bookingRepository.findById(localBooking.getId())
+                    .orElseThrow(() -> new EntityNotFoundException("Booking not found after local save"));
+            if (!integrationConfigured) persisted.markLocalOnly();
+            else if (finalSyncError == null) persisted.markSynced(finalExternalEventId);
+            else persisted.markSyncFailed(finalSyncError);
+            eventPublisher.publishEvent(new BookingNotificationService.BookingCreatedEvent(persisted.getId()));
+            return bookingRepository.saveAndFlush(persisted);
+        }));
+        runPostSaveActions(booking);
         return booking;
+    }
+
+    private void runPostSaveActions(Booking booking) {
+        try {
+            webhookDeliveryService.bookingCreated(booking);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Booking webhook delivery failed bookingId={}: {}", booking.getId(), exception.getClass().getSimpleName());
+        }
+        try {
+            outboundCallService.scheduleReminder(booking);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Booking reminder scheduling failed bookingId={}: {}", booking.getId(), exception.getClass().getSimpleName());
+        }
     }
 
     @Transactional
@@ -194,10 +239,28 @@ public class BookingService {
             if ("Google Calendar".equalsIgnoreCase(agent.getCalendarProvider())) {
                 return calendarProviderFactory.connectedForAgent(agent.getId()).orElse(null);
             }
-            return calendarProviderFactory.forAgent(agent.getId());
+            return null;
         } catch (RuntimeException ignored) {
             return null;
         }
+    }
+
+    private boolean hasExternalCalendar(com.sauti.agent.Agent agent) {
+        var configured = agent.getCalendarProvider();
+        if (configured == null || configured.isBlank()) return false;
+        return !java.util.Set.of("set up later", "provider default", "local", "sauti")
+                .contains(configured.trim().toLowerCase(java.util.Locale.ROOT));
+    }
+
+    private String safeSyncError(RuntimeException exception) {
+        var message = exception.getMessage() == null ? "" : exception.getMessage().toLowerCase(java.util.Locale.ROOT);
+        if (message.contains("not connected") || message.contains("credential") || message.contains("authoriz")) {
+            return "Calendar connection is missing or no longer authorized";
+        }
+        if (message.contains("event identifier")) {
+            return "The calendar did not confirm the event creation";
+        }
+        return "External calendar synchronization failed";
     }
 
     private String normalizeReference(String value) {

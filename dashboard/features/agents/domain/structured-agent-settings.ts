@@ -1,4 +1,4 @@
-export type StructuredAgentSettingKey = "calendar_provider" | "routing_policy";
+export type StructuredAgentSettingKey = "calendar_provider" | "routing_policy" | "after_hours_behavior";
 
 export type StructuredAgentSetting = {
   title: string;
@@ -50,6 +50,27 @@ export const STRUCTURED_AGENT_SETTINGS: Record<StructuredAgentSettingKey, Struct
         value: "Set up later",
         label: "Decide later",
         description: "Leave routing inactive until a destination is connected.",
+      },
+    ],
+  },
+  after_hours_behavior: {
+    title: "After-hours behavior",
+    description: "Choose what the agent should do when the business is closed.",
+    options: [
+      {
+        value: "answer",
+        label: "Answer normally",
+        description: "Keep the agent and its enabled tools available outside business hours.",
+      },
+      {
+        value: "take_message",
+        label: "Collect a message",
+        description: "Capture the caller's details for business follow-up.",
+      },
+      {
+        value: "closed",
+        label: "Announce closure",
+        description: "Explain that the business is closed and end the call politely.",
       },
     ],
   },

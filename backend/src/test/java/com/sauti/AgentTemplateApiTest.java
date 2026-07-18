@@ -141,11 +141,17 @@ class AgentTemplateApiTest {
                 .andExpect(jsonPath("$.filled").value(true));
 
         for (var variable : objectMapper.readTree(variablesJson)) {
-            if (!variable.path("required").asBoolean() || "business_name".equals(variable.path("key").asText())) continue;
-            mvc.perform(patch("/api/v1/agents/" + agentId + "/variables/" + variable.path("key").asText())
+            var key = variable.path("key").asText();
+            if (!variable.path("required").asBoolean() || "business_name".equals(key)) continue;
+            var configuredValue = switch (key) {
+                case "business_hours" -> "Mon-Fri 09:00-17:00";
+                case "after_hours_behavior" -> "take_message";
+                default -> "Configured test value";
+            };
+            mvc.perform(patch("/api/v1/agents/" + agentId + "/variables/" + key)
                             .header("Authorization", bearer(ownerToken))
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"value\":\"Configured test value\"}"))
+                            .content(objectMapper.writeValueAsString(java.util.Map.of("value", configuredValue))))
                     .andExpect(status().isOk());
         }
 

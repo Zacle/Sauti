@@ -176,6 +176,8 @@ public class AgentVariableService {
         }
         values.put("required_booking_fields", String.join(", ", agent.getBookingRequiredFields()));
         values.put("notification_channels", String.join(", ", agent.getBookingNotificationChannels()));
+        values.put("business_hours", OperatingHoursSchedule.describe(OperatingHoursSchedule.effective(agent)));
+        values.put("after_hours_behavior", describeAfterHoursBehavior(agent.getAfterHoursBehavior()));
 
         var matcher = PLACEHOLDER.matcher(prompt);
         var result = new StringBuffer();
@@ -198,6 +200,28 @@ public class AgentVariableService {
                 .orElseGet(() -> AgentBusinessIdentity.fromPrompt(agent));
     }
 
+    /**
+     * Supplies every filled owner-managed fact to the conversation, even when a
+     * custom prompt omitted the corresponding placeholder. Required and
+     * optional template facts therefore share the same authoritative path.
+     */
+    @Transactional(readOnly = true)
+    public String conversationContext(Agent agent) {
+        return variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()).stream()
+                .filter(variable -> !SYSTEM_MANAGED_VARIABLES.contains(variable.getKey()))
+                .filter(AgentVariable::isFilled)
+                .map(variable -> "- " + variable.getDisplayLabel() + ": " + conversationValue(agent, variable))
+                .collect(java.util.stream.Collectors.joining("\n"));
+    }
+
+    private String conversationValue(Agent agent, AgentVariable variable) {
+        return switch (variable.getKey()) {
+            case "business_hours" -> OperatingHoursSchedule.describe(OperatingHoursSchedule.effective(agent));
+            case "after_hours_behavior" -> describeAfterHoursBehavior(agent.getAfterHoursBehavior());
+            default -> variable.getValue().trim();
+        };
+    }
+
     private Agent requireOwnedAgent(UUID tenantId, UUID agentId) {
         return agentRepository.findByIdAndTenantId(agentId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
@@ -210,6 +234,16 @@ public class AgentVariableService {
     }
 
     private void syncStructuredSetting(Agent agent, String key, String value) {
+        if ("business_hours".equals(key)) {
+            OperatingHoursSchedule.validate(value);
+            agent.configureAvailability(value, agent.getAfterHoursBehavior(), agent.getAfterHoursMessage());
+        }
+        if ("after_hours_behavior".equals(key)) {
+            if (!Set.of("answer", "take_message", "closed").contains(value)) {
+                throw new IllegalArgumentException("Choose a supported after-hours behavior");
+            }
+            agent.configureAvailability(agent.getOperatingHours(), value, agent.getAfterHoursMessage());
+        }
         if ("calendar_provider".equals(key)) {
             var allowed = List.of("Google Calendar", "Calendly", "Custom webhook", "Set up later");
             if (!allowed.contains(value)) {
@@ -224,5 +258,13 @@ public class AgentVariableService {
             }
             agent.updateRoutingPolicy(value);
         }
+    }
+
+    private String describeAfterHoursBehavior(String behavior) {
+        return switch (behavior == null ? "answer" : behavior) {
+            case "take_message" -> "Collect the caller's name, contact details, and reason for calling for follow-up.";
+            case "closed" -> "Explain that the business is closed, provide the configured message, and end the call politely.";
+            default -> "Answer normally with the agent's enabled capabilities.";
+        };
     }
 }

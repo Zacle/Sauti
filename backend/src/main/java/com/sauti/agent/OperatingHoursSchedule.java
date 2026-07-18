@@ -48,16 +48,21 @@ public final class OperatingHoursSchedule {
     static Optional<String> promptSchedule(String prompt) {
         if (prompt == null || prompt.isBlank()) return Optional.empty();
         var matcher = Pattern.compile(
-                "(?im)^\\s*-?\\s*(?:hours?|opening hours?|horaires?)\\s*:\\s*([^\\r\\n#]+)$"
+                "(?im)^\\s*-?\\s*(?:hours?(?:\\s+and\\s+exceptions)?|opening hours?|horaires?)\\s*:\\s*([^\\r\\n#]+)$"
         ).matcher(prompt);
         if (!matcher.find()) return Optional.empty();
+        var hoursLine = matcher.group(1).replaceFirst("\\s*\\([^)]*\\)\\s*$", "");
+        return compactSchedule(hoursLine).flatMap(OperatingHoursSchedule::writeSchedule);
+    }
+
+    private static Optional<Map<String, DaySchedule>> compactSchedule(String value) {
+        if (value == null || value.isBlank()) return Optional.empty();
         var schedule = new LinkedHashMap<String, DaySchedule>();
         java.util.Arrays.stream(DayOfWeek.values()).forEach(day ->
                 schedule.put(day.name().toLowerCase(Locale.ROOT), new DaySchedule(false, "09:00", "17:00"))
         );
         var found = false;
-        var hoursLine = matcher.group(1).replaceFirst("\\s*\\([^)]*\\)\\s*$", "");
-        for (var segment : hoursLine.split(";")) {
+        for (var segment : value.split(";")) {
             var entry = Pattern.compile(
                     "(?iu)^\\s*([\\p{L}]{2,10})(?:\\s*-\\s*([\\p{L}]{2,10}))?\\s+"
                             + "([0-2]?\\d(?::[0-5]\\d)?)\\s*-\\s*([0-2]?\\d(?::[0-5]\\d)?)\\s*$"
@@ -76,7 +81,10 @@ public final class OperatingHoursSchedule {
             }
             found = true;
         }
-        if (!found) return Optional.empty();
+        return found ? Optional.of(schedule) : Optional.empty();
+    }
+
+    private static Optional<String> writeSchedule(Map<String, DaySchedule> schedule) {
         try {
             return Optional.of(OBJECT_MAPPER.writeValueAsString(schedule));
         } catch (Exception exception) {
@@ -204,6 +212,8 @@ public final class OperatingHoursSchedule {
     }
 
     private static Map<String, DaySchedule> parse(String value) {
+        var compact = compactSchedule(value);
+        if (compact.isPresent()) return compact.get();
         try {
             return OBJECT_MAPPER.readValue(value, TYPE);
         } catch (Exception exception) {
@@ -234,7 +244,10 @@ public final class OperatingHoursSchedule {
     }
 
     private static String promptTime(String value) {
-        return LocalTime.parse(value.contains(":") ? value : value + ":00").toString();
+        return LocalTime.parse(
+                value.contains(":") ? value : value + ":00",
+                java.time.format.DateTimeFormatter.ofPattern("H:mm")
+        ).toString();
     }
 
     private static Map<String, DaySchedule> weekdaySchedule() {

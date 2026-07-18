@@ -2749,7 +2749,7 @@ function formatScheduleTime(value: string) {
 
 function variableKind(key: string) {
   if (SERVICE_VARIABLE_KEYS.has(key)) return "services";
-  if (key.includes("hours")) return "hours";
+  if (key === "business_hours") return "hours";
   if (key.includes("phone") || key.endsWith("_number")) return "phone";
   if (key.includes("address") || key.includes("location")) return "address";
   return "text";
@@ -2767,6 +2767,10 @@ function variablePlaceholder(
 
 function variableValueError(variable: AgentVariableDefinition, value: string) {
   if (!value.trim()) return "";
+  const structured = structuredAgentSetting(variable.key);
+  if (structured && !structured.options.some((option) => option.value === value)) {
+    return "Choose one of the available options.";
+  }
   const kind = variableKind(variable.key);
   if (kind === "phone") {
     const digits = value.replace(/\D/g, "");

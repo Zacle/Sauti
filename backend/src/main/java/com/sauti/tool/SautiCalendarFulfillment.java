@@ -237,18 +237,24 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 provider
         );
         var externalEventId = booking.getExternalEventId() == null ? "" : booking.getExternalEventId();
+        var calendarStatus = booking.getCalendarSyncStatus();
+        var calendarSynced = "synced".equals(calendarStatus);
+        var localOnly = "not_configured".equals(calendarStatus);
         var result = new LinkedHashMap<String, Object>();
-        result.put("status", "synced".equals(booking.getCalendarSyncStatus())
+        result.put("status", calendarSynced
                 ? "booking_confirmed"
-                : "booking_saved_pending_calendar");
+                : localOnly ? "booking_saved_locally" : "booking_saved_pending_calendar");
         result.put("bookingCreated", true);
         result.put("bookingId", booking.getId().toString());
         result.put("bookingNumber", booking.getBookingReference());
         result.put("appointmentAt", booking.getAppointmentAt().toString());
         result.put("externalEventId", externalEventId);
-        result.put("calendarSynced", "synced".equals(booking.getCalendarSyncStatus()));
+        result.put("calendarSynced", calendarSynced);
+        result.put("externalCalendarConfigured", !localOnly);
         result.put("ownerNotified", true);
-        result.put("instruction", "Tell the caller whether the calendar was confirmed. Always provide the booking number. If calendarSynced is false, say the request was saved for owner follow-up, not confirmed.");
+        result.put("instruction", localOnly
+                ? "Tell the caller the booking was saved in Sauti and provide the booking number. Do not claim an external calendar was updated."
+                : "Tell the caller whether the external calendar was confirmed. Always provide the booking number. If calendarSynced is false, say the booking was saved in Sauti for owner follow-up.");
         return Map.copyOf(result);
     }
 

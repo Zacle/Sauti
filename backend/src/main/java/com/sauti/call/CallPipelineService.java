@@ -4,6 +4,7 @@ import com.sauti.agent.Agent;
 import com.sauti.agent.AgentBusinessIdentity;
 import com.sauti.agent.AgentRepository;
 import com.sauti.agent.AgentVariableRepository;
+import com.sauti.agent.OperatingHoursSchedule;
 import com.sauti.call.CallDtos.SimulatedTurnResponse;
 import com.sauti.dashboard.DashboardEventPublisher;
 import com.sauti.llm.ConversationOrchestrator;
@@ -72,6 +73,7 @@ public class CallPipelineService {
     public Call startTestCall(java.util.UUID tenantId, java.util.UUID agentId, String ttsVoiceId) {
         var agent = agentRepository.findByIdAndTenantId(agentId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
+        synchronizeBusinessHours(agent);
         if (ttsVoiceId != null) {
             agent.updateTtsVoiceId(ttsVoiceId);
             agentRepository.save(agent);
@@ -101,6 +103,7 @@ public class CallPipelineService {
                 .filter(Agent::isActive)
                 .filter(Agent::isWebVoiceEnabled)
                 .orElseThrow(() -> new EntityNotFoundException("Web Voice agent not found"));
+        synchronizeBusinessHours(agent);
         var language = preferredLanguage == null || preferredLanguage.isBlank()
                 ? agent.getDefaultLanguage()
                 : preferredLanguage.trim().toLowerCase(java.util.Locale.ROOT);
@@ -129,6 +132,7 @@ public class CallPipelineService {
         Agent agent = agentRepository.findByTwilioPhoneNumber(twilioNumber)
                 .filter(Agent::isActive)
                 .orElseThrow(() -> new EntityNotFoundException("No active agent for this phone number"));
+        synchronizeBusinessHours(agent);
         var call = callRepository.findByTwilioCallSid(twilioCallSid)
                 .orElseGet(() -> {
                     var created = new Call(agent.getTenant(), agent, twilioCallSid, callerNumber, "inbound");
@@ -158,6 +162,7 @@ public class CallPipelineService {
                 .filter(Agent::isActive)
                 .filter(Agent::isWhatsappEnabled)
                 .orElseThrow(() -> new EntityNotFoundException("No active WhatsApp agent for this phone number"));
+        synchronizeBusinessHours(agent);
         var existing = callRepository
                 .findFirstByAgent_IdAndDirectionAndCallerNumberAndOutcomeOrderByStartedAtDesc(
                         agent.getId(), "whatsapp", customerNumber, "active"
@@ -187,6 +192,20 @@ public class CallPipelineService {
     @Transactional
     public SimulatedTurnResponse processTextTurn(java.util.UUID tenantId, String twilioCallSid, String transcript) {
         return processTextTurn(tenantId, twilioCallSid, transcript, 0);
+    }
+
+    private void synchronizeBusinessHours(Agent agent) {
+        agentVariableRepository.findByAgentIdAndKey(agent.getId(), "business_hours")
+                .filter(com.sauti.agent.AgentVariable::isFilled)
+                .map(com.sauti.agent.AgentVariable::getValue)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .ifPresent(value -> {
+                    OperatingHoursSchedule.validate(value);
+                    if (!value.equals(agent.getOperatingHours())) {
+                        agent.configureAvailability(value, agent.getAfterHoursBehavior(), agent.getAfterHoursMessage());
+                    }
+                });
     }
 
     @Transactional

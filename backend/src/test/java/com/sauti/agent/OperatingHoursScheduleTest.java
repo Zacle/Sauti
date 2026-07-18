@@ -78,6 +78,24 @@ class OperatingHoursScheduleTest {
     }
 
     @Test
+    void acceptsTheCompactScheduleSavedByPersonalisation() {
+        var compact = "Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00; Thu 09:00-17:00; Fri 09:00-17:00";
+
+        OperatingHoursSchedule.validate(compact);
+
+        assertThat(OperatingHoursSchedule.describe(compact))
+                .contains("Monday 09:00-17:00")
+                .contains("Friday 09:00-17:00")
+                .contains("Saturday closed");
+        assertThat(OperatingHoursSchedule.rangesFor(
+                compact, LocalDate.of(2026, 7, 20), ZoneId.of("UTC")
+        )).singleElement();
+        assertThat(OperatingHoursSchedule.rangesFor(
+                compact, LocalDate.of(2026, 7, 19), ZoneId.of("UTC")
+        )).isEmpty();
+    }
+
+    @Test
     void recoversExplicitPromptHoursForLegacyAgentsWithAnAlwaysSchedule() {
         var agent = org.mockito.Mockito.mock(Agent.class);
         org.mockito.Mockito.when(agent.getOperatingHours()).thenReturn("always");
@@ -97,5 +115,17 @@ class OperatingHoursScheduleTest {
         assertThat(OperatingHoursSchedule.describeForSpeech(effective, "fr"))
                 .contains("le mercredi de 9 heures à 17 heures")
                 .contains("le samedi");
+    }
+
+    @Test
+    void recoversHoursAndExceptionsFromGeneratedPrompts() {
+        var agent = org.mockito.Mockito.mock(Agent.class);
+        org.mockito.Mockito.when(agent.getOperatingHours()).thenReturn("always");
+
+        var effective = OperatingHoursSchedule.effective(agent, "- Hours and exceptions: Mon-Fri 09:00-17:00 (Africa/Cairo)");
+
+        assertThat(OperatingHoursSchedule.describe(effective))
+                .contains("Monday 09:00-17:00")
+                .contains("Saturday closed");
     }
 }

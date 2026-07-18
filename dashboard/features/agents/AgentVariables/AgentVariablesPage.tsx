@@ -14,6 +14,7 @@ import { structuredAgentSetting, type StructuredAgentSetting, type StructuredAge
 const structuredIcons: Record<StructuredAgentSettingKey, LucideIcon> = {
   calendar_provider: CalendarCheck,
   routing_policy: Route,
+  after_hours_behavior: Clock3,
 };
 
 export function AgentVariablesPage({ agentId }: { agentId: string }) {

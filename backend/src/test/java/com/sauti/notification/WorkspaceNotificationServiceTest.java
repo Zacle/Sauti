@@ -48,4 +48,33 @@ class WorkspaceNotificationServiceTest {
                 .containsEntry("callerName", "Zachary Nji")
                 .containsEntry("calendarSyncStatus", "synced");
     }
+
+    @Test
+    void createsActionableNotificationWhenExternalCalendarSyncFails() throws Exception {
+        var repository = mock(WorkspaceNotificationRepository.class);
+        var bookingRepository = mock(BookingRepository.class);
+        var mapper = new ObjectMapper();
+        var tenant = new Tenant("Studio", "owner@example.com", "KE");
+        var agent = new Agent(tenant, "Amina", "Greeting", "Prompt");
+        var booking = new Booking(
+                tenant, agent, null, "Zachary Nji", "+201115753441", null,
+                "Consultation", OffsetDateTime.now().plusDays(2), 45, "{}"
+        );
+        booking.markSyncFailed("Calendar connection is missing or no longer authorized");
+        when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var service = new WorkspaceNotificationService(repository, bookingRepository, mapper);
+
+        service.bookingCreated(booking.getId());
+
+        var capture = ArgumentCaptor.forClass(WorkspaceNotification.class);
+        verify(repository).save(capture.capture());
+        var notification = capture.getValue();
+        assertThat(notification.getType()).isEqualTo("booking.calendar_sync_failed");
+        assertThat(notification.getTitle()).isEqualTo("Booking saved, calendar sync failed");
+        assertThat(notification.getMessage()).contains("saved in Sauti", "calendar");
+        assertThat(mapper.readValue(notification.getPayload(), new TypeReference<Map<String, Object>>() { }))
+                .containsEntry("calendarSyncStatus", "pending_owner_action")
+                .containsEntry("calendarSyncError", "Calendar connection is missing or no longer authorized");
+    }
 }

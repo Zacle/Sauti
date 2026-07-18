@@ -32,6 +32,7 @@ public class WorkspaceNotificationService {
         var booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new EntityNotFoundException("Booking not found"));
         var calendarSynced = "synced".equals(booking.getCalendarSyncStatus());
+        var calendarFailed = "pending_owner_action".equals(booking.getCalendarSyncStatus());
         var payload = new LinkedHashMap<String, Object>();
         payload.put("bookingReference", booking.getBookingReference());
         payload.put("callerName", booking.getCallerName());
@@ -39,11 +40,14 @@ public class WorkspaceNotificationService {
         payload.put("appointmentAt", booking.getAppointmentAt().toString());
         payload.put("agentName", booking.getAgent().getName());
         payload.put("calendarSyncStatus", booking.getCalendarSyncStatus());
+        if (calendarFailed) payload.put("calendarSyncError", booking.getCalendarSyncError());
         var notification = new WorkspaceNotification(
                 booking.getTenant(),
-                calendarSynced ? "booking.confirmed" : "booking.follow_up_required",
-                calendarSynced ? "New booking confirmed" : "Booking needs calendar follow-up",
-                booking.getCallerName() + " booked " + booking.getServiceType(),
+                calendarFailed ? "booking.calendar_sync_failed" : "booking.confirmed",
+                calendarFailed ? "Booking saved, calendar sync failed" : "New booking confirmed",
+                calendarFailed
+                        ? booking.getCallerName() + " was saved in Sauti, but the external calendar needs attention."
+                        : booking.getCallerName() + " booked " + booking.getServiceType(),
                 "/bookings",
                 "booking",
                 booking.getId(),

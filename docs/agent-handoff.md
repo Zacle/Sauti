@@ -3404,3 +3404,53 @@ Expected:
   - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-18 - Make personalised business hours authoritative at runtime
+
+- Fixed the split source of truth that caused agents to report unrestricted hours after owners configured a weekly schedule. Saving `business_hours` now updates the agent's runtime operating-hours setting used by call admission, business-hours tools, local/Google availability, and booking validation.
+- Added call-start reconciliation for browser tests, public Web Voice, inbound phone calls, and WhatsApp so existing agents with a populated business-hours variable are repaired automatically before availability is evaluated; owners do not need to recreate those agents.
+- Extended schedule parsing to accept the compact UI representation (`Mon-Fri 09:00-17:00` and per-day segments), including non-zero-padded hours, while retaining structured JSON, weekday presets, closed days, and overnight support.
+- Corrected variable input classification so only `business_hours` renders a weekly schedule. `after_hours_behavior` now renders explicit Answer normally / Collect a message / Announce closure choices and synchronizes with the runtime call behavior instead of being mistaken for another set of opening hours.
+- Prompt resolution now derives business-hours and after-hours descriptions from authoritative runtime settings, preventing stale personalisation values from contradicting calendar tools.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/{AgentVariableService,OperatingHoursSchedule}.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/test/java/com/sauti/{AgentTemplateApiTest.java,agent/AgentVariableServiceTest.java,agent/OperatingHoursScheduleTest.java}`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentVariables/AgentVariablesPage.tsx`
+  - `dashboard/features/agents/domain/structured-agent-settings.ts`
+- Verification:
+  - focused `AgentTemplateApiTest`, `OperatingHoursScheduleTest`, and `AgentVariableServiceTest` (successful)
+  - `.\gradlew.bat :backend:test` (successful; 189 tests)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-18 - Make booking capture complete and database-first
+
+- Added a runtime conversation context containing every populated owner-configured business field, whether required or optional. Authoritative business-hours and after-hours values are rendered from the agent runtime settings, empty values and system-managed variables are excluded, and the context is appended to the agent prompt so relevant business facts are available throughout the call.
+- Made the `book_slot` tool schema agent-specific. Platform booking fields and every configured required field are exposed to the model, custom required fields are enforced inside `customer_details`, and additional relevant details volunteered by the caller can be retained in the booking's structured captured data without forcing the agent to ask unnecessary questions.
+- Reworked booking creation into a database-first workflow. A confirmed Sauti booking is now inserted and committed in a new transaction before any external calendar call is attempted. External calendar synchronization then runs after that commit and updates the booking in a second transaction as `synced`, `not_configured`, or `pending_owner_action`.
+- A missing external integration is now treated as a valid local Sauti booking instead of a fabricated provider event. When an integration is configured but event creation fails, the local booking remains confirmed, the provider error is sanitized, and the business owner receives an actionable unread dashboard notification even if ordinary dashboard booking notifications were disabled. Email also reports the calendar issue when the agent's Email notification channel is enabled.
+- Updated call-tool responses so callers are told the truth: fully synced bookings, locally saved bookings, and bookings awaiting calendar follow-up have distinct outcomes. The agent must provide the Sauti booking number and cannot claim the external calendar was updated when it was not.
+- Updated the notification menu so calendar-sync failures use the warning treatment rather than the successful-booking icon.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/AgentVariableService.java`
+  - `backend/src/main/java/com/sauti/calendar/{Booking,BookingNotificationService,BookingService}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/notification/WorkspaceNotificationService.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/AuthAgentFlowTest.java`
+  - `backend/src/test/java/com/sauti/agent/AgentVariableServiceTest.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingServiceTest.java`
+  - `backend/src/test/java/com/sauti/notification/WorkspaceNotificationServiceTest.java`
+  - `backend/src/test/java/com/sauti/tool/AgentToolLoaderTest.java`
+  - `dashboard/features/notifications/presentation/NotificationMenu.tsx`
+- Verification:
+  - focused booking, tool-schema, notification, and agent-variable tests (successful)
+  - `\.\gradlew.bat :backend:test` (successful; 195 tests)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
