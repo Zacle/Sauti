@@ -60,6 +60,9 @@ public final class AgentDtos {
     ) {
     }
 
+    public record AgentTimezoneRequest(@NotBlank @Size(max = 100) String timezone) {
+    }
+
     public record AgentResponse(
             UUID id,
             String name,

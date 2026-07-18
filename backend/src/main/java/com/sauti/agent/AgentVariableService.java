@@ -7,6 +7,7 @@ import jakarta.persistence.EntityNotFoundException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
@@ -16,6 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 public class AgentVariableService {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-zA-Z0-9_]+)}}");
     private static final Pattern VARIABLE_KEY = Pattern.compile("[a-z][a-z0-9_]{0,99}");
+    private static final Set<String> SYSTEM_MANAGED_VARIABLES = Set.of(
+            "agent_name", "timezone", "business_timezone", "calendar_system",
+            "calendar_provider", "routing_policy"
+    );
 
     private final AgentVariableRepository variableRepository;
     private final AgentRepository agentRepository;
@@ -30,6 +35,7 @@ public class AgentVariableService {
         requireOwnedAgent(tenantId, agentId);
         return variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agentId)
                 .stream()
+                .filter(variable -> !SYSTEM_MANAGED_VARIABLES.contains(variable.getKey()))
                 .map(AgentVariableResponse::from)
                 .toList();
     }
@@ -45,6 +51,7 @@ public class AgentVariableService {
         var byKey = new LinkedHashMap<String, AgentVariable>();
         variables.forEach(variable -> byKey.put(variable.getKey(), variable));
         for (var value : values) {
+            requireOwnerManaged(value.key());
             var variable = byKey.get(value.key());
             if (variable == null) {
                 throw new IllegalArgumentException("Unknown agent variable: " + value.key());
@@ -58,6 +65,7 @@ public class AgentVariableService {
     @Transactional
     public AgentVariableResponse updateOne(UUID tenantId, UUID agentId, String key, String value) {
         var agent = requireOwnedAgent(tenantId, agentId);
+        requireOwnerManaged(key);
         var variable = variableRepository.findByAgentIdAndKey(agentId, key)
                 .orElseThrow(() -> new EntityNotFoundException("Agent variable not found"));
         variable.updateValue(value);
@@ -90,7 +98,7 @@ public class AgentVariableService {
                     "Variable keys must start with a letter and contain only lowercase letters, numbers, and underscores"
             );
         }
-        if ("agent_name".equals(normalizedKey) || "timezone".equals(normalizedKey)) {
+        if (SYSTEM_MANAGED_VARIABLES.contains(normalizedKey)) {
             throw new IllegalArgumentException(normalizedKey + " is an automatic variable and cannot be redefined");
         }
         if (variableRepository.findByAgentIdAndKey(agentId, normalizedKey).isPresent()) {
@@ -115,7 +123,7 @@ public class AgentVariableService {
         }
         for (var definition : definitions) {
             var key = definition.path("key").asText("").trim();
-            if (key.isBlank() || "agent_name".equals(key) || "timezone".equals(key)) {
+            if (key.isBlank() || SYSTEM_MANAGED_VARIABLES.contains(key)) {
                 continue;
             }
             if (variableRepository.findByAgentIdAndKey(agent.getId(), key).isPresent()) {
@@ -137,6 +145,7 @@ public class AgentVariableService {
     public List<String> missingRequired(UUID agentId) {
         return variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agentId)
                 .stream()
+                .filter(variable -> !SYSTEM_MANAGED_VARIABLES.contains(variable.getKey()))
                 .filter(AgentVariable::isRequired)
                 .filter(variable -> !variable.isFilled())
                 .map(AgentVariable::getDisplayLabel)
@@ -153,6 +162,10 @@ public class AgentVariableService {
         values.put("timezone", agent.getTimezone());
         variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId())
                 .forEach(variable -> values.put(variable.getKey(), variable.getValue()));
+        values.put("business_timezone", agent.getTimezone());
+        values.put("calendar_system", agent.getCalendarProvider() == null || agent.getCalendarProvider().isBlank()
+                ? "the enabled calendar integration"
+                : agent.getCalendarProvider());
         // Agent fields drive runtime behavior and must override stale onboarding variables.
         if (agent.getCalendarProvider() != null && !agent.getCalendarProvider().isBlank()) {
             values.put("calendar_provider", agent.getCalendarProvider());
@@ -185,6 +198,12 @@ public class AgentVariableService {
     private Agent requireOwnedAgent(UUID tenantId, UUID agentId) {
         return agentRepository.findByIdAndTenantId(agentId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
+    }
+
+    private void requireOwnerManaged(String key) {
+        if (SYSTEM_MANAGED_VARIABLES.contains(key)) {
+            throw new IllegalArgumentException(key + " is managed by the agent or its integrations");
+        }
     }
 
     private void syncStructuredSetting(Agent agent, String key, String value) {

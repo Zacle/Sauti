@@ -71,6 +71,7 @@ import {
   provisionAgentNumber,
   refreshAgentPhoneNumber,
   updateAgent,
+  updateAgentTimezone,
   updateAgentVariables,
   uploadKnowledgeDocument,
 } from "@/lib/api/agents";
@@ -104,6 +105,17 @@ type Template = {
   bookingRequiredFields: string[];
   bookingNotificationChannels: string[];
 };
+
+const SYSTEM_MANAGED_TEMPLATE_VARIABLES = new Set([
+  "business_timezone",
+  "calendar_system",
+  "calendar_provider",
+  "routing_policy",
+]);
+const TIMEZONE_OPTIONS = TIMEZONE_GROUPS.flatMap((group) => group.zones.map((zone) => ({
+  value: zone.value,
+  label: zone.label,
+})));
 
 type AfterHoursBehavior = "answer" | "take_message" | "closed";
 type WeekDayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
@@ -278,7 +290,9 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
     group = configuration.group ?? group;
     icon = iconMap[configuration.icon ?? "bot"] ?? Bot;
     escalationPhrases = configuration.escalationPhrases ?? escalationPhrases;
-    variables = Array.isArray(configuration.variables) ? configuration.variables : [];
+    variables = Array.isArray(configuration.variables)
+      ? configuration.variables.filter((variable) => !SYSTEM_MANAGED_TEMPLATE_VARIABLES.has(variable.key))
+      : [];
     bookingRequiredFields = Array.isArray(configuration.bookingRequiredFields)
       ? configuration.bookingRequiredFields
       : bookingRequiredFields;
@@ -975,6 +989,7 @@ export function AgentCreator({
             <PersonalisationDrawer
               agentSaved={Boolean(agentId)}
               countryName={countryName}
+              timezone={timezone}
               values={variableValues}
               variables={agentVariables}
               onAdd={addCustomVariable}
@@ -983,6 +998,10 @@ export function AgentCreator({
                 setVariableValues((current) => ({ ...current, [key]: value }));
               }}
               onClose={() => setShowPersonalisation(false)}
+              onTimezone={(value) => {
+                setSaved(false);
+                setTimezone(value);
+              }}
               onSave={savePersonalisation}
             />
           )}
@@ -1057,6 +1076,9 @@ export function AgentCreator({
         ...current,
         ...newVariables.map((variable) => variable.key),
       ])));
+      if (loadedAgent && loadedAgent.timezone !== timezone) {
+        setLoadedAgent(await updateAgentTimezone(agentId, timezone));
+      }
       setReadiness(await getAgentReadiness(agentId));
       setSaved(true);
       setShowPersonalisation(false);
@@ -1531,7 +1553,7 @@ function MainSettings(props: {
         <label>
           Timezone
           <DarkSelect ariaLabel="Agent timezone" icon={<Clock3 size={16} />} value={props.timezone} onValueChange={props.onTimezone}
-            options={TIMEZONE_GROUPS.flatMap((group) => group.zones.map((zone) => ({ value: zone.value, label: zone.label })))} />
+            options={TIMEZONE_OPTIONS} />
         </label>
       </div>
       <div
@@ -2245,18 +2267,22 @@ function PersonalisationDrawer({
   variables,
   values,
   countryName,
+  timezone,
   onChange,
   onAdd,
   onClose,
+  onTimezone,
   onSave,
 }: {
   agentSaved: boolean;
   variables: AgentVariableDefinition[];
   values: Record<string, string>;
   countryName: string;
+  timezone: string;
   onChange: (key: string, value: string) => void;
   onAdd: (variable: CreateAgentVariable) => void;
   onClose: () => void;
+  onTimezone: (timezone: string) => void;
   onSave: () => Promise<void>;
 }) {
   const completed = variables.filter((variable) => values[variable.key]?.trim()).length;
@@ -2291,24 +2317,35 @@ function PersonalisationDrawer({
             <i><span style={{ width: `${variables.length ? completed / variables.length * 100 : 0}%` }} /></i>
           </div>
           <AddVariableForm onAdd={onAdd} />
-          {variables.length ? (
-            <div className="personalisation-drawer-fields">
+          <div className="personalisation-drawer-fields">
+            <div className="personalise-field">
+              <span className="personalise-field-label">
+                Business timezone
+                <i className="filled">Selected</i>
+              </span>
+              <DarkSelect
+                ariaLabel="Business timezone"
+                icon={<Clock3 size={16} />}
+                onValueChange={onTimezone}
+                options={TIMEZONE_OPTIONS}
+                value={timezone}
+              />
+              <small>Used for opening hours, availability, bookings, and after-hours behaviour.</small>
+            </div>
+            {variables.length ? (
+              <>
               {variables.map((variable) => (
                 <VariableValueField
                   countryName={countryName}
                   key={variable.key}
                   variable={variable}
                   value={values[variable.key] ?? ""}
-                  onChange={(value) => {
-                    onChange(variable.key, value);
-                    if (variable.key === "calendar_provider") {
-                      onChange("routing_policy", value === "Set up later" ? "Set up later" : "Fixed calendar");
-                    }
-                  }}
+                  onChange={(value) => onChange(variable.key, value)}
                 />
               ))}
-            </div>
-          ) : <div className="personalisation-empty">No business details yet. Add a variable to reference it from the prompt.</div>}
+              </>
+            ) : <div className="personalisation-empty">No additional business details yet. Add a variable to reference it from the prompt.</div>}
+          </div>
           {saveError && <div className="personalisation-save-error"><CircleAlert size={16} /> {saveError}</div>}
         </div>
         <footer>

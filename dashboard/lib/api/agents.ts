@@ -45,6 +45,13 @@ export function updateAgent(agentId: string, draft: AgentDraft) {
   return apiRequest<Agent>(`/agents/${agentId}`, { method: "PUT", body: JSON.stringify(draft) });
 }
 
+export function updateAgentTimezone(agentId: string, timezone: string) {
+  return apiRequest<Agent>(`/agents/${agentId}/timezone`, {
+    method: "PATCH",
+    body: JSON.stringify({ timezone }),
+  });
+}
+
 export function createAgentFromTemplate(
   templateId: string,
   payload: { name: string; timezone: string; humanTransferNumber: string | null },

@@ -3309,3 +3309,23 @@ Expected:
   - The commands were run sequentially because concurrent execution races on Next's generated `.next/types` directory.
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-18 - Make timezone guided and calendar configuration integration-owned
+
+- Replaced the free-text Business timezone variable in Personalise with the existing IANA timezone selector, including readable UTC offsets and location names. It updates the agent's authoritative scheduling timezone and is persisted immediately when saved for an existing agent.
+- Removed Calendar system from template personalisation. Calendar provider and routing values are now system-managed from the agent integration state, so owners cannot enter a value that disagrees with the provider actually enabled.
+- Added a tenant-scoped timezone patch endpoint and server-side `ZoneId` validation. Full agent create/update requests now receive the same validation, preventing invalid timezones from reaching booking or operating-hours code.
+- Added backward compatibility for existing agents: legacy `business_timezone`, `calendar_system`, `calendar_provider`, and `routing_policy` variables are hidden, ignored by readiness checks, protected from owner API updates, and resolved from the current agent/integration state when an older saved prompt still references them.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/{Agent,AgentDtos,AgentService,AgentVariableService,SystemAgentTemplateSeeder}.java`
+  - `backend/src/main/java/com/sauti/api/AgentController.java`
+  - `backend/src/test/java/com/sauti/agent/{AgentVariableServiceTest,SystemAgentTemplateSeederTest}.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/lib/api/agents.ts`
+- Verification:
+  - focused template and agent-variable regression tests (successful)
+  - `.\gradlew.bat :backend:test` (successful)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

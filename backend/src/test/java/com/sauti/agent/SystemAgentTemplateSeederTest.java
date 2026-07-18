@@ -51,6 +51,11 @@ class SystemAgentTemplateSeederTest {
                         "\"required\":true"
                 );
         assertThat(dental.systemPrompt()).contains("{{dentists}}", "{{dental_urgency_policy}}");
+        assertThat(dental.configurationJson())
+                .doesNotContain("\"key\":\"business_timezone\"", "\"key\":\"calendar_system\"");
+        assertThat(dental.systemPrompt())
+                .contains("{{timezone}}", "calendar provider enabled for this agent")
+                .doesNotContain("{{business_timezone}}", "{{calendar_system}}");
 
         var autoRepair = template(templates, "Auto Repair Advisor");
         assertThat(autoRepair.configurationJson()).contains(

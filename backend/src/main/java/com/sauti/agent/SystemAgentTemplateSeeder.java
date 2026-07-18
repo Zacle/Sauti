@@ -29,15 +29,15 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
     );
     private static final Set<String> REQUIRED_VARIABLES = Set.of(
             "business_name", "business_description", "business_address", "business_hours",
-            "business_timezone", "business_phone", "supported_languages", "fallback_language",
+            "business_phone", "supported_languages", "fallback_language",
             "after_hours_behavior", "required_booking_fields", "notification_channels"
     );
     private static final Set<String> CORE_VARIABLES = Set.of(
             "business_name", "business_description", "business_address", "business_hours",
-            "business_timezone", "business_phone", "business_website", "booking_link",
+            "business_phone", "business_website", "booking_link",
             "supported_languages", "fallback_language", "greeting_style", "tone",
             "transfer_rules", "transfer_number", "after_hours_behavior", "escalation_triggers",
-            "transfer_retry_policy", "calendar_system", "appointment_lead_time",
+            "transfer_retry_policy", "appointment_lead_time",
             "appointment_buffer", "cancellation_policy", "confirmation_channels",
             "notification_channels", "faq", "prohibited_statements", "required_booking_fields"
     );
@@ -256,7 +256,6 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 definition("business_description", "Business description", "Short description or tagline", "Friendly neighbourhood clinic", true),
                 definition("business_address", "Business address", "Primary address or location list", "12 Main Street", true),
                 definition("business_hours", "Business hours", "Weekly hours plus holiday exceptions", "Mon-Fri 09:00-17:00", true),
-                definition("business_timezone", "Business timezone", "IANA timezone for all scheduling", "Africa/Cairo", true),
                 definition("business_phone", "Business phone", "Number callers may use for callbacks", "+20 111 000 0000", true),
                 definition("business_website", "Business website", "Public website", "https://example.com", false),
                 definition("booking_link", "Booking link", "Public self-service booking link when available", "https://example.com/book", false),
@@ -269,7 +268,6 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 definition("after_hours_behavior", "After-hours behavior", "Voicemail, callback capture, or emergency line", "Capture a callback request", true),
                 definition("escalation_triggers", "Escalation triggers", "Human request, anger, risk, or out-of-scope conditions", "Explicit human request; angry caller", false),
                 definition("transfer_retry_policy", "Transfer retry policy", "Hold time and fallback if nobody answers", "Ring 20 seconds then capture callback", false),
-                definition("calendar_system", "Calendar system", "Google Calendar, Calendly, or custom API", "Google Calendar", false),
                 definition("appointment_lead_time", "Appointment lead time", "Minimum time before a new booking", "2 hours", false),
                 definition("appointment_buffer", "Appointment buffer", "Gap required between appointments", "15 minutes", false),
                 definition("cancellation_policy", "Cancellation policy", "Policy text the agent may explain", "Cancel at least 24 hours ahead", false),
@@ -333,7 +331,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 ## Configured Business Profile
                 - Business: {{business_name}} â€” {{business_description}}
                 - Locations and access: {{business_address}}
-                - Hours and exceptions: {{business_hours}} ({{business_timezone}})
+                - Hours and exceptions: {{business_hours}} ({{timezone}})
                 - Public callback number: {{business_phone}}
                 - Website and booking link: {{business_website}} {{booking_link}}
                 - Supported and fallback languages: {{supported_languages}}; fallback {{fallback_language}}
@@ -344,7 +342,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 Outside configured hours, apply {{after_hours_behavior}}. Escalate only for {{escalation_triggers}}.
 
                 ## Booking and Confirmation Rules
-                Use {{calendar_system}}. Apply lead time {{appointment_lead_time}}, buffer {{appointment_buffer}}, and cancellation policy {{cancellation_policy}}.
+                Use only the calendar provider enabled for this agent. Apply lead time {{appointment_lead_time}}, buffer {{appointment_buffer}}, and cancellation policy {{cancellation_policy}}.
                 Send customer confirmations only through {{confirmation_channels}} and alert the owner through {{notification_channels}}.
                 Collect the configured fields represented by {{required_booking_fields}} before booking; runtime tool configuration is authoritative.
 

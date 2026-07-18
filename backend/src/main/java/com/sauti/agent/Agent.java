@@ -261,6 +261,10 @@ public class Agent extends Auditable {
         this.phoneNumberStatus = provisioning.status();
     }
 
+    public void updateTimezone(String timezone) {
+        this.timezone = timezone;
+    }
+
     public void activate() {
         this.isActive = true;
     }

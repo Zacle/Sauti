@@ -2,6 +2,7 @@ package com.sauti.api;
 
 import com.sauti.agent.AgentDtos.AgentRequest;
 import com.sauti.agent.AgentDtos.AgentResponse;
+import com.sauti.agent.AgentDtos.AgentTimezoneRequest;
 import com.sauti.agent.AgentService;
 import com.sauti.agent.AgentStatsService;
 import com.sauti.agent.AgentReadinessService;
@@ -26,6 +27,7 @@ import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -121,6 +123,15 @@ public class AgentController {
     @PutMapping("/{id}")
     AgentResponse update(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id, @Valid @RequestBody AgentRequest request) {
         return AgentResponse.from(agentService.update(user.tenantId(), id, request));
+    }
+
+    @PatchMapping("/{id}/timezone")
+    AgentResponse updateTimezone(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID id,
+            @Valid @RequestBody AgentTimezoneRequest request
+    ) {
+        return AgentResponse.from(agentService.updateTimezone(user.tenantId(), id, request.timezone()));
     }
 
     @PostMapping("/{id}/activate")

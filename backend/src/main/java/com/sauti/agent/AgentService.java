@@ -65,6 +65,7 @@ public class AgentService {
     public Agent create(UUID tenantId, AgentRequest request) {
         validateLanguages(request.defaultLanguage(), request.supportedLanguages());
         validateAvailability(request);
+        var timezone = validateTimezone(request.timezone());
         var tenant = tenantRepository.findById(tenantId).orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
         var agent = new Agent(tenant, request.name(), request.greetingMessage(), request.systemPrompt());
         agent.update(
@@ -78,7 +79,7 @@ public class AgentService {
                 request.humanTransferNumber(),
                 request.escalationPhrases(),
                 request.bookingEnabled(),
-                request.timezone(),
+                timezone,
                 knowledgeBaseService.normalize(request.knowledgeBase()),
                 request.operatingHours(),
                 request.maxCallDurationSeconds(),
@@ -102,6 +103,7 @@ public class AgentService {
     public Agent update(UUID tenantId, UUID agentId, AgentRequest request) {
         validateLanguages(request.defaultLanguage(), request.supportedLanguages());
         validateAvailability(request);
+        var timezone = validateTimezone(request.timezone());
         var agent = get(tenantId, agentId);
         agent.update(
                 request.name(),
@@ -114,7 +116,7 @@ public class AgentService {
                 request.humanTransferNumber(),
                 request.escalationPhrases(),
                 request.bookingEnabled(),
-                request.timezone(),
+                timezone,
                 knowledgeBaseService.normalize(request.knowledgeBase()),
                 request.operatingHours(),
                 request.maxCallDurationSeconds(),
@@ -131,6 +133,22 @@ public class AgentService {
         agent.configureLlmTier(request.llmTier());
         defaultToolSeeder.synchronizeCapabilities(agent);
         return agent;
+    }
+
+    @Transactional
+    public Agent updateTimezone(UUID tenantId, UUID agentId, String timezone) {
+        var agent = get(tenantId, agentId);
+        agent.updateTimezone(validateTimezone(timezone));
+        return agent;
+    }
+
+    private String validateTimezone(String timezone) {
+        var normalized = timezone == null || timezone.isBlank() ? "UTC" : timezone.trim();
+        try {
+            return java.time.ZoneId.of(normalized).getId();
+        } catch (java.time.DateTimeException exception) {
+            throw new IllegalArgumentException("Unsupported timezone: " + normalized);
+        }
     }
 
     private void validateAvailability(AgentRequest request) {

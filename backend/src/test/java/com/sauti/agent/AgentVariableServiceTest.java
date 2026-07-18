@@ -78,6 +78,29 @@ class AgentVariableServiceTest {
     }
 
     @Test
+    void legacySystemManagedFieldsUseRuntimeValuesAndDoNotBlockReadiness() {
+        var repository = mock(AgentVariableRepository.class);
+        var agent = new Agent(new Tenant("Demo Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");
+        agent.update(
+                "Amina", "Hello", "Prompt", "en", List.of("en"),
+                null, List.of(), true, "Africa/Cairo", ""
+        );
+        agent.configureOnboarding(
+                "Healthcare", "Appointment booking", null, List.of("Consultation"),
+                "Google Calendar", "Fixed calendar", "Provider default"
+        );
+        var staleTimezone = new AgentVariable(agent, "business_timezone", "Business timezone", null, true);
+        var staleCalendar = new AgentVariable(agent, "calendar_system", "Calendar system", null, true);
+        when(repository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
+                .thenReturn(List.of(staleTimezone, staleCalendar));
+        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+
+        assertThat(service.missingRequired(agent.getId())).isEmpty();
+        assertThat(service.resolvePrompt(agent, "Hours use {{business_timezone}} with {{calendar_system}}."))
+                .isEqualTo("Hours use Africa/Cairo with Google Calendar.");
+    }
+
+    @Test
     void usesPromptBusinessInsteadOfWorkspaceNameWhenVariableIsEmpty() {
         var repository = mock(AgentVariableRepository.class);
         var agent = new Agent(
