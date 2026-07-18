@@ -158,11 +158,15 @@ class SautiCalendarFulfillmentTest {
         var tool = mock(AgentTool.class);
         var provider = mock(CalendarProvider.class);
         when(call.getAgent()).thenReturn(agent);
+        var tenant = mock(com.sauti.tenant.Tenant.class);
+        var tenantId = java.util.UUID.randomUUID();
+        when(call.getTenant()).thenReturn(tenant);
+        when(tenant.getId()).thenReturn(tenantId);
         when(call.getLanguageDetected()).thenReturn("en");
         when(agent.getDefaultLanguage()).thenReturn("en");
         when(agent.getTimezone()).thenReturn("UTC");
         when(agent.getOperatingHours()).thenReturn(hours);
-        when(factory.forTool(tool)).thenReturn(provider);
+        when(factory.forTool(tool, tenantId)).thenReturn(provider);
         when(provider.availability(
                 agent, LocalDate.of(2026, 7, 22), 60, java.time.ZoneId.of("UTC")
         )).thenReturn(slots);

@@ -42,7 +42,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         try {
             return switch (toolCall.name()) {
                 case "check_availability" -> LlmToolResult.success(toolCall, checkAvailability(call, toolCall.arguments(), toolConfig));
-                case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(call, toolCall, calendarProviderFactory.forTool(toolConfig)));
+                case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(
+                        call, toolCall, calendarProviderFactory.forTool(toolConfig, call.getTenant().getId())
+                ));
                 case "reschedule_booking" -> LlmToolResult.success(toolCall, reschedule(call, toolCall));
                 case "cancel_booking" -> LlmToolResult.success(toolCall, cancel(call, toolCall));
                 default -> LlmToolResult.error(toolCall, "Unrecognised calendar tool: " + toolCall.name());
@@ -77,7 +79,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         List<com.sauti.calendar.CalendarAvailabilitySlot> availableSlots = List.of();
         if (businessOpen && !Boolean.FALSE.equals(withinOperatingHours)) {
             try {
-                var provider = calendarProviderFactory.forTool(toolConfig);
+                var provider = calendarProviderFactory.forTool(toolConfig, call.getTenant().getId());
                 availableSlots = provider.availability(call.getAgent(), date, duration, timezone);
             } catch (RuntimeException exception) {
                 calendarLive = false;

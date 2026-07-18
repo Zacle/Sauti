@@ -3041,3 +3041,26 @@ Expected:
 - Follow-ups / risks:
   - Automated tests cover normalization, business-hours-first behavior, deterministic speech, provider degradation, and Realtime routing. A live Google call still requires real credentials and cannot be simulated locally.
   - After CI deployment, run `Test live connection` for Google Calendar on each affected agent. Any pre-existing OAuth grant that lacks `calendar.freebusy` or has an invalid refresh token must be reconnected once; the new runtime retry cannot add scopes to an old grant.
+
+### 2026-07-18 - Fix asynchronous Realtime calendar credential resolution
+
+- Investigated the live French calendar failure after the user disconnected and reconnected Google Calendar.
+- Confirmed through GitHub Actions that production commit `2381866e20b41ea0fa646c38d56b72ae46d17cd0` deployed successfully and remained healthy.
+- Ran the existing read-only `Production diagnostics` workflow as run `29620248471` for the preceding two hours. It confirmed the affected French Cartesia sessions at 22:58, 22:59, and 23:01 UTC without a voice-provider error. The workflow's current grep filter does not include calendar warnings, so it could not expose the underlying exception text.
+- Identified a runtime-specific persistence defect: Realtime tool fulfillment runs asynchronously after the repository transaction closes, while `CalendarProviderFactory.forTool` dereferenced `toolConfig.getAgent().getTenant()` through a lazy JPA association. The synchronous OAuth free/busy probe could therefore succeed during reconnect while every later asynchronous availability lookup degraded as unavailable.
+- Added a tenant-scoped provider resolution overload that accepts the authoritative tenant ID from the active call and never dereferences the detached agent association. Availability and booking tool paths now use it.
+- Kept `forAgent` transaction-scoped for non-call booking operations that resolve a provider from an agent tool.
+- Added a regression test that makes any `AgentTool.getAgent()` access fail and verifies Google provider resolution still succeeds using the explicit tenant ID.
+- Files touched:
+  - `backend/src/main/java/com/sauti/tool/CalendarProviderFactory.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/test/java/com/sauti/tool/{CalendarProviderFactoryTest,SautiCalendarFulfillmentTest}.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused calendar factory, fulfillment, browser Realtime, and phone Realtime tests (successful)
+  - `\.\gradlew.bat :backend:test --no-daemon` (successful)
+  - `git diff --check` (successful; only expected line-ending notices)
+- Deployment:
+  - Not deployed by the coding agent. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - Extend the existing production diagnostics workflow filter to include `Live calendar availability failed`, `Realtime tool failed`, and Google Calendar messages so future runtime failures can be diagnosed without direct server access.
