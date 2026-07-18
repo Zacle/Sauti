@@ -256,7 +256,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             openAiConnectionRef.current?.cancelResponse();
           }
           if (hybrid && (agentWasResponding || cartesiaStillAudible)) {
-            interruptHybridResponse(agentWasResponding);
+            // Cancel even when OpenAI finished generating before Cartesia
+            // finished speaking. Late text deltas must not restart the old
+            // sentence in the newly opened Cartesia stream.
+            interruptHybridResponse(true);
           }
         },
         onError: (message) => setError(message),

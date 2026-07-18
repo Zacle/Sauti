@@ -119,6 +119,7 @@ public class AgentService {
         agent.configureAvailability(request.operatingHours(), request.afterHoursBehavior(), request.afterHoursMessage());
         applyCallBehavior(agent, request);
         agent.configureLlmTier(request.llmTier());
+        defaultToolSeeder.synchronizeCapabilities(agent);
         return agent;
     }
 

@@ -71,10 +71,25 @@ export async function connectOpenAiRealtime(options: {
   let currentOutputItemId = "";
   let textOutputDisposition: "unknown" | "speech" | "structured" = "unknown";
   let expectedResponses = 0;
+  let currentResponseId = "";
+  let discardCurrentResponseOutput = false;
+  const ignoredResponseIds = new Set<string>();
   const processedCallerItemIds = new Set<string>();
   let lastCallerTranscript = "";
   let lastCallerTranscriptAt = 0;
   const deferredAgentTranscripts: Array<{ text: string; interrupted: boolean }> = [];
+
+  const responseId = (event: Record<string, unknown>) => {
+    const response = event.response as { id?: string } | undefined;
+    return String(event.response_id ?? response?.id ?? "").trim();
+  };
+
+  const cancelActiveResponse = () => {
+    if (currentResponseId) ignoredResponseIds.add(currentResponseId);
+    discardCurrentResponseOutput = true;
+    responseActive = false;
+    send(channel, { type: "response.cancel" });
+  };
 
   const shouldProcessCallerTranscript = (event: Record<string, unknown>, transcript: string) => {
     const item = event.item as { id?: string } | undefined;
@@ -209,18 +224,35 @@ export async function connectOpenAiRealtime(options: {
     let event: Record<string, unknown>;
     try { event = JSON.parse(String(message.data)) as Record<string, unknown>; } catch { return; }
     const type = String(event.type ?? "");
+    const eventResponseId = responseId(event);
     if (type === "response.created") {
       if (expectedResponses <= 0) {
+        if (eventResponseId) ignoredResponseIds.add(eventResponseId);
+        discardCurrentResponseOutput = true;
         send(channel, { type: "response.cancel" });
         responseActive = false;
         return;
       }
       expectedResponses -= 1;
       responseActive = true;
+      currentResponseId = eventResponseId;
+      discardCurrentResponseOutput = false;
       currentOutputItemId = "";
       textOutputDisposition = "unknown";
       agentTranscript = "";
     }
+    const ignoredResponse = Boolean(eventResponseId && ignoredResponseIds.has(eventResponseId));
+    if (ignoredResponse && type === "response.done") {
+      ignoredResponseIds.delete(eventResponseId);
+      if (currentResponseId === eventResponseId) {
+        currentResponseId = "";
+        discardCurrentResponseOutput = false;
+        responseActive = false;
+        agentTranscript = "";
+      }
+      return;
+    }
+    if (ignoredResponse || (discardCurrentResponseOutput && type.startsWith("response."))) return;
     if (type === "response.output_item.added") {
       const item = event.item as { id?: string; type?: string } | undefined;
       if (item?.type === "message") currentOutputItemId = item.id ?? "";
@@ -326,7 +358,10 @@ export async function connectOpenAiRealtime(options: {
       callerSpeechActive = false;
       window.clearTimeout(bargeInTimer);
     }
-    if (type === "response.done") responseActive = false;
+    if (type === "response.done") {
+      responseActive = false;
+      if (!eventResponseId || currentResponseId === eventResponseId) currentResponseId = "";
+    }
     if (type === "output_audio_buffer.started") options.callbacks.onSpeaking(true);
     if (type === "output_audio_buffer.stopped" || type === "output_audio_buffer.cleared") options.callbacks.onSpeaking(false);
     if (type === "response.function_call_arguments.done") {
@@ -380,7 +415,7 @@ export async function connectOpenAiRealtime(options: {
       expectedResponses += 1;
       requestGreeting(channel, text, options.outputMode ?? "audio");
     },
-    cancelResponse: () => send(channel, { type: "response.cancel" }),
+    cancelResponse: cancelActiveResponse,
     close: () => {
       window.clearTimeout(bargeInTimer);
       channel.close();
@@ -434,7 +469,7 @@ function requestCallerResponse(channel: RTCDataChannel, requireAvailabilityTool:
   send(channel, {
     type: "response.create",
     response: {
-      instructions: "Answer exactly once in the current caller language using only configured facts. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Ask at most one question. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly.",
+      instructions: "Answer exactly once in the current caller language using only configured facts. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. Ask at most one question. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly.",
     },
   });
 }

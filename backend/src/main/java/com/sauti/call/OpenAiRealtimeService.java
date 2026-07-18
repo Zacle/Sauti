@@ -192,7 +192,17 @@ public class OpenAiRealtimeService {
                 "interrupt_response", false
         ));
 
-        var tools = agentToolLoader.loadForAgent(call.getAgent().getId()).stream()
+        var loadedTools = agentToolLoader.loadForAgent(call.getAgent().getId());
+        if (call.getAgent().isBookingEnabled()) {
+            var activeNames = loadedTools.stream().map(com.sauti.llm.LlmToolDefinition::name).toList();
+            if (!activeNames.contains("check_availability") || !activeNames.contains("book_slot")) {
+                LOGGER.warn(
+                        "Booking agent missing realtime tools callId={} agentId={} activeTools={}",
+                        call.getId(), call.getAgent().getId(), activeNames
+                );
+            }
+        }
+        var tools = loadedTools.stream()
                 .map(tool -> {
                     var definition = new LinkedHashMap<String, Object>();
                     definition.put("type", "function");

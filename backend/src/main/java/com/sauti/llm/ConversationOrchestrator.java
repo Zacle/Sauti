@@ -352,6 +352,10 @@ public class ConversationOrchestrator {
                 - If the caller asks for information first, such as hours, services, availability, location, price, or policies, answer that question before collecting personal details.
                 - Only start collecting name/contact details once the caller clearly wants to book, be called back, be transferred, or leave a message.
                 - Booking collection order: caller's name, then contact number or email, then service or reason, then date and time preference. Do not ask for date before name once booking collection has started.
+                - A request to book, schedule, reserve, or arrange an appointment is a NEW booking unless the caller explicitly says they want to change, reschedule, or cancel an existing booking.
+                - For a new booking, never ask for a booking ID. Booking IDs are only for an explicitly requested reschedule or cancellation of an existing booking.
+                - Do not ask how long a normal appointment should last. Use the configured tool default. Ask about duration only when the caller explicitly requests a special duration or the configured business workflow explicitly requires it.
+                - New-booking sequence: collect only the missing name, contact, service, date, and time; check availability; obtain a brief confirmation; then call `book_slot`. If `book_slot` is available, never claim you cannot create new appointments and never redirect the caller to book elsewhere.
                 - Accept partial information gracefully. If the caller gives you the date without the type, use what you have. Ask only for what is genuinely missing.
                 - Treat a caller detail as collected only when the caller explicitly says that detail. Never infer a caller name, number, address, email, or confirmation from a greeting, acknowledgement, thanks, "avec plaisir", "d'accord", "yes", or from your own agent name. If the reply does not answer the detail you just requested, briefly repeat that same request and do not advance to the next field.
                 - If the caller declines to give one piece of contact info (e.g. "I don't want to give my email"), accept that warmly and immediately offer the alternative ("No worries — could I take your phone number instead?"). Never press or repeat the request.
@@ -483,7 +487,7 @@ public class ConversationOrchestrator {
                     .append(" Do not say that you have no hours or no location.\n");
         }
         if (bookingIntent && call.getAgent().isBookingEnabled()) {
-            directive.append("\nMANDATORY NEXT RESPONSE: The caller has a booking or trial intent. This agent is configured to handle it. Never say you cannot book; collect only the next missing detail and use the configured tools when required.\n");
+            directive.append("\nMANDATORY NEXT RESPONSE: The caller has a NEW booking or trial intent. This agent is configured to create it. Never ask for a booking ID or ordinary duration, never say you cannot book, collect only the next missing name/contact/service/date/time detail, and use check_availability then book_slot when required.\n");
         }
         return directive.toString();
     }

@@ -214,6 +214,42 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void discardsLateTextFromAnInterruptedResponseWithoutContaminatingTheNextTurn() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"response-old\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"response_id\":\"response-old\",\"delta\":\"Old start.\"}", true);
+        socketListener.markCurrentResponseCancelled();
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"response_id\":\"response-old\",\"delta\":\" Late duplicate.\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\",\"response\":{\"id\":\"response-old\"}}", true);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"response-new\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"response_id\":\"response-new\",\"delta\":\"Fresh answer.\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"response_id\":\"response-new\",\"text\":\"Fresh answer.\"}", true);
+
+        assertThat(events).containsExactly(
+                "delta:Old start.",
+                "delta:Fresh answer.",
+                "agent:Fresh answer.:false"
+        );
+    }
+
+    @Test
     void instructionUpdatesDeclareARealtimeSession() throws Exception {
         var webSocket = mock(WebSocket.class);
         when(webSocket.sendText(anyString(), eq(true)))

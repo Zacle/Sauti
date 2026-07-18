@@ -82,6 +82,7 @@ public class DefaultToolSeeder {
                 schema(Map.of("payload", property("object", "Structured request payload", "")),
                         List.of("payload")), "sauti_integration", null, 90);
         synchronizeAddedTools(agent);
+        synchronizeCapabilities(agent);
     }
 
     private void synchronizeAddedTools(Agent agent) {
@@ -106,19 +107,26 @@ public class DefaultToolSeeder {
     }
 
     public void configureOnboardingDraft(Agent agent) {
-        var activeTools = new java.util.HashSet<>(Set.of("end_call"));
-        if (agent.isBookingEnabled()) {
-            activeTools.addAll(Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking", "send_confirmation_sms"));
+        synchronizeCapabilities(agent);
+    }
+
+    /** Keeps runtime tools aligned when booking or transfer settings change. */
+    public void synchronizeCapabilities(Agent agent) {
+        var calendarTools = Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking");
+        for (var tool : agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agent.getId())) {
+            if (calendarTools.contains(tool.getToolName())) {
+                // Preserve an attached Google credential. Draft tools already
+                // carry noop_calendar from seeding and remain locally testable.
+                tool.configureForDraft(agent.isBookingEnabled(), null);
+            } else if ("send_confirmation_sms".equals(tool.getToolName())) {
+                tool.configureForDraft(agent.isBookingEnabled(), null);
+            } else if ("transfer_to_human".equals(tool.getToolName())) {
+                tool.configureForDraft(agent.getHumanTransferNumber() != null
+                        && !agent.getHumanTransferNumber().isBlank(), null);
+            } else if ("end_call".equals(tool.getToolName())) {
+                tool.configureForDraft(true, null);
+            }
         }
-        if (agent.getHumanTransferNumber() != null && !agent.getHumanTransferNumber().isBlank()) {
-            activeTools.add("transfer_to_human");
-        }
-        agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agent.getId()).forEach(tool -> {
-            String calendarType = Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking").contains(tool.getToolName())
-                    ? "noop_calendar"
-                    : null;
-            tool.configureForDraft(activeTools.contains(tool.getToolName()), calendarType);
-        });
     }
 
     private void seed(Agent agent, String name, String description, Map<String, Object> schema, String fulfillmentType, String calendarType, int order) {

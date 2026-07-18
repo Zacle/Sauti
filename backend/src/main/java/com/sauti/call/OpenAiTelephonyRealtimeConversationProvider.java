@@ -103,7 +103,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 .header("Authorization", "Bearer " + apiKey)
                 .buildAsync(uri, eventListener)
                 .thenApply(webSocket -> {
-                    var session = new OpenAiTelephonySession(webSocket, objectMapper, keepAliveExecutor);
+                    var session = new OpenAiTelephonySession(
+                            webSocket,
+                            objectMapper,
+                            keepAliveExecutor,
+                            eventListener::markCurrentResponseCancelled
+                    );
                     eventListener.attach(session);
                     return session;
                 });
@@ -128,8 +133,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private boolean callerSpeechActive;
         private boolean callerSpeechNotified;
         private final java.util.LinkedHashSet<String> processedCallerItemIds = new java.util.LinkedHashSet<>();
+        private final java.util.Set<String> ignoredResponseIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
         private String lastCallerTranscript = "";
         private long lastCallerTranscriptAt;
+        private volatile String currentResponseId = "";
+        private volatile boolean discardCurrentResponseOutput;
         private final java.util.ArrayDeque<AgentCompletion> deferredAgentCompletions = new java.util.ArrayDeque<>();
 
         RealtimeWebSocketListener(
@@ -149,6 +157,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         void attach(OpenAiTelephonySession session) {
             this.session = session;
+        }
+
+        synchronized void markCurrentResponseCancelled() {
+            if (!currentResponseId.isBlank()) ignoredResponseIds.add(currentResponseId);
+            discardCurrentResponseOutput = true;
+            responseActive = false;
         }
 
         @Override
@@ -188,14 +202,33 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             try {
                 var event = objectMapper.readTree(value);
                 var type = event.path("type").asText("");
+                var eventResponseId = responseId(event);
+                if ("response.created".equals(type)) {
+                    var activeSession = session;
+                    if (activeSession != null && !activeSession.consumeExpectedResponse()) {
+                        if (!eventResponseId.isBlank()) ignoredResponseIds.add(eventResponseId);
+                        discardCurrentResponseOutput = true;
+                        activeSession.cancelResponse();
+                        responseActive = false;
+                        return;
+                    }
+                    currentResponseId = eventResponseId;
+                    discardCurrentResponseOutput = false;
+                }
+                var ignoredResponse = !eventResponseId.isBlank() && ignoredResponseIds.contains(eventResponseId);
+                if (ignoredResponse && "response.done".equals(type)) {
+                    ignoredResponseIds.remove(eventResponseId);
+                    if (eventResponseId.equals(currentResponseId)) {
+                        currentResponseId = "";
+                        discardCurrentResponseOutput = false;
+                        responseActive = false;
+                        agentText.setLength(0);
+                    }
+                    return;
+                }
+                if (ignoredResponse || (discardCurrentResponseOutput && type.startsWith("response."))) return;
                 switch (type) {
                     case "response.created" -> {
-                        var activeSession = session;
-                        if (activeSession != null && !activeSession.consumeExpectedResponse()) {
-                            activeSession.cancelResponse();
-                            responseActive = false;
-                            return;
-                        }
                         responseActive = true;
                         responseInterrupted = false;
                         textCompleted = false;
@@ -274,6 +307,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     }
                     case "response.done" -> {
                         responseActive = false;
+                        if (eventResponseId.isBlank() || eventResponseId.equals(currentResponseId)) {
+                            currentResponseId = "";
+                        }
                         if (!textCompleted && agentText.length() > 0) {
                             if (requiredAvailabilityToolPending
                                     || VoiceOutputGuard.isStructuredPayload(agentText.toString())) {
@@ -314,6 +350,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             lastCallerTranscript = normalized;
             lastCallerTranscriptAt = now;
             return true;
+        }
+
+        private String responseId(JsonNode event) {
+            var direct = event.path("response_id").asText("").trim();
+            return direct.isBlank() ? event.path("response").path("id").asText("").trim() : direct;
         }
 
         private synchronized void notifyActiveCallerSpeechStarted() {
@@ -490,6 +531,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final WebSocket webSocket;
         private final ObjectMapper objectMapper;
         private final ScheduledFuture<?> keepAliveTask;
+        private final Runnable onCancel;
         private final java.util.concurrent.atomic.AtomicInteger expectedResponses = new java.util.concurrent.atomic.AtomicInteger();
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
@@ -498,8 +540,18 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 ObjectMapper objectMapper,
                 ScheduledExecutorService keepAliveExecutor
         ) {
+            this(webSocket, objectMapper, keepAliveExecutor, () -> { });
+        }
+
+        OpenAiTelephonySession(
+                WebSocket webSocket,
+                ObjectMapper objectMapper,
+                ScheduledExecutorService keepAliveExecutor,
+                Runnable onCancel
+        ) {
             this.webSocket = webSocket;
             this.objectMapper = objectMapper;
+            this.onCancel = onCancel;
             this.keepAliveTask = keepAliveExecutor.scheduleAtFixedRate(
                     () -> webSocket.sendPing(ByteBuffer.wrap(new byte[] {1})),
                     8,
@@ -546,6 +598,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         @Override
         public void cancelResponse() {
+            onCancel.run();
             send(Map.of("type", "response.cancel"));
         }
 
@@ -557,6 +610,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             "instructions", "Answer exactly once in the current caller language using only configured facts. "
                                     + "Stay in the configured business role and never direct the caller to contact or choose "
                                     + "that same business elsewhere. Do not deny a capability granted by the agent instructions. "
+                                    + "Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. "
+                                    + "For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. "
                                     + "Ask at most one question. Do not invent services, classes, examples, or completed actions. "
                                     + "Preserve names, phone digits, dates, and times exactly."
                     )

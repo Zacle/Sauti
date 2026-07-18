@@ -155,7 +155,10 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
                 openAiConnectionRef.current?.cancelResponse();
               }
               if (hybrid && (agentWasResponding || cartesiaStillAudible)) {
-                if (agentWasResponding) openAiConnectionRef.current?.cancelResponse();
+                // OpenAI may finish generating text before Cartesia finishes
+                // playing it. Cancel the model in both cases so late deltas
+                // cannot restart the interrupted sentence.
+                openAiConnectionRef.current?.cancelResponse();
                 clearPlayback();
                 sendHybridEvent({ type: "interrupt" });
               }

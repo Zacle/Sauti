@@ -3091,3 +3091,34 @@ Expected:
 - Follow-ups / risks:
   - Sarah's live-calendar failure depends on the separately documented asynchronous tenant-resolution fix reaching production through CI/CD. Reconnecting OAuth alone cannot repair code that has not yet been deployed.
   - Prompt inference supports older agents, but the durable source of truth is still the agent's explicit `business_name` variable. Configure that value for every production agent rather than relying indefinitely on prompt inference.
+
+### 2026-07-18 - Repair booking-tool activation and interrupted hybrid responses
+
+- Traced Alec's refusal to create a new appointment to a capability-state mismatch: template-created agents could save `bookingEnabled=true` while their seeded `check_availability` and `book_slot` tools remained inactive. `DefaultToolSeeder` now synchronizes tool activation after creation, on agent updates, and during the existing startup backfill, so existing booking agents are repaired without disconnecting their Google credential.
+- Kept calendar credentials and provider type intact while toggling booking capability. Added regression coverage for both enabling and disabling tools with an attached Google credential.
+- Strengthened shared conversation instructions for new appointments. A new booking must not ask for a booking ID or ordinary duration, must not claim booking is unsupported when `book_slot` exists, and must proceed through missing name/contact/service/date/time, availability, confirmation, and booking.
+- Fixed an interruption race in browser hybrid voice, public Web Voice, and phone OpenAI + Cartesia sessions. Cancelling a response now marks its response ID as discarded; late text/done events cannot reopen Cartesia, duplicate the interrupted sentence, contaminate the next response, or save a broken completion.
+- Added a production warning when a booking-enabled agent starts a Realtime call without both required booking tools. Extended the read-only production diagnostics workflow to include calendar/tool execution failures and this readiness warning.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/AgentService.java`
+  - `backend/src/main/java/com/sauti/call/{OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/DefaultToolSeeder.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/DefaultToolSeederTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `.github/workflows/production-diagnostics.yml`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused booking-tool, telephony Realtime, and conversation-orchestrator tests (successful)
+  - `.\gradlew.bat :backend:test --no-daemon` (successful)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. All changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - The startup backfill takes effect only after this revision is reviewed, committed, and deployed through CI/CD. Until then, affected live agents can continue to start calls without the booking tools.
+  - After deployment, retest Alec or Sarah and run the `Production diagnostics` workflow for the call window if Google still rejects availability or event creation. The expanded filter will expose whether the remaining issue is tool readiness, credential refresh/scope, free/busy, or event insertion.
