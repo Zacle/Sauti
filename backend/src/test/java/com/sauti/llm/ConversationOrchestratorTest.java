@@ -260,7 +260,7 @@ class ConversationOrchestratorTest {
     }
 
     @Test
-    void replacesGeneratedOpeningWhenInstitutionIsMissing() {
+    void omitsWorkspaceNameWhenAgentBusinessIsMissing() {
         var provider = new SingleResponseProvider("Hi, this is Amina. How can I help?");
         var router = mock(ToolFulfillmentRouter.class);
         var toolLoader = mock(AgentToolLoader.class);
@@ -276,11 +276,45 @@ class ConversationOrchestratorTest {
 
         var greeting = orchestrator.generateOpeningGreeting(call, "en", "browser test call");
 
-        assertThat(greeting).isEqualTo("Hi, this is Amina from Demo Clinic. How can I help?");
+        assertThat(greeting).isEqualTo("Hi, this is Amina. How can I help?");
         assertThat(provider.contexts).hasSize(1);
         assertThat(provider.contexts.get(0).systemPrompt())
-                .contains("Mention the institution or business you represent by name: Demo Clinic")
-                .contains("Hi, this is Amina from Demo Clinic. How can I help?");
+                .contains("Never use the workspace/account name")
+                .contains("Introduce yourself by agent name only")
+                .doesNotContain("Demo Clinic");
+    }
+
+    @Test
+    void realtimeInstructionsKeepTheConfiguredBusinessRoleAndHours() {
+        var provider = new SingleResponseProvider("unused");
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(
+                provider, router, toolLoader, callTurnRepository, callSessionStore,
+                agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval,
+                new com.sauti.call.CallIntakeNoteService(callTurnRepository), new ObjectMapper(), 4
+        );
+        var call = activeCall();
+        var prompt = "You are Alec, the virtual assistant for X-Fit.\n"
+                + "- Hours: Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00";
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn(prompt);
+        when(agentVariableService.businessName(call.getAgent())).thenReturn("X-Fit");
+        when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of());
+
+        var instructions = orchestrator.realtimeInstructions(call, "en", "When are you open?");
+
+        assertThat(instructions)
+                .contains("You are working for X-Fit")
+                .contains("not a general-purpose adviser")
+                .contains("Never deny a capability explicitly granted")
+                .contains("The caller is asking about the represented BUSINESS")
+                .contains("Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00")
+                .contains("Do not say that you have no hours or no location");
     }
 
     private Call activeCall() {

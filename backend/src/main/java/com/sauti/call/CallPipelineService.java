@@ -1,6 +1,7 @@
 package com.sauti.call;
 
 import com.sauti.agent.Agent;
+import com.sauti.agent.AgentBusinessIdentity;
 import com.sauti.agent.AgentRepository;
 import com.sauti.agent.AgentVariableRepository;
 import com.sauti.call.CallDtos.SimulatedTurnResponse;
@@ -588,6 +589,13 @@ public class CallPipelineService {
                     "(?i)" + java.util.regex.Pattern.quote(tenantBusinessName),
                     java.util.regex.Matcher.quoteReplacement(configuredBusinessName)
             );
+        } else if (tenantBusinessName != null
+                && !tenantBusinessName.isBlank()
+                && (configuredBusinessName == null || configuredBusinessName.isBlank())) {
+            result = result.replaceAll(
+                    "(?i)\\s+(?:from|de|chez|kutoka)\\s+" + java.util.regex.Pattern.quote(tenantBusinessName),
+                    ""
+            );
         }
         return result;
     }
@@ -599,6 +607,14 @@ public class CallPipelineService {
             if (!configured.isBlank() && !looksLikeGreetingInstruction(configured)) return configured;
         }
         var business = agentBusinessName(agent);
+        if (business.isBlank()) {
+            return switch (resolvedLanguage) {
+                case "fr" -> "Bonjour, c'est " + agent.getName() + ". Comment puis-je vous aider ?";
+                case "sw" -> "Habari, ni " + agent.getName() + ". Ninaweza kukusaidiaje?";
+                case "ar" -> "مرحبًا، معك " + agent.getName() + ". كيف يمكنني مساعدتك؟";
+                default -> "Hello, this is " + agent.getName() + ". How can I help?";
+            };
+        }
         return switch (resolvedLanguage) {
             case "fr" -> "Bonjour, c'est " + agent.getName() + " de " + business + ". Comment puis-je vous aider ?";
             case "sw" -> "Habari, ni " + agent.getName() + " kutoka " + business + ". Ninaweza kukusaidiaje?";
@@ -611,7 +627,9 @@ public class CallPipelineService {
         return agentVariableRepository.findByAgentIdAndKey(agent.getId(), "business_name")
                 .filter(com.sauti.agent.AgentVariable::isFilled)
                 .map(com.sauti.agent.AgentVariable::getValue)
-                .orElse(agent.getTenant().getBusinessName());
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .orElseGet(() -> AgentBusinessIdentity.fromPrompt(agent));
     }
 
     private boolean looksLikeGreetingInstruction(String greeting) {

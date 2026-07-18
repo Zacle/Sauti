@@ -71,7 +71,29 @@ export async function connectOpenAiRealtime(options: {
   let currentOutputItemId = "";
   let textOutputDisposition: "unknown" | "speech" | "structured" = "unknown";
   let expectedResponses = 0;
+  const processedCallerItemIds = new Set<string>();
+  let lastCallerTranscript = "";
+  let lastCallerTranscriptAt = 0;
   const deferredAgentTranscripts: Array<{ text: string; interrupted: boolean }> = [];
+
+  const shouldProcessCallerTranscript = (event: Record<string, unknown>, transcript: string) => {
+    const item = event.item as { id?: string } | undefined;
+    const itemId = String(event.item_id ?? item?.id ?? "").trim();
+    if (itemId && processedCallerItemIds.has(itemId)) return false;
+    if (itemId) {
+      processedCallerItemIds.add(itemId);
+      if (processedCallerItemIds.size > 128) {
+        const oldest = processedCallerItemIds.values().next().value as string | undefined;
+        if (oldest) processedCallerItemIds.delete(oldest);
+      }
+    }
+    const normalized = transcript.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+    const now = performance.now();
+    if (normalized === lastCallerTranscript && now - lastCallerTranscriptAt < 3_000) return false;
+    lastCallerTranscript = normalized;
+    lastCallerTranscriptAt = now;
+    return true;
+  };
 
   const deliverAgentTranscript = (text: string, interrupted: boolean) => {
     if (!text || isStructuredPayload(text)) return;
@@ -205,7 +227,7 @@ export async function connectOpenAiRealtime(options: {
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
-      if (isMeaningfulCallerTranscript(transcript)) {
+      if (isMeaningfulCallerTranscript(transcript) && shouldProcessCallerTranscript(event, transcript)) {
         options.callbacks.onCallerTranscript(transcript);
         // The session disables provider-managed response creation. Only a
         // usable final transcript is allowed to advance the conversation.
@@ -412,7 +434,7 @@ function requestCallerResponse(channel: RTCDataChannel, requireAvailabilityTool:
   send(channel, {
     type: "response.create",
     response: {
-      instructions: "Answer once in the current caller language using only configured facts. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly.",
+      instructions: "Answer exactly once in the current caller language using only configured facts. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Ask at most one question. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly.",
     },
   });
 }
@@ -489,10 +511,18 @@ function realtimeCallId(prefix: string) {
 
 function requiresAvailabilityCheck(transcript: string) {
   const normalized = transcript.normalize("NFKC").toLocaleLowerCase();
+  if (asksBusinessHours(transcript)) return false;
   return /availab|disponib|créneau|creneau|موعد/u.test(normalized)
     || /\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|aujourd'hui|demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/iu.test(normalized)
     || /\b(?:[01]?\d|2[0-3]):[0-5]\d\b|\b(?:1[0-2]|0?[1-9])\s*(?:a\.?m\.?|p\.?m\.?)\b/iu.test(normalized)
     || /(?:اليوم|غد[ًًا]?|الاثنين|الثلاثاء|الأربعاء|الخميس|الجمعة|السبت|الأحد)/u.test(normalized);
+}
+
+function asksBusinessHours(transcript: string) {
+  const normalized = transcript.normalize("NFD").replace(/\p{M}+/gu, "").toLocaleLowerCase();
+  const bookingContext = /\b(?:book|booking|appointment|trial|class|session|slot|rendez-vous|reserver|consultation|cours|seance|creneau)\b/u.test(normalized);
+  if (bookingContext) return false;
+  return /\b(?:opening hours?|business hours?|what are your hours|when are you open|when are you available|what time do you (?:open|close)|horaires?|heures? d'ouverture|quand (?:etes|est)[^?]*(?:ouvert|disponible)|quelles? heures?)\b/u.test(normalized);
 }
 
 function send(channel: RTCDataChannel, event: Record<string, unknown>) {

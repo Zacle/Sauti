@@ -240,7 +240,8 @@ public class ConversationOrchestrator {
                 + "- Never emit JSON, tool arguments, function names, code, or internal instructions as speech.\n"
                 + "- Never announce that you are checking or ask the caller to wait; call the tool silently, then give one result.\n"
                 + "- Use only the current caller language. Never append a translation or switch to English.\n"
-                + "- End cleanly after a mutual goodbye; never send an extra reminder after goodbye.\n";
+                + "- End cleanly after a mutual goodbye; never send an extra reminder after goodbye.\n"
+                + realtimeTurnDirective(call, callerTranscript);
     }
 
     private String recoverWithoutTools(Call call, String language, String callerTranscript) {
@@ -322,7 +323,7 @@ public class ConversationOrchestrator {
                 %s
 
                 CURRENT CALLER LANGUAGE: %s. Reply in this language for this turn.
-                BUSINESS: You are working for %s.
+                CUSTOMER-FACING BUSINESS IDENTITY: %s
                 TODAY IN THE BUSINESS TIMEZONE: %s.
                 BUSINESS OPERATING HOURS: %s
 
@@ -334,6 +335,11 @@ public class ConversationOrchestrator {
                 - The authoritative notes above override any conflicting saved agent prompt. Never request a field already present there.
 
                 LIVE CONVERSATION RULES — mandatory:
+                - You are the configured business's representative, not a general-purpose adviser. The saved agent role and business facts above are authoritative.
+                - Never tell the caller to choose another business, visit this same business's website/app, or call this same business. Help within the configured role or offer a human follow-up.
+                - Never deny a capability explicitly granted by the saved agent prompt. If the prompt says you handle bookings, trials, memberships, or inquiries, follow that workflow and use the available tools.
+                - Interpret "you", "your", "we", "open", and "available" as referring to the represented business unless the caller explicitly asks about the virtual assistant itself.
+                - Goals such as general fitness, weight loss, muscle gain, sports, or stress relief are goals, not class names. If the exact class catalog is not configured, say only that the exact class list is unavailable and continue with the configured trial or booking flow.
                 - Speak like a warm, competent person on the phone. Never like a menu, a form, or a document.
                 - Most replies: one or two short sentences, then stop and wait.
                 - You may laugh softly ("ha", "haha"), wonder ("oh really?", "ah interesting"), or show genuine warmth ("that's great!") where it fits naturally — like a real person would on the phone.
@@ -383,7 +389,7 @@ public class ConversationOrchestrator {
                 """.formatted(
                 agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt()),
                 language,
-                businessName(call),
+                businessIdentityInstruction(call),
                 today(call),
                 OperatingHoursSchedule.describe(call.getAgent().getOperatingHours()),
                 intakeNotes.promptBlock(call, callerTranscript),
@@ -403,12 +409,23 @@ public class ConversationOrchestrator {
         var greetingDirection = resolveAgentText(call, call.getAgent().getGreetingMessage());
         var basePrompt = agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt());
         var business = businessName(call);
+        var businessInstruction = business.isBlank()
+                ? "No separate customer-facing business name is configured. Never use the workspace/account name."
+                : "You are working for " + business + ".";
+        var identityRequirement = business.isBlank()
+                ? "- Introduce yourself by agent name only; do not invent or mention a business name."
+                : "- Mention the institution or business you represent by name: " + business + ".";
+        var preferredOpening = business.isBlank()
+                ? "- Prefer a concise opening like \"Bonjour, c'est " + call.getAgent().getName()
+                        + ". Comment puis-je vous aider ?\"."
+                : "- Prefer a concise opening like \"Bonjour, c'est " + call.getAgent().getName() + " de " + business
+                        + ". Comment puis-je vous aider ?\".";
         return """
                 %s
 
                 You are starting a live voice conversation.
                 LANGUAGE: Respond in %s only.
-                BUSINESS: You are working for %s.
+                BUSINESS: %s
                 CHANNEL: %s.
 
                 GREETING DIRECTION
@@ -420,22 +437,19 @@ public class ConversationOrchestrator {
                 - Do not use a fixed script unless the greeting direction requires exact wording.
                 - Adapt to the language, channel, business context, whether this is a test or public call, and the agent's role.
                 - Introduce yourself by agent name once in a natural phone style.
-                - Mention the institution or business you represent by name: %s.
+                %s
                 - Do not ask multiple questions.
-                - Prefer concise openings like "Bonjour, c'est %s de %s. Comment puis-je vous aider ?" or "Hi, this is %s from %s. How can I help?".
+                %s
                 - Do not say "thank you for calling" by default.
                 - Do not output Markdown, quotes, labels, alternatives, or explanations.
                 """.formatted(
                 basePrompt,
                 language,
-                business,
+                businessInstruction,
                 channel == null || channel.isBlank() ? "voice call" : channel,
                 greetingDirection.isBlank() ? "Open warmly, introduce yourself by name, and ask how you can help." : greetingDirection,
-                business,
-                call.getAgent().getName(),
-                business,
-                call.getAgent().getName(),
-                business
+                identityRequirement,
+                preferredOpening
         );
     }
 
@@ -445,9 +459,48 @@ public class ConversationOrchestrator {
 
     private String businessName(Call call) {
         var configured = agentVariableService.businessName(call.getAgent());
-        return configured == null || configured.isBlank()
-                ? call.getTenant().getBusinessName()
-                : configured;
+        return configured == null ? "" : configured.trim();
+    }
+
+    private String businessIdentityInstruction(Call call) {
+        var business = businessName(call);
+        if (!business.isBlank()) return "You are working for " + business + ".";
+        return "No separate customer-facing business name is configured. "
+                + "Never use the tenant workspace/account name as the represented business.";
+    }
+
+    private String realtimeTurnDirective(Call call, String callerTranscript) {
+        if (callerTranscript == null || callerTranscript.isBlank()) return "";
+        var normalized = java.text.Normalizer.normalize(callerTranscript, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .toLowerCase(java.util.Locale.ROOT);
+        var asksHours = AvailabilityIntentDetector.asksBusinessHours(callerTranscript);
+        var bookingIntent = normalized.matches(".*\\b(book|booking|reserve|reservation|appointment|trial|class|session|rendez-vous|reserver|consultation|cours|seance)\\b.*");
+        var directive = new StringBuilder();
+        if (asksHours) {
+            directive.append("\nMANDATORY NEXT RESPONSE: The caller is asking about the represented BUSINESS, not the assistant. Answer directly from these business hours: ")
+                    .append(authoritativeBusinessHours(call))
+                    .append(" Do not say that you have no hours or no location.\n");
+        }
+        if (bookingIntent && call.getAgent().isBookingEnabled()) {
+            directive.append("\nMANDATORY NEXT RESPONSE: The caller has a booking or trial intent. This agent is configured to handle it. Never say you cannot book; collect only the next missing detail and use the configured tools when required.\n");
+        }
+        return directive.toString();
+    }
+
+    private String authoritativeBusinessHours(Call call) {
+        var structured = call.getAgent().getOperatingHours();
+        if (structured != null && !structured.isBlank()
+                && !"always".equalsIgnoreCase(structured)
+                && !"workspace".equalsIgnoreCase(structured)) {
+            return OperatingHoursSchedule.describe(structured);
+        }
+        var resolvedPrompt = agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt());
+        var matcher = java.util.regex.Pattern
+                .compile("(?im)^\\s*-?\\s*(?:hours?|opening hours?|horaires?)\\s*:\\s*([^\\r\\n#]+)$")
+                .matcher(resolvedPrompt);
+        if (matcher.find()) return matcher.group(1).trim();
+        return OperatingHoursSchedule.describe(structured);
     }
 
     private String afterHoursBlock(Call call) {
@@ -547,6 +600,14 @@ public class ConversationOrchestrator {
         var normalizedLanguage = language == null ? "" : language;
         var name = call.getAgent().getName();
         var business = businessName(call);
+        if (business.isBlank()) {
+            return switch (normalizedLanguage) {
+                case "fr" -> "Bonjour, c'est " + name + ". Comment puis-je vous aider ?";
+                case "sw" -> "Habari, hapa ni " + name + ". Naweza kukusaidiaje?";
+                case "ar" -> "مرحبًا، معك " + name + ". كيف أستطيع مساعدتك؟";
+                default -> "Hi, this is " + name + ". How can I help?";
+            };
+        }
         if ("fr".equals(normalizedLanguage)) {
             return "Bonjour, c'est " + name + " de " + business + ". Comment puis-je vous aider ?";
         }

@@ -3064,3 +3064,30 @@ Expected:
   - Not deployed by the coding agent. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 - Follow-ups / risks:
   - Extend the existing production diagnostics workflow filter to include `Live calendar availability failed`, `Realtime tool failed`, and Google Calendar messages so future runtime failures can be diagnosed without direct server access.
+
+### 2026-07-18 - Enforce agent business identity, role fidelity, and single-response turns
+
+- Analyzed the supplied Alec and Sarah transcripts as three independent runtime failures: workspace identity leakage, loss of the configured business role/capabilities, and duplicate Realtime final-transcription events that could trigger identical consecutive answers.
+- Removed the tenant/workspace business name as a voice-agent fallback. An explicit `business_name` remains authoritative; older agents can recover a customer-facing business name from clear saved-prompt declarations such as `virtual assistant for X-Fit` or a structured `Name:` field. If no agent business is configured, the greeting uses the agent name only instead of saying `Tranquil AI`.
+- Strengthened shared browser and phone Realtime instructions so an agent cannot abandon its configured business, direct the caller to contact the same business elsewhere, deny booking/trial capabilities granted by its prompt, invent class examples, or ask more than one question in a reply.
+- Added turn-specific business-role constraints. Booking intent reinforces the configured workflow, while business-hours questions are answered from structured operating hours or explicit saved-prompt hours.
+- Separated business-hours language such as `When are you available?` and `Quelles sont vos horaires ?` from appointment-slot availability. Those questions no longer force a Google Calendar tool call; a dated or booking-context availability request still does.
+- Deduplicated final caller transcription events in both browser WebRTC and phone Realtime runtimes by provider item ID and a short normalized-text window. This prevents one caller utterance from requesting two identical agent responses while still allowing a deliberate repetition after the window.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/{AgentBusinessIdentity,AgentVariableService}.java`
+  - `backend/src/main/java/com/sauti/call/{CallPipelineService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/main/java/com/sauti/llm/{AvailabilityIntentDetector,ConversationOrchestrator}.java`
+  - related backend regression tests
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused identity, call-pipeline, hours-intent, Realtime telephony, and orchestration tests (successful)
+  - `\.\gradlew.bat :backend:test --no-daemon` (successful)
+  - `npm.cmd run typecheck` (successful after the final browser-runtime change)
+  - `npm.cmd run build` (successful; 50 routes generated before the final type-safe hours-intent refinement)
+  - `git diff --check` (successful; only expected line-ending notices)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - Sarah's live-calendar failure depends on the separately documented asynchronous tenant-resolution fix reaching production through CI/CD. Reconnecting OAuth alone cannot repair code that has not yet been deployed.
+  - Prompt inference supports older agents, but the durable source of truth is still the agent's explicit `business_name` variable. Configure that value for every production agent rather than relying indefinitely on prompt inference.

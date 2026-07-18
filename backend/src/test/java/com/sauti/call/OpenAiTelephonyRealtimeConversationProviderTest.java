@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
@@ -24,6 +25,25 @@ import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 
 class OpenAiTelephonyRealtimeConversationProviderTest {
+    @Test
+    void ignoresDuplicateFinalTranscriptionEvents() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+        var payload = "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                + "\"item_id\":\"caller-1\",\"transcript\":\"When are you open?\"}";
+
+        socketListener.onText(mock(WebSocket.class), payload, true);
+        socketListener.onText(mock(WebSocket.class), payload, true);
+
+        assertThat(events).containsExactly("speech", "caller:When are you open?");
+        verify(session, times(1)).requestResponse();
+    }
+
     @Test
     void requestsAResponseOnlyAfterCallerTranscriptArrives() {
         var events = new ArrayList<String>();

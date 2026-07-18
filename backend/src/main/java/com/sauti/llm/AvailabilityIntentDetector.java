@@ -1,5 +1,6 @@
 package com.sauti.llm;
 
+import java.text.Normalizer;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -21,6 +22,7 @@ public final class AvailabilityIntentDetector {
 
     public static boolean requiresAvailabilityCheck(String transcript) {
         if (transcript == null || transcript.isBlank()) return false;
+        if (asksBusinessHours(transcript)) return false;
         var normalized = transcript.toLowerCase(Locale.ROOT);
         return normalized.contains("availab")
                 || normalized.contains("disponib")
@@ -28,5 +30,15 @@ public final class AvailabilityIntentDetector {
                 || normalized.contains("creneau")
                 || normalized.contains("موعد")
                 || DATE_OR_TIME.matcher(normalized).find();
+    }
+
+    public static boolean asksBusinessHours(String transcript) {
+        if (transcript == null || transcript.isBlank()) return false;
+        var normalized = Normalizer.normalize(transcript, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .toLowerCase(Locale.ROOT);
+        var bookingContext = normalized.matches(".*\\b(book|booking|appointment|trial|class|session|slot|rendez-vous|reserver|consultation|cours|seance|creneau)\\b.*");
+        if (bookingContext) return false;
+        return normalized.matches(".*\\b(opening hours?|business hours?|what are your hours|when are you open|when are you available|what time do you (?:open|close)|horaires?|heures? d'ouverture|quand (?:etes|est)[^?]*(?:ouvert|disponible)|quelles? heures?)\\b.*");
     }
 }

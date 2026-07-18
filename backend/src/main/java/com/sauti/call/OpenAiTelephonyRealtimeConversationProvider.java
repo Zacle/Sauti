@@ -127,6 +127,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private int pendingCallerTranscriptions;
         private boolean callerSpeechActive;
         private boolean callerSpeechNotified;
+        private final java.util.LinkedHashSet<String> processedCallerItemIds = new java.util.LinkedHashSet<>();
+        private String lastCallerTranscript = "";
+        private long lastCallerTranscriptAt;
         private final java.util.ArrayDeque<AgentCompletion> deferredAgentCompletions = new java.util.ArrayDeque<>();
 
         RealtimeWebSocketListener(
@@ -224,7 +227,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     }
                     case "conversation.item.input_audio_transcription.completed" -> {
                         var transcript = event.path("transcript").asText("").trim();
-                        if (CallerTranscriptGuard.accepts(transcript)) {
+                        if (CallerTranscriptGuard.accepts(transcript) && acceptCallerTranscript(event.path("item_id").asText(""), transcript)) {
                             notifyCallerSpeechStarted();
                             listener.onCallerTranscript(transcript);
                             var activeSession = session;
@@ -292,6 +295,25 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             } catch (Exception exception) {
                 listener.onError(exception);
             }
+        }
+
+        private boolean acceptCallerTranscript(String itemId, String transcript) {
+            if (itemId != null && !itemId.isBlank()) {
+                if (!processedCallerItemIds.add(itemId)) return false;
+                if (processedCallerItemIds.size() > 128) {
+                    var iterator = processedCallerItemIds.iterator();
+                    if (iterator.hasNext()) {
+                        iterator.next();
+                        iterator.remove();
+                    }
+                }
+            }
+            var normalized = transcript.strip().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
+            var now = System.currentTimeMillis();
+            if (normalized.equals(lastCallerTranscript) && now - lastCallerTranscriptAt < 3_000) return false;
+            lastCallerTranscript = normalized;
+            lastCallerTranscriptAt = now;
+            return true;
         }
 
         private synchronized void notifyActiveCallerSpeechStarted() {
@@ -532,9 +554,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             send(Map.of(
                     "type", "response.create",
                     "response", Map.of(
-                            "instructions", "Answer once in the current caller language using only configured facts. "
-                                    + "Do not invent services, classes, examples, or completed actions. Preserve names, "
-                                    + "phone digits, dates, and times exactly."
+                            "instructions", "Answer exactly once in the current caller language using only configured facts. "
+                                    + "Stay in the configured business role and never direct the caller to contact or choose "
+                                    + "that same business elsewhere. Do not deny a capability granted by the agent instructions. "
+                                    + "Ask at most one question. Do not invent services, classes, examples, or completed actions. "
+                                    + "Preserve names, phone digits, dates, and times exactly."
                     )
             ));
         }

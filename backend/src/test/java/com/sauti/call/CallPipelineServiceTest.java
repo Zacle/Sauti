@@ -25,6 +25,32 @@ import org.mockito.ArgumentCaptor;
 
 class CallPipelineServiceTest {
     @Test
+    void resolvesPromptBusinessInSavedGreetingWithoutWorkspaceLeakage() {
+        var variableRepository = mock(AgentVariableRepository.class);
+        var tenant = new Tenant("Tranquil AI", "owner@example.com", "KE");
+        var agent = new Agent(
+                tenant,
+                "Alec",
+                "Hello, this is Alec from Tranquil AI. How can I help?",
+                "You are Alec, the virtual assistant for X-Fit."
+        );
+        when(variableRepository.findByAgentIdAndKey(agent.getId(), "business_name"))
+                .thenReturn(Optional.empty());
+        when(variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
+                .thenReturn(List.of());
+        var service = new CallPipelineService(
+                mock(CallRepository.class), mock(CallTurnRepository.class), mock(AgentRepository.class),
+                variableRepository, mock(StreamingSttProvider.class), mock(LanguageDetector.class),
+                mock(ConversationOrchestrator.class), mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class), mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+
+        assertThat(service.resolveGreeting(agent))
+                .isEqualTo("Hello, this is Alec from X-Fit. How can I help?");
+    }
+
+    @Test
     void startTestCallUsesTheAgentBusinessNameInsteadOfTheTenantName() {
         var callRepository = mock(CallRepository.class);
         var callTurnRepository = mock(CallTurnRepository.class);
@@ -189,7 +215,7 @@ class CallPipelineServiceTest {
         var turnCaptor = ArgumentCaptor.forClass(CallTurn.class);
         verify(callTurnRepository).save(turnCaptor.capture());
         assertThat(turnCaptor.getValue().getAgentResponse())
-                .isEqualTo("Bonjour, c'est Amina de Demo Clinic. Comment puis-je vous aider ?");
+                .isEqualTo("Bonjour, c'est Amina. Comment puis-je vous aider ?");
         verify(dashboardEventPublisher).callStarted(call);
     }
 

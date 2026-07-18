@@ -76,4 +76,19 @@ class AgentVariableServiceTest {
         assertThat(calendar.getValue()).isEqualTo("Google Calendar");
         assertThat(agent.getCalendarProvider()).isEqualTo("Google Calendar");
     }
+
+    @Test
+    void usesPromptBusinessInsteadOfWorkspaceNameWhenVariableIsEmpty() {
+        var repository = mock(AgentVariableRepository.class);
+        var agent = new Agent(
+                new Tenant("Tranquil AI", "owner@example.com", "KE"),
+                "Alec",
+                "Hello",
+                "You are Alec, the virtual assistant for X-Fit."
+        );
+        when(repository.findByAgentIdAndKey(agent.getId(), "business_name")).thenReturn(Optional.empty());
+        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+
+        assertThat(service.businessName(agent)).isEqualTo("X-Fit");
+    }
 }

@@ -177,7 +177,9 @@ public class AgentVariableService {
         return variableRepository.findByAgentIdAndKey(agent.getId(), "business_name")
                 .filter(AgentVariable::isFilled)
                 .map(AgentVariable::getValue)
-                .orElse(agent.getTenant().getBusinessName());
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .orElseGet(() -> AgentBusinessIdentity.fromPrompt(agent));
     }
 
     private Agent requireOwnedAgent(UUID tenantId, UUID agentId) {
