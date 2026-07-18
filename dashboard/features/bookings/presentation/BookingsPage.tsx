@@ -7,7 +7,6 @@ import {
   CalendarClock,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   Clock3,
   Filter,
   LayoutGrid,
@@ -34,6 +33,7 @@ import {
   type BookingViewModel,
 } from "../domain/bookings";
 import styles from "./BookingsPage.module.css";
+import { BookingDateRangePicker } from "./BookingDateRangePicker";
 
 const FILTERS: Array<{ value: BookingStatusFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -66,7 +66,6 @@ export function BookingsPage() {
   const [agentId, setAgentId] = useState("all");
   const [rangeStart, setRangeStart] = useState(initialRange.start);
   const [rangeEnd, setRangeEnd] = useState(initialRange.end);
-  const [dateMenuOpen, setDateMenuOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [view, setView] = useState<BookingView>("list");
   const [cancellingId, setCancellingId] = useState("");
@@ -144,20 +143,6 @@ export function BookingsPage() {
     }
   }
 
-  function setQuickRange(days: number | null) {
-    if (days === null) {
-      setRangeStart("");
-      setRangeEnd("");
-    } else {
-      const start = new Date();
-      const end = new Date();
-      end.setDate(end.getDate() + days);
-      setRangeStart(toDateInput(start));
-      setRangeEnd(toDateInput(end));
-    }
-    setDateMenuOpen(false);
-  }
-
   function clearFilters() {
     setQuery("");
     setFilter("all");
@@ -196,26 +181,11 @@ export function BookingsPage() {
             <input aria-label="Search bookings" onChange={(event) => setQuery(event.target.value)} placeholder="Search bookings..." value={query} />
             {query && <button aria-label="Clear search" onClick={() => setQuery("")} type="button"><X size={15} /></button>}
           </label>
-          <div className={styles.dateControl}>
-            <button className={dateMenuOpen ? styles.controlActive : ""} onClick={() => setDateMenuOpen((open) => !open)} type="button">
-              <CalendarDays size={16} /> {formatRange(rangeStart, rangeEnd)} <ChevronDown size={15} />
-            </button>
-            {dateMenuOpen && (
-              <div className={styles.datePopover}>
-                <div className={styles.quickRanges}>
-                  <button onClick={() => setQuickRange(0)} type="button">Today</button>
-                  <button onClick={() => setQuickRange(7)} type="button">Next 7 days</button>
-                  <button onClick={() => setQuickRange(30)} type="button">Next 30 days</button>
-                  <button onClick={() => setQuickRange(null)} type="button">All dates</button>
-                </div>
-                <div className={styles.rangeInputs}>
-                  <label>From<input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} /></label>
-                  <label>To<input min={rangeStart} type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} /></label>
-                </div>
-                <footer><button onClick={() => setDateMenuOpen(false)} type="button">Apply range</button></footer>
-              </div>
-            )}
-          </div>
+          <BookingDateRangePicker
+            end={rangeEnd}
+            onApply={(range) => { setRangeStart(range.start); setRangeEnd(range.end); }}
+            start={rangeStart}
+          />
           <button className={`${styles.filterButton} ${filtersOpen ? styles.controlActive : ""}`} onClick={() => setFiltersOpen((open) => !open)} type="button">
             <Filter size={16} /> Filters {agentId !== "all" && <i>1</i>}
           </button>

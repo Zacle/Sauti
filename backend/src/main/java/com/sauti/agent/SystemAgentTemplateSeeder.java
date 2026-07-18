@@ -41,6 +41,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
             "appointment_buffer", "cancellation_policy", "confirmation_channels",
             "notification_channels", "faq", "prohibited_statements", "required_booking_fields"
     );
+    private static final Set<String> TEMPLATE_GROUPS = Set.of("Appointments", "Support", "Sales");
     static final String LIVE_VOICE_BEHAVIOR = """
 
             ## Live Voice Behavior
@@ -98,6 +99,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
             String name = matcher.group(1).trim();
             String body = matcher.group(2);
             String industry = metadata(body, "Industry");
+            String group = templateGroup(metadata(body, "Category"), industry);
             String idealFor = metadata(body, "Ideal For");
             var languages = languageCodes(metadata(body, "Language Support"));
             var capabilities = bulletSection(body, "Key Capabilities", "Variables");
@@ -113,7 +115,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 throw new IllegalArgumentException("Missing system prompt for template " + name);
             }
             String configuration = configurationJson(
-                    industry, capabilities, variables, bookingRequiredFields, bookingNotificationChannels
+                    industry, group, capabilities, variables, bookingRequiredFields, bookingNotificationChannels
             );
             requests.add(new AgentTemplateRequest(
                     name,
@@ -202,6 +204,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
 
     private String configurationJson(
             String industry,
+            String group,
             List<String> capabilities,
             List<Map<String, Object>> variables,
             List<String> configuredBookingFields,
@@ -212,7 +215,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 .map(value -> value.toLowerCase(Locale.ROOT))
                 .anyMatch(value -> value.contains("book") || value.contains("schedul") || value.contains("reservation"));
         configuration.put("bookingEnabled", bookingEnabled);
-        configuration.put("group", groupFor(industry));
+        configuration.put("group", group);
         configuration.put("icon", iconFor(industry));
         configuration.put("escalationPhrases", escalationPhrasesFor(industry));
         configuration.put("capabilities", capabilities);
@@ -354,22 +357,50 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
 
     private String groupFor(String industry) {
         return switch (industry) {
-            case "Legal Services", "Real Estate Agency", "Finance & Insurance" -> "Sales";
-            case "Automotive Repair" -> "Support";
+            case "Legal Services", "Real Estate Agency", "Finance & Insurance",
+                    "Real Estate Sales", "Insurance Sales", "B2B SaaS Sales", "E-commerce Sales" -> "Sales";
+            case "Customer Support", "Retail Support", "SaaS and IT Support",
+                    "Property Management Support", "Utilities and Telecom" -> "Support";
             default -> "Appointments";
         };
     }
 
+    private String templateGroup(String configuredGroup, String industry) {
+        if (configuredGroup == null || configuredGroup.isBlank()) {
+            return groupFor(industry);
+        }
+        if (!TEMPLATE_GROUPS.contains(configuredGroup)) {
+            throw new IllegalArgumentException(
+                    "Unsupported template category '%s' for industry '%s'. Expected one of %s"
+                            .formatted(configuredGroup, industry, TEMPLATE_GROUPS)
+            );
+        }
+        return configuredGroup;
+    }
+
     private String iconFor(String industry) {
         return switch (industry) {
-            case "Medical Clinic / Doctor's Office" -> "stethoscope";
-            case "Dental Practice" -> "smile";
-            case "Hair Salon & Beauty" -> "scissors";
+            case "Healthcare", "Medical Clinic / Doctor's Office" -> "stethoscope";
+            case "Dental", "Dental Practice" -> "smile";
+            case "Beauty and Wellness", "Hair Salon & Beauty" -> "scissors";
             case "Legal Services" -> "scale";
-            case "Real Estate Agency" -> "building";
-            case "Health & Fitness" -> "dumbbell";
-            case "Automotive Repair" -> "wrench";
-            case "Food & Beverage" -> "utensils";
+            case "Real Estate Agency", "Real Estate Sales" -> "sales";
+            case "Real Estate Showings" -> "property";
+            case "Fitness", "Health & Fitness" -> "dumbbell";
+            case "Automotive Repair" -> "car";
+            case "Restaurants and Hospitality", "Food & Beverage" -> "restaurant";
+            case "Veterinary Care" -> "veterinary";
+            case "Home Services" -> "wrench";
+            case "Photography and Events" -> "camera";
+            case "Education and Tutoring" -> "education";
+            case "Customer Support" -> "helpdesk";
+            case "Retail Support" -> "orders";
+            case "SaaS and IT Support" -> "technical";
+            case "Property Management Support" -> "property";
+            case "Utilities and Telecom" -> "telecom";
+            case "Insurance Sales" -> "insurance";
+            case "B2B SaaS Sales" -> "demo";
+            case "E-commerce Sales" -> "commerce";
             case "Spa & Wellness" -> "sparkles";
             case "Finance & Insurance" -> "landmark";
             default -> "bot";
@@ -383,9 +414,14 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 "human agent",
                 "representative"
         ));
-        if ("Medical Clinic / Doctor's Office".equals(industry) || "Dental Practice".equals(industry)) {
+        if (Set.of("Healthcare", "Dental", "Veterinary Care", "Medical Clinic / Doctor's Office", "Dental Practice")
+                .contains(industry)) {
             phrases.add("this is urgent");
             phrases.add("medical emergency");
+        } else if (Set.of("Home Services", "Property Management Support", "Utilities and Telecom")
+                .contains(industry)) {
+            phrases.add("immediate danger");
+            phrases.add("emergency service");
         } else if ("Legal Services".equals(industry)) {
             phrases.add("urgent legal matter");
         }

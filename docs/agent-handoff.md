@@ -3243,3 +3243,41 @@ Expected:
 - Follow-ups / risks:
   - The legacy `/onboarding` route is intentionally retained only as a redirect so old links do not break. No onboarding creation UI or API remains.
   - The supplied image was used as the layout reference; automated in-app visual inspection was unavailable in this session, so maintainers should perform one responsive browser review before committing.
+
+### 2026-07-18 - Replace the native booking date inputs with a themed range picker
+
+- Replaced the browser/operating-system date inputs that produced an unstyled grey calendar with a dedicated Sauti date-range popover built on the already-installed Radix Popover, React DayPicker, and date-fns dependencies.
+- Added accessible month navigation, contiguous range highlighting, start/end summaries, Today/Next 7 days/Next 30 days/This month/All dates presets, reset/cancel/apply actions, collision-aware portal positioning, responsive mobile layout, and concise range formatting in the toolbar trigger.
+- Kept date changes as a draft until the owner presses Apply, so closing or cancelling the picker cannot accidentally change the booking results.
+- Files touched:
+  - `dashboard/features/bookings/presentation/BookingsPage.tsx`
+  - `dashboard/features/bookings/presentation/BookingDateRangePicker.tsx`
+  - `dashboard/features/bookings/presentation/BookingDateRangePicker.module.css`
+  - `dashboard/features/bookings/presentation/BookingsPage.module.css`
+- Verification:
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated with no CSS compatibility warning)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and CI/CD.
+
+### 2026-07-18 - Expand the system template catalog across appointments, support, and sales
+
+- Expanded the layered system-template catalog from 6 to 22 production blueprints. Added Auto Repair Advisor, Restaurant Reservation Host, Veterinary Clinic Receptionist, Real Estate Showing Scheduler, Home Services Dispatcher, Photography and Event Studio Booking, Tutoring and Education Center, General Support Helpdesk, Order Status and Returns Desk, IT and SaaS Technical Support Tier 1, Property Management Tenant Support, Utility and Telecom Customer Service, Real Estate Lead Qualifier, Insurance Sales Intake, B2B SaaS Demo Booking SDR, and E-commerce Cart Recovery Specialist.
+- Each addition defines real vertical behavior rather than card copy alone: explicit intake fields, booking or action requirements, tool truthfulness rules, emergency/escalation paths, privacy and compliance boundaries, owner-notification defaults, supported languages, and a focused conversation prompt layered over the shared business/persona/routing/booking/knowledge configuration.
+- Added an explicit `Category` template field and validated it against `Appointments`, `Support`, and `Sales`. Runtime grouping now uses authored category metadata instead of relying on fragile industry-name inference; legacy templates retain a fallback mapping for compatibility.
+- Expanded industry icon metadata and the dashboard icon registry so the larger catalog remains quickly scannable in the template grid.
+- Files touched:
+  - `docs/agent-templates.md`
+  - `backend/src/main/java/com/sauti/agent/SystemAgentTemplateSeeder.java`
+  - `backend/src/test/java/com/sauti/agent/SystemAgentTemplateSeederTest.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.agent.SystemAgentTemplateSeederTest` (successful)
+  - `.\gradlew.bat :backend:test` (successful)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - E-commerce cart recovery supports outbound behavior only when an authorized outbound campaign supplies a consented contact; selecting the template does not itself start outbound calling.
+  - Support templates define safe ticket/intake behavior, but actual ticket creation still depends on the owner connecting and enabling a compatible integration or custom webhook for that agent.
