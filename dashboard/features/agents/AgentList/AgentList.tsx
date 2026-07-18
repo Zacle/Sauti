@@ -234,7 +234,10 @@ export function AgentsPage() {
             </section>
           ) : (
             <section className={styles["agents-empty"]}>
-              <span><Bot size={24} /></span><h2>No matching agents</h2><p>Try another search or create a new voice agent.</p>
+              <span><Bot size={24} /></span>
+              <h2>{agents.length ? "No matching agents" : "Create your first AI voice agent"}</h2>
+              <p>{agents.length ? "Try another search or clear the current filters." : "No agent exists in this workspace yet. Create one to start handling calls, capturing bookings, and connecting your tools."}</p>
+              {!agents.length && <Link className={styles["empty-create"]} href="/agents/new"><Plus size={16} /> Create an agent <ArrowRight size={15} /></Link>}
             </section>
           )}
         </main>

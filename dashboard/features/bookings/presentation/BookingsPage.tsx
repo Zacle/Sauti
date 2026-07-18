@@ -3,21 +3,26 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
-  Calendar,
   CalendarCheck2,
   CalendarClock,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   Clock3,
+  Filter,
+  LayoutGrid,
+  List,
   LoaderCircle,
+  Pencil,
   Phone,
   Search,
-  SlidersHorizontal,
+  Trash2,
   UserRound,
+  X,
   XCircle,
 } from "lucide-react";
 import { listAgents } from "@/lib/api/agents";
-import { cancelBooking, listBookings } from "@/lib/api/bookings";
+import { cancelBooking, deleteBooking, listBookings, updateBooking } from "@/lib/api/bookings";
 import type { Agent, Booking } from "@/types/api";
 import {
   filterBookings,
@@ -39,14 +44,34 @@ const FILTERS: Array<{ value: BookingStatusFilter; label: string }> = [
   { value: "past", label: "Past" },
 ];
 
+type BookingEditorValues = {
+  callerName: string;
+  callerPhone: string;
+  callerEmail: string;
+  serviceType: string;
+  appointmentAt: string;
+  durationMinutes: number;
+};
+
+type BookingView = "list" | "calendar";
+
 export function BookingsPage() {
+  const initialRange = useMemo(() => defaultRange(), []);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<BookingStatusFilter>("upcoming");
+  const [agentId, setAgentId] = useState("all");
+  const [rangeStart, setRangeStart] = useState(initialRange.start);
+  const [rangeEnd, setRangeEnd] = useState(initialRange.end);
+  const [dateMenuOpen, setDateMenuOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [view, setView] = useState<BookingView>("list");
   const [cancellingId, setCancellingId] = useState("");
+  const [editingBooking, setEditingBooking] = useState<BookingViewModel | null>(null);
+  const [savingId, setSavingId] = useState("");
 
   useEffect(() => {
     Promise.all([listBookings(), listAgents()])
@@ -60,12 +85,20 @@ export function BookingsPage() {
 
   const viewModels = useMemo(() => toBookingViewModels(bookings, agents), [bookings, agents]);
   const summary = useMemo(() => summarizeBookings(viewModels), [viewModels]);
-  const visibleBookings = useMemo(() => filterBookings(viewModels, filter, query), [viewModels, filter, query]);
+  const visibleBookings = useMemo(() => {
+    const start = rangeStart ? startOfDay(new Date(`${rangeStart}T00:00:00`)).getTime() : Number.NEGATIVE_INFINITY;
+    const end = rangeEnd ? endOfDay(new Date(`${rangeEnd}T00:00:00`)).getTime() : Number.POSITIVE_INFINITY;
+    return filterBookings(viewModels, filter, query).filter((booking) => (
+      (agentId === "all" || booking.agentId === agentId)
+      && booking.appointmentDate.getTime() >= start
+      && booking.appointmentDate.getTime() <= end
+    ));
+  }, [agentId, filter, query, rangeEnd, rangeStart, viewModels]);
+  const groupedBookings = useMemo(() => groupBookings(visibleBookings), [visibleBookings]);
 
   async function onCancel(booking: BookingViewModel) {
     if (booking.status === "cancelled" || cancellingId) return;
-    const confirmed = window.confirm(`Cancel ${booking.serviceType} for ${booking.callerName}?`);
-    if (!confirmed) return;
+    if (!window.confirm(`Cancel ${booking.serviceType} for ${booking.callerName}?`)) return;
     setCancellingId(booking.id);
     setError("");
     try {
@@ -78,19 +111,70 @@ export function BookingsPage() {
     }
   }
 
+  async function onUpdate(booking: Booking, values: BookingEditorValues) {
+    setSavingId(booking.id);
+    setError("");
+    try {
+      const updated = await updateBooking(booking.id, {
+        ...values,
+        appointmentAt: new Date(values.appointmentAt).toISOString(),
+        callerEmail: values.callerEmail.trim() || null,
+        capturedData: booking.capturedData,
+      });
+      setBookings((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setEditingBooking(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to update this booking.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  async function onDelete(booking: BookingViewModel) {
+    if (!window.confirm(`Permanently delete booking ${booking.bookingReference}? This cannot be undone.`)) return;
+    setSavingId(booking.id);
+    setError("");
+    try {
+      await deleteBooking(booking.id);
+      setBookings((current) => current.filter((item) => item.id !== booking.id));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to delete this booking.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  function setQuickRange(days: number | null) {
+    if (days === null) {
+      setRangeStart("");
+      setRangeEnd("");
+    } else {
+      const start = new Date();
+      const end = new Date();
+      end.setDate(end.getDate() + days);
+      setRangeStart(toDateInput(start));
+      setRangeEnd(toDateInput(end));
+    }
+    setDateMenuOpen(false);
+  }
+
+  function clearFilters() {
+    setQuery("");
+    setFilter("all");
+    setAgentId("all");
+    setRangeStart("");
+    setRangeEnd("");
+  }
+
+  const activeAgent = agents.find((agent) => agent.id === agentId);
+  const hasActiveFilters = Boolean(query || filter !== "all" || agentId !== "all" || rangeStart || rangeEnd);
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
           <h1>Bookings</h1>
           <p>Track appointments captured by agents, where they came from, and what needs follow-up.</p>
-        </div>
-        <div className={styles.nextSlot}>
-          <span className={styles.nextIcon}><CalendarClock size={22} /></span>
-          <span>
-            <small>Next appointment</small>
-            <strong>{summary.nextBooking ? formatAppointment(summary.nextBooking.appointmentDate) : "No upcoming booking"}</strong>
-          </span>
         </div>
       </header>
 
@@ -99,132 +183,178 @@ export function BookingsPage() {
         <Metric detail="Scheduled for today" icon={Clock3} label="Today" value={summary.today} tone="blue" />
         <Metric detail="All confirmed bookings" icon={CheckCircle2} label="Confirmed" value={summary.confirmed} tone="green" />
         <Metric detail="All cancelled bookings" icon={XCircle} label="Cancelled" value={summary.cancelled} tone="orange" />
+        <article className={styles.nextMetric}>
+          <span><CalendarClock size={20} /></span>
+          <div><small>Next appointment</small><strong>{summary.nextBooking ? formatAppointment(summary.nextBooking.appointmentDate) : "No upcoming booking"}</strong></div>
+        </article>
       </section>
 
-      <section className={styles.toolbar}>
-        <label className={styles.search}>
-          <Search size={18} />
-          <input
-            aria-label="Search bookings"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search customer, phone, service, source..."
-            value={query}
-          />
-        </label>
-        <div className={styles.filters} aria-label="Booking filters">
-          <SlidersHorizontal size={16} />
-          {FILTERS.map((item) => (
-            <button
-              className={filter === item.value ? styles.activeFilter : ""}
-              key={item.value}
-              onClick={() => setFilter(item.value)}
-              type="button"
-            >
-              {item.label}
+      <section className={styles.controls}>
+        <div className={styles.controlRow}>
+          <label className={styles.search}>
+            <Search size={18} />
+            <input aria-label="Search bookings" onChange={(event) => setQuery(event.target.value)} placeholder="Search bookings..." value={query} />
+            {query && <button aria-label="Clear search" onClick={() => setQuery("")} type="button"><X size={15} /></button>}
+          </label>
+          <div className={styles.dateControl}>
+            <button className={dateMenuOpen ? styles.controlActive : ""} onClick={() => setDateMenuOpen((open) => !open)} type="button">
+              <CalendarDays size={16} /> {formatRange(rangeStart, rangeEnd)} <ChevronDown size={15} />
             </button>
-          ))}
+            {dateMenuOpen && (
+              <div className={styles.datePopover}>
+                <div className={styles.quickRanges}>
+                  <button onClick={() => setQuickRange(0)} type="button">Today</button>
+                  <button onClick={() => setQuickRange(7)} type="button">Next 7 days</button>
+                  <button onClick={() => setQuickRange(30)} type="button">Next 30 days</button>
+                  <button onClick={() => setQuickRange(null)} type="button">All dates</button>
+                </div>
+                <div className={styles.rangeInputs}>
+                  <label>From<input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} /></label>
+                  <label>To<input min={rangeStart} type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} /></label>
+                </div>
+                <footer><button onClick={() => setDateMenuOpen(false)} type="button">Apply range</button></footer>
+              </div>
+            )}
+          </div>
+          <button className={`${styles.filterButton} ${filtersOpen ? styles.controlActive : ""}`} onClick={() => setFiltersOpen((open) => !open)} type="button">
+            <Filter size={16} /> Filters {agentId !== "all" && <i>1</i>}
+          </button>
+          <div className={styles.viewToggle} aria-label="Booking view">
+            <button aria-label="List view" className={view === "list" ? styles.selected : ""} onClick={() => setView("list")} type="button"><List size={16} /> List</button>
+            <button aria-label="Calendar view" className={view === "calendar" ? styles.selected : ""} onClick={() => setView("calendar")} type="button"><LayoutGrid size={16} /> Calendar</button>
+          </div>
+          <div className={styles.statusTabs}>
+            {FILTERS.map((item) => <button className={filter === item.value ? styles.selected : ""} key={item.value} onClick={() => setFilter(item.value)} type="button">{item.label}</button>)}
+          </div>
         </div>
+        {filtersOpen && (
+          <div className={styles.filterPanel}>
+            <label>Agent<select value={agentId} onChange={(event) => setAgentId(event.target.value)}><option value="all">All agents</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>
+            <p>Filter the current result set by the agent responsible for the booking.</p>
+          </div>
+        )}
+        {hasActiveFilters && (
+          <div className={styles.chips}>
+            {(rangeStart || rangeEnd) && <button onClick={() => { setRangeStart(""); setRangeEnd(""); }} type="button">{formatRange(rangeStart, rangeEnd)} <X size={13} /></button>}
+            {filter !== "all" && <button onClick={() => setFilter("all")} type="button">{FILTERS.find((item) => item.value === filter)?.label} <X size={13} /></button>}
+            {activeAgent && <button onClick={() => setAgentId("all")} type="button">Agent: {activeAgent.name} <X size={13} /></button>}
+            <button className={styles.clearAll} onClick={clearFilters} type="button">Clear all</button>
+          </div>
+        )}
       </section>
 
       {error && <div className={styles.error}>{error}</div>}
-
       {loading ? (
         <div className={styles.loading}><LoaderCircle className="spin" size={22} /> Loading bookings...</div>
       ) : viewModels.length === 0 ? (
-        <section className={styles.empty}>
-          <span><CalendarDays size={25} /></span>
-          <h2>No bookings yet</h2>
-          <p>When an agent creates or syncs an appointment, it will appear here with customer, source, and status details.</p>
-        </section>
+        <Empty icon={<CalendarDays size={25} />} title="No bookings yet">Bookings created by agents or owners will appear here, even when an external calendar needs follow-up.</Empty>
       ) : visibleBookings.length === 0 ? (
-        <section className={styles.empty}>
-          <span><Search size={25} /></span>
-          <h2>No matching bookings</h2>
-          <p>Adjust the search or filter to see more appointments.</p>
-        </section>
+        <Empty icon={<Search size={25} />} title="No matching bookings">Adjust the date, agent, search, or status filters to see more appointments.</Empty>
+      ) : view === "calendar" ? (
+        <CalendarView bookings={visibleBookings} onEdit={setEditingBooking} />
       ) : (
-        <section className={styles.content}>
-          {visibleBookings.map((booking) => (
-            <div className={styles.bookingRow} key={booking.id}>
-              <div className={styles.timelineItem} aria-hidden="true">
-                <span>{booking.appointmentDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-                <strong>{formatTime(booking.appointmentDate)}</strong>
+        <section className={styles.groupList}>
+          {groupedBookings.map(([label, items]) => (
+            <section className={styles.dayGroup} key={label}>
+              <h2>{label}<span>{items.length} {items.length === 1 ? "booking" : "bookings"}</span></h2>
+              <div className={styles.dayRows}>
+                {items.map((booking) => (
+                  <BookingRow
+                    booking={booking}
+                    cancelling={cancellingId === booking.id}
+                    key={booking.id}
+                    onCancel={() => void onCancel(booking)}
+                    onDelete={() => void onDelete(booking)}
+                    onEdit={() => setEditingBooking(booking)}
+                    saving={savingId === booking.id}
+                  />
+                ))}
               </div>
-              <BookingCard
-                booking={booking}
-                cancelling={cancellingId === booking.id}
-                onCancel={() => void onCancel(booking)}
-              />
-            </div>
+            </section>
           ))}
         </section>
       )}
+      {editingBooking && <BookingEditor booking={editingBooking} busy={savingId === editingBooking.id} onClose={() => setEditingBooking(null)} onSave={(values) => void onUpdate(editingBooking, values)} />}
     </main>
   );
 }
 
 function Metric({ icon: Icon, label, value, detail, tone }: { icon: typeof CalendarCheck2; label: string; value: number; detail: string; tone: "cyan" | "green" | "blue" | "orange" }) {
-  return (
-    <article className={`${styles.metric} ${styles[tone]}`}>
-      <span><Icon size={19} /></span>
-      <div>
-        <div className={styles.metricValue}><strong>{value}</strong><small>{label}</small></div>
-        <p>{detail}</p>
-      </div>
-    </article>
-  );
+  return <article className={`${styles.metric} ${styles[tone]}`}><span><Icon size={20} /></span><div><div><strong>{value}</strong><small>{label}</small></div><p>{detail}</p></div></article>;
 }
 
-function BookingCard({ booking, cancelling, onCancel }: { booking: BookingViewModel; cancelling: boolean; onCancel: () => void }) {
+function BookingRow({ booking, cancelling, saving, onCancel, onDelete, onEdit }: { booking: BookingViewModel; cancelling: boolean; saving: boolean; onCancel: () => void; onDelete: () => void; onEdit: () => void }) {
   const cancelled = booking.status === "cancelled";
+  const synced = booking.calendarSyncStatus === "synced";
   return (
-    <article className={`${styles.card} ${cancelled ? styles.cancelled : ""}`}>
-      <div className={styles.dateBlock}>
-        <span>{booking.appointmentDate.toLocaleDateString(undefined, { month: "short", year: "numeric" })}</span>
-        <small>{booking.appointmentDate.toLocaleDateString(undefined, { weekday: "short" })}</small>
-        <b>{booking.appointmentDate.getDate()}</b>
+    <article className={`${styles.bookingRow} ${cancelled ? styles.cancelled : ""}`}>
+      <div className={styles.timeColumn}><strong>{formatTime(booking.appointmentDate)}</strong><span><Clock3 size={13} /> {booking.durationMinutes} min</span></div>
+      <div className={styles.bookingBody}>
+        <div className={styles.bookingTitle}><i className={cancelled ? styles.cancelledDot : synced ? styles.syncedDot : styles.pendingDot} /><h3>{booking.serviceType}</h3></div>
+        <p><UserRound size={14} /> {booking.callerName}</p>
+        <div className={styles.tags}>
+          <a href={`tel:${booking.callerPhone}`}><Phone size={13} /> {booking.callerPhone}</a>
+          <span><CalendarDays size={13} /> {booking.agentName}</span>
+          <span><ArrowUpRight size={13} /> {booking.sourceLabel}</span>
+          <span>{booking.bookingReference}</span>
+        </div>
+        <div className={styles.rowMeta}><span>Booked <strong>{formatAppointment(booking.bookedDate)}</strong></span><span>Calendar <strong>{synced ? "Synced" : "Owner follow-up"}</strong></span></div>
       </div>
-      <div className={styles.timeBlock}>
-        <strong>{formatTime(booking.appointmentDate)}</strong>
-        <small>Appointment</small>
-      </div>
-      <div className={styles.cardMain}>
-        <div className={styles.cardTop}>
-          <div>
-            <h2>{booking.serviceType}</h2>
-            <p><UserRound size={14} /> {booking.callerName}</p>
-          </div>
-          <span className={`${styles.status} ${cancelled ? styles.statusCancelled : styles.statusConfirmed}`}>
-            {cancelled ? <XCircle size={14} /> : <CheckCircle2 size={14} />}
-            {humanize(booking.status)}
-          </span>
-        </div>
-        <div className={styles.details}>
-          <span><Phone size={14} /> {booking.callerPhone}</span>
-          <span><CalendarDays size={14} /> {booking.agentName}</span>
-          <span><ArrowUpRight size={14} /> {booking.sourceLabel}</span>
-        </div>
-        <div className={styles.footer}>
-          <div className={styles.bookingMeta}>
-            <span><Calendar size={16} /><small>Booked<strong>{formatAppointment(booking.bookedDate)}</strong></small></span>
-            <span><ArrowUpRight size={16} /><small>Source<strong>{booking.sourceLabel}</strong></small></span>
-            <span><CalendarDays size={16} /><small>Agent<strong>{booking.agentName}</strong></small></span>
-          </div>
-          <div>
-            {booking.confirmationSent && <span className={styles.confirmation}>Confirmation sent</span>}
-            {booking.externalEventId && <span className={styles.external}>Synced calendar</span>}
-            {!cancelled && (
-              <button disabled={cancelling} onClick={onCancel} type="button">
-                {cancelling ? "Cancelling..." : "Cancel"}
-              </button>
-            )}
-          </div>
-        </div>
+      <div className={styles.rowActions}>
+        <span className={`${styles.status} ${cancelled ? styles.statusCancelled : synced ? styles.statusConfirmed : styles.statusPending}`}>{humanize(booking.status)}</span>
+        {!cancelled && <button disabled={saving || cancelling} onClick={onEdit} type="button"><Pencil size={14} /> Reschedule</button>}
+        <a href={`tel:${booking.callerPhone}`}><Phone size={14} /> Call</a>
+        {!cancelled && <button className={styles.cancelAction} disabled={saving || cancelling} onClick={onCancel} type="button">{cancelling ? "Cancelling..." : "Cancel"}</button>}
+        <button aria-label={`Delete ${booking.bookingReference}`} className={styles.deleteAction} disabled={saving || cancelling} onClick={onDelete} type="button"><Trash2 size={15} /></button>
       </div>
     </article>
   );
 }
 
-function humanize(value: string) {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+function CalendarView({ bookings, onEdit }: { bookings: BookingViewModel[]; onEdit: (booking: BookingViewModel) => void }) {
+  const days = useMemo(() => {
+    const map = new Map<string, BookingViewModel[]>();
+    bookings.forEach((booking) => {
+      const key = toDateInput(booking.appointmentDate);
+      map.set(key, [...(map.get(key) ?? []), booking]);
+    });
+    return [...map.entries()].sort(([left], [right]) => left.localeCompare(right));
+  }, [bookings]);
+  return <section className={styles.calendarView}>{days.map(([date, items]) => <article key={date}><header><strong>{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</strong><span>{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></header><div>{items.map((booking) => <button key={booking.id} onClick={() => onEdit(booking)} type="button"><time>{formatTime(booking.appointmentDate)}</time><strong>{booking.serviceType}</strong><span>{booking.callerName}</span></button>)}</div></article>)}</section>;
 }
+
+function Empty({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return <section className={styles.empty}><span>{icon}</span><h2>{title}</h2><p>{children}</p></section>;
+}
+
+function BookingEditor({ booking, busy, onClose, onSave }: { booking: BookingViewModel; busy: boolean; onClose: () => void; onSave: (values: BookingEditorValues) => void }) {
+  const [values, setValues] = useState<BookingEditorValues>({ callerName: booking.callerName, callerPhone: booking.callerPhone, callerEmail: booking.callerEmail ?? "", serviceType: booking.serviceType, appointmentAt: toLocalDateTimeInput(booking.appointmentDate), durationMinutes: booking.durationMinutes });
+  return <div className={styles.editorBackdrop} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><form className={styles.editor} onSubmit={(event) => { event.preventDefault(); onSave(values); }}><header><div><small>{booking.bookingReference}</small><h2>Reschedule or edit booking</h2></div><button aria-label="Close editor" onClick={onClose} type="button"><X size={20} /></button></header><div className={styles.editorGrid}><label>Customer name<input required value={values.callerName} onChange={(event) => setValues({ ...values, callerName: event.target.value })} /></label><label>Phone number<input required value={values.callerPhone} onChange={(event) => setValues({ ...values, callerPhone: event.target.value })} /></label><label>Email<input type="email" value={values.callerEmail} onChange={(event) => setValues({ ...values, callerEmail: event.target.value })} /></label><label>Service<input required value={values.serviceType} onChange={(event) => setValues({ ...values, serviceType: event.target.value })} /></label><label>Date and time<input required type="datetime-local" value={values.appointmentAt} onChange={(event) => setValues({ ...values, appointmentAt: event.target.value })} /></label><label>Duration (minutes)<input min={5} max={480} required type="number" value={values.durationMinutes} onChange={(event) => setValues({ ...values, durationMinutes: Number(event.target.value) })} /></label></div><footer><button onClick={onClose} type="button">Close</button><button disabled={busy} type="submit">{busy ? "Saving..." : "Save changes"}</button></footer></form></div>;
+}
+
+function groupBookings(bookings: BookingViewModel[]): Array<[string, BookingViewModel[]]> {
+  const groups = new Map<string, BookingViewModel[]>();
+  bookings.forEach((booking) => {
+    const label = dayLabel(booking.appointmentDate);
+    groups.set(label, [...(groups.get(label) ?? []), booking]);
+  });
+  return [...groups.entries()];
+}
+
+function dayLabel(value: Date) {
+  const today = startOfDay(new Date());
+  const date = startOfDay(value);
+  const difference = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+  const formatted = value.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  if (difference === 0) return `Today · ${formatted}`;
+  if (difference === 1) return `Tomorrow · ${formatted}`;
+  return value.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
+function defaultRange() { const start = new Date(); const end = new Date(); end.setDate(end.getDate() + 7); return { start: toDateInput(start), end: toDateInput(end) }; }
+function toDateInput(value: Date) { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 10); }
+function toLocalDateTimeInput(value: Date) { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); }
+function startOfDay(value: Date) { const copy = new Date(value); copy.setHours(0, 0, 0, 0); return copy; }
+function endOfDay(value: Date) { const copy = new Date(value); copy.setHours(23, 59, 59, 999); return copy; }
+function formatRange(start: string, end: string) { if (!start && !end) return "All dates"; const formatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }); const from = start ? formatter.format(new Date(`${start}T00:00:00`)) : "Any"; const to = end ? formatter.format(new Date(`${end}T00:00:00`)) : "Any"; return `${from} – ${to}`; }
+function humanize(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }

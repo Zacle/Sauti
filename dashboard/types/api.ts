@@ -68,6 +68,9 @@ export type Agent = {
   sttBoostedKeywords: string | null;
   safetyGuardrails: string[];
   postCallExtractionFields: string[];
+  bookingRequiredFields: string[];
+  bookingNotificationChannels: string[];
+  bookingNotificationRecipient: string | null;
   businessType: string | null;
   primaryUseCase: string | null;
   businessWebsite: string | null;
@@ -82,21 +85,6 @@ export type Agent = {
   whatsappEnabled: boolean;
   whatsappPhoneNumberId: string | null;
   active: boolean;
-};
-
-export type CompleteOnboardingRequest = {
-  businessType: string;
-  primaryUseCase: string;
-  businessWebsite: string;
-  bookableServices: string[];
-  timezone: string;
-  calendarProvider: string;
-  routingPolicy: string;
-  agentName: string;
-  defaultLanguage: "en" | "fr" | "ar";
-  supportedLanguages: Array<"en" | "fr" | "ar">;
-  ttsVoiceId: string | null;
-  voiceProfile: string;
 };
 
 export type AgentDraft = {
@@ -141,6 +129,9 @@ export type AgentDraft = {
   sttBoostedKeywords: string | null;
   safetyGuardrails: string[];
   postCallExtractionFields: string[];
+  bookingRequiredFields: string[];
+  bookingNotificationChannels: string[];
+  bookingNotificationRecipient: string | null;
 };
 
 export type AgentStats = {
@@ -322,10 +313,12 @@ export type AvailablePhoneNumber = {
 
 export type Booking = {
   id: string;
+  bookingReference: string;
   agentId: string;
   callId: string | null;
   callerName: string;
   callerPhone: string;
+  callerEmail: string | null;
   serviceType: string;
   bookedAt: string;
   appointmentAt: string;
@@ -333,6 +326,9 @@ export type Booking = {
   externalEventId: string | null;
   status: string;
   confirmationSent: boolean;
+  capturedData: Record<string, unknown>;
+  calendarSyncStatus: "pending" | "synced" | "failed" | string;
+  calendarSyncError: string | null;
 };
 
 export type AnalyticsSummary = {

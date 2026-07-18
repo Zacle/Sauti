@@ -12,5 +12,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     Optional<Booking> findByIdAndTenantId(UUID id, UUID tenantId);
 
+    Optional<Booking> findByBookingReferenceIgnoreCaseAndTenantId(String bookingReference, UUID tenantId);
+
     Optional<Booking> findFirstByCall_Id(UUID callId);
 }

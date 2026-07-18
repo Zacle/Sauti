@@ -6,7 +6,6 @@ import com.sauti.llm.ConversationOrchestrator;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
 import com.sauti.tool.AgentToolLoader;
-import com.sauti.tool.AvailabilityRequestNormalizer;
 import com.sauti.tool.ToolFulfillmentRouter;
 import com.sauti.session.CallSessionStore;
 import java.net.URI;
@@ -127,9 +126,6 @@ public class OpenAiRealtimeService {
                     ? Map.of()
                     : objectMapper.readValue(argumentsJson, new TypeReference<>() { });
             var toolCall = new LlmToolCall(callId, name, arguments);
-            if ("check_availability".equals(name)) {
-                toolCall = AvailabilityRequestNormalizer.normalize(call, toolCall, latestCallerTranscript(call));
-            }
             var result = toolRouter.route(call, toolCall);
             if (!result.success()) {
                 LOGGER.warn("Realtime tool failed callId={} tool={} reason={}", call.getId(), name, result.error());

@@ -122,22 +122,32 @@ class AgentTemplateApiTest {
                 .andReturn().getResponse().getContentAsString();
         var agentId = objectMapper.readTree(agentJson).get("id").asText();
 
-        mvc.perform(get("/api/v1/agents/" + agentId + "/variables")
+        var variablesJson = mvc.perform(get("/api/v1/agents/" + agentId + "/variables")
                         .header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.key == 'clinic_name')].required").value(true))
-                .andExpect(jsonPath("$[?(@.key == 'clinic_name')].filled").value(false));
+                .andExpect(jsonPath("$[?(@.key == 'business_name')].required").value(true))
+                .andExpect(jsonPath("$[?(@.key == 'business_name')].filled").value(false))
+                .andReturn().getResponse().getContentAsString();
 
         mvc.perform(post("/api/v1/agents/" + agentId + "/activate")
                         .header("Authorization", bearer(ownerToken)))
                 .andExpect(status().isBadRequest());
 
-        mvc.perform(patch("/api/v1/agents/" + agentId + "/variables/clinic_name")
+        mvc.perform(patch("/api/v1/agents/" + agentId + "/variables/business_name")
                         .header("Authorization", bearer(ownerToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"value\":\"Nairobi Family Health\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.filled").value(true));
+
+        for (var variable : objectMapper.readTree(variablesJson)) {
+            if (!variable.path("required").asBoolean() || "business_name".equals(variable.path("key").asText())) continue;
+            mvc.perform(patch("/api/v1/agents/" + agentId + "/variables/" + variable.path("key").asText())
+                            .header("Authorization", bearer(ownerToken))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"value\":\"Configured test value\"}"))
+                    .andExpect(status().isOk());
+        }
 
         mvc.perform(post("/api/v1/agents/" + agentId + "/variables")
                         .header("Authorization", bearer(ownerToken))
@@ -169,8 +179,8 @@ class AgentTemplateApiTest {
                         .content("""
                                 {
                                   "variables": [
-                                    {"key":"clinic_name","value":"Nairobi Family Health"},
-                                    {"key":"clinic_hours","value":"Mon-Fri 8:00-18:00"}
+                                    {"key":"business_name","value":"Nairobi Family Health"},
+                                    {"key":"business_hours","value":"Mon-Fri 8:00-18:00"}
                                   ]
                                 }
                                 """))

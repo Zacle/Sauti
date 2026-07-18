@@ -129,6 +129,8 @@
 .agents-empty > span { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 15px; color: #23dfd3; background: rgba(21,196,183,.12); }
 .agents-empty h2 { margin: 13px 0 4px; font-size: 1.1rem; }
 .agents-empty p { margin: 0; color: var(--muted); font-size: .74rem; }
+.empty-create { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; margin-top: 18px; padding: 0 16px; border: 1px solid rgba(36,225,211,.45); border-radius: 11px; color: #041f22; background: linear-gradient(135deg,#24ddd1,#63e9d7); font-size: .76rem; font-weight: 700; text-decoration: none; box-shadow: 0 12px 32px -18px rgba(36,225,211,.85); transition: transform .2s ease, box-shadow .2s ease; }
+.empty-create:hover { transform: translateY(-1px); box-shadow: 0 16px 38px -17px rgba(36,225,211,.9); }
 
 @keyframes shimmer { to { background-position: -200% 0; } }
 

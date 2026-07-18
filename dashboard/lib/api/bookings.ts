@@ -15,3 +15,22 @@ export function rescheduleBooking(bookingId: string, appointmentAt: string, dura
     body: JSON.stringify({ appointmentAt, durationMinutes }),
   });
 }
+
+export function updateBooking(bookingId: string, booking: {
+  callerName: string;
+  callerPhone: string;
+  callerEmail: string | null;
+  serviceType: string;
+  appointmentAt: string;
+  durationMinutes: number;
+  capturedData: Record<string, unknown>;
+}) {
+  return apiRequest<Booking>(`/bookings/${bookingId}`, {
+    method: "PUT",
+    body: JSON.stringify(booking),
+  });
+}
+
+export function deleteBooking(bookingId: string) {
+  return apiRequest<void>(`/bookings/${bookingId}/permanent`, { method: "DELETE" });
+}

@@ -2,7 +2,6 @@ package com.sauti.call;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sauti.llm.AvailabilityIntentDetector;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -127,6 +126,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private boolean responseActive;
         private boolean responseInterrupted;
         private boolean textCompleted;
+        private boolean structuredTextCandidate;
         private boolean requiredAvailabilityToolPending;
         private String currentOutputItemId = "";
         private int pendingCallerTranscriptions;
@@ -232,6 +232,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         responseActive = true;
                         responseInterrupted = false;
                         textCompleted = false;
+                        structuredTextCandidate = false;
                         currentOutputItemId = "";
                         agentText.setLength(0);
                     }
@@ -266,14 +267,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             var activeSession = session;
                             if (activeSession != null) {
                                 activeSession.updateInstructions(realtimeService.realtimeInstructions(call, transcript));
-                                if (availabilityToolEnabled
-                                        && AvailabilityIntentDetector.requiresAvailabilityCheck(transcript)) {
-                                    requiredAvailabilityToolPending = true;
-                                    activeSession.requestResponseWithRequiredTool("check_availability");
-                                } else {
-                                    requiredAvailabilityToolPending = false;
-                                    activeSession.requestResponse();
-                                }
+                                requiredAvailabilityToolPending = false;
+                                activeSession.requestResponse();
                             }
                         }
                         finishCallerTurn();
@@ -288,17 +283,23 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     case "response.output_text.delta" -> {
                         var delta = event.path("delta").asText("");
                         if (!delta.isEmpty()) {
+                            if (agentText.length() == 0) {
+                                var leading = delta.stripLeading();
+                                structuredTextCandidate = leading.startsWith("{") || leading.startsWith("[");
+                            }
                             agentText.append(delta);
-                            if (!responseInterrupted && !requiredAvailabilityToolPending) {
+                            if (!responseInterrupted && !requiredAvailabilityToolPending && !structuredTextCandidate) {
                                 listener.onAgentTextDelta(delta);
                             }
                         }
                     }
                     case "response.output_text.done" -> {
-                        if (requiredAvailabilityToolPending) {
+                        var providerText = event.path("text").asText("");
+                        if (requiredAvailabilityToolPending
+                                || VoiceOutputGuard.isStructuredPayload(providerText.isBlank() ? agentText.toString() : providerText)) {
                             recoverRequiredAvailabilityTool(webSocket, event.path("text").asText(""));
                         } else {
-                            completeText(event.path("text").asText(""));
+                            completeText(providerText);
                         }
                     }
                     case "response.function_call_arguments.done" -> {
@@ -423,18 +424,37 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 );
                 return;
             }
-            var callId = VoiceOutputGuard.realtimeCallId("avail");
+            var toolName = recoveredToolName(arguments.get());
+            if (toolName == null) {
+                listener.onAgentTextComplete(VoiceOutputGuard.safeAvailabilityClarification(responseLanguage()), false);
+                return;
+            }
+            var callId = VoiceOutputGuard.realtimeCallId("tool");
             var argumentsJson = write(arguments.get());
             send(webSocket, Map.of(
                     "type", "conversation.item.create",
                     "item", Map.of(
                             "type", "function_call",
                             "call_id", callId,
-                            "name", "check_availability",
+                            "name", toolName,
                             "arguments", argumentsJson
                     )
             ));
-            executeTool(webSocket, callId, "check_availability", argumentsJson);
+            executeTool(webSocket, callId, toolName, argumentsJson);
+        }
+
+        private String recoveredToolName(Map<String, Object> arguments) {
+            if (arguments.containsKey("booking_number") && arguments.containsKey("appointment_at")
+                    && hasConfiguredTool(sessionConfiguration, "reschedule_booking")) return "reschedule_booking";
+            if (arguments.containsKey("booking_number") && hasConfiguredTool(sessionConfiguration, "cancel_booking")) {
+                return "cancel_booking";
+            }
+            if (arguments.containsKey("appointment_at") && arguments.containsKey("caller_name")
+                    && hasConfiguredTool(sessionConfiguration, "book_slot")) return "book_slot";
+            if (arguments.containsKey("date") && hasConfiguredTool(sessionConfiguration, "check_availability")) {
+                return "check_availability";
+            }
+            return null;
         }
 
         private String responseLanguage() {

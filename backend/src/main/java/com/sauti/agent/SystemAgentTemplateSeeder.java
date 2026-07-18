@@ -27,12 +27,19 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
     private static final Pattern PROMPT = Pattern.compile(
             "(?ms)### System Prompt\\s*\\R```\\s*\\R(.*?)\\R```"
     );
-    private static final Set<String> ALLOWED_LANGUAGES = Set.of("fr", "ar", "en");
     private static final Set<String> REQUIRED_VARIABLES = Set.of(
-            "clinic_name", "salon_name", "firm_name", "agency_name", "gym_name",
-            "shop_name", "restaurant_name", "spa_name", "company_name",
-            "clinic_hours", "salon_hours", "office_hours", "gym_hours",
-            "shop_hours", "spa_hours", "hours"
+            "business_name", "business_description", "business_address", "business_hours",
+            "business_timezone", "business_phone", "supported_languages", "fallback_language",
+            "after_hours_behavior", "required_booking_fields", "notification_channels"
+    );
+    private static final Set<String> CORE_VARIABLES = Set.of(
+            "business_name", "business_description", "business_address", "business_hours",
+            "business_timezone", "business_phone", "business_website", "booking_link",
+            "supported_languages", "fallback_language", "greeting_style", "tone",
+            "transfer_rules", "transfer_number", "after_hours_behavior", "escalation_triggers",
+            "transfer_retry_policy", "calendar_system", "appointment_lead_time",
+            "appointment_buffer", "cancellation_policy", "confirmation_channels",
+            "notification_channels", "faq", "prohibited_statements", "required_booking_fields"
     );
     static final String LIVE_VOICE_BEHAVIOR = """
 
@@ -94,18 +101,26 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
             String idealFor = metadata(body, "Ideal For");
             var languages = languageCodes(metadata(body, "Language Support"));
             var capabilities = bulletSection(body, "Key Capabilities", "Variables");
-            var variables = variables(body);
+            var verticalVariables = variables(body);
+            var variables = new ArrayList<Map<String, Object>>(coreDefinitions());
+            verticalVariables.stream()
+                    .filter(candidate -> variables.stream().noneMatch(existing -> existing.get("key").equals(candidate.get("key"))))
+                    .forEach(variables::add);
+            var bookingRequiredFields = csv(metadata(body, "Booking Required Fields"));
+            var bookingNotificationChannels = csv(metadata(body, "Owner Notifications"));
             var promptMatcher = PROMPT.matcher(body);
             if (!promptMatcher.find()) {
                 throw new IllegalArgumentException("Missing system prompt for template " + name);
             }
-            String configuration = configurationJson(industry, capabilities, variables);
+            String configuration = configurationJson(
+                    industry, capabilities, variables, bookingRequiredFields, bookingNotificationChannels
+            );
             requests.add(new AgentTemplateRequest(
                     name,
                     idealFor.isBlank() ? "Ready-to-use voice agent for " + industry + "." : "Designed for " + idealFor + ".",
                     industry,
                     openingDirection(capabilities),
-                    withLiveVoiceBehavior(promptMatcher.group(1).trim()),
+                    withLiveVoiceBehavior(withCoreBehavior(promptMatcher.group(1).trim())),
                     languages.get(0),
                     languages,
                     configuration,
@@ -171,9 +186,14 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 case "english" -> "en";
                 case "french" -> "fr";
                 case "arabic" -> "ar";
+                case "swahili" -> "sw";
+                case "spanish" -> "es";
+                case "german" -> "de";
+                case "portuguese" -> "pt";
+                case "italian" -> "it";
                 default -> null;
             };
-            if (code != null && ALLOWED_LANGUAGES.contains(code) && !languages.contains(code)) {
+            if (code != null && !languages.contains(code)) {
                 languages.add(code);
             }
         }
@@ -183,7 +203,9 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
     private String configurationJson(
             String industry,
             List<String> capabilities,
-            List<Map<String, Object>> variables
+            List<Map<String, Object>> variables,
+            List<String> configuredBookingFields,
+            List<String> configuredNotificationChannels
     ) {
         var configuration = new LinkedHashMap<String, Object>();
         boolean bookingEnabled = capabilities.stream()
@@ -195,12 +217,88 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
         configuration.put("escalationPhrases", escalationPhrasesFor(industry));
         configuration.put("capabilities", capabilities);
         configuration.put("variables", variables);
+        configuration.put("schemaVersion", 2);
+        configuration.put("coreFields", variables.stream()
+                .filter(variable -> CORE_VARIABLES.contains(variable.get("key").toString()))
+                .toList());
+        configuration.put("verticalFields", variables.stream()
+                .filter(variable -> !CORE_VARIABLES.contains(variable.get("key").toString()))
+                .toList());
+        configuration.put("bookingRequiredFields", configuredBookingFields.isEmpty()
+                ? bookingRequiredFields(variables, bookingEnabled)
+                : configuredBookingFields);
+        configuration.put("bookingNotificationChannels", configuredNotificationChannels.isEmpty()
+                ? List.of("dashboard", "email")
+                : configuredNotificationChannels);
         configuration.put("source", "docs/agent-templates.md");
         try {
             return objectMapper.writeValueAsString(configuration);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Could not serialize system template configuration", exception);
         }
+    }
+
+    private List<String> csv(String value) {
+        if (value == null || value.isBlank()) return List.of();
+        return java.util.Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .distinct()
+                .toList();
+    }
+
+    private List<Map<String, Object>> coreDefinitions() {
+        return List.of(
+                definition("business_name", "Business name", "Customer-facing legal or trading name", "Acme Clinic", true),
+                definition("business_description", "Business description", "Short description or tagline", "Friendly neighbourhood clinic", true),
+                definition("business_address", "Business address", "Primary address or location list", "12 Main Street", true),
+                definition("business_hours", "Business hours", "Weekly hours plus holiday exceptions", "Mon-Fri 09:00-17:00", true),
+                definition("business_timezone", "Business timezone", "IANA timezone for all scheduling", "Africa/Cairo", true),
+                definition("business_phone", "Business phone", "Number callers may use for callbacks", "+20 111 000 0000", true),
+                definition("business_website", "Business website", "Public website", "https://example.com", false),
+                definition("booking_link", "Booking link", "Public self-service booking link when available", "https://example.com/book", false),
+                definition("supported_languages", "Supported languages", "Languages the business wants this agent to support", "English, French, Arabic", true),
+                definition("fallback_language", "Fallback language", "Language to use when caller language is uncertain", "English", true),
+                definition("greeting_style", "Greeting style", "How the opening should sound; not a fixed script", "Warm and concise", false),
+                definition("tone", "Tone", "Formal, casual, warm, efficient, or another style", "Warm and efficient", false),
+                definition("transfer_rules", "Transfer rules", "When and where to transfer", "Human request or urgent issue", false),
+                definition("transfer_number", "Transfer number", "Human destination number or extension", "+20 111 000 0001", false),
+                definition("after_hours_behavior", "After-hours behavior", "Voicemail, callback capture, or emergency line", "Capture a callback request", true),
+                definition("escalation_triggers", "Escalation triggers", "Human request, anger, risk, or out-of-scope conditions", "Explicit human request; angry caller", false),
+                definition("transfer_retry_policy", "Transfer retry policy", "Hold time and fallback if nobody answers", "Ring 20 seconds then capture callback", false),
+                definition("calendar_system", "Calendar system", "Google Calendar, Calendly, or custom API", "Google Calendar", false),
+                definition("appointment_lead_time", "Appointment lead time", "Minimum time before a new booking", "2 hours", false),
+                definition("appointment_buffer", "Appointment buffer", "Gap required between appointments", "15 minutes", false),
+                definition("cancellation_policy", "Cancellation policy", "Policy text the agent may explain", "Cancel at least 24 hours ahead", false),
+                definition("confirmation_channels", "Customer confirmations", "SMS, email, both, or none", "SMS and email", false),
+                definition("notification_channels", "Owner notifications", "How the owner is alerted to bookings", "Dashboard and email", true),
+                definition("faq", "Frequently asked questions", "Approved question and answer pairs", "Parking: available behind the building", false),
+                definition("prohibited_statements", "Prohibited statements", "Claims or advice the agent must never provide", "Never diagnose or guarantee outcomes", false),
+                definition("required_booking_fields", "Required booking fields", "Information required before creating a booking", "Name, phone, service, date and time", true)
+        );
+    }
+
+    private Map<String, Object> definition(
+            String key, String label, String description, String example, boolean required
+    ) {
+        var definition = new LinkedHashMap<String, Object>();
+        definition.put("key", key);
+        definition.put("label", label);
+        definition.put("description", description);
+        definition.put("example", example);
+        definition.put("required", required);
+        return definition;
+    }
+
+    private List<String> bookingRequiredFields(List<Map<String, Object>> variables, boolean bookingEnabled) {
+        if (!bookingEnabled) return List.of();
+        var fields = new ArrayList<>(List.of("caller_name", "caller_phone", "service_type", "appointment_at"));
+        variables.stream()
+                .map(variable -> variable.get("key").toString())
+                .filter(key -> !CORE_VARIABLES.contains(key))
+                .filter(key -> key.startsWith("booking_") || key.startsWith("customer_") || key.startsWith("patient_"))
+                .forEach(fields::add);
+        return fields.stream().distinct().toList();
     }
 
     private String openingDirection(List<String> capabilities) {
@@ -223,6 +321,35 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
             return systemPrompt;
         }
         return systemPrompt + LIVE_VOICE_BEHAVIOR;
+    }
+
+    private String withCoreBehavior(String systemPrompt) {
+        if (systemPrompt.contains("## Configured Business Profile")) return systemPrompt;
+        return systemPrompt + """
+
+                ## Configured Business Profile
+                - Business: {{business_name}} â€” {{business_description}}
+                - Locations and access: {{business_address}}
+                - Hours and exceptions: {{business_hours}} ({{business_timezone}})
+                - Public callback number: {{business_phone}}
+                - Website and booking link: {{business_website}} {{booking_link}}
+                - Supported and fallback languages: {{supported_languages}}; fallback {{fallback_language}}
+                - Voice style: {{greeting_style}}; tone {{tone}}
+
+                ## Routing and After-hours Rules
+                Follow {{transfer_rules}} using {{transfer_number}}. If transfer does not connect, apply {{transfer_retry_policy}}.
+                Outside configured hours, apply {{after_hours_behavior}}. Escalate only for {{escalation_triggers}}.
+
+                ## Booking and Confirmation Rules
+                Use {{calendar_system}}. Apply lead time {{appointment_lead_time}}, buffer {{appointment_buffer}}, and cancellation policy {{cancellation_policy}}.
+                Send customer confirmations only through {{confirmation_channels}} and alert the owner through {{notification_channels}}.
+                Collect the configured fields represented by {{required_booking_fields}} before booking; runtime tool configuration is authoritative.
+
+                ## Approved Knowledge and Compliance
+                Use only these approved FAQs: {{faq}}.
+                Never make these statements: {{prohibited_statements}}.
+                Empty optional values mean no fact or policy is configured; do not invent a replacement.
+                """;
     }
 
     private String groupFor(String industry) {

@@ -159,60 +159,6 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.systemPrompt").value(containsString("## Tool Rules")))
                 .andExpect(jsonPath("$.variables").isArray());
 
-        var onboardingAgentJson = mvc.perform(post("/api/v1/tenant/onboarding")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "businessType": "Healthcare",
-                                  "primaryUseCase": "Appointment booking",
-                                  "businessWebsite": "https://demo-clinic.example",
-                                  "bookableServices": ["Consultation", "Follow-up"],
-                                  "timezone": "Africa/Kinshasa",
-                                  "calendarProvider": "Google Calendar",
-                                  "routingPolicy": "Fixed calendar",
-                                  "agentName": "Amina Onboarding",
-                                  "defaultLanguage": "fr",
-                                  "supportedLanguages": ["fr", "en"],
-                                  "ttsVoiceId": "voice-456",
-                                  "voiceProfile": "Aminata"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.businessType").value("Healthcare"))
-                .andExpect(jsonPath("$.primaryUseCase").value("Appointment booking"))
-                .andExpect(jsonPath("$.businessWebsite").value("https://demo-clinic.example"))
-                .andExpect(jsonPath("$.bookableServices[0]").value("Consultation"))
-                .andExpect(jsonPath("$.calendarProvider").value("Google Calendar"))
-                .andExpect(jsonPath("$.routingPolicy").value("Fixed calendar"))
-                .andExpect(jsonPath("$.timezone").value("Africa/Kinshasa"))
-                .andExpect(jsonPath("$.ttsVoiceId").value("voice-456"))
-                .andExpect(jsonPath("$.twilioPhoneNumber").doesNotExist())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        String onboardingAgentId = objectMapper.readTree(onboardingAgentJson).get("id").asText();
-
-        mvc.perform(get("/api/v1/agents/" + onboardingAgentId + "/variables")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.key == 'bookable_services')].value").value("Consultation, Follow-up"));
-
-        mvc.perform(get("/api/v1/agents/" + onboardingAgentId + "/tools")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.toolName == 'book_slot')].active").value(true))
-                .andExpect(jsonPath("$[?(@.toolName == 'end_call')].active").value(true));
-
-        mvc.perform(get("/api/v1/agents/" + onboardingAgentId + "/readiness")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.businessDetailsComplete").value(true))
-                .andExpect(jsonPath("$.calendarRequired").value(true))
-                .andExpect(jsonPath("$.calendarConfigured").value(false))
-                .andExpect(jsonPath("$.phoneNumberConfigured").value(false))
-                .andExpect(jsonPath("$.nextStep").value("connect_calendar"));
-
         mvc.perform(get("/api/v1/tenant/onboarding-status")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
@@ -290,6 +236,13 @@ class AuthAgentFlowTest {
                         .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"transcript\":\"yes confirm it\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.response").value(containsString("confirm the spelling of your name")));
+
+        mvc.perform(post("/api/v1/calls/CA123/simulate-turn")
+                        .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"transcript\":\"yes, the spelling and every phone digit are correct\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response").value("Perfect, you're all booked!"));
 
@@ -492,7 +445,7 @@ class AuthAgentFlowTest {
         var toolsJson = mvc.perform(get("/api/v1/agents/" + agentId + "/tools")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(13))
+                .andExpect(jsonPath("$.length()").value(14))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();

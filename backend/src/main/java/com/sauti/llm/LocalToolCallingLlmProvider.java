@@ -55,6 +55,21 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
         if (isConfirmation(transcript)) {
             var pendingBooking = callSessionStore.pendingBooking(context.callSid()).orElse(null);
             if (pendingBooking != null) {
+                if (!pendingBooking.identityReadbackRequested()) {
+                    callSessionStore.updatePendingBooking(context.callSid(), new BookingDraft(
+                            pendingBooking.callerName(), pendingBooking.serviceType(), pendingBooking.preferredDate(),
+                            pendingBooking.confirmedSlot(), pendingBooking.callerPhone(), true
+                    ));
+                    var spelling = natoSpelling(pendingBooking.callerName());
+                    var digits = individualDigits(pendingBooking.callerPhone());
+                    return new LlmToolTurnResponse(localized(
+                            context.language(),
+                            "Before I book, please confirm the spelling of your name: " + spelling + ", and your phone number: " + digits + ". Is that correct?",
+                            "Avant de reserver, confirmez l'epellation de votre nom : " + spelling + ", et votre numero : " + digits + ". Est-ce correct ?",
+                            "Kabla ya kuweka nafasi, thibitisha tahajia ya jina lako: " + spelling + ", na nambari yako: " + digits + ". Je, ni sahihi?",
+                            "Before I book, please confirm the spelling of your name: " + spelling + ", and your phone number: " + digits + ". Is that correct?"
+                    ), List.of());
+                }
                 callSessionStore.updatePendingBooking(context.callSid(), null);
                 return new LlmToolTurnResponse(localized(
                         context.language(),
@@ -67,6 +82,8 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                                 "appointment_at", pendingBooking.confirmedSlot(),
                                 "caller_name", pendingBooking.callerName(),
                                 "caller_phone", pendingBooking.callerPhone(),
+                                "caller_name_spelling_confirmed", true,
+                                "caller_phone_digits_confirmed", true,
                                 "service_type", pendingBooking.serviceType()
                         )),
                         tool("send_confirmation_sms", Map.of(
@@ -152,7 +169,11 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
     }
 
     private boolean hasSuccessfulTool(LlmToolTurnContext context, String name) {
-        return context.toolResults().stream().anyMatch(result -> name.equals(result.name()) && result.success());
+        return context.toolResults().stream().anyMatch(result -> {
+            if (!name.equals(result.name()) || !result.success()) return false;
+            if ("book_slot".equals(name)) return Boolean.TRUE.equals(result.result().get("bookingCreated"));
+            return true;
+        });
     }
 
     private LlmToolResult latestSuccessfulResult(LlmToolTurnContext context, String name) {
@@ -171,6 +192,36 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
             }
         }
         return fallback.toString();
+    }
+
+    private String individualDigits(String value) {
+        if (value == null || value.isBlank()) return "not provided";
+        return value.chars()
+                .filter(Character::isDigit)
+                .mapToObj(character -> Character.toString((char) character))
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    private String natoSpelling(String value) {
+        if (value == null || value.isBlank()) return "not provided";
+        var alphabet = Map.ofEntries(
+                Map.entry('A', "Alfa"), Map.entry('B', "Bravo"), Map.entry('C', "Charlie"),
+                Map.entry('D', "Delta"), Map.entry('E', "Echo"), Map.entry('F', "Foxtrot"),
+                Map.entry('G', "Golf"), Map.entry('H', "Hotel"), Map.entry('I', "India"),
+                Map.entry('J', "Juliett"), Map.entry('K', "Kilo"), Map.entry('L', "Lima"),
+                Map.entry('M', "Mike"), Map.entry('N', "November"), Map.entry('O', "Oscar"),
+                Map.entry('P', "Papa"), Map.entry('Q', "Quebec"), Map.entry('R', "Romeo"),
+                Map.entry('S', "Sierra"), Map.entry('T', "Tango"), Map.entry('U', "Uniform"),
+                Map.entry('V', "Victor"), Map.entry('W', "Whiskey"), Map.entry('X', "X-ray"),
+                Map.entry('Y', "Yankee"), Map.entry('Z', "Zulu")
+        );
+        return value.toUpperCase(Locale.ROOT).chars()
+                .mapToObj(character -> {
+                    if (Character.isWhitespace(character)) return "space";
+                    var letter = (char) character;
+                    return alphabet.getOrDefault(letter, Character.toString(letter));
+                })
+                .collect(java.util.stream.Collectors.joining(", "));
     }
 
     private boolean isConfirmation(String transcript) {

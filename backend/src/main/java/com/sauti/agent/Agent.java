@@ -130,6 +130,15 @@ public class Agent extends Auditable {
     @Column(nullable = false)
     private boolean bookingEnabled = false;
 
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String bookingRequiredFields = "caller_name,caller_phone,service_type,appointment_at";
+
+    @Column(nullable = false)
+    private String bookingNotificationChannels = "dashboard,email";
+
+    @Column(length = 320)
+    private String bookingNotificationRecipient;
+
     @Column(nullable = false)
     private String timezone = "UTC";
 
@@ -330,6 +339,44 @@ public class Agent extends Auditable {
 
     public boolean isBookingEnabled() {
         return bookingEnabled;
+    }
+
+    public List<String> getBookingRequiredFields() { return split(bookingRequiredFields); }
+    public List<String> getBookingNotificationChannels() { return split(bookingNotificationChannels); }
+    public String getBookingNotificationRecipient() { return bookingNotificationRecipient; }
+
+    public void configureBookingWorkflow(
+            List<String> requiredFields,
+            List<String> notificationChannels,
+            String notificationRecipient
+    ) {
+        var configuredFields = requiredFields == null ? List.<String>of() : requiredFields.stream()
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .peek(value -> {
+                    if (!value.matches("^[a-z][a-z0-9_]{0,63}$")) {
+                        throw new IllegalArgumentException("Booking field keys must use lowercase snake_case");
+                    }
+                })
+                .distinct()
+                .toList();
+        if (configuredFields.size() > 25) throw new IllegalArgumentException("An agent may require at most 25 booking fields");
+        var fields = new java.util.ArrayList<String>();
+        if (bookingEnabled) fields.addAll(List.of("caller_name", "caller_phone", "service_type", "appointment_at"));
+        fields.addAll(configuredFields);
+        this.bookingRequiredFields = String.join(",", fields.stream().distinct().toList());
+        var channels = notificationChannels == null ? List.<String>of() : notificationChannels.stream()
+                .map(value -> value.trim().toLowerCase(java.util.Locale.ROOT))
+                .filter(value -> !value.isBlank())
+                .filter(value -> List.of("dashboard", "email").contains(value))
+                .distinct()
+                .toList();
+        this.bookingNotificationChannels = String.join(",", channels.isEmpty()
+                ? List.of("dashboard")
+                : channels);
+        this.bookingNotificationRecipient = notificationRecipient == null || notificationRecipient.isBlank()
+                ? null
+                : notificationRecipient.trim();
     }
 
     public String getTimezone() {

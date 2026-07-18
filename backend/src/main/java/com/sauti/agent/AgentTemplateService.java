@@ -15,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AgentTemplateService {
-    private static final List<String> SUPPORTED_LANGUAGES = List.of("fr", "ar", "en");
 
     private final AgentTemplateRepository templateRepository;
     private final TenantRepository tenantRepository;
@@ -95,6 +94,8 @@ public class AgentTemplateService {
         String operatingHours = textOrNull(configuration, "operatingHours");
         String afterHoursBehavior = textOrNull(configuration, "afterHoursBehavior");
         String afterHoursMessage = textOrNull(configuration, "afterHoursMessage");
+        List<String> bookingRequiredFields = stringList(configuration, "bookingRequiredFields");
+        List<String> bookingNotificationChannels = stringList(configuration, "bookingNotificationChannels");
         String requestedName = request == null ? null : request.name();
         String requestedTimezone = request == null ? null : request.timezone();
         String transferNumber = request == null ? null : request.humanTransferNumber();
@@ -119,6 +120,9 @@ public class AgentTemplateService {
                 false,
                 "standard",
                 null, null, null, null, null, null, null, null, null, null, null, null, null,
+                bookingRequiredFields,
+                bookingNotificationChannels,
+                null,
                 "#", 5, 8, java.util.Map.of(),
                 false, java.util.List.of(), true,
                 false, null
@@ -126,6 +130,14 @@ public class AgentTemplateService {
         var agent = agentService.create(tenantId, agentRequest);
         agentVariableService.seedDefinitions(agent, configuration);
         return agent;
+    }
+
+    private List<String> stringList(JsonNode configuration, String field) {
+        if (!configuration.path(field).isArray()) return List.of();
+        return objectMapper.convertValue(
+                configuration.path(field),
+                objectMapper.getTypeFactory().constructCollectionType(List.class, String.class)
+        );
     }
 
     private String textOrNull(JsonNode configuration, String field) {
@@ -139,11 +151,12 @@ public class AgentTemplateService {
     }
 
     private void validate(AgentTemplateRequest request) {
-        if (!SUPPORTED_LANGUAGES.contains(request.defaultLanguage())) {
-            throw new IllegalArgumentException("Unsupported default language");
+        var languageCode = java.util.regex.Pattern.compile("(?i)^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$");
+        if (!languageCode.matcher(request.defaultLanguage()).matches()) {
+            throw new IllegalArgumentException("Default language must be a valid BCP 47 language code");
         }
-        if (request.supportedLanguages().stream().anyMatch(language -> !SUPPORTED_LANGUAGES.contains(language))) {
-            throw new IllegalArgumentException("Supported languages are fr, ar, and en");
+        if (request.supportedLanguages().stream().anyMatch(language -> !languageCode.matcher(language).matches())) {
+            throw new IllegalArgumentException("Supported languages must use valid BCP 47 language codes");
         }
         if (!request.supportedLanguages().contains(request.defaultLanguage())) {
             throw new IllegalArgumentException("Default language must be included in supported languages");

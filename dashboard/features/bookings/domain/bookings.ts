@@ -45,6 +45,8 @@ export function filterBookings(bookings: BookingViewModel[], filter: BookingStat
     return [
       booking.callerName,
       booking.callerPhone,
+      booking.callerEmail ?? "",
+      booking.bookingReference,
       booking.serviceType,
       booking.agentName,
       booking.status,

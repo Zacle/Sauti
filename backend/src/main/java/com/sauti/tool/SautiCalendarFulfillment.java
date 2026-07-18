@@ -16,8 +16,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,10 +23,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class SautiCalendarFulfillment implements ToolFulfillment {
     private static final Logger LOGGER = LoggerFactory.getLogger(SautiCalendarFulfillment.class);
-    private static final Pattern SPOKEN_TIME = Pattern.compile(
-            "(?<!\\d)(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?(?!\\d)",
-            Pattern.CASE_INSENSITIVE
-    );
     private final CalendarProviderFactory calendarProviderFactory;
     private final BookingService bookingService;
 
@@ -41,6 +35,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     public LlmToolResult execute(Call call, AgentTool toolConfig, LlmToolCall toolCall) {
         try {
             return switch (toolCall.name()) {
+                case "get_business_hours" -> LlmToolResult.success(toolCall, businessHours(call));
                 case "check_availability" -> LlmToolResult.success(toolCall, checkAvailability(call, toolCall.arguments(), toolConfig));
                 case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(call, toolCall, toolConfig));
                 case "reschedule_booking" -> LlmToolResult.success(toolCall, reschedule(call, toolCall));
@@ -50,6 +45,16 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         } catch (RuntimeException exception) {
             return LlmToolResult.error(toolCall, exception.getMessage());
         }
+    }
+
+    private Map<String, Object> businessHours(Call call) {
+        var effectiveHours = OperatingHoursSchedule.effective(call.getAgent());
+        return Map.of(
+                "status", "business_hours",
+                "timezone", call.getAgent().getTimezone(),
+                "schedule", OperatingHoursSchedule.describe(effectiveHours),
+                "instruction", "Answer the caller in their language using only this configured schedule."
+        );
     }
 
     private Map<String, Object> checkAvailability(Call call, Map<String, Object> arguments, AgentTool toolConfig) {
@@ -121,7 +126,6 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                         : requestedTime.isPresent()
                             ? "requested_time_available"
                             : "slots_available");
-        result.put("spokenResponse", AvailabilitySpeechRenderer.render(call, result));
         return Map.copyOf(result);
     }
 
@@ -130,7 +134,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("status", "needs_date");
         result.put("timezone", timezone.toString());
         result.put("calendarLive", true);
-        result.put("spokenResponse", AvailabilitySpeechRenderer.render(call, result));
+        result.put("instruction", "Ask the caller for a specific preferred date in their current language.");
         return Map.copyOf(result);
     }
 
@@ -178,38 +182,45 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
 
     private Optional<LocalTime> parseRequestedTime(String raw) {
         if (raw == null || raw.isBlank()) return Optional.empty();
-        var normalized = java.text.Normalizer.normalize(raw, java.text.Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "")
-                .toLowerCase(java.util.Locale.ROOT)
-                .replace(".", "")
-                .trim();
-        if (normalized.matches(".*\\b(midi|noon)\\b.*")) return Optional.of(LocalTime.NOON);
-        if (normalized.matches(".*\\b(minuit|midnight)\\b.*")) return Optional.of(LocalTime.MIDNIGHT);
-        var matcher = SPOKEN_TIME.matcher(normalized);
-        if (!matcher.find()) return Optional.empty();
         try {
-            var hour = Integer.parseInt(matcher.group(1));
-            var minute = matcher.group(2) == null ? 0 : Integer.parseInt(matcher.group(2));
-            var meridiem = matcher.group(3);
-            if (meridiem != null) {
-                if (hour < 1 || hour > 12) return Optional.empty();
-                if ("pm".equalsIgnoreCase(meridiem) && hour < 12) hour += 12;
-                if ("am".equalsIgnoreCase(meridiem) && hour == 12) hour = 0;
-            }
-            return Optional.of(LocalTime.of(hour, minute));
+            return Optional.of(LocalTime.parse(raw.trim()));
         } catch (RuntimeException exception) {
             return Optional.empty();
         }
     }
 
     private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, AgentTool toolConfig) {
-        var selectedProvider = call.getAgent().getCalendarProvider();
-        if ("Google Calendar".equalsIgnoreCase(selectedProvider)
-                && (!"google".equalsIgnoreCase(toolConfig.getCalendarType())
-                    || toolConfig.getCalendarCredentialId() == null)) {
-            throw new IllegalStateException("Google Calendar is selected but the booking tool is not connected");
+        var customerDetails = customerDetails(toolCall.arguments());
+        var missingFields = missingRequiredBookingFields(call, toolCall.arguments(), customerDetails);
+        if (!missingFields.isEmpty()) {
+            return Map.of(
+                    "status", "missing_required_information",
+                    "bookingCreated", false,
+                    "missingFields", missingFields,
+                    "instruction", "Ask for only the next missing field in the caller's language before booking."
+            );
         }
-        var provider = calendarProviderFactory.forTool(toolConfig, call.getTenant().getId());
+        var unconfirmedFields = unconfirmedIdentityFields(toolCall.arguments());
+        if (!unconfirmedFields.isEmpty()) {
+            return Map.of(
+                    "status", "identity_confirmation_required",
+                    "bookingCreated", false,
+                    "unconfirmedFields", unconfirmedFields,
+                    "instruction", "Confirm only the returned identity fields before booking. Read phone digits individually. Spell names and email addresses character by character using the NATO phonetic alphabet, then ask the caller to confirm."
+            );
+        }
+        var selectedProvider = call.getAgent().getCalendarProvider();
+        com.sauti.calendar.CalendarProvider provider = null;
+        try {
+            if (!("Google Calendar".equalsIgnoreCase(selectedProvider)
+                    && (!"google".equalsIgnoreCase(toolConfig.getCalendarType())
+                        || toolConfig.getCalendarCredentialId() == null))) {
+                provider = calendarProviderFactory.forTool(toolConfig, call.getTenant().getId());
+            }
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Booking calendar resolution failed callId={} agentId={}: {}",
+                    call.getId(), call.getAgent().getId(), exception.getMessage());
+        }
         var booking = bookingService.create(
                 call.getTenant().getId(),
                 new CreateBookingRequest(
@@ -217,29 +228,33 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                         call.getId(),
                         requiredStringArg(toolCall.arguments(), "caller_name"),
                         stringArg(toolCall.arguments(), "caller_phone", call.getCallerNumber()),
+                        stringArg(toolCall.arguments(), "caller_email", ""),
                         requiredStringArg(toolCall.arguments(), "service_type"),
                         OffsetDateTime.parse(requiredStringArg(toolCall.arguments(), "appointment_at")),
-                        intArg(toolCall.arguments(), "duration_minutes", 60)
+                        intArg(toolCall.arguments(), "duration_minutes", 60),
+                        customerDetails
                 ),
                 provider
         );
         var externalEventId = booking.getExternalEventId() == null ? "" : booking.getExternalEventId();
-        if ("Google Calendar".equalsIgnoreCase(selectedProvider)
-                && (externalEventId.isBlank() || externalEventId.startsWith("local-"))) {
-            throw new IllegalStateException("Google Calendar did not confirm the event");
-        }
-        var confirmationCode = confirmationCode(booking.getId());
-        return Map.of(
-                "bookingId", booking.getId().toString(),
-                "externalEventId", externalEventId,
-                "confirmationCode", confirmationCode,
-                "spokenResponse", BookingSpeechRenderer.render(call, booking, confirmationCode)
-        );
+        var result = new LinkedHashMap<String, Object>();
+        result.put("status", "synced".equals(booking.getCalendarSyncStatus())
+                ? "booking_confirmed"
+                : "booking_saved_pending_calendar");
+        result.put("bookingCreated", true);
+        result.put("bookingId", booking.getId().toString());
+        result.put("bookingNumber", booking.getBookingReference());
+        result.put("appointmentAt", booking.getAppointmentAt().toString());
+        result.put("externalEventId", externalEventId);
+        result.put("calendarSynced", "synced".equals(booking.getCalendarSyncStatus()));
+        result.put("ownerNotified", true);
+        result.put("instruction", "Tell the caller whether the calendar was confirmed. Always provide the booking number. If calendarSynced is false, say the request was saved for owner follow-up, not confirmed.");
+        return Map.copyOf(result);
     }
 
     private Map<String, Object> reschedule(Call call, LlmToolCall toolCall) {
-        var booking = bookingService.reschedule(call.getTenant().getId(),
-                UUID.fromString(requiredStringArg(toolCall.arguments(), "booking_id")),
+        var existing = bookingService.resolve(call.getTenant().getId(), requiredStringArg(toolCall.arguments(), "booking_number"));
+        var booking = bookingService.reschedule(call.getTenant().getId(), existing.getId(),
                 new com.sauti.calendar.BookingDtos.RescheduleBookingRequest(
                         OffsetDateTime.parse(requiredStringArg(toolCall.arguments(), "appointment_at")),
                         intArg(toolCall.arguments(), "duration_minutes", 60)));
@@ -248,8 +263,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     }
 
     private Map<String, Object> cancel(Call call, LlmToolCall toolCall) {
-        var booking = bookingService.cancel(call.getTenant().getId(),
-                UUID.fromString(requiredStringArg(toolCall.arguments(), "booking_id")));
+        var existing = bookingService.resolve(call.getTenant().getId(), requiredStringArg(toolCall.arguments(), "booking_number"));
+        var booking = bookingService.cancel(call.getTenant().getId(), existing.getId());
         return Map.of("bookingId", booking.getId(), "cancelled", true);
     }
 
@@ -278,9 +293,50 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         }
     }
 
-    private String confirmationCode(UUID bookingId) {
-        var value = Long.toUnsignedString(bookingId.getMostSignificantBits() ^ bookingId.getLeastSignificantBits(), 36).toUpperCase();
-        var normalized = value.length() >= 8 ? value.substring(0, 8) : "00000000".substring(value.length()) + value;
-        return "SAT-" + normalized;
+    private boolean booleanArg(Map<String, Object> arguments, String name) {
+        var value = arguments.get(name);
+        return value instanceof Boolean bool ? bool : value != null && Boolean.parseBoolean(value.toString());
+    }
+
+    private List<String> unconfirmedIdentityFields(Map<String, Object> arguments) {
+        var fields = new java.util.ArrayList<String>();
+        if (!booleanArg(arguments, "caller_name_spelling_confirmed")) {
+            fields.add("caller_name");
+        }
+        if (!booleanArg(arguments, "caller_phone_digits_confirmed")) {
+            fields.add("caller_phone");
+        }
+        var email = stringArg(arguments, "caller_email", "");
+        if (!email.isBlank() && !booleanArg(arguments, "caller_email_spelling_confirmed")) {
+            fields.add("caller_email");
+        }
+        return List.copyOf(fields);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> customerDetails(Map<String, Object> arguments) {
+        var value = arguments.get("customer_details");
+        return value instanceof Map<?, ?> map
+                ? map.entrySet().stream().collect(java.util.stream.Collectors.toMap(
+                        entry -> entry.getKey().toString(), Map.Entry::getValue,
+                        (first, ignored) -> first, LinkedHashMap::new
+                ))
+                : Map.of();
+    }
+
+    private List<String> missingRequiredBookingFields(
+            Call call,
+            Map<String, Object> arguments,
+            Map<String, Object> customerDetails
+    ) {
+        return call.getAgent().getBookingRequiredFields().stream()
+                .filter(field -> {
+                    var value = switch (field) {
+                        case "caller_name", "caller_phone", "caller_email", "service_type", "appointment_at" -> arguments.get(field);
+                        default -> customerDetails.get(field);
+                    };
+                    return value == null || value.toString().isBlank();
+                })
+                .toList();
     }
 }

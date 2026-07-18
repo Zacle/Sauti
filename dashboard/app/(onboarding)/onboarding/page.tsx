@@ -1,10 +1,5 @@
-import type { Metadata } from "next";
-import { OnboardingFlow } from "@/features/onboarding/OnboardingFlow/OnboardingFlow";
-
-export const metadata: Metadata = {
-  title: "Tenant onboarding | Sauti",
-};
+import { redirect } from "next/navigation";
 
 export default function OnboardingPage() {
-  return <OnboardingFlow />;
+  redirect("/agents");
 }

@@ -50,11 +50,15 @@ public class CalendarProviderFactory {
 
     @Transactional(readOnly = true)
     public CalendarProvider forAgent(java.util.UUID agentId) {
+        return connectedForAgent(agentId).orElse(defaultCalendarProvider);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<CalendarProvider> connectedForAgent(java.util.UUID agentId) {
         return agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agentId).stream()
                 .filter(tool -> "google".equalsIgnoreCase(tool.getCalendarType())
                         && tool.getCalendarCredentialId() != null)
                 .findFirst()
-                .map(this::forTool)
-                .orElse(defaultCalendarProvider);
+                .map(this::forTool);
     }
 }

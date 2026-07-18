@@ -11,7 +11,6 @@ import com.sauti.agent.OperatingHoursSchedule;
 import com.sauti.knowledge.KnowledgeRetrievalService;
 import com.sauti.session.CallSessionStore;
 import com.sauti.tool.AgentToolLoader;
-import com.sauti.tool.AvailabilityRequestNormalizer;
 import com.sauti.tool.ToolFulfillmentRouter;
 import java.util.ArrayList;
 import java.util.List;
@@ -83,7 +82,9 @@ public class ConversationOrchestrator {
         callSessionStore.appendUserMessage(call.getTwilioCallSid(), callerTranscript);
         var messages = messages(call, callerTranscript);
         var responseText = "";
-        var availabilityCheckRequired = requiresAvailabilityCheck(call, callerTranscript, tools);
+        // Tool choice is delegated to the multilingual model. Calendar tools
+        // return structured facts and enforce business constraints server-side.
+        var availabilityCheckRequired = false;
 
         try {
             for (int loop = 0; loop < maxToolLoops; loop++) {
@@ -112,15 +113,15 @@ public class ConversationOrchestrator {
                 );
                 // Buffer the first availability decision so a premature spoken answer cannot
                 // reach TTS before the model has had the chance to return the required tool call.
+                var guardedDeltas = new StructuredDeltaGuard(textDeltaConsumer);
                 var response = loop == 0 && availabilityCheckRequired
                         ? llmProvider.completeTurn(context)
-                        : llmProvider.streamTurn(context, textDeltaConsumer);
+                        : llmProvider.streamTurn(context, guardedDeltas::accept);
+                guardedDeltas.finish(response.responseText());
                 var responseToolCalls = response.toolCalls();
-                if (requiredToolName != null && responseToolCalls.isEmpty()) {
-                    responseToolCalls = VoiceOutputGuard.parseObject(objectMapper, response.responseText())
-                            .map(arguments -> List.of(new LlmToolCall(
-                                    java.util.UUID.randomUUID().toString(), requiredToolName, arguments
-                            )))
+                if (responseToolCalls.isEmpty() && VoiceOutputGuard.isStructuredPayload(response.responseText())) {
+                    responseToolCalls = recoveredToolCall(response.responseText(), tools)
+                            .map(List::of)
                             .orElse(List.of());
                 }
                 responseText = VoiceOutputGuard.isStructuredPayload(response.responseText())
@@ -139,8 +140,7 @@ public class ConversationOrchestrator {
                 callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, responseToolCalls);
                 var loopResults = new ArrayList<LlmToolResult>();
                 for (var toolCall : responseToolCalls) {
-                    var normalizedToolCall = AvailabilityRequestNormalizer.normalize(call, toolCall, callerTranscript);
-                    var result = toolFulfillmentRouter.route(call, normalizedToolCall);
+                    var result = toolFulfillmentRouter.route(call, toolCall);
                     loopResults.add(result);
                     allToolResults.add(result);
                     messages.add(ConversationMessage.toolResult(result));
@@ -172,25 +172,61 @@ public class ConversationOrchestrator {
         return new ConversationTurnResult(fallbackText, outcome(allToolResults));
     }
 
+    private java.util.Optional<LlmToolCall> recoveredToolCall(String responseText, List<LlmToolDefinition> tools) {
+        return VoiceOutputGuard.parseObject(objectMapper, responseText).flatMap(arguments -> {
+            var available = tools.stream().map(LlmToolDefinition::name).collect(java.util.stream.Collectors.toSet());
+            final String name;
+            if (arguments.containsKey("booking_number") && arguments.containsKey("appointment_at")
+                    && available.contains("reschedule_booking")) name = "reschedule_booking";
+            else if (arguments.containsKey("booking_number") && available.contains("cancel_booking")) name = "cancel_booking";
+            else if (arguments.containsKey("appointment_at") && arguments.containsKey("caller_name")
+                    && available.contains("book_slot")) name = "book_slot";
+            else if (arguments.containsKey("date") && available.contains("check_availability")) name = "check_availability";
+            else return java.util.Optional.empty();
+            return java.util.Optional.of(new LlmToolCall(
+                    VoiceOutputGuard.realtimeCallId("tool"), name, arguments
+            ));
+        });
+    }
+
+    private static final class StructuredDeltaGuard {
+        private final Consumer<String> downstream;
+        private final StringBuilder held = new StringBuilder();
+        private boolean decided;
+        private boolean structured;
+
+        private StructuredDeltaGuard(Consumer<String> downstream) {
+            this.downstream = downstream;
+        }
+
+        private void accept(String delta) {
+            if (delta == null || delta.isEmpty()) return;
+            if (!decided) {
+                var leading = delta.stripLeading();
+                if (leading.isEmpty()) {
+                    held.append(delta);
+                    return;
+                }
+                structured = leading.startsWith("{") || leading.startsWith("[");
+                decided = true;
+                if (!structured && held.length() > 0) downstream.accept(held.toString());
+                held.setLength(0);
+            }
+            if (structured) held.append(delta);
+            else downstream.accept(delta);
+        }
+
+        private void finish(String finalText) {
+            if (!structured || VoiceOutputGuard.isStructuredPayload(finalText)) return;
+            if (held.length() > 0) downstream.accept(held.toString());
+        }
+    }
+
     private String deterministicToolResponse(LlmToolResult result) {
         if (llmProvider.requiresAvailabilityFollowUpForState()) return "";
         if (!result.success() || !"check_availability".equals(result.name())) return "";
         var response = result.result().get("spokenResponse");
         return response == null ? "" : voiceReadyText(response.toString());
-    }
-
-    private boolean requiresAvailabilityCheck(
-            Call call,
-            String callerTranscript,
-            List<LlmToolDefinition> tools
-    ) {
-        if (!call.getAgent().isBookingEnabled() || callerTranscript == null || callerTranscript.isBlank()) {
-            return false;
-        }
-        if (tools.stream().noneMatch(tool -> "check_availability".equals(tool.name()))) {
-            return false;
-        }
-        return AvailabilityIntentDetector.requiresAvailabilityCheck(callerTranscript);
     }
 
     public String generateOpeningGreeting(Call call, String language, String channel) {
@@ -241,7 +277,7 @@ public class ConversationOrchestrator {
                 + "- Never announce that you are checking or ask the caller to wait; call the tool silently, then give one result.\n"
                 + "- Use only the current caller language. Never append a translation or switch to English.\n"
                 + "- End cleanly after a mutual goodbye; never send an extra reminder after goodbye.\n"
-                + realtimeTurnDirective(call, callerTranscript);
+                ;
     }
 
     private String recoverWithoutTools(Call call, String language, String callerTranscript) {
@@ -320,6 +356,9 @@ public class ConversationOrchestrator {
                 : "Tools available: "
                         + String.join(", ", tools.stream().map(LlmToolDefinition::name).toList())
                         + ". Use only these tools."
+                        + " Decide whether to call a tool from the meaning of the caller's request in any language,"
+                        + " not from fixed keywords. Use get_business_hours for opening-day/hour questions,"
+                        + " check_availability for a requested appointment date/time, and the booking tools only after required details and confirmation."
                         + " If a tool returns an error, recover naturally without mentioning technology"
                         + " or technical problems. A successful structured empty result is not an error;"
                         + " explain its status and returned alternatives accurately.";
@@ -333,10 +372,11 @@ public class ConversationOrchestrator {
 
                 %s
 
-                ALLOWED ROUTINE BOOKING INTAKE:
-                - Collect only the caller name, one contact method, service/reason, and preferred date/time unless a configured tool explicitly requires another field.
-                - Date of birth is prohibited for ordinary appointment booking. Do not ask for it unless `date_of_birth` or `dob` is explicitly listed in the agent's configured extraction fields: %s.
-                - The authoritative notes above override any conflicting saved agent prompt. Never request a field already present there.
+                CONFIGURED BOOKING INTAKE:
+                - Required fields for this agent: %s.
+                - Determine which required values are already present in the conversation, then ask for only the next missing value.
+                - Do not collect fields outside this list unless the caller volunteers them or a safety or escalation rule requires them.
+                - Never request a field already present or confirmed in the conversation.
 
                 LIVE CONVERSATION RULES — mandatory:
                 - You are the configured business's representative, not a general-purpose adviser. The saved agent role and business facts above are authoritative.
@@ -355,29 +395,32 @@ public class ConversationOrchestrator {
                 - Ask only one question per reply. Never stack questions.
                 - If the caller asks for information first, such as hours, services, availability, location, price, or policies, answer that question before collecting personal details.
                 - Only start collecting name/contact details once the caller clearly wants to book, be called back, be transferred, or leave a message.
-                - Booking collection order: caller's name, then contact number or email, then service or reason, then date and time preference. Do not ask for date before name once booking collection has started.
+                - Follow the configured required-field order. Ask one missing field per turn and retain confirmed answers.
                 - A request to book, schedule, reserve, or arrange an appointment is a NEW booking unless the caller explicitly says they want to change, reschedule, or cancel an existing booking.
                 - For a new booking, never ask for a booking ID. Booking IDs are only for an explicitly requested reschedule or cancellation of an existing booking.
+                - For a reschedule or cancellation, ask for the customer-facing booking number. Check availability for a proposed replacement time, confirm the requested change, then use the matching booking tool. Never claim the change succeeded before its tool result.
                 - Do not ask how long a normal appointment should last. Use the configured tool default. Ask about duration only when the caller explicitly requests a special duration or the configured business workflow explicitly requires it.
-                - New-booking sequence: collect only the missing name, contact, service, date, and time; check availability; obtain a brief confirmation; then call `book_slot`. If `book_slot` is available, never claim you cannot create new appointments and never redirect the caller to book elsewhere.
+                - New-booking sequence: collect the configured required fields; check availability when a date or time is present; obtain a brief confirmation; then call `book_slot`. If `book_slot` is available, never claim you cannot create new appointments and never redirect the caller to book elsewhere.
                 - Accept partial information gracefully. If the caller gives you the date without the type, use what you have. Ask only for what is genuinely missing.
                 - Treat a caller detail as collected only when the caller explicitly says that detail. Never infer a caller name, number, address, email, or confirmation from a greeting, acknowledgement, thanks, "avec plaisir", "d'accord", "yes", or from your own agent name. If the reply does not answer the detail you just requested, briefly repeat that same request and do not advance to the next field.
                 - If the caller declines to give one piece of contact info (e.g. "I don't want to give my email"), accept that warmly and immediately offer the alternative ("No worries — could I take your phone number instead?"). Never press or repeat the request.
                 - If the caller sounds confused ("pardon?", "what do you mean?", "je n'ai pas compris"), briefly apologize, restate the same request in simpler words, and do not move to a new topic.
                 - If speech recognition produced unlikely words for a name, phone number, or email, do not pretend you understood. Ask the caller to repeat it slowly or spell it. Do not convert unclear sounds into a real-looking name, and never invent a name from an availability or information request.
-                - Phone number readback: when the caller provides a phone number, read it back digit by digit before confirming — e.g. "So that's zero, one, one, five, seven, five, three — is that right?" Never read it as a single block number.
+                - Phone number readback: before booking, read every digit individually in the caller's current language and ask the caller to confirm the complete number. Never read a phone number as one numeric quantity.
+                - Name and email verification: before booking, spell the caller's full name character by character with the NATO phonetic alphabet and ask them to confirm. If an email was collected, spell its letters with NATO words and speak punctuation explicitly (at sign, dot, hyphen, underscore), then ask for confirmation. Use the standard words Alfa, Bravo, Charlie, Delta, Echo, Foxtrot, Golf, Hotel, India, Juliett, Kilo, Lima, Mike, November, Oscar, Papa, Quebec, Romeo, Sierra, Tango, Uniform, Victor, Whiskey, X-ray, Yankee, and Zulu. Keep the surrounding confirmation question in the caller's language.
+                - Set `caller_name_spelling_confirmed`, `caller_phone_digits_confirmed`, and, when an email is provided, `caller_email_spelling_confirmed` to true only after the caller explicitly accepts the corresponding readback. Never infer these confirmations from an unrelated yes or acknowledgement.
                 - Maintain a private collection ledger from the entire conversation. Once the caller has supplied a name, service, phone number, date, or other detail, do not ask for that field again unless the caller explicitly corrects it. After the caller confirms a readback, lock that value and move to the next genuinely missing field.
                 - Phone-number dictation may arrive in several short turns. Accumulate consecutive digit-only fragments into one candidate without repeatedly reading the whole partial number back. For an incomplete fragment, say only a brief listening cue such as "I'm listening" or "Go ahead with the rest."
-                - Words such as "restart", "from the beginning", "recommencer", "a zero", "non", or "correction" mean the previous unconfirmed phone candidate is not reliable. Discard it and build a fresh candidate from the digits that follow; never merge digits from before and after a restart.
+                - If the caller indicates a restart or correction in any language, discard the previous unconfirmed phone candidate and build a fresh candidate from what follows.
                 - Normalize spoken number words to digits internally, preserving leading zeroes. Do not decide that a number is incomplete from length alone unless the configured country or the caller established an expected format. Ask for one complete slow repetition only when the sequence is genuinely ambiguous.
-                - Repetition language is semantic, not extra digits: French "il y a trois un" or "trois fois un" means `111`; STT may render repeated spoken `un` as isolated `a`, so in an active phone-number dictation "a a a" means `111`. Never interpret the ordinary phrase "il y a" itself as digit 1.
+                - Treat linguistic repetition markers according to the caller's language. Preserve intended repeated digits without inventing digits from unrelated words.
                 - Confirm a completed phone candidate exactly once, digit by digit. If the caller says it is correct, retain it and continue. If the caller says it is wrong, do not defend or repeat the old candidate; ask for the corrected complete number and replace it.
                 - Pre-close confirmation: before ending the call or placing a booking, read back the key details collected: name, phone number or contact, and what was requested. Keep it brief and natural — "Just to confirm: your name is [name], phone number [digits one by one], and you'd like [request] — is that all correct?"
                 - Before a booking tool succeeds, talk about proposed or preferred times only. Do not say a booking is confirmed, scheduled, or transmitted until the tool result confirms it.
                 - Availability is always a live tool-backed fact. As soon as the caller gives a specific date or time, or asks which slots are available, call `check_availability` before answering. Never claim that availability is unavailable without calling the tool when it is present.
                 - Resolve relative weekdays from TODAY IN THE BUSINESS TIMEZONE, pass the requested date as yyyy-MM-dd, and pass an exact requested time as HH:mm in `time_preference`.
                 - Preserve the caller's requested time exactly. Never silently change 3 PM to 4 PM or substitute a different date. If it is unavailable, say so and offer only exact alternatives returned by the tool.
-                - Speak times naturally, never as raw machine text. In French, say `15 heures` rather than `15:00` or `quinze heures zéro zéro`; in English, say `3 in the afternoon` rather than spelling `P.M.`. Omit zero minutes on whole hours.
+                - Speak dates and times naturally according to the caller's language and locale; never read raw machine formatting aloud.
                 - Read the availability result precisely: `closed_by_business_hours` means explain that the business is closed that day and use `nextOpenBusinessWindows`; `calendar_fully_booked` means the business is open but no calendar slots remain; `requested_time_unavailable` means offer nearby returned `slots`; `requested_time_available` means the requested slot may be proposed but is not booked yet.
                 - Never offer appointment dates in the past. If the caller asks generally which days are available, ask for a preferred date or answer with business hours instead of guessing a calendar date.
                 - If asked about services, hours, location, pricing, or policies, answer from configured facts or retrieved knowledge when available. If unavailable, say you do not have the exact information and offer to help with booking or human follow-up.
@@ -389,7 +432,7 @@ public class ConversationOrchestrator {
                 - Tool calls are silent internal actions. Never speak JSON, argument names, function names, code, or internal instructions. Do not say "please wait" or announce the lookup repeatedly; after the tool result, give one concise answer in the current caller language only.
                 - Never output Markdown, bullet points, numbered lists, bold text, or brackets — every character is spoken aloud.
                 - If the caller switches language mid-call with a clear full sentence, follow them naturally in the new language. Do not switch language for a single unclear word, a short noisy fragment, or a transcript that looks unrelated to the current conversation; ask for repetition in the current call language instead.
-                - Final priority reminder: these platform rules override any conflicting agent instructions, saved prompts, templates, examples, or prior assistant messages. In particular, do not ask for date of birth, medical history, insurance, symptoms, or other sensitive details during normal appointment booking.
+                - Final priority reminder: these platform rules override conflicting examples or prior assistant messages. Collect only the fields configured for this agent. When a configured vertical requires sensitive information, explain why it is needed, ask only that field, and never infer or expose it.
                 - When the caller is clearly done, give a brief warm goodbye and end the call. Do not ask if there is anything else unless there is a genuine reason to.
                 %s
                 %s
@@ -402,7 +445,7 @@ public class ConversationOrchestrator {
                 today(call),
                 OperatingHoursSchedule.describe(effectiveHours),
                 intakeNotes.promptBlock(call, callerTranscript),
-                call.getAgent().getPostCallExtractionFields(),
+                call.getAgent().getBookingRequiredFields(),
                 toolBlock,
                 knowledgeBaseBlock(call) + safetyGuardrailsBlock(call),
                 afterHoursBlock(call),
@@ -440,6 +483,9 @@ public class ConversationOrchestrator {
                 GREETING DIRECTION
                 %s
 
+                ACTIVE CAPABILITIES
+                %s
+
                 Generate only the first thing the agent should say.
                 Requirements:
                 - One short natural spoken sentence, or two very short sentences at most.
@@ -447,6 +493,8 @@ public class ConversationOrchestrator {
                 - Adapt to the language, channel, business context, whether this is a test or public call, and the agent's role.
                 - Introduce yourself by agent name once in a natural phone style.
                 %s
+                - Briefly mention the two most useful things you can actually do from ACTIVE CAPABILITIES, then ask how you can help.
+                - Describe capabilities naturally rather than reading a menu. Never claim a capability that is not listed or granted by the saved agent role.
                 - Do not ask multiple questions.
                 %s
                 - Do not say "thank you for calling" by default.
@@ -457,9 +505,32 @@ public class ConversationOrchestrator {
                 businessInstruction,
                 channel == null || channel.isBlank() ? "voice call" : channel,
                 greetingDirection.isBlank() ? "Open warmly, introduce yourself by name, and ask how you can help." : greetingDirection,
+                openingCapabilities(call),
                 identityRequirement,
                 preferredOpening
         );
+    }
+
+    private String openingCapabilities(Call call) {
+        var names = agentToolLoader.loadForAgent(call.getAgent().getId()).stream()
+                .map(LlmToolDefinition::name)
+                .collect(java.util.stream.Collectors.toSet());
+        var capabilities = new java.util.ArrayList<String>();
+        if (names.contains("book_slot")) capabilities.add("create appointments or reservations");
+        if (names.contains("reschedule_booking") || names.contains("cancel_booking")) {
+            capabilities.add("change or cancel existing bookings");
+        }
+        if (names.contains("check_availability")) capabilities.add("check live availability");
+        if (names.contains("get_business_hours")) capabilities.add("answer questions about business hours");
+        if (names.contains("transfer_to_human")) capabilities.add("connect callers with a person when needed");
+        if (names.contains("lookup_google_sheet_row") || names.contains("update_google_sheet_row")) {
+            capabilities.add("look up or update approved customer records");
+        }
+        if (names.contains("send_confirmation_sms")) capabilities.add("send booking confirmations");
+        if (capabilities.isEmpty()) {
+            return "Use only the abilities explicitly described in the saved agent role above.";
+        }
+        return String.join("; ", capabilities) + ".";
     }
 
     private String resolveAgentText(Call call, String text) {
@@ -476,31 +547,6 @@ public class ConversationOrchestrator {
         if (!business.isBlank()) return "You are working for " + business + ".";
         return "No separate customer-facing business name is configured. "
                 + "Never use the tenant workspace/account name as the represented business.";
-    }
-
-    private String realtimeTurnDirective(Call call, String callerTranscript) {
-        if (callerTranscript == null || callerTranscript.isBlank()) return "";
-        var normalized = java.text.Normalizer.normalize(callerTranscript, java.text.Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "")
-                .toLowerCase(java.util.Locale.ROOT);
-        var asksHours = AvailabilityIntentDetector.asksBusinessHours(callerTranscript);
-        var bookingIntent = normalized.matches(".*\\b(book|booking|reserve|reservation|appointment|trial|class|session|rendez-vous|reserver|consultation|cours|seance)\\b.*");
-        var directive = new StringBuilder();
-        if (asksHours) {
-            directive.append("\nMANDATORY NEXT RESPONSE: The caller is asking about the represented BUSINESS, not the assistant. Say exactly this schedule and nothing else: \"")
-                    .append(OperatingHoursSchedule.describeForSpeech(
-                            OperatingHoursSchedule.effective(
-                                    call.getAgent(),
-                                    agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())
-                            ),
-                            call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected()
-                    ))
-                    .append("\" Do not ask for a date and do not invent availability.\n");
-        }
-        if (bookingIntent && call.getAgent().isBookingEnabled()) {
-            directive.append("\nMANDATORY NEXT RESPONSE: The caller has a NEW booking or trial intent. This agent is configured to create it. Never ask for a booking ID or ordinary duration, never say you cannot book, collect only the next missing name/contact/service/date/time detail, and use check_availability then book_slot when required.\n");
-        }
-        return directive.toString();
     }
 
     private String afterHoursBlock(Call call) {
@@ -567,21 +613,15 @@ public class ConversationOrchestrator {
     private String fallback(String language, String callerTranscript) {
         var transcript = callerTranscript == null ? "" : callerTranscript.toLowerCase(java.util.Locale.ROOT);
         var hasDigit = transcript.codePoints().anyMatch(Character::isDigit);
-        var asksAvailability = transcript.contains("disponible")
-                || transcript.contains("disponibil")
-                || transcript.contains("available")
-                || transcript.contains("availability");
         return switch (language == null ? "" : language) {
             case "fr" -> {
                 if (hasDigit) yield "Je n'ai pas bien saisi le numero. Pouvez-vous repeter les chiffres lentement ?";
-                if (asksAvailability) yield "Je peux verifier ca avec vous. Quel jour vous conviendrait le mieux ?";
                 yield "Je n'ai pas bien saisi. Vous pouvez repeter plus lentement ?";
             }
             case "sw" -> "Samahani, sijakusikia vizuri. Unaweza kurudia polepole?";
             case "ar" -> "I did not catch that clearly. Could you say it again more slowly?";
             default -> {
                 if (hasDigit) yield "I did not catch the number clearly. Could you repeat the digits slowly?";
-                if (asksAvailability) yield "I can check that with you. What day would work best?";
                 yield "I did not catch that clearly. Could you say it again more slowly?";
             }
         };

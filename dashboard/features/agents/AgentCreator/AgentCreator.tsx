@@ -89,6 +89,8 @@ type Template = {
   supportedLanguages: string[];
   escalationPhrases: string[];
   variables: AgentVariableDefinition[];
+  bookingRequiredFields: string[];
+  bookingNotificationChannels: string[];
 };
 
 type AfterHoursBehavior = "answer" | "take_message" | "closed";
@@ -105,6 +107,13 @@ const OPERATING_WEEK_DAYS: Array<{ key: WeekDayKey; label: string }> = [
   { key: "saturday", label: "Saturday" },
   { key: "sunday", label: "Sunday" },
 ];
+
+const DEFAULT_BOOKING_FIELDS = ["caller_name", "caller_phone", "service_type", "appointment_at"];
+const DEFAULT_BOOKING_NOTIFICATIONS = ["dashboard", "email"];
+const LANGUAGE_OPTIONS = [
+  ["en", "English"], ["fr", "French"], ["ar", "Arabic"], ["sw", "Swahili"],
+  ["es", "Spanish"], ["de", "German"], ["pt", "Portuguese"], ["it", "Italian"],
+] as const;
 
 const templates: Template[] = [
   {
@@ -132,6 +141,8 @@ CONVERSATION STYLE
     source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
+    bookingRequiredFields: DEFAULT_BOOKING_FIELDS,
+    bookingNotificationChannels: DEFAULT_BOOKING_NOTIFICATIONS,
   },
   {
     id: "support",
@@ -156,6 +167,8 @@ RULES
     source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
+    bookingRequiredFields: [],
+    bookingNotificationChannels: ["dashboard"],
   },
   {
     id: "qualifier",
@@ -180,6 +193,8 @@ RULES
     source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
+    bookingRequiredFields: DEFAULT_BOOKING_FIELDS,
+    bookingNotificationChannels: DEFAULT_BOOKING_NOTIFICATIONS,
   },
   {
     id: "callback",
@@ -196,6 +211,8 @@ Collect the caller's name, phone number, issue summary, urgency, and preferred c
     source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
+    bookingRequiredFields: DEFAULT_BOOKING_FIELDS,
+    bookingNotificationChannels: DEFAULT_BOOKING_NOTIFICATIONS,
   },
 ];
 
@@ -219,6 +236,8 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
   let icon: LucideIcon = Bot;
   let escalationPhrases = ["speak to a person", "talk to a human", "human agent"];
   let variables: AgentVariableDefinition[] = [];
+  let bookingRequiredFields = DEFAULT_BOOKING_FIELDS;
+  let bookingNotificationChannels = DEFAULT_BOOKING_NOTIFICATIONS;
   try {
     const configuration = JSON.parse(template.configurationJson) as {
       bookingEnabled?: boolean;
@@ -226,12 +245,20 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
       icon?: string;
       escalationPhrases?: string[];
       variables?: AgentVariableDefinition[];
+      bookingRequiredFields?: string[];
+      bookingNotificationChannels?: string[];
     };
     bookingEnabled = Boolean(configuration.bookingEnabled);
     group = configuration.group ?? group;
     icon = iconMap[configuration.icon ?? "bot"] ?? Bot;
     escalationPhrases = configuration.escalationPhrases ?? escalationPhrases;
     variables = Array.isArray(configuration.variables) ? configuration.variables : [];
+    bookingRequiredFields = Array.isArray(configuration.bookingRequiredFields)
+      ? configuration.bookingRequiredFields
+      : bookingRequiredFields;
+    bookingNotificationChannels = Array.isArray(configuration.bookingNotificationChannels)
+      ? configuration.bookingNotificationChannels
+      : bookingNotificationChannels;
   } catch {
     bookingEnabled = false;
   }
@@ -250,6 +277,8 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
     supportedLanguages: template.supportedLanguages,
     escalationPhrases,
     variables,
+    bookingRequiredFields,
+    bookingNotificationChannels,
   };
 }
 
@@ -325,6 +354,9 @@ export function AgentCreator({
   const [sttBoostedKeywords, setSttBoostedKeywords] = useState("");
   const [safetyGuardrails, setSafetyGuardrails] = useState<string[]>([]);
   const [postCallExtractionFields, setPostCallExtractionFields] = useState(["summary", "successful", "sentiment", "intent"]);
+  const [bookingRequiredFields, setBookingRequiredFields] = useState<string[]>(DEFAULT_BOOKING_FIELDS);
+  const [bookingNotificationChannels, setBookingNotificationChannels] = useState<string[]>(DEFAULT_BOOKING_NOTIFICATIONS);
+  const [bookingNotificationRecipient, setBookingNotificationRecipient] = useState("");
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   const [customVariables, setCustomVariables] = useState<AgentVariableDefinition[]>([]);
   const [existingVariableKeys, setExistingVariableKeys] = useState<string[]>([]);
@@ -380,6 +412,8 @@ export function AgentCreator({
           supportedLanguages: agent.supportedLanguages,
           escalationPhrases: agent.escalationPhrases,
           variables: [],
+          bookingRequiredFields: agent.bookingRequiredFields,
+          bookingNotificationChannels: agent.bookingNotificationChannels,
         });
         setLoadedAgent(agent);
         setReadiness(agentReadiness);
@@ -425,6 +459,9 @@ export function AgentCreator({
         setSttBoostedKeywords(agent.sttBoostedKeywords ?? "");
         setSafetyGuardrails(agent.safetyGuardrails);
         setPostCallExtractionFields(agent.postCallExtractionFields);
+        setBookingRequiredFields(agent.bookingRequiredFields);
+        setBookingNotificationChannels(agent.bookingNotificationChannels);
+        setBookingNotificationRecipient(agent.bookingNotificationRecipient ?? "");
         setCustomVariables(definitions);
         setExistingVariableKeys(definitions.map((variable) => variable.key));
         setVariableValues({
@@ -462,6 +499,9 @@ export function AgentCreator({
     setLanguage(template.defaultLanguage);
     setSupportedLanguages(Array.from(new Set([template.defaultLanguage, ...template.supportedLanguages])));
     setEscalationPhrases(template.escalationPhrases.join(", "));
+    setBookingRequiredFields(template.bookingRequiredFields);
+    setBookingNotificationChannels(template.bookingNotificationChannels);
+    setBookingNotificationRecipient("");
     setCustomVariables([]);
     setVariableValues(Object.fromEntries(template.variables.map((variable) => [variable.key, ""])));
     setStage("studio");
@@ -490,6 +530,8 @@ export function AgentCreator({
         supportedLanguages: generated.supportedLanguages,
         escalationPhrases: generated.escalationPhrases,
         variables: generated.variables ?? [],
+        bookingRequiredFields: generated.bookingEnabled ? DEFAULT_BOOKING_FIELDS : [],
+        bookingNotificationChannels: generated.bookingEnabled ? DEFAULT_BOOKING_NOTIFICATIONS : ["dashboard"],
       };
       setName(generated.name);
       selectTemplate(custom);
@@ -551,6 +593,9 @@ export function AgentCreator({
         sttBoostedKeywords: sttBoostedKeywords.trim() || null,
         safetyGuardrails,
         postCallExtractionFields,
+        bookingRequiredFields,
+        bookingNotificationChannels,
+        bookingNotificationRecipient: bookingNotificationRecipient.trim() || null,
       };
       if (agentId) {
         setLoadedAgent(await updateAgent(agentId, draft));
@@ -756,6 +801,9 @@ export function AgentCreator({
                   maxDuration={maxDuration}
                   greeting={greeting}
                   bookingEnabled={bookingEnabled}
+                  bookingRequiredFields={bookingRequiredFields}
+                  bookingNotificationChannels={bookingNotificationChannels}
+                  bookingNotificationRecipient={bookingNotificationRecipient}
                   saveTranscript={saveTranscript}
                   recordCalls={recordCalls}
                   webVoiceEnabled={webVoiceEnabled}
@@ -801,6 +849,9 @@ export function AgentCreator({
                   onDuration={setMaxDuration}
                   onGreeting={setGreeting}
                   onBooking={setBookingEnabled}
+                  onBookingRequiredFields={setBookingRequiredFields}
+                  onBookingNotificationChannels={setBookingNotificationChannels}
+                  onBookingNotificationRecipient={setBookingNotificationRecipient}
                   onSaveTranscript={setSaveTranscript}
                   onRecordCalls={setRecordCalls}
                   onWebVoiceEnabled={setWebVoiceEnabled}
@@ -1366,12 +1417,13 @@ function TemplateSelection({
 }
 
 function languageName(code: string) {
-  return ({ en: "English", fr: "French", ar: "Arabic" } as Record<string, string>)[code] ?? code.toUpperCase();
+  return LANGUAGE_OPTIONS.find(([value]) => value === code)?.[1] ?? code.toUpperCase();
 }
 
 function MainSettings(props: {
   name: string; description: string; language: string; supportedLanguages: string[]; voice: string; timezone: string; maxDuration: string; greeting: string;
-  bookingEnabled: boolean; saveTranscript: boolean; recordCalls: boolean;
+  bookingEnabled: boolean; bookingRequiredFields: string[]; bookingNotificationChannels: string[];
+  bookingNotificationRecipient: string; saveTranscript: boolean; recordCalls: boolean;
   webVoiceEnabled: boolean; webVoiceAllowedOrigins: string; webVoiceRequireConsent: boolean;
   webVoicePublicId?: string; whatsappEnabled: boolean; whatsappPhoneNumberId: string; phoneNumber?: string | null;
   phoneNumberProvider?: string | null; phoneNumberStatus?: string | null;
@@ -1381,7 +1433,9 @@ function MainSettings(props: {
   onName: (value: string) => void; onDescription: (value: string) => void; onLanguage: (value: string) => void;
   onSupportedLanguages: (value: string[]) => void; onVoice: (value: string) => void;
   onTimezone: (value: string) => void; onDuration: (value: string) => void; onGreeting: (value: string) => void;
-  onBooking: (value: boolean) => void; onSaveTranscript: (value: boolean) => void; onRecordCalls: (value: boolean) => void;
+  onBooking: (value: boolean) => void; onBookingRequiredFields: (value: string[]) => void;
+  onBookingNotificationChannels: (value: string[]) => void; onBookingNotificationRecipient: (value: string) => void;
+  onSaveTranscript: (value: boolean) => void; onRecordCalls: (value: boolean) => void;
   onWebVoiceEnabled: (value: boolean) => void; onWebVoiceAllowedOrigins: (value: string) => void;
   onWebVoiceRequireConsent: (value: boolean) => void;
   onWhatsappEnabled: (value: boolean) => void; onWhatsappPhoneNumberId: (value: string) => void;
@@ -1392,6 +1446,7 @@ function MainSettings(props: {
   const [widgetPosition, setWidgetPosition] = useState<"right" | "left">("right");
   const [widgetLanguage, setWidgetLanguage] = useState(props.language);
   const [widgetLabel, setWidgetLabel] = useState("Talk to us");
+  const [languageCodeToAdd, setLanguageCodeToAdd] = useState("");
   useEffect(() => {
     if (!props.supportedLanguages.includes(widgetLanguage)) setWidgetLanguage(props.language);
   }, [props.language, props.supportedLanguages, widgetLanguage]);
@@ -1445,7 +1500,8 @@ function MainSettings(props: {
           </button>
         </label>
         <label>Primary language<DarkSelect ariaLabel="Primary language" icon={<Languages size={16} />} value={props.language} onValueChange={props.onLanguage}
-          options={[{ value: "en", label: "English" }, { value: "fr", label: "French" }, { value: "ar", label: "Arabic" }]} /></label>
+          options={Array.from(new Set([...LANGUAGE_OPTIONS.map(([value]) => value), ...props.supportedLanguages]))
+            .map((value) => ({ value, label: languageName(value) }))} /></label>
         <label>
           Timezone
           <DarkSelect ariaLabel="Agent timezone" icon={<Clock3 size={16} />} value={props.timezone} onValueChange={props.onTimezone}
@@ -1551,7 +1607,7 @@ function MainSettings(props: {
         <h3>Supported caller languages</h3>
         <p>The agent detects these languages during a call. The primary language cannot be removed.</p>
         <div className="studio-language-options">
-          {[["en", "English"], ["fr", "French"], ["ar", "Arabic"]].map(([code, label]) => {
+          {LANGUAGE_OPTIONS.map(([code, label]) => {
             const selected = props.supportedLanguages.includes(code);
             return (
               <button
@@ -1568,10 +1624,84 @@ function MainSettings(props: {
             );
           })}
         </div>
+        <div className="add-language-control">
+          <input
+            aria-label="BCP 47 language code"
+            onChange={(event) => setLanguageCodeToAdd(event.target.value)}
+            placeholder="Add another language code, e.g. nl or fr-CA"
+            value={languageCodeToAdd}
+          />
+          <button
+            disabled={!/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(languageCodeToAdd.trim())}
+            onClick={() => {
+              const code = languageCodeToAdd.trim();
+              props.onSupportedLanguages(Array.from(new Set([...props.supportedLanguages, code])));
+              setLanguageCodeToAdd("");
+            }}
+            type="button"
+          >Add language</button>
+        </div>
+        {props.supportedLanguages.filter((code) => !LANGUAGE_OPTIONS.some(([known]) => known === code)).length > 0 && (
+          <div className="studio-language-options custom-language-options">
+            {props.supportedLanguages.filter((code) => !LANGUAGE_OPTIONS.some(([known]) => known === code)).map((code) => (
+              <button className="selected" disabled={code === props.language} key={code} onClick={() => props.onSupportedLanguages(props.supportedLanguages.filter((item) => item !== code))} type="button">
+                <Check size={15} /> {code} {code !== props.language && <X size={13} />}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div className="studio-setting-group">
         <h3>Capabilities</h3>
         <ToggleRow icon={CalendarCheck} title="Appointment booking" detail="Allow the agent to check availability and create bookings." value={props.bookingEnabled} onChange={props.onBooking} />
+        {props.bookingEnabled && (
+          <div className="booking-workflow-settings">
+            <label>
+              Required details before booking
+              <input
+                value={props.bookingRequiredFields.join(", ")}
+                onChange={(event) => props.onBookingRequiredFields(event.target.value
+                  .split(",")
+                  .map((field) => field.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"))
+                  .filter(Boolean))}
+                placeholder="caller_name, caller_phone, service_type, appointment_at"
+              />
+              <small>The agent asks for each missing detail before saving. Add vertical fields such as date_of_birth or case_type.</small>
+            </label>
+            <div>
+              <span>Notify the business owner</span>
+              <div className="studio-language-options">
+                {[{ value: "dashboard", label: "Dashboard" }, { value: "email", label: "Email" }].map((channel) => {
+                  const selected = props.bookingNotificationChannels.includes(channel.value);
+                  return (
+                    <button
+                      className={selected ? "selected" : ""}
+                      key={channel.value}
+                      onClick={() => props.onBookingNotificationChannels(selected
+                        ? props.bookingNotificationChannels.filter((item) => item !== channel.value)
+                        : [...props.bookingNotificationChannels, channel.value])}
+                      type="button"
+                    >
+                      {selected && <Check size={15} />} {channel.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {props.bookingNotificationChannels.includes("email") && (
+              <label>
+                Notification email
+                <input
+                  inputMode="email"
+                  onChange={(event) => props.onBookingNotificationRecipient(event.target.value)}
+                  placeholder="Defaults to the workspace owner email"
+                  type="email"
+                  value={props.bookingNotificationRecipient}
+                />
+              </label>
+            )}
+          </div>
+        )}
       </div>
       <div className="studio-setting-group">
         <h3>Privacy and call records</h3>

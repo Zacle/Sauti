@@ -78,7 +78,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         const session = await authApi.login(email, password);
         writeSession(session);
         const onboarding = await getOnboardingStatus();
-        router.replace(onboarding.hasAgent ? "/dashboard" : "/onboarding");
+        router.replace(onboarding.hasAgent ? "/dashboard" : "/agents");
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong.");
@@ -106,7 +106,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const googleQuery = new URLSearchParams({
     businessName: mode === "register" ? businessName : "",
     countryCode: mode === "register" ? countryCode : "",
-    returnPath: mode === "register" ? "/onboarding" : "/dashboard",
+    returnPath: mode === "register" ? "/agents" : "/dashboard",
   });
 
   return (

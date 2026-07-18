@@ -107,7 +107,7 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
-    void requiresTheAvailabilityToolBeforeRespondingToAnExactTime() {
+    void letsTheMultilingualModelChooseTheAvailabilityToolFromMeaning() {
         var tools = List.of(Map.of("type", "function", "name", "check_availability"));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
                 new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
@@ -122,8 +122,8 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                         + "\"transcript\":\"Wednesday at 3 P.M.\"}",
                 true);
 
-        verify(session).requestResponseWithRequiredTool("check_availability");
-        verify(session, never()).requestResponse();
+        verify(session).requestResponse();
+        verify(session, never()).requestResponseWithRequiredTool("check_availability");
     }
 
     @Test

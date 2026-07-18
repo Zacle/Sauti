@@ -4,6 +4,7 @@ import com.sauti.auth.AuthenticatedUser;
 import com.sauti.calendar.BookingDtos.BookingResponse;
 import com.sauti.calendar.BookingDtos.CreateBookingRequest;
 import com.sauti.calendar.BookingDtos.RescheduleBookingRequest;
+import com.sauti.calendar.BookingDtos.UpdateBookingRequest;
 import com.sauti.calendar.BookingService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -37,6 +39,11 @@ public class BookingController {
         return BookingResponse.from(bookingService.get(user.tenantId(), id));
     }
 
+    @GetMapping("/reference/{reference}")
+    BookingResponse getByReference(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String reference) {
+        return BookingResponse.from(bookingService.getByReference(user.tenantId(), reference));
+    }
+
     @PostMapping
     BookingResponse create(@AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody CreateBookingRequest request) {
         return BookingResponse.from(bookingService.create(user.tenantId(), request));
@@ -51,5 +58,16 @@ public class BookingController {
     BookingResponse reschedule(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id,
                                @Valid @RequestBody RescheduleBookingRequest request) {
         return BookingResponse.from(bookingService.reschedule(user.tenantId(), id, request));
+    }
+
+    @PutMapping("/{id}")
+    BookingResponse update(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id,
+                           @Valid @RequestBody UpdateBookingRequest request) {
+        return BookingResponse.from(bookingService.update(user.tenantId(), id, request));
+    }
+
+    @DeleteMapping("/{id}/permanent")
+    void delete(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id) {
+        bookingService.delete(user.tenantId(), id);
     }
 }

@@ -15,30 +15,40 @@ public class DefaultToolSeeder {
     }
 
     public void seedDefaults(Agent agent) {
+        seed(agent, "get_business_hours", "Return the configured operating schedule when the caller asks about opening days or hours in any language.",
+                schema(Map.of(), List.of()), "sauti_calendar", "noop_calendar", 5);
         seed(agent, "check_availability", "Always check live calendar availability and business opening hours after the caller gives a date or time, before proposing or confirming a slot.",
                 schema(Map.of(
                         "date", property("string", "Preferred date in yyyy-MM-dd format", "date"),
                         "time_preference", property("string", "Exact preferred time in HH:mm when provided, otherwise a period such as morning", ""),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("date")), "sauti_calendar", "noop_calendar", 10);
-        seed(agent, "book_slot", "Book an appointment in the configured calendar.",
+        seed(agent, "book_slot", "Book an appointment only after the caller has confirmed the spelling of their name and contact details.",
                 schema(Map.of(
                         "appointment_at", property("string", "Confirmed ISO-8601 appointment datetime", "date-time"),
                         "caller_name", property("string", "Caller full name", ""),
                         "caller_phone", property("string", "Caller phone number", "phone"),
+                        "caller_email", property("string", "Caller email when required by this agent", "email"),
+                        "caller_name_spelling_confirmed", property("boolean", "True only after the caller confirms the name spelled character by character with the NATO phonetic alphabet", ""),
+                        "caller_phone_digits_confirmed", property("boolean", "True only after the caller confirms the phone number read one digit at a time", ""),
+                        "caller_email_spelling_confirmed", property("boolean", "True only after the caller confirms a provided email spelled character by character with the NATO phonetic alphabet", ""),
                         "service_type", property("string", "Service being booked", ""),
-                        "duration_minutes", property("integer", "Appointment duration in minutes", "")
-                ), List.of("appointment_at", "caller_name", "caller_phone", "service_type")), "sauti_calendar", "noop_calendar", 20);
-        seed(agent, "reschedule_booking", "Reschedule a booking only after the caller confirms the new time.",
+                        "duration_minutes", property("integer", "Appointment duration in minutes", ""),
+                        "customer_details", property("object", "Additional fields required by this agent's booking workflow", "")
+                ), List.of(
+                        "appointment_at", "caller_name", "caller_phone", "service_type",
+                        "caller_name_spelling_confirmed", "caller_phone_digits_confirmed"
+                )), "sauti_calendar", "noop_calendar", 20);
+        seed(agent, "reschedule_booking", "Reschedule a booking only after checking the new time with check_availability and receiving caller confirmation.",
                 schema(Map.of(
-                        "booking_id", property("string", "Sauti booking ID returned when the appointment was booked", ""),
+                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", ""),
                         "appointment_at", property("string", "Confirmed new ISO-8601 appointment datetime", "date-time"),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
-                ), List.of("booking_id", "appointment_at")), "sauti_calendar", "noop_calendar", 21);
+                ), List.of("booking_number", "appointment_at")), "sauti_calendar", "noop_calendar", 21);
         seed(agent, "cancel_booking", "Cancel a booking only after the caller explicitly confirms cancellation.",
                 schema(Map.of(
-                        "booking_id", property("string", "Sauti booking ID returned when the appointment was booked", "")
-                ), List.of("booking_id")), "sauti_calendar", "noop_calendar", 22);
+                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", "")
+                ), List.of("booking_number")), "sauti_calendar", "noop_calendar", 22);
         seed(agent, "send_confirmation_sms", "Send a booking confirmation SMS. If SMS is unavailable, explain that "
                         + "to the caller and offer WhatsApp when that tool is available.",
                 schema(Map.of(
@@ -126,6 +136,8 @@ public class DefaultToolSeeder {
                 tool.configureForDraft(agent.getHumanTransferNumber() != null
                         && !agent.getHumanTransferNumber().isBlank(), null);
             } else if ("end_call".equals(tool.getToolName())) {
+                tool.configureForDraft(true, null);
+            } else if ("get_business_hours".equals(tool.getToolName())) {
                 tool.configureForDraft(true, null);
             }
         }

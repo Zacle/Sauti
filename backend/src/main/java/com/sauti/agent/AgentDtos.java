@@ -3,6 +3,7 @@ package com.sauti.agent;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Email;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -44,6 +45,9 @@ public final class AgentDtos {
             String sttBoostedKeywords,
             List<String> safetyGuardrails,
             List<String> postCallExtractionFields,
+            List<String> bookingRequiredFields,
+            List<String> bookingNotificationChannels,
+            @Email @Size(max = 320) String bookingNotificationRecipient,
             String dtmfTerminationKey,
             Integer dtmfInputTimeoutSeconds,
             Integer dtmfMaxDigits,
@@ -100,6 +104,9 @@ public final class AgentDtos {
             String sttBoostedKeywords,
             List<String> safetyGuardrails,
             List<String> postCallExtractionFields,
+            List<String> bookingRequiredFields,
+            List<String> bookingNotificationChannels,
+            String bookingNotificationRecipient,
             String businessType,
             String primaryUseCase,
             String businessWebsite,
@@ -160,6 +167,9 @@ public final class AgentDtos {
                     agent.getSttBoostedKeywords(),
                     agent.getSafetyGuardrails(),
                     agent.getPostCallExtractionFields(),
+                    agent.getBookingRequiredFields(),
+                    agent.getBookingNotificationChannels(),
+                    agent.getBookingNotificationRecipient(),
                     agent.getBusinessType(),
                     agent.getPrimaryUseCase(),
                     agent.getBusinessWebsite(),

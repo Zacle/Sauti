@@ -5,6 +5,10 @@ public record BookingDraft(
         String serviceType,
         String preferredDate,
         String confirmedSlot,
-        String callerPhone
+        String callerPhone,
+        boolean identityReadbackRequested
 ) {
+    public BookingDraft(String callerName, String serviceType, String preferredDate, String confirmedSlot, String callerPhone) {
+        this(callerName, serviceType, preferredDate, confirmedSlot, callerPhone, false);
+    }
 }

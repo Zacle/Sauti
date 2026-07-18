@@ -87,6 +87,11 @@ public class AgentService {
         );
         agent.configureAvailability(request.operatingHours(), request.afterHoursBehavior(), request.afterHoursMessage());
         applyCallBehavior(agent, request);
+        agent.configureBookingWorkflow(
+                request.bookingRequiredFields(),
+                request.bookingNotificationChannels(),
+                request.bookingNotificationRecipient()
+        );
         agent.configureLlmTier(request.llmTier());
         var saved = agentRepository.save(agent);
         defaultToolSeeder.seedDefaults(saved);
@@ -118,6 +123,11 @@ public class AgentService {
         );
         agent.configureAvailability(request.operatingHours(), request.afterHoursBehavior(), request.afterHoursMessage());
         applyCallBehavior(agent, request);
+        agent.configureBookingWorkflow(
+                request.bookingRequiredFields(),
+                request.bookingNotificationChannels(),
+                request.bookingNotificationRecipient()
+        );
         agent.configureLlmTier(request.llmTier());
         defaultToolSeeder.synchronizeCapabilities(agent);
         return agent;
@@ -241,12 +251,13 @@ public class AgentService {
     }
 
     private void validateLanguages(String defaultLanguage, List<String> supportedLanguages) {
-        var availableLanguages = List.of("fr", "ar", "en");
-        if (!availableLanguages.contains(defaultLanguage)) {
-            throw new IllegalArgumentException("Supported languages are fr, ar, and en");
+        var languageCode = java.util.regex.Pattern.compile("(?i)^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$");
+        if (defaultLanguage == null || !languageCode.matcher(defaultLanguage).matches()) {
+            throw new IllegalArgumentException("Default language must be a valid BCP 47 language code");
         }
-        if (supportedLanguages.stream().anyMatch(language -> !availableLanguages.contains(language))) {
-            throw new IllegalArgumentException("Supported languages are fr, ar, and en");
+        if (supportedLanguages == null || supportedLanguages.isEmpty()
+                || supportedLanguages.stream().anyMatch(language -> language == null || !languageCode.matcher(language).matches())) {
+            throw new IllegalArgumentException("Supported languages must use valid BCP 47 language codes");
         }
         if (!supportedLanguages.contains(defaultLanguage)) {
             throw new IllegalArgumentException("Default language must be supported");

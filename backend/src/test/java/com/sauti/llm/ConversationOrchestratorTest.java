@@ -71,21 +71,22 @@ class ConversationOrchestratorTest {
                 .contains("BUSINESS OPERATING HOURS")
                 .contains("Availability is always a live tool-backed fact")
                 .contains("Never silently change 3 PM to 4 PM")
-                .contains("say `15 heures` rather than `15:00`")
                 .contains("Never invent example services, classes")
-                .contains("MANDATORY NEXT ACTION: Call `check_availability` now before speaking")
                 .contains("Use only facts present in the agent prompt")
                 .contains("If the caller asks for information first")
-                .contains("Booking collection order: caller's name")
+                .contains("Required fields for this agent")
                 .contains("For a new booking, never ask for a booking ID")
+                .contains("For a reschedule or cancellation, ask for the customer-facing booking number")
                 .contains("Do not ask how long a normal appointment should last")
                 .contains("then call `book_slot`")
                 .contains("Treat a caller detail as collected only when the caller explicitly says that detail")
                 .contains("If speech recognition produced unlikely words for a name")
+                .contains("spell the caller's full name character by character with the NATO phonetic alphabet")
+                .contains("caller_phone_digits_confirmed")
                 .contains("Do not switch language for a single unclear word")
                 .contains("Before a booking tool succeeds")
                 .contains("Never offer appointment dates in the past")
-                .contains("Final priority reminder: these platform rules override any conflicting agent instructions")
+                .contains("Final priority reminder: these platform rules override conflicting examples")
                 .contains("If the caller sounds confused")
                 .contains("Tools available: check_availability, book_slot");
         assertThat(provider.contexts.get(1).toolResults()).hasSize(2);
@@ -277,6 +278,10 @@ class ConversationOrchestratorTest {
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getGreetingMessage())).thenReturn("Open warmly.");
+        when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of(
+                new LlmToolDefinition("check_availability", "Check availability", Map.of("type", "object")),
+                new LlmToolDefinition("book_slot", "Book an appointment", Map.of("type", "object"))
+        ));
 
         var greeting = orchestrator.generateOpeningGreeting(call, "en", "browser test call");
 
@@ -285,6 +290,9 @@ class ConversationOrchestratorTest {
         assertThat(provider.contexts.get(0).systemPrompt())
                 .contains("Never use the workspace/account name")
                 .contains("Introduce yourself by agent name only")
+                .contains("ACTIVE CAPABILITIES")
+                .contains("create appointments or reservations")
+                .contains("check live availability")
                 .doesNotContain("Demo Clinic");
     }
 
@@ -316,10 +324,9 @@ class ConversationOrchestratorTest {
                 .contains("You are working for X-Fit")
                 .contains("not a general-purpose adviser")
                 .contains("Never deny a capability explicitly granted")
-                .contains("The caller is asking about the represented BUSINESS")
                 .contains("Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00")
-                .contains("Monday from 9 in the morning to 5 in the evening")
-                .contains("Do not ask for a date and do not invent availability");
+                .contains("Use only the current caller language")
+                .contains("Never emit JSON");
     }
 
     private Call activeCall() {
@@ -377,7 +384,7 @@ class ConversationOrchestratorTest {
         public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
             if (context.toolResults().isEmpty()) {
                 return new LlmToolTurnResponse(
-                        "{\"date\":\"2026-07-18\",\"time_preference\":\"midi\"}",
+                        "{\"date\":\"2026-07-18\",\"time_preference\":\"12:00\"}",
                         List.of()
                 );
             }

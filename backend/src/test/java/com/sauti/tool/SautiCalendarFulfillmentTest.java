@@ -6,6 +6,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
 
 import com.sauti.agent.Agent;
 import com.sauti.calendar.BookingService;
@@ -31,7 +33,7 @@ class SautiCalendarFulfillmentTest {
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "availability-1", "check_availability",
-                Map.of("date", "2026-07-22", "time_preference", "3 p.m.", "duration_minutes", 60)
+                Map.of("date", "2026-07-22", "time_preference", "15:00", "duration_minutes", 60)
         ));
 
         assertThat(result.success()).isTrue();
@@ -65,7 +67,7 @@ class SautiCalendarFulfillmentTest {
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "availability-2", "check_availability",
-                Map.of("date", "2026-07-22", "time_preference", "3 P.M.", "duration_minutes", 60)
+                Map.of("date", "2026-07-22", "time_preference", "15:00", "duration_minutes", 60)
         ));
 
         assertThat(result.success()).isTrue();
@@ -80,7 +82,7 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
-    void interpretsFrenchMidiAsAnExactNoonRequest() {
+    void acceptsLanguageIndependentNormalizedNoonRequest() {
         var openHours = """
                 {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
                 """;
@@ -93,7 +95,7 @@ class SautiCalendarFulfillmentTest {
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "availability-midi", "check_availability",
-                Map.of("date", "2026-07-22", "time_preference", "midi", "duration_minutes", 60)
+                Map.of("date", "2026-07-22", "time_preference", "12:00", "duration_minutes", 60)
         ));
 
         assertThat(result.success()).isTrue();
@@ -112,7 +114,7 @@ class SautiCalendarFulfillmentTest {
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "availability-closing", "check_availability",
-                Map.of("date", "2026-07-22", "time_preference", "5 p.m.", "duration_minutes", 60)
+                Map.of("date", "2026-07-22", "time_preference", "17:00", "duration_minutes", 60)
         ));
 
         assertThat(result.success()).isTrue();
@@ -135,7 +137,7 @@ class SautiCalendarFulfillmentTest {
 
         var closingTime = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "availability-closing-prompt", "check_availability",
-                Map.of("date", "2026-07-22", "time_preference", "5 p.m.", "duration_minutes", 60)
+                Map.of("date", "2026-07-22", "time_preference", "17:00", "duration_minutes", 60)
         ));
         var saturday = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "availability-saturday-prompt", "check_availability",
@@ -153,12 +155,41 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
-    void refusesToFakeAGoogleBookingWhenBookSlotHasNoGoogleCredential() {
+    void savesBookingLocallyWhenGoogleCredentialIsUnavailable() {
         var fixture = fixture(HOURS, List.of());
         when(fixture.agent.getCalendarProvider()).thenReturn("Google Calendar");
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(booking.getBookingReference()).thenReturn("SAT-AB12CD34");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T12:00:00Z"));
+        when(booking.getCalendarSyncStatus()).thenReturn("pending_owner_action");
+        when(fixture.bookingService.create(any(), any(), isNull())).thenReturn(booking);
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "booking-without-google", "book_slot",
+                Map.of(
+                        "appointment_at", "2026-07-23T12:00:00Z",
+                        "caller_name", "Zachary",
+                        "caller_phone", "01115753441",
+                        "caller_name_spelling_confirmed", true,
+                        "caller_phone_digits_confirmed", true,
+                        "service_type", "Consultation"
+                )
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "booking_saved_pending_calendar")
+                .containsEntry("bookingNumber", "SAT-AB12CD34")
+                .containsEntry("calendarSynced", false);
+    }
+
+    @Test
+    void refusesToBookUntilNameAndPhoneReadbacksAreConfirmed() {
+        var fixture = fixture(HOURS, List.of());
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "booking-unconfirmed-identity", "book_slot",
                 Map.of(
                         "appointment_at", "2026-07-23T12:00:00Z",
                         "caller_name", "Zachary",
@@ -167,9 +198,85 @@ class SautiCalendarFulfillmentTest {
                 )
         ));
 
-        assertThat(result.success()).isFalse();
-        assertThat(result.error()).contains("booking tool is not connected");
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "identity_confirmation_required")
+                .containsEntry("bookingCreated", false);
+        assertThat((List<?>) result.result().get("unconfirmedFields"))
+                .extracting(Object::toString)
+                .containsExactly("caller_name", "caller_phone");
         verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
+    void requiresASeparateSpellingConfirmationWhenEmailIsProvided() {
+        var fixture = fixture(HOURS, List.of());
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "booking-unconfirmed-email", "book_slot",
+                Map.of(
+                        "appointment_at", "2026-07-23T12:00:00Z",
+                        "caller_name", "Zachary",
+                        "caller_phone", "01115753441",
+                        "caller_email", "z@example.com",
+                        "caller_name_spelling_confirmed", true,
+                        "caller_phone_digits_confirmed", true,
+                        "service_type", "Consultation"
+                )
+        ));
+
+        assertThat(result.result()).containsEntry("status", "identity_confirmation_required");
+        assertThat((List<?>) result.result().get("unconfirmedFields"))
+                .extracting(Object::toString)
+                .containsExactly("caller_email");
+        verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
+    void requiresTemplateSpecificCustomerDetailsBeforeCreatingBooking() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.agent.getBookingRequiredFields()).thenReturn(List.of(
+                "caller_name", "caller_phone", "service_type", "appointment_at", "patient_date_of_birth"
+        ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "booking-missing-vertical-field", "book_slot",
+                Map.of(
+                        "appointment_at", "2026-07-23T12:00:00Z",
+                        "caller_name", "Zachary",
+                        "caller_phone", "01115753441",
+                        "service_type", "Consultation"
+                )
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "missing_required_information")
+                .containsEntry("bookingCreated", false);
+        assertThat((List<?>) result.result().get("missingFields"))
+                .extracting(Object::toString)
+                .containsExactly("patient_date_of_birth");
+        verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
+    void answersBusinessHoursDeterministicallyWithoutQueryingCalendarSlots() {
+        var fixture = fixture("always", List.of());
+        when(fixture.call.getLanguageDetected()).thenReturn("fr");
+        when(fixture.agent.getSystemPrompt()).thenReturn("""
+                - Hours: Mon 09:00-17:00; Wed 09:00-17:00; Thu 09:00-17:00 (Africa/Nairobi)
+                """);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "business-hours", "get_business_hours", Map.of()
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result()).containsEntry("status", "business_hours");
+        assertThat(result.result().get("schedule").toString())
+                .contains("Monday 09:00-17:00")
+                .contains("Saturday closed", "Sunday closed");
+        verifyNoInteractions(fixture.provider);
     }
 
     @Test
@@ -192,9 +299,6 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "calendar_temporarily_unavailable")
                 .containsEntry("calendarLive", false)
                 .containsEntry("requestedTime", "12:00");
-        assertThat(result.result().get("spokenResponse").toString())
-                .contains("cannot confirm live availability")
-                .contains("has not been booked");
     }
 
     private Fixture fixture(String hours, List<CalendarAvailabilitySlot> slots) {
@@ -214,6 +318,9 @@ class SautiCalendarFulfillmentTest {
         when(agent.getTimezone()).thenReturn("UTC");
         when(agent.getOperatingHours()).thenReturn(hours);
         when(agent.getSystemPrompt()).thenReturn("");
+        when(agent.getBookingRequiredFields()).thenReturn(List.of(
+                "caller_name", "caller_phone", "service_type", "appointment_at"
+        ));
         when(factory.forTool(tool, tenantId)).thenReturn(provider);
         when(provider.availability(
                 agent, LocalDate.of(2026, 7, 22), 60, java.time.ZoneId.of("UTC")

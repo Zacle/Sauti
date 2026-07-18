@@ -71,7 +71,7 @@ export function DashboardOverview() {
         { label: "Create your first agent", done: false },
       ];
   const setupProgress = Math.round((setupItems.filter((item) => item.done).length / setupItems.length) * 100);
-  const setupHref = initialAgent ? `/agents/${initialAgent.id}` : "/onboarding";
+  const setupHref = initialAgent ? `/agents/${initialAgent.id}` : "/agents/new";
 
   return (
     <div className={styles["dashboard-page"]}>
@@ -89,9 +89,9 @@ export function DashboardOverview() {
         </div>
         <div className={styles["setup-copy"]}>
           <span><Sparkles size={14} /> {setupProgress === 100 ? "Workspace ready" : "Complete your setup"}</span>
-          <h2>{setupProgress === 100 ? "You’re ready to serve callers" : "You’re almost ready to launch"}</h2>
-          <p>{setupProgress === 100 ? "Your active channels and agents are ready for customer conversations." : "Finish the remaining steps to activate your agent and start delivering value."}</p>
-          <Link href={setupHref}>{setupProgress === 100 ? "Open agent studio" : "Continue setup"} <ArrowRight size={15} /></Link>
+          <h2>{setupProgress === 100 ? "You’re ready to serve callers" : initialAgent ? "You’re almost ready to launch" : "Create your first voice agent"}</h2>
+          <p>{setupProgress === 100 ? "Your active channels and agents are ready for customer conversations." : initialAgent ? "Finish the remaining steps to activate your agent and start delivering value." : "Start with a focused template or a blank agent, then configure the business, voice, tools, and call behavior."}</p>
+          <Link href={setupHref}>{setupProgress === 100 ? "Open agent studio" : initialAgent ? "Continue setup" : "Create an agent"} <ArrowRight size={15} /></Link>
         </div>
         <div className={styles["setup-list"]}>
           {setupItems.map((item) => <div className={item.done ? styles.done : ""} key={item.label}><span>{item.done && <Check size={12} />}</span>{item.label}</div>)}

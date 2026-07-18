@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
 import { consumeOAuthSessionFromHash } from "@/lib/session";
 
-const ALLOWED_DESTINATIONS = new Set(["/dashboard", "/onboarding"]);
+const ALLOWED_DESTINATIONS = new Set(["/dashboard", "/agents"]);
 
 export function OAuthCallback() {
   const router = useRouter();

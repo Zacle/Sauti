@@ -3151,3 +3151,95 @@ Expected:
 - Follow-ups / risks:
   - A Google event can still fail because of revoked OAuth, missing scopes, provider quota, or a Google API error. Those failures now roll back the Sauti booking and are spoken as not booked; they can be diagnosed with the expanded production diagnostics workflow after deployment.
   - Prompt-hours recovery is a compatibility path. The structured weekly schedule should remain the long-term source of truth for newly configured agents.
+
+### 2026-07-18 - Prevent general opening-hours questions from producing midnight slots
+
+- Investigated Amélie's live transcript where `Quels jours vous êtes disponible ?` produced midnight, 00:30, and 01:00 slots and the agent then falsely claimed the business operated throughout the night.
+- Confirmed the preceding calendar and operating-hours revision had already passed CI and deployed successfully. The new failure was an uncovered intent phrase: the word `disponible` caused the turn to be treated as appointment-slot availability even though the caller had not supplied a date.
+- Expanded the shared browser/backend business-hours detector to recognize natural English and French variations including `Quels jours...`, `Quels autres jours...`, singular/plural `disponible(s)`, and `travaillez jusqu'à...`.
+- Added a server-side defense independent of the model. When the actual caller transcript asks about operating days or hours, `AvailabilityRequestNormalizer` removes any model-invented date/time and tags the request as a business-hours question.
+- Added deterministic calendar fulfillment for that tag. It returns the agent's effective configured schedule as natural speech and never queries Google or another calendar for appointment slots, so fabricated midnight arguments cannot reach callers.
+- Added regression coverage using the exact reported French phrases, an invented midnight tool payload, prompt-defined MediCare-style hours, and verification that the calendar provider receives no request.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/AvailabilityIntentDetector.java`
+  - `backend/src/main/java/com/sauti/tool/{AvailabilityRequestNormalizer,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/llm/AvailabilityIntentDetectorTest.java`
+  - `backend/src/test/java/com/sauti/tool/{AvailabilityRequestNormalizerTest,SautiCalendarFulfillmentTest}.java`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused availability detector, request normalizer, and calendar fulfillment tests (successful; 16 tests)
+  - `.\gradlew.bat :backend:test --no-daemon` (successful)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - General day/hour questions intentionally return published operating hours, not live multi-day appointment inventory. After the caller supplies a specific date or time, the normal Google free/busy lookup remains mandatory.
+
+### 2026-07-18 - Reset operational data and rebuild templates and booking workflows
+
+- Added the explicitly requested one-time V33 operational reset. It preserves authentication identity (`tenants`, `app_users`, and refresh-token state) while deleting agents, templates, calls, bookings, tools, integrations/credentials, knowledge, post-call work, provider event records, and usage counters. This migration is intentionally destructive and will run once when the reviewed revision reaches an environment through CI/CD.
+- Replaced the previous ten templates with six layered version-2 templates: medical, dental, fitness, salon/wellness, legal intake, and general business. Every template receives a shared business/persona/routing/after-hours/booking/knowledge/compliance field layer plus vertical variables, prompt behavior, required booking fields, and owner-notification defaults.
+- Removed the English/French availability keyword detector and request normalizer documented in the preceding handoff entry. The multilingual model now decides when to call `get_business_hours`, `check_availability`, `book_slot`, `reschedule_booking`, or `cancel_booking` from meaning; server tools still enforce normalized dates/times, business hours, required data, tenant ownership, and confirmation state.
+- Generalized agent/template/onboarding language validation to BCP 47 codes. The studio includes common English, French, Arabic, Swahili, Spanish, German, Portuguese, and Italian options plus an arbitrary valid language-code control.
+- Added per-agent booking intake and notification configuration. Booking agents always retain the core caller name, phone, service, and appointment fields and can add up to 21 vertical fields. Owners choose dashboard and/or email alerts and may override the recipient email.
+- Made booking persistence local-first. A Google outage or missing credential no longer loses the request or falsely confirms a Google event: Sauti saves a `pending_confirmation` booking, assigns a public `SAT-...` booking number, records the calendar-sync error, publishes the dashboard event, and sends the selected owner email after transaction commit. A successful provider insertion records the external event and `synced` status.
+- Added booking-number lookup and caller tools for rescheduling/cancellation. Added owner API and dashboard controls for editing, cancelling, and permanently deleting tenant-scoped bookings, including customer/contact/service/time fields and visible calendar follow-up state.
+- Added structured-output guards to both cascaded and phone Realtime paths. If a model emits tool arguments as JSON text, the payload is held back from speech and recovered only when its schema maps unambiguously to an available tool; this does not rely on caller-language keyword lists.
+- Updated calendar provider resolution so an agent configured for Google does not silently fall back to the local calendar during create/update/cancel operations when its Google credential is unavailable.
+- Main files touched:
+  - `backend/src/main/resources/db/migration/V33__reset_operational_data_and_booking_workflows.sql`
+  - `backend/src/main/java/com/sauti/agent/{Agent,AgentDtos,AgentService,AgentTemplateService,AgentDraftGenerationService,OnboardingCompletionService,SystemAgentTemplateSeeder}.java`
+  - `backend/src/main/java/com/sauti/calendar/{Booking,BookingDtos,BookingRepository,BookingService,BookingNotificationService}.java`
+  - `backend/src/main/java/com/sauti/api/BookingController.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/call/{OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/main/java/com/sauti/tool/{CalendarProviderFactory,DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - deleted language-specific `AvailabilityIntentDetector` and `AvailabilityRequestNormalizer` production/tests
+  - `dashboard/features/agents/AgentCreator/*`
+  - `dashboard/features/bookings/{domain,presentation}/*`
+  - `dashboard/features/onboarding/OnboardingFlow/OnboardingFlow.tsx`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/lib/api/bookings.ts`, `dashboard/types/api.ts`
+  - `docs/agent-templates.md` and related regression tests
+- Verification:
+  - focused template, calendar fulfillment, orchestrator, and phone Realtime tests (successful; 29 tests after the vertical-field case was added)
+  - `.\gradlew.bat :backend:test --no-daemon` (successful; 183 tests)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+  - `git diff --check` (successful; expected line-ending warnings only)
+- Deployment:
+  - Not deployed. All changes remain uncommitted for maintainer review and must use the existing CI/CD chain.
+- Follow-ups / risks:
+  - V33 deletes all non-authentication product data, including OAuth/calendar connections. Export anything that must be retained before a maintainer approves and deploys this revision; owners must reconnect providers and create agents from the new templates afterward.
+  - Dashboard notification delivery is the existing realtime dashboard event. Email delivery is best-effort and logged on provider failure so it cannot roll back a captured booking.
+  - The built-in heuristic language detector can recognize Arabic script plus English/French/Swahili markers and otherwise keeps the active/default configured language. Adding arbitrary BCP 47 configuration is now supported, but reliable mid-call switching for every language should ultimately consume provider-reported STT language metadata rather than grow keyword lists.
+
+### 2026-07-18 - Enforce identity readbacks, remove onboarding, and rebuild Bookings UI
+
+- Made identity confirmation a server-enforced booking prerequisite instead of a prompt-only preference. `book_slot` now requires explicit name-spelling and phone-digit confirmation flags, plus a separate email-spelling flag whenever an email is supplied. Calendar fulfillment returns `identity_confirmation_required` without writing a booking when a flag is absent or false.
+- Updated the live conversation contract to read phone numbers one digit at a time and spell names/email addresses character by character with the NATO phonetic alphabet before booking. The local heuristic provider now models this as a two-step flow and cannot treat a booking confirmation as identity confirmation.
+- Made opening greetings capability-aware. The opening-generation prompt receives only the agent's active tools, asks the agent to mention the two most useful supported actions naturally, and then asks how it can help; it must not advertise inactive capabilities.
+- Removed onboarding as an agent-creation path. Login and Google registration route workspaces without agents to `/agents`, the legacy `/onboarding` page redirects there, the onboarding UI/client and backend creation endpoint/service were deleted, and Dashboard/Agents now present a direct first-agent call to action. The read-only onboarding-status endpoint remains as the existing workspace-readiness contract.
+- Rebuilt the Bookings screen around a compact operations list inspired by the supplied design: five summary cards, working search/date range/agent/status filters, removable filter chips, list/calendar views, date-grouped rows, phone links, reschedule/edit, cancel, delete, calendar-sync state, and responsive layouts. The default view shows the next seven days and makes all active filters visible.
+- Main files touched:
+  - `backend/src/main/java/com/sauti/llm/{ConversationOrchestrator,LocalToolCallingLlmProvider}.java`
+  - `backend/src/main/java/com/sauti/session/BookingDraft.java`
+  - `backend/src/main/java/com/sauti/tool/{DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - `backend/src/main/java/com/sauti/api/TenantController.java`
+  - deleted backend onboarding completion DTO/service/test
+  - `dashboard/features/bookings/presentation/{BookingsPage.tsx,BookingsPage.module.css}`
+  - `dashboard/features/{agents,auth,dashboard}` signed-in journey components
+  - deleted dashboard onboarding feature and client
+  - related backend regression tests and `dashboard/types/api.ts`
+- Verification:
+  - focused calendar fulfillment, orchestrator, and end-to-end auth/agent/call/booking flow tests (successful)
+  - `.\gradlew.bat :backend:test --no-daemon` (successful)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. All changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-ups / risks:
+  - The legacy `/onboarding` route is intentionally retained only as a redirect so old links do not break. No onboarding creation UI or API remains.
+  - The supplied image was used as the layout reference; automated in-app visual inspection was unavailable in this session, so maintainers should perform one responsive browser review before committing.

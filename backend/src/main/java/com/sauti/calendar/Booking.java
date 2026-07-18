@@ -37,6 +37,8 @@ public class Booking extends Auditable {
     @Column(nullable = false)
     private String callerPhone;
 
+    private String callerEmail;
+
     @Column(nullable = false)
     private String serviceType;
 
@@ -49,7 +51,19 @@ public class Booking extends Auditable {
     @Column(nullable = false)
     private int durationMinutes = 60;
 
+    @Column(nullable = false, unique = true, length = 24)
+    private String bookingReference;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String capturedData = "{}";
+
     private String externalEventId;
+
+    @Column(nullable = false)
+    private String calendarSyncStatus = "pending";
+
+    @Column(length = 1000)
+    private String calendarSyncError;
 
     @Column(nullable = false)
     private String status = "confirmed";
@@ -60,18 +74,21 @@ public class Booking extends Auditable {
     protected Booking() {
     }
 
-    public Booking(Tenant tenant, Agent agent, Call call, String callerName, String callerPhone, String serviceType,
-                   OffsetDateTime appointmentAt, int durationMinutes) {
+    public Booking(Tenant tenant, Agent agent, Call call, String callerName, String callerPhone, String callerEmail,
+                   String serviceType, OffsetDateTime appointmentAt, int durationMinutes, String capturedData) {
         this.id = UUID.randomUUID();
+        this.bookingReference = reference(this.id);
         this.tenant = tenant;
         this.agent = agent;
         this.call = call;
         this.callerName = callerName;
         this.callerPhone = callerPhone;
+        this.callerEmail = callerEmail == null || callerEmail.isBlank() ? null : callerEmail.trim();
         this.serviceType = serviceType;
         this.bookedAt = OffsetDateTime.now();
         this.appointmentAt = appointmentAt;
         this.durationMinutes = durationMinutes <= 0 ? 60 : durationMinutes;
+        this.capturedData = capturedData == null || capturedData.isBlank() ? "{}" : capturedData;
     }
 
     public void cancel() {
@@ -86,6 +103,32 @@ public class Booking extends Auditable {
 
     public void markSynced(String externalEventId) {
         this.externalEventId = externalEventId;
+        this.calendarSyncStatus = "synced";
+        this.calendarSyncError = null;
+    }
+
+    public void markSyncFailed(String error) {
+        this.calendarSyncStatus = "pending_owner_action";
+        this.calendarSyncError = error == null || error.isBlank() ? "Calendar synchronization failed" : error;
+        this.status = "pending_confirmation";
+    }
+
+    public void markCalendarActionFailed(String error) {
+        this.calendarSyncStatus = "pending_owner_action";
+        this.calendarSyncError = error == null || error.isBlank() ? "Calendar synchronization failed" : error;
+        if (!"cancelled".equals(status)) this.status = "pending_confirmation";
+    }
+
+    public void updateDetails(String callerName, String callerPhone, String callerEmail, String serviceType,
+                              OffsetDateTime appointmentAt, int durationMinutes, String capturedData) {
+        this.callerName = callerName;
+        this.callerPhone = callerPhone;
+        this.callerEmail = callerEmail == null || callerEmail.isBlank() ? null : callerEmail.trim();
+        this.serviceType = serviceType;
+        this.appointmentAt = appointmentAt;
+        this.durationMinutes = durationMinutes <= 0 ? this.durationMinutes : durationMinutes;
+        this.capturedData = capturedData == null || capturedData.isBlank() ? this.capturedData : capturedData;
+        if (!"cancelled".equals(status)) this.status = "confirmed";
     }
 
     public UUID getId() {
@@ -112,6 +155,8 @@ public class Booking extends Auditable {
         return callerPhone;
     }
 
+    public String getCallerEmail() { return callerEmail; }
+
     public String getServiceType() {
         return serviceType;
     }
@@ -126,6 +171,11 @@ public class Booking extends Auditable {
 
     public int getDurationMinutes() { return durationMinutes; }
 
+    public String getBookingReference() { return bookingReference; }
+    public String getCapturedData() { return capturedData; }
+    public String getCalendarSyncStatus() { return calendarSyncStatus; }
+    public String getCalendarSyncError() { return calendarSyncError; }
+
     public String getExternalEventId() {
         return externalEventId;
     }
@@ -136,5 +186,13 @@ public class Booking extends Auditable {
 
     public boolean isConfirmationSent() {
         return confirmationSent;
+    }
+
+    private static String reference(UUID bookingId) {
+        var value = Long.toUnsignedString(
+                bookingId.getMostSignificantBits() ^ bookingId.getLeastSignificantBits(), 36
+        ).toUpperCase(java.util.Locale.ROOT);
+        var normalized = value.length() >= 12 ? value.substring(0, 12) : "000000000000".substring(value.length()) + value;
+        return "SAT-" + normalized;
     }
 }

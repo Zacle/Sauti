@@ -37,7 +37,7 @@ public class AgentDraftGenerationService {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-z][a-z0-9_]*)}}");
     private static final Pattern MARKDOWN_HEADING = Pattern.compile("(?m)^##\\s+\\S+");
     private static final Pattern NUMBERED_STEP = Pattern.compile("(?m)^1\\.\\s+\\S+");
-    private static final List<String> ALLOWED_LANGUAGES = List.of("en", "fr", "ar");
+    private static final Pattern LANGUAGE_CODE = Pattern.compile("^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$");
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper;
     private final String provider;
@@ -88,8 +88,8 @@ public class AgentDraftGenerationService {
                   "greetingMessage": "brief instruction for how the opening should be generated at call time, not exact words to say",
                   "systemPrompt": "a complete Markdown-formatted operating manual for the voice agent",
                   "bookingEnabled": true,
-                  "defaultLanguage": "one of en,fr,ar",
-                  "supportedLanguages": ["one or more of en,fr,ar"],
+                  "defaultLanguage": "a valid BCP 47 language code such as en or fr-CA",
+                  "supportedLanguages": ["one or more valid BCP 47 language codes"],
                   "escalationPhrases": ["specific caller phrases"],
                   "variables": [
                     {"key":"business_name","label":"Business name","description":"Official business name","required":true}
@@ -276,13 +276,15 @@ public class AgentDraftGenerationService {
                 || blank(generated.greetingMessage()).isBlank()) {
             throw new IllegalStateException("AI generated an incomplete agent draft");
         }
-        var defaultLanguage = ALLOWED_LANGUAGES.contains(generated.defaultLanguage())
+        var defaultLanguage = generated.defaultLanguage() != null && LANGUAGE_CODE.matcher(generated.defaultLanguage()).matches()
                 ? generated.defaultLanguage()
                 : "en";
         var supported = new LinkedHashSet<String>();
         supported.add(defaultLanguage);
         if (generated.supportedLanguages() != null) {
-            generated.supportedLanguages().stream().filter(ALLOWED_LANGUAGES::contains).forEach(supported::add);
+            generated.supportedLanguages().stream()
+                    .filter(language -> language != null && LANGUAGE_CODE.matcher(language).matches())
+                    .forEach(supported::add);
         }
         var variableDefinitions = generated.variables() == null ? List.<GeneratedVariable>of() : generated.variables();
         var variableMap = variableDefinitions.stream()

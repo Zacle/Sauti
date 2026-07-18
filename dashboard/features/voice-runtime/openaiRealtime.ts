@@ -214,8 +214,7 @@ export async function connectOpenAiRealtime(options: {
       } catch {
         // The active Realtime session still has its original safe instructions.
       }
-      requiredAvailabilityToolPending = Boolean(options.availabilityToolEnabled)
-        && requiresAvailabilityCheck(transcript);
+      requiredAvailabilityToolPending = false;
       expectedResponses += 1;
       requestCallerResponse(channel, requiredAvailabilityToolPending);
     };
@@ -553,22 +552,6 @@ function realtimeCallId(prefix: string) {
   const normalizedPrefix = prefix.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 8) || "call";
   const random = crypto.randomUUID().replaceAll("-", "");
   return `${normalizedPrefix}_${random.slice(0, 31 - normalizedPrefix.length)}`;
-}
-
-function requiresAvailabilityCheck(transcript: string) {
-  const normalized = transcript.normalize("NFKC").toLocaleLowerCase();
-  if (asksBusinessHours(transcript)) return false;
-  return /availab|disponib|créneau|creneau|موعد/u.test(normalized)
-    || /\b(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|aujourd'hui|demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/iu.test(normalized)
-    || /\b(?:[01]?\d|2[0-3]):[0-5]\d\b|\b(?:1[0-2]|0?[1-9])\s*(?:a\.?m\.?|p\.?m\.?)\b/iu.test(normalized)
-    || /(?:اليوم|غد[ًًا]?|الاثنين|الثلاثاء|الأربعاء|الخميس|الجمعة|السبت|الأحد)/u.test(normalized);
-}
-
-function asksBusinessHours(transcript: string) {
-  const normalized = transcript.normalize("NFD").replace(/\p{M}+/gu, "").toLocaleLowerCase();
-  const bookingContext = /\b(?:book|booking|appointment|trial|class|session|slot|rendez-vous|reserver|consultation|cours|seance|creneau)\b/u.test(normalized);
-  if (bookingContext) return false;
-  return /\b(?:opening hours?|business hours?|what are your hours|when are you open|when are you available|what time do you (?:open|close)|horaires?|heures? d'ouverture|quand (?:etes|est)[^?]*(?:ouvert|disponible)|quelles? heures?)\b/u.test(normalized);
 }
 
 function send(channel: RTCDataChannel, event: Record<string, unknown>) {

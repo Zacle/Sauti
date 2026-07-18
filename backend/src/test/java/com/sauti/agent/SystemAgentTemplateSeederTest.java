@@ -9,7 +9,7 @@ import org.springframework.core.io.ClassPathResource;
 
 class SystemAgentTemplateSeederTest {
     @Test
-    void parsesAllDocumentTemplatesAndDropsUnsupportedLanguageLabels() throws Exception {
+    void parsesLayeredMultilingualTemplates() throws Exception {
         var resource = new ClassPathResource("templates/agent-templates.md");
         String markdown;
         try (var input = resource.getInputStream()) {
@@ -19,26 +19,23 @@ class SystemAgentTemplateSeederTest {
 
         var templates = seeder.parse(markdown);
 
-        assertThat(templates).hasSize(10);
+        assertThat(templates).hasSize(6);
         assertThat(templates).extracting(template -> template.name())
-                .contains("Medical Receptionist", "Dental Front Desk", "Financial Services Advisor");
+                .contains("Medical Receptionist", "Dental Front Desk", "Fitness Membership & Class Desk");
         var dental = templates.stream()
                 .filter(template -> template.name().equals("Dental Front Desk"))
                 .findFirst()
                 .orElseThrow();
-        assertThat(dental.supportedLanguages()).containsExactly("en", "fr");
+        assertThat(dental.supportedLanguages()).containsExactly("en", "fr", "ar", "sw");
         assertThat(dental.configurationJson())
                 .contains(
+                        "\"schemaVersion\":2",
                         "\"bookingEnabled\":true",
-                        "\"key\":\"clinic_name\"",
-                        "\"label\":\"Clinic name\"",
+                        "\"key\":\"business_name\"",
+                        "\"key\":\"dental_urgency_policy\"",
+                        "\"bookingRequiredFields\":[\"caller_name\",\"caller_phone\",\"patient_status\",\"service_type\",\"appointment_at\"]",
                         "\"required\":true"
-                )
-                .doesNotContain("\"key\":\"agent_name\"", "\"key\":\"timezone\"");
-        assertThat(dental.systemPrompt()).contains("Dental Emergency", "{{dentist_names}}");
-        assertThat(dental.systemPrompt())
-                .contains("## Live Voice Behavior")
-                .contains("Sound like a capable phone receptionist")
-                .contains("Ask one question at a time");
+                );
+        assertThat(dental.systemPrompt()).contains("{{dentists}}", "{{dental_urgency_policy}}");
     }
 }
