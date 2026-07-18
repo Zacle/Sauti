@@ -118,11 +118,9 @@ export function AnalyticsPage() {
           ))}
         </div>
         <div className={styles.selectField}>
-          <span className={styles.selectLabel}>Agent scope</span>
           <DarkSelect ariaLabel="Filter analytics by agent" icon={<UsersRound size={18} />} triggerClassName={styles.agentSelectTrigger} value={agentId || "all"}
             onValueChange={(value) => setAgentId(value === "all" ? "" : value)}
             options={[{ value: "all", label: "All agents" }, ...agents.map((agent) => ({ value: agent.id, label: agent.name }))]} />
-          <small className={styles.selectHint}>{agentId ? "Focused agent view" : `${agents.length || "All"} agents included`}</small>
         </div>
       </section>
 

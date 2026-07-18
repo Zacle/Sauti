@@ -3392,7 +3392,7 @@ Expected:
 ### 2026-07-18 - Refine custom booking fields and Analytics agent scope
 
 - Reworked the Main settings custom booking-field entry into one cohesive input/action surface with a shared focus ring, clearer placeholder contrast, an active teal Add field action, a restrained disabled state, and a compact normalized-key preview.
-- Rebuilt the Analytics agent selector as an integrated scope control. Its label, selected agent, included-agent context, icon, and dropdown affordance now read as one component instead of a detached label beside a generic field.
+- Rebuilt the Analytics agent selector as a compact integrated scope control. Its selected agent, icon, and dropdown affordance now read as one vertically centered component without the crowded floating label and secondary hint from the first iteration.
 - Added an optional trigger styling hook to the shared Radix-based `DarkSelect`, allowing feature-specific composition without weakening the shared dropdown behavior or duplicating select logic.
 - Files touched:
   - `dashboard/components/DarkSelect/DarkSelect.tsx`
