@@ -323,7 +323,7 @@ function DateRangeFilter({ value, onChange }: { value: DateRange | undefined; on
   };
   return <Popover.Root>
     <Popover.Trigger asChild><button className={`${styles.dateTrigger} ${value?.from ? styles.activeDateRange : ""}`} type="button"><CalendarDays size={16} /><span>{label}</span><ChevronDown size={14} /></button></Popover.Trigger>
-    <Popover.Portal><Popover.Content className={styles.datePopover} sideOffset={8} align="start">
+    <Popover.Portal><Popover.Content className={styles.datePopover} collisionPadding={12} sideOffset={8} align="start">
       <DayPicker mode="range" selected={value} onSelect={onChange} defaultMonth={value?.from} numberOfMonths={2} resetOnSelect />
       <footer><div><button onClick={() => setRecentRange(7)} type="button">Last 7 days</button><button onClick={() => setRecentRange(14)} type="button">Last 14 days</button><button onClick={() => setRecentRange(30)} type="button">Last 30 days</button></div><button onClick={() => onChange(undefined)} type="button">All time</button></footer>
       <Popover.Arrow className={styles.popoverArrow} />

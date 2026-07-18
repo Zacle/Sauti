@@ -3293,3 +3293,19 @@ Expected:
   - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-18 - Keep calls and bookings calendars inside the visible viewport
+
+- Made both date-range popovers respect Radix's available viewport height, keep their action footers visible, and scroll only the calendar content when the browser is too short to display the complete picker at once.
+- Corrected the Calls calendar's React DayPicker sizing by setting both day-cell and day-button dimensions. This removes the unexpectedly oversized two-month layout while preserving readable dates and quick-range actions.
+- Added a compact short-viewport layout to the Bookings picker so its header, selected-range summary, calendar, and Apply/Cancel controls remain usable at the viewport height shown in the supplied screenshots.
+- Files touched:
+  - `dashboard/features/calls/CallsPage/CallsPage.tsx`
+  - `dashboard/features/calls/CallsPage/CallsPage.module.css`
+  - `dashboard/features/bookings/presentation/BookingDateRangePicker.module.css`
+- Verification:
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - The commands were run sequentially because concurrent execution races on Next's generated `.next/types` directory.
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
