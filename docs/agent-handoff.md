@@ -3122,3 +3122,32 @@ Expected:
 - Follow-ups / risks:
   - The startup backfill takes effect only after this revision is reviewed, committed, and deployed through CI/CD. Until then, affected live agents can continue to start calls without the booking tools.
   - After deployment, retest Alec or Sarah and run the `Production diagnostics` workflow for the call window if Google still rejects availability or event creation. The expanded filter will expose whether the remaining issue is tool readiness, credential refresh/scope, free/busy, or event insertion.
+
+### 2026-07-18 - Require real Google event insertion and enforce prompt-defined hours
+
+- Analyzed Alec and Amélie's latest booking transcripts. The generated Sauti confirmation code did not prove a Google event existed because a `book_slot` tool left on `noop_calendar` could silently use the local provider even when the agent selected Google Calendar.
+- Changed default-tool reconciliation to propagate any connected Google credential to every calendar action (`check_availability`, `book_slot`, `reschedule_booking`, and `cancel_booking`). The startup backfill now repairs partially connected legacy agents.
+- Made Google Calendar booking fail closed. When the agent selects Google Calendar, `book_slot` must carry a Google credential and the provider must return a non-local external event ID. Otherwise the caller receives an explicit not-booked response instead of a false confirmation.
+- Added deterministic post-insertion booking speech. A confirmation code is spoken only after `BookingService` returns from the real provider event creation path.
+- Added an effective-hours resolver for older/template agents whose structured schedule remained `always` while the saved prompt contained explicit hours. Calendar availability, Google free/busy windows, local availability, after-hours checks, and conversation context now share the same recovered schedule.
+- Added natural calendar speech formatting. Whole French hours are rendered as `15 heures` rather than `15:00`/`zéro zéro`; English whole hours use natural day-period phrases. Availability alternatives, next openings, and successful booking confirmations use the formatter.
+- Expanded business-hours intent handling for questions such as "what other days are you open?", "are you open Saturday?", and "travaillez-vous le samedi ?". The next response is constrained to the effective schedule and may not invent appointment availability.
+- Files touched in addition to the preceding entry:
+  - `backend/src/main/java/com/sauti/agent/{Agent,OperatingHoursSchedule}.java`
+  - `backend/src/main/java/com/sauti/calendar/{GoogleCalendarProvider,LocalCalendarProvider}.java`
+  - `backend/src/main/java/com/sauti/call/VoiceOutputGuard.java`
+  - `backend/src/main/java/com/sauti/llm/{AvailabilityIntentDetector,ConversationOrchestrator}.java`
+  - `backend/src/main/java/com/sauti/tool/{AvailabilitySpeechRenderer,BookingSpeechRenderer,DefaultToolSeeder,SautiCalendarFulfillment,SpokenDateTimeFormatter}.java`
+  - related tests under `backend/src/test/java/com/sauti/{agent,llm,tool}`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused operating-hours, availability, Google binding, speech-rendering, intent, orchestration, and telephony Realtime tests (successful; 41 tests)
+  - `.\gradlew.bat :backend:test --no-daemon` (successful)
+  - `npm.cmd run typecheck` (successful)
+  - `npm.cmd run build` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. All changes remain uncommitted for maintainer review and CI/CD deployment.
+- Follow-ups / risks:
+  - A Google event can still fail because of revoked OAuth, missing scopes, provider quota, or a Google API error. Those failures now roll back the Sauti booking and are spoken as not booked; they can be diagnosed with the expanded production diagnostics workflow after deployment.
+  - Prompt-hours recovery is a compatibility path. The structured weekly schedule should remain the long-term source of truth for newly configured agents.

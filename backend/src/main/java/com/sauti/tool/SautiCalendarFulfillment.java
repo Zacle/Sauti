@@ -42,9 +42,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         try {
             return switch (toolCall.name()) {
                 case "check_availability" -> LlmToolResult.success(toolCall, checkAvailability(call, toolCall.arguments(), toolConfig));
-                case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(
-                        call, toolCall, calendarProviderFactory.forTool(toolConfig, call.getTenant().getId())
-                ));
+                case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(call, toolCall, toolConfig));
                 case "reschedule_booking" -> LlmToolResult.success(toolCall, reschedule(call, toolCall));
                 case "cancel_booking" -> LlmToolResult.success(toolCall, cancel(call, toolCall));
                 default -> LlmToolResult.error(toolCall, "Unrecognised calendar tool: " + toolCall.name());
@@ -65,8 +63,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         }
         if (date == null) return missingDate(call, timezone);
         var duration = intArg(arguments, "duration_minutes", 60);
+        var effectiveHours = OperatingHoursSchedule.effective(call.getAgent());
         var operatingRanges = OperatingHoursSchedule.rangesFor(
-                call.getAgent().getOperatingHours(), date, timezone
+                effectiveHours, date, timezone
         );
         var requestedTimeText = stringArg(arguments, "time_preference", "");
         var requestedTime = parseRequestedTime(requestedTimeText);
@@ -95,7 +94,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("date", date.toString());
         result.put("timezone", timezone.toString());
         result.put("durationMinutes", duration);
-        result.put("businessHoursSummary", OperatingHoursSchedule.describe(call.getAgent().getOperatingHours()));
+        result.put("businessHoursSummary", OperatingHoursSchedule.describe(effectiveHours));
         result.put("businessOpenOnRequestedDate", businessOpen);
         result.put("operatingWindows", operatingRanges.stream().map(range -> Map.of(
                 "start", range.start().toString(),
@@ -108,7 +107,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("calendarLive", calendarLive);
         result.put("totalAvailableSlots", slots.size());
         result.put("slots", relevantSlots(slots, requestedTime));
-        result.put("nextOpenBusinessWindows", nextOpenBusinessWindows(call, date, timezone));
+        result.put("nextOpenBusinessWindows", nextOpenBusinessWindows(effectiveHours, date, timezone));
         result.put("status", !businessOpen
                 ? "closed_by_business_hours"
                 : Boolean.FALSE.equals(withinOperatingHours)
@@ -157,11 +156,15 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         );
     }
 
-    private List<Map<String, String>> nextOpenBusinessWindows(Call call, LocalDate requestedDate, ZoneId timezone) {
+    private List<Map<String, String>> nextOpenBusinessWindows(
+            String effectiveHours,
+            LocalDate requestedDate,
+            ZoneId timezone
+    ) {
         var windows = new java.util.ArrayList<Map<String, String>>();
         for (int offset = 1; offset <= 14 && windows.size() < 3; offset++) {
             var date = requestedDate.plusDays(offset);
-            for (var range : OperatingHoursSchedule.rangesFor(call.getAgent().getOperatingHours(), date, timezone)) {
+            for (var range : OperatingHoursSchedule.rangesFor(effectiveHours, date, timezone)) {
                 windows.add(Map.of(
                         "date", date.toString(),
                         "opens", range.start().toLocalTime().toString(),
@@ -199,7 +202,14 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         }
     }
 
-    private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, com.sauti.calendar.CalendarProvider provider) {
+    private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, AgentTool toolConfig) {
+        var selectedProvider = call.getAgent().getCalendarProvider();
+        if ("Google Calendar".equalsIgnoreCase(selectedProvider)
+                && (!"google".equalsIgnoreCase(toolConfig.getCalendarType())
+                    || toolConfig.getCalendarCredentialId() == null)) {
+            throw new IllegalStateException("Google Calendar is selected but the booking tool is not connected");
+        }
+        var provider = calendarProviderFactory.forTool(toolConfig, call.getTenant().getId());
         var booking = bookingService.create(
                 call.getTenant().getId(),
                 new CreateBookingRequest(
@@ -213,10 +223,17 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 ),
                 provider
         );
+        var externalEventId = booking.getExternalEventId() == null ? "" : booking.getExternalEventId();
+        if ("Google Calendar".equalsIgnoreCase(selectedProvider)
+                && (externalEventId.isBlank() || externalEventId.startsWith("local-"))) {
+            throw new IllegalStateException("Google Calendar did not confirm the event");
+        }
+        var confirmationCode = confirmationCode(booking.getId());
         return Map.of(
                 "bookingId", booking.getId().toString(),
-                "externalEventId", booking.getExternalEventId() == null ? "" : booking.getExternalEventId(),
-                "confirmationCode", confirmationCode(booking.getId())
+                "externalEventId", externalEventId,
+                "confirmationCode", confirmationCode,
+                "spokenResponse", BookingSpeechRenderer.render(call, booking, confirmationCode)
         );
     }
 

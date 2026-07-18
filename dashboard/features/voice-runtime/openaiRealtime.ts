@@ -130,7 +130,9 @@ export async function connectOpenAiRealtime(options: {
   const deliverToolFailure = (name: string) => {
     const failure = name === "check_availability"
       ? localizedAvailabilityFailure(options.responseLanguage)
-      : localizedAvailabilityClarification(options.responseLanguage);
+      : name === "book_slot"
+        ? localizedBookingFailure(options.responseLanguage)
+        : localizedAvailabilityClarification(options.responseLanguage);
     options.callbacks.onAgentTextDelta?.(failure);
     options.callbacks.onAgentTextComplete?.(false);
     deliverAgentTranscript(failure, false);
@@ -469,7 +471,7 @@ function requestCallerResponse(channel: RTCDataChannel, requireAvailabilityTool:
   send(channel, {
     type: "response.create",
     response: {
-      instructions: "Answer exactly once in the current caller language using only configured facts. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. Ask at most one question. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly.",
+      instructions: "Answer exactly once in the current caller language using only configured facts. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. Ask at most one question. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly. Speak whole-hour times naturally without zero minutes or spelling P.M.",
     },
   });
 }
@@ -495,11 +497,20 @@ function requestExactToolResponse(channel: RTCDataChannel, response: string) {
 }
 
 function toolSpokenResponse(name: string, result: Record<string, unknown>) {
-  if (name !== "check_availability" || result.success === false) return "";
+  if (result.success === false) return "";
   const payload = result.result;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
   const response = (payload as Record<string, unknown>).spokenResponse;
   return typeof response === "string" ? response.trim() : "";
+}
+
+function localizedBookingFailure(language?: string) {
+  switch (language?.toLocaleLowerCase()) {
+    case "fr": return "Je n’ai pas pu enregistrer le rendez-vous dans le calendrier. Il n’est pas réservé. Souhaitez-vous réessayer ?";
+    case "ar": return "لم أتمكن من حفظ الموعد في التقويم، لذلك لم يتم حجزه. هل تريد المحاولة مرة أخرى؟";
+    case "sw": return "Sikuweza kuhifadhi miadi kwenye kalenda, kwa hiyo haijawekwa. Ungependa kujaribu tena?";
+    default: return "I couldn’t save the appointment to the calendar, so it is not booked. Would you like to try again?";
+  }
 }
 
 function isStructuredPayload(text: string) {

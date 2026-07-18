@@ -39,6 +39,10 @@ public final class AvailabilityIntentDetector {
                 .toLowerCase(Locale.ROOT);
         var bookingContext = normalized.matches(".*\\b(book|booking|appointment|trial|class|session|slot|rendez-vous|reserver|consultation|cours|seance|creneau)\\b.*");
         if (bookingContext) return false;
-        return normalized.matches(".*\\b(opening hours?|business hours?|what are your hours|when are you open|when are you available|what time do you (?:open|close)|horaires?|heures? d'ouverture|quand (?:etes|est)[^?]*(?:ouvert|disponible)|quelles? heures?)\\b.*");
+        return normalized.matches(".*\\b(opening hours?|business hours?|what are your hours|when are you open|when are you available|"
+                + "what time do you (?:open|close)|are you open (?:on )?\\w+|do you (?:open|work) (?:on )?\\w+|"
+                + "what other days are you open|horaires?|heures? d'ouverture|quand (?:etes|est)[^?]*(?:ouvert|disponible)|"
+                + "quelles? heures?|quels? autres? jours?[^?]*ouverts?|(?:etes-vous |est-ce que vous etes )?ouvert[^?]*(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)|"
+                + "(?:travaillez|ouvrez)[^?]*(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche))\\b.*");
     }
 }

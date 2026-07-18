@@ -311,6 +311,10 @@ public class ConversationOrchestrator {
             List<LlmToolDefinition> tools,
             String callerTranscript
     ) {
+        var resolvedAgentPrompt = agentVariableService.resolvePrompt(
+                call.getAgent(), call.getAgent().getSystemPrompt()
+        );
+        var effectiveHours = OperatingHoursSchedule.effective(call.getAgent(), resolvedAgentPrompt);
         var toolBlock = tools.isEmpty()
                 ? "You have no tools available for this call."
                 : "Tools available: "
@@ -373,6 +377,7 @@ public class ConversationOrchestrator {
                 - Availability is always a live tool-backed fact. As soon as the caller gives a specific date or time, or asks which slots are available, call `check_availability` before answering. Never claim that availability is unavailable without calling the tool when it is present.
                 - Resolve relative weekdays from TODAY IN THE BUSINESS TIMEZONE, pass the requested date as yyyy-MM-dd, and pass an exact requested time as HH:mm in `time_preference`.
                 - Preserve the caller's requested time exactly. Never silently change 3 PM to 4 PM or substitute a different date. If it is unavailable, say so and offer only exact alternatives returned by the tool.
+                - Speak times naturally, never as raw machine text. In French, say `15 heures` rather than `15:00` or `quinze heures zéro zéro`; in English, say `3 in the afternoon` rather than spelling `P.M.`. Omit zero minutes on whole hours.
                 - Read the availability result precisely: `closed_by_business_hours` means explain that the business is closed that day and use `nextOpenBusinessWindows`; `calendar_fully_booked` means the business is open but no calendar slots remain; `requested_time_unavailable` means offer nearby returned `slots`; `requested_time_available` means the requested slot may be proposed but is not booked yet.
                 - Never offer appointment dates in the past. If the caller asks generally which days are available, ask for a preferred date or answer with business hours instead of guessing a calendar date.
                 - If asked about services, hours, location, pricing, or policies, answer from configured facts or retrieved knowledge when available. If unavailable, say you do not have the exact information and offer to help with booking or human follow-up.
@@ -391,11 +396,11 @@ public class ConversationOrchestrator {
                 %s
                 %s
                 """.formatted(
-                agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt()),
+                resolvedAgentPrompt,
                 language,
                 businessIdentityInstruction(call),
                 today(call),
-                OperatingHoursSchedule.describe(call.getAgent().getOperatingHours()),
+                OperatingHoursSchedule.describe(effectiveHours),
                 intakeNotes.promptBlock(call, callerTranscript),
                 call.getAgent().getPostCallExtractionFields(),
                 toolBlock,
@@ -482,29 +487,20 @@ public class ConversationOrchestrator {
         var bookingIntent = normalized.matches(".*\\b(book|booking|reserve|reservation|appointment|trial|class|session|rendez-vous|reserver|consultation|cours|seance)\\b.*");
         var directive = new StringBuilder();
         if (asksHours) {
-            directive.append("\nMANDATORY NEXT RESPONSE: The caller is asking about the represented BUSINESS, not the assistant. Answer directly from these business hours: ")
-                    .append(authoritativeBusinessHours(call))
-                    .append(" Do not say that you have no hours or no location.\n");
+            directive.append("\nMANDATORY NEXT RESPONSE: The caller is asking about the represented BUSINESS, not the assistant. Say exactly this schedule and nothing else: \"")
+                    .append(OperatingHoursSchedule.describeForSpeech(
+                            OperatingHoursSchedule.effective(
+                                    call.getAgent(),
+                                    agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())
+                            ),
+                            call.getLanguageDetected() == null ? call.getAgent().getDefaultLanguage() : call.getLanguageDetected()
+                    ))
+                    .append("\" Do not ask for a date and do not invent availability.\n");
         }
         if (bookingIntent && call.getAgent().isBookingEnabled()) {
             directive.append("\nMANDATORY NEXT RESPONSE: The caller has a NEW booking or trial intent. This agent is configured to create it. Never ask for a booking ID or ordinary duration, never say you cannot book, collect only the next missing name/contact/service/date/time detail, and use check_availability then book_slot when required.\n");
         }
         return directive.toString();
-    }
-
-    private String authoritativeBusinessHours(Call call) {
-        var structured = call.getAgent().getOperatingHours();
-        if (structured != null && !structured.isBlank()
-                && !"always".equalsIgnoreCase(structured)
-                && !"workspace".equalsIgnoreCase(structured)) {
-            return OperatingHoursSchedule.describe(structured);
-        }
-        var resolvedPrompt = agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt());
-        var matcher = java.util.regex.Pattern
-                .compile("(?im)^\\s*-?\\s*(?:hours?|opening hours?|horaires?)\\s*:\\s*([^\\r\\n#]+)$")
-                .matcher(resolvedPrompt);
-        if (matcher.find()) return matcher.group(1).trim();
-        return OperatingHoursSchedule.describe(structured);
     }
 
     private String afterHoursBlock(Call call) {

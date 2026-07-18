@@ -9,8 +9,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public final class OperatingHoursSchedule {
@@ -19,6 +22,66 @@ public final class OperatingHoursSchedule {
     };
 
     private OperatingHoursSchedule() {
+    }
+
+    /**
+     * Uses the structured schedule when one was configured. Older/template
+     * agents often kept explicit hours only in their saved prompt while the
+     * structured field remained "always"; recover that schedule so calendar
+     * availability cannot escape the business's declared opening hours.
+     */
+    public static String effective(Agent agent) {
+        return effective(agent, agent == null ? null : agent.getSystemPrompt());
+    }
+
+    public static String effective(Agent agent, String resolvedPrompt) {
+        if (agent == null) return "always";
+        var configured = agent.getOperatingHours();
+        if (configured != null && !configured.isBlank()
+                && !"always".equalsIgnoreCase(configured)
+                && !"workspace".equalsIgnoreCase(configured)) {
+            return configured;
+        }
+        return promptSchedule(resolvedPrompt).orElse(configured == null ? "always" : configured);
+    }
+
+    static Optional<String> promptSchedule(String prompt) {
+        if (prompt == null || prompt.isBlank()) return Optional.empty();
+        var matcher = Pattern.compile(
+                "(?im)^\\s*-?\\s*(?:hours?|opening hours?|horaires?)\\s*:\\s*([^\\r\\n#]+)$"
+        ).matcher(prompt);
+        if (!matcher.find()) return Optional.empty();
+        var schedule = new LinkedHashMap<String, DaySchedule>();
+        java.util.Arrays.stream(DayOfWeek.values()).forEach(day ->
+                schedule.put(day.name().toLowerCase(Locale.ROOT), new DaySchedule(false, "09:00", "17:00"))
+        );
+        var found = false;
+        var hoursLine = matcher.group(1).replaceFirst("\\s*\\([^)]*\\)\\s*$", "");
+        for (var segment : hoursLine.split(";")) {
+            var entry = Pattern.compile(
+                    "(?iu)^\\s*([\\p{L}]{2,10})(?:\\s*-\\s*([\\p{L}]{2,10}))?\\s+"
+                            + "([0-2]?\\d(?::[0-5]\\d)?)\\s*-\\s*([0-2]?\\d(?::[0-5]\\d)?)\\s*$"
+            ).matcher(segment);
+            if (!entry.matches()) continue;
+            var first = day(entry.group(1));
+            var last = entry.group(2) == null ? first : day(entry.group(2));
+            if (first == null || last == null) continue;
+            var start = promptTime(entry.group(3));
+            var end = promptTime(entry.group(4));
+            var cursor = first;
+            for (int count = 0; count < 7; count++) {
+                schedule.put(cursor.name().toLowerCase(Locale.ROOT), new DaySchedule(true, start, end));
+                if (cursor == last) break;
+                cursor = cursor.plus(1);
+            }
+            found = true;
+        }
+        if (!found) return Optional.empty();
+        try {
+            return Optional.of(OBJECT_MAPPER.writeValueAsString(schedule));
+        } catch (Exception exception) {
+            return Optional.empty();
+        }
     }
 
     public static boolean isOpen(String value, ZonedDateTime localTime) {
@@ -104,6 +167,36 @@ public final class OperatingHoursSchedule {
                 .collect(Collectors.joining("; ")) + ".";
     }
 
+    public static String describeForSpeech(String value, String language) {
+        var normalizedLanguage = language == null ? "en" : language.toLowerCase(Locale.ROOT);
+        if (value == null || value.isBlank() || "always".equals(value) || "workspace".equals(value)) {
+            return normalizedLanguage.startsWith("fr")
+                    ? "Les heures d’ouverture exactes ne sont pas configurées."
+                    : "The exact opening hours are not configured.";
+        }
+        var schedule = "weekdays".equals(value) ? weekdaySchedule() : parse(value);
+        var openings = new java.util.ArrayList<String>();
+        var closed = new java.util.ArrayList<String>();
+        for (var day : DayOfWeek.values()) {
+            var configured = schedule.get(day.name().toLowerCase(Locale.ROOT));
+            var label = spokenDay(day, normalizedLanguage);
+            if (configured == null || !configured.enabled()) {
+                closed.add(label);
+            } else {
+                openings.add(label + (normalizedLanguage.startsWith("fr") ? " de " : " from ")
+                        + spokenTime(configured.start(), normalizedLanguage)
+                        + (normalizedLanguage.startsWith("fr") ? " à " : " to ")
+                        + spokenTime(configured.end(), normalizedLanguage));
+            }
+        }
+        if (normalizedLanguage.startsWith("fr")) {
+            return "Nous sommes ouverts " + String.join(", ", openings) + ". Nous sommes fermés "
+                    + String.join(", ", closed) + ".";
+        }
+        return "We are open " + String.join(", ", openings) + ". We are closed "
+                + String.join(", ", closed) + ".";
+    }
+
     private static TimeRange range(LocalDate date, LocalTime startTime, LocalTime endTime, ZoneId timezone) {
         var start = date.atTime(startTime).atZone(timezone).toOffsetDateTime();
         var endDate = endTime.isAfter(startTime) ? date : date.plusDays(1);
@@ -124,6 +217,70 @@ public final class OperatingHoursSchedule {
         } catch (Exception exception) {
             throw new IllegalArgumentException("Invalid " + field + " time for " + day);
         }
+    }
+
+    private static DayOfWeek day(String value) {
+        if (value == null) return null;
+        return switch (value.toLowerCase(Locale.ROOT)) {
+            case "mon", "monday", "lun", "lundi" -> DayOfWeek.MONDAY;
+            case "tue", "tues", "tuesday", "mar", "mardi" -> DayOfWeek.TUESDAY;
+            case "wed", "wednesday", "mer", "mercredi" -> DayOfWeek.WEDNESDAY;
+            case "thu", "thur", "thurs", "thursday", "jeu", "jeudi" -> DayOfWeek.THURSDAY;
+            case "fri", "friday", "ven", "vendredi" -> DayOfWeek.FRIDAY;
+            case "sat", "saturday", "sam", "samedi" -> DayOfWeek.SATURDAY;
+            case "sun", "sunday", "dim", "dimanche" -> DayOfWeek.SUNDAY;
+            default -> null;
+        };
+    }
+
+    private static String promptTime(String value) {
+        return LocalTime.parse(value.contains(":") ? value : value + ":00").toString();
+    }
+
+    private static Map<String, DaySchedule> weekdaySchedule() {
+        var schedule = new LinkedHashMap<String, DaySchedule>();
+        for (var day : DayOfWeek.values()) {
+            schedule.put(day.name().toLowerCase(Locale.ROOT), new DaySchedule(
+                    day != DayOfWeek.SATURDAY && day != DayOfWeek.SUNDAY,
+                    "09:00",
+                    "17:00"
+            ));
+        }
+        return schedule;
+    }
+
+    private static String spokenDay(DayOfWeek day, String language) {
+        if (language.startsWith("fr")) {
+            return switch (day) {
+                case MONDAY -> "le lundi";
+                case TUESDAY -> "le mardi";
+                case WEDNESDAY -> "le mercredi";
+                case THURSDAY -> "le jeudi";
+                case FRIDAY -> "le vendredi";
+                case SATURDAY -> "le samedi";
+                case SUNDAY -> "le dimanche";
+            };
+        }
+        return day.name().substring(0, 1) + day.name().substring(1).toLowerCase(Locale.ROOT);
+    }
+
+    private static String spokenTime(String value, String language) {
+        var time = LocalTime.parse(value);
+        if (language.startsWith("fr")) {
+            if (time.equals(LocalTime.NOON)) return "midi";
+            if (time.equals(LocalTime.MIDNIGHT)) return "minuit";
+            return time.getMinute() == 0
+                    ? time.getHour() + " heures"
+                    : time.getHour() + " heures " + time.getMinute();
+        }
+        if (time.equals(LocalTime.NOON)) return "noon";
+        if (time.equals(LocalTime.MIDNIGHT)) return "midnight";
+        var hour = time.getHour() % 12 == 0 ? 12 : time.getHour() % 12;
+        var period = time.getHour() < 12 ? "in the morning"
+                : time.getHour() < 17 ? "in the afternoon" : "in the evening";
+        return time.getMinute() == 0
+                ? hour + " " + period
+                : hour + ":" + "%02d".formatted(time.getMinute()) + " " + period;
     }
 
     public record DaySchedule(boolean enabled, String start, String end) {

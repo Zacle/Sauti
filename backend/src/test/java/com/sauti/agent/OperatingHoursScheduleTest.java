@@ -76,4 +76,26 @@ class OperatingHoursScheduleTest {
         assertThat(OperatingHoursSchedule.describe("weekdays"))
                 .isEqualTo("Monday-Friday 09:00-17:00; Saturday-Sunday closed.");
     }
+
+    @Test
+    void recoversExplicitPromptHoursForLegacyAgentsWithAnAlwaysSchedule() {
+        var agent = org.mockito.Mockito.mock(Agent.class);
+        org.mockito.Mockito.when(agent.getOperatingHours()).thenReturn("always");
+        org.mockito.Mockito.when(agent.getSystemPrompt()).thenReturn("""
+                ## Clinic Information
+                - Hours: Mon 09:00-17:00; Wed 09:00-17:00; Thu 09:00-17:00 (Africa/Nairobi)
+                """);
+
+        var effective = OperatingHoursSchedule.effective(agent);
+
+        assertThat(OperatingHoursSchedule.rangesFor(
+                effective, LocalDate.of(2026, 7, 22), ZoneId.of("Africa/Nairobi")
+        )).singleElement();
+        assertThat(OperatingHoursSchedule.rangesFor(
+                effective, LocalDate.of(2026, 7, 25), ZoneId.of("Africa/Nairobi")
+        )).isEmpty();
+        assertThat(OperatingHoursSchedule.describeForSpeech(effective, "fr"))
+                .contains("le mercredi de 9 heures à 17 heures")
+                .contains("le samedi");
+    }
 }

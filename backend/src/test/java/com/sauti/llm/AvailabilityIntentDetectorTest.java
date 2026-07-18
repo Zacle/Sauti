@@ -21,6 +21,9 @@ class AvailabilityIntentDetectorTest {
     void treatsBusinessHoursQuestionsAsBusinessInformation() {
         assertThat(AvailabilityIntentDetector.asksBusinessHours("When are you available?")).isTrue();
         assertThat(AvailabilityIntentDetector.asksBusinessHours("Quelles sont vos horaires ?")).isTrue();
+        assertThat(AvailabilityIntentDetector.asksBusinessHours("Quels autres jours êtes-vous ouverts ?")).isTrue();
+        assertThat(AvailabilityIntentDetector.asksBusinessHours("Est-ce que vous travaillez le samedi ?")).isTrue();
+        assertThat(AvailabilityIntentDetector.asksBusinessHours("Are you open on Saturday?")).isTrue();
         assertThat(AvailabilityIntentDetector.requiresAvailabilityCheck("When are you available?")).isFalse();
     }
 

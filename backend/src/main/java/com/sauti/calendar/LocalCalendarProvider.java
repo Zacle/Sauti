@@ -15,7 +15,7 @@ public class LocalCalendarProvider implements CalendarProvider {
     @Override
     public List<CalendarAvailabilitySlot> availability(Agent agent, LocalDate date, int durationMinutes, ZoneId timezone) {
         var slots = new ArrayList<CalendarAvailabilitySlot>();
-        for (var range : OperatingHoursSchedule.rangesFor(agent.getOperatingHours(), date, timezone)) {
+        for (var range : OperatingHoursSchedule.rangesFor(OperatingHoursSchedule.effective(agent), date, timezone)) {
             for (var cursor = range.start(); !cursor.plusMinutes(durationMinutes).isAfter(range.end()); cursor = cursor.plusMinutes(30)) {
                 slots.add(new CalendarAvailabilitySlot(
                         cursor,

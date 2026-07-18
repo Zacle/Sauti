@@ -14,8 +14,8 @@ public final class AvailabilitySpeechRenderer {
     public static String render(Call call, Map<String, Object> result) {
         var language = language(call);
         var status = Objects.toString(result.get("status"), "calendar_temporarily_unavailable");
-        var alternatives = alternatives(result);
-        var nextOpening = nextOpening(result);
+        var alternatives = alternatives(result, language);
+        var nextOpening = nextOpening(result, language);
         return switch (language) {
             case "fr" -> french(status, alternatives, nextOpening);
             case "ar" -> arabic(status, alternatives, nextOpening);
@@ -97,36 +97,36 @@ public final class AvailabilitySpeechRenderer {
     }
 
     private static String language(Call call) {
-        var detected = call.getLanguageDetected();
-        var configured = call.getAgent() == null ? null : call.getAgent().getDefaultLanguage();
-        var value = detected == null || detected.isBlank() ? configured : detected;
-        if (value == null) return "en";
-        var normalized = value.toLowerCase(java.util.Locale.ROOT);
-        if (normalized.startsWith("fr")) return "fr";
-        if (normalized.startsWith("ar")) return "ar";
-        if (normalized.startsWith("sw")) return "sw";
-        return "en";
+        return SpokenDateTimeFormatter.language(call);
     }
 
     @SuppressWarnings("unchecked")
-    private static String alternatives(Map<String, Object> result) {
+    private static String alternatives(Map<String, Object> result, String language) {
         var slots = result.get("slots");
         if (!(slots instanceof List<?> list)) return "";
         return list.stream().limit(3)
                 .filter(Map.class::isInstance)
                 .map(Map.class::cast)
-                .map(slot -> Objects.toString(slot.get("displayString"), ""))
+                .map(slot -> SpokenDateTimeFormatter.slot(
+                        Objects.toString(slot.get("start"), ""),
+                        Objects.toString(slot.get("displayString"), ""),
+                        language
+                ))
                 .filter(value -> !value.isBlank())
                 .collect(Collectors.joining(", "));
     }
 
     @SuppressWarnings("unchecked")
-    private static String nextOpening(Map<String, Object> result) {
+    private static String nextOpening(Map<String, Object> result, String language) {
         var windows = result.get("nextOpenBusinessWindows");
         if (!(windows instanceof List<?> list) || list.isEmpty() || !(list.get(0) instanceof Map<?, ?> window)) {
             return "";
         }
-        return Objects.toString(window.get("date"), "") + " "
-                + Objects.toString(window.get("opens"), "") + "–" + Objects.toString(window.get("closes"), "");
+        return SpokenDateTimeFormatter.opening(
+                Objects.toString(window.get("date"), ""),
+                Objects.toString(window.get("opens"), ""),
+                Objects.toString(window.get("closes"), ""),
+                language
+        );
     }
 }

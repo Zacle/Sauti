@@ -529,7 +529,7 @@ public class Agent extends Auditable {
 
     public boolean isAvailableAt(OffsetDateTime instant) {
         return OperatingHoursSchedule.isOpen(
-                operatingHours,
+                OperatingHoursSchedule.effective(this),
                 instant.atZoneSameInstant(ZoneId.of(timezone))
         );
     }

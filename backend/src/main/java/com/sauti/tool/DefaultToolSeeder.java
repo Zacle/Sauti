@@ -87,17 +87,19 @@ public class DefaultToolSeeder {
 
     private void synchronizeAddedTools(Agent agent) {
         var tools = agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agent.getId());
-        var bookingTool = tools.stream().filter(tool -> "book_slot".equals(tool.getToolName())).findFirst().orElse(null);
-        if (bookingTool != null) {
+        var calendarTools = Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking");
+        var connectedCalendar = tools.stream()
+                .filter(tool -> calendarTools.contains(tool.getToolName()))
+                .filter(tool -> "google".equalsIgnoreCase(tool.getCalendarType()))
+                .filter(tool -> tool.getCalendarCredentialId() != null)
+                .findFirst();
+        if (connectedCalendar.isPresent()) {
+            var credentialId = connectedCalendar.get().getCalendarCredentialId();
+            tools.stream().filter(tool -> calendarTools.contains(tool.getToolName()))
+                    .forEach(tool -> tool.connectCalendar("google", credentialId));
+        } else {
             tools.stream().filter(tool -> Set.of("reschedule_booking", "cancel_booking").contains(tool.getToolName()))
-                    .forEach(tool -> {
-                        if ("google".equalsIgnoreCase(bookingTool.getCalendarType())
-                                && bookingTool.getCalendarCredentialId() != null) {
-                            tool.connectCalendar("google", bookingTool.getCalendarCredentialId());
-                        } else {
-                            tool.configureForDraft(agent.isBookingEnabled(), "noop_calendar");
-                        }
-                    });
+                    .forEach(tool -> tool.configureForDraft(agent.isBookingEnabled(), "noop_calendar"));
         }
         var lookup = tools.stream().filter(tool -> "lookup_google_sheet_row".equals(tool.getToolName())).findFirst().orElse(null);
         if (lookup != null) {

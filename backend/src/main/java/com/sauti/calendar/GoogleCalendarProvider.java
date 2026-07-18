@@ -19,7 +19,7 @@ public class GoogleCalendarProvider implements CalendarProvider {
 
     @Override
     public List<CalendarAvailabilitySlot> availability(Agent agent, LocalDate date, int durationMinutes, ZoneId timezone) {
-        var ranges = OperatingHoursSchedule.rangesFor(agent.getOperatingHours(), date, timezone);
+        var ranges = OperatingHoursSchedule.rangesFor(OperatingHoursSchedule.effective(agent), date, timezone);
         if (ranges.isEmpty()) return List.of();
         var dayStart = ranges.get(0).start();
         var dayEnd = ranges.get(ranges.size() - 1).end();

@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.sauti.agent.Agent;
 import com.sauti.calendar.BookingService;
@@ -126,6 +127,52 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
+    void enforcesPromptHoursWhenTheStructuredScheduleWasLeftAsAlways() {
+        var fixture = fixture("always", List.of());
+        when(fixture.agent.getSystemPrompt()).thenReturn("""
+                - Hours: Mon 09:00-17:00; Wed 09:00-17:00; Thu 09:00-17:00 (Africa/Nairobi)
+                """);
+
+        var closingTime = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "availability-closing-prompt", "check_availability",
+                Map.of("date", "2026-07-22", "time_preference", "5 p.m.", "duration_minutes", 60)
+        ));
+        var saturday = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "availability-saturday-prompt", "check_availability",
+                Map.of("date", "2026-07-25", "time_preference", "12:00", "duration_minutes", 60)
+        ));
+
+        assertThat(closingTime.result()).containsEntry("status", "outside_business_hours");
+        assertThat(saturday.result()).containsEntry("status", "closed_by_business_hours");
+        verify(fixture.provider, never()).availability(
+                fixture.agent, LocalDate.of(2026, 7, 22), 60, java.time.ZoneId.of("UTC")
+        );
+        verify(fixture.provider, never()).availability(
+                fixture.agent, LocalDate.of(2026, 7, 25), 60, java.time.ZoneId.of("UTC")
+        );
+    }
+
+    @Test
+    void refusesToFakeAGoogleBookingWhenBookSlotHasNoGoogleCredential() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.agent.getCalendarProvider()).thenReturn("Google Calendar");
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "booking-without-google", "book_slot",
+                Map.of(
+                        "appointment_at", "2026-07-23T12:00:00Z",
+                        "caller_name", "Zachary",
+                        "caller_phone", "01115753441",
+                        "service_type", "Consultation"
+                )
+        ));
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.error()).contains("booking tool is not connected");
+        verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
     void convertsAProviderOutageIntoAControlledSuccessfulDecision() {
         var openHours = """
                 {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
@@ -166,11 +213,19 @@ class SautiCalendarFulfillmentTest {
         when(agent.getDefaultLanguage()).thenReturn("en");
         when(agent.getTimezone()).thenReturn("UTC");
         when(agent.getOperatingHours()).thenReturn(hours);
+        when(agent.getSystemPrompt()).thenReturn("");
         when(factory.forTool(tool, tenantId)).thenReturn(provider);
         when(provider.availability(
                 agent, LocalDate.of(2026, 7, 22), 60, java.time.ZoneId.of("UTC")
         )).thenReturn(slots);
-        return new Fixture(new SautiCalendarFulfillment(factory, bookingService), call, agent, tool, provider);
+        return new Fixture(
+                new SautiCalendarFulfillment(factory, bookingService),
+                call,
+                agent,
+                tool,
+                provider,
+                bookingService
+        );
     }
 
     private record Fixture(
@@ -178,7 +233,8 @@ class SautiCalendarFulfillmentTest {
             Call call,
             Agent agent,
             AgentTool tool,
-            CalendarProvider provider
+            CalendarProvider provider,
+            BookingService bookingService
     ) {
     }
 }

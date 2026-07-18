@@ -45,6 +45,15 @@ public final class VoiceOutputGuard {
         };
     }
 
+    public static String safeBookingFailure(String language) {
+        return switch (language == null ? "en" : language.toLowerCase(java.util.Locale.ROOT)) {
+            case "fr" -> "Je n’ai pas pu enregistrer le rendez-vous dans le calendrier. Il n’est pas réservé. Souhaitez-vous réessayer ?";
+            case "ar" -> "لم أتمكن من حفظ الموعد في التقويم، لذلك لم يتم حجزه. هل تريد المحاولة مرة أخرى؟";
+            case "sw" -> "Sikuweza kuhifadhi miadi kwenye kalenda, kwa hiyo haijawekwa. Ungependa kujaribu tena?";
+            default -> "I couldn’t save the appointment to the calendar, so it is not booked. Would you like to try again?";
+        };
+    }
+
     /** OpenAI Realtime limits function call IDs to 32 characters. */
     public static String realtimeCallId(String prefix) {
         var normalizedPrefix = prefix == null ? "call" : prefix.replaceAll("[^A-Za-z0-9_-]", "");

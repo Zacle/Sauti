@@ -71,6 +71,7 @@ class ConversationOrchestratorTest {
                 .contains("BUSINESS OPERATING HOURS")
                 .contains("Availability is always a live tool-backed fact")
                 .contains("Never silently change 3 PM to 4 PM")
+                .contains("say `15 heures` rather than `15:00`")
                 .contains("Never invent example services, classes")
                 .contains("MANDATORY NEXT ACTION: Call `check_availability` now before speaking")
                 .contains("Use only facts present in the agent prompt")
@@ -317,7 +318,8 @@ class ConversationOrchestratorTest {
                 .contains("Never deny a capability explicitly granted")
                 .contains("The caller is asking about the represented BUSINESS")
                 .contains("Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00")
-                .contains("Do not say that you have no hours or no location");
+                .contains("Monday from 9 in the morning to 5 in the evening")
+                .contains("Do not ask for a date and do not invent availability");
     }
 
     private Call activeCall() {

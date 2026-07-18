@@ -3,6 +3,8 @@ package com.sauti.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 
 import com.sauti.agent.Agent;
 import java.util.List;
@@ -11,6 +13,30 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class DefaultToolSeederTest {
+    @Test
+    void repairsEveryCalendarActionFromAnyConnectedGoogleTool() {
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        var credentialId = UUID.randomUUID();
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.isBookingEnabled()).thenReturn(true);
+        var availability = tool(agent, "check_availability");
+        var booking = tool(agent, "book_slot");
+        var cancellation = tool(agent, "cancel_booking");
+        availability.connectCalendar("google", credentialId);
+        var repository = mock(AgentToolRepository.class);
+        when(repository.existsByAgent_IdAndToolName(eq(agentId), anyString())).thenReturn(true);
+        when(repository.findByAgent_IdOrderByDisplayOrderAsc(agentId))
+                .thenReturn(List.of(availability, booking, cancellation));
+
+        new DefaultToolSeeder(repository).seedDefaults(agent);
+
+        assertThat(booking.getCalendarType()).isEqualTo("google");
+        assertThat(booking.getCalendarCredentialId()).isEqualTo(credentialId);
+        assertThat(cancellation.getCalendarCredentialId()).isEqualTo(credentialId);
+        assertThat(booking.isActive()).isTrue();
+    }
+
     @Test
     void activatesBookingToolsAndPreservesTheConnectedGoogleCredential() {
         var agent = mock(Agent.class);

@@ -463,9 +463,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         )
                 ));
                 if (!result.success()) {
-                    var safeText = "check_availability".equals(name)
-                            ? VoiceOutputGuard.safeAvailabilityFailure(responseLanguage())
-                            : VoiceOutputGuard.safeAvailabilityClarification(responseLanguage());
+                    var safeText = switch (name) {
+                        case "check_availability" -> VoiceOutputGuard.safeAvailabilityFailure(responseLanguage());
+                        case "book_slot" -> VoiceOutputGuard.safeBookingFailure(responseLanguage());
+                        default -> VoiceOutputGuard.safeAvailabilityClarification(responseLanguage());
+                    };
                     listener.onAgentTextDelta(safeText);
                     listener.onAgentTextComplete(safeText, false);
                     return;
@@ -494,7 +496,6 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         private String toolSpokenResponse(com.sauti.llm.LlmToolResult result) {
-            if (!"check_availability".equals(result.name())) return "";
             var value = result.result().get("spokenResponse");
             return value == null ? "" : value.toString().trim();
         }
@@ -613,7 +614,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                     + "Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. "
                                     + "For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. "
                                     + "Ask at most one question. Do not invent services, classes, examples, or completed actions. "
-                                    + "Preserve names, phone digits, dates, and times exactly."
+                                    + "Preserve names, phone digits, dates, and times exactly. Speak whole-hour times naturally without zero minutes or spelling P.M."
                     )
             ));
         }
