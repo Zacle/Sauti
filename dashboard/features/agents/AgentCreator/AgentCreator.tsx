@@ -2,6 +2,7 @@
 
 import "./AgentCreator.css";
 import Link from "next/link";
+import * as Select from "@radix-ui/react-select";
 import * as Slider from "@radix-ui/react-slider";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -111,6 +112,8 @@ const SYSTEM_MANAGED_TEMPLATE_VARIABLES = new Set([
   "calendar_system",
   "calendar_provider",
   "routing_policy",
+  "required_booking_fields",
+  "notification_channels",
 ]);
 const TIMEZONE_OPTIONS = TIMEZONE_GROUPS.flatMap((group) => group.zones.map((zone) => ({
   value: zone.value,
@@ -134,6 +137,15 @@ const OPERATING_WEEK_DAYS: Array<{ key: WeekDayKey; label: string }> = [
 
 const DEFAULT_BOOKING_FIELDS = ["caller_name", "caller_phone", "service_type", "appointment_at"];
 const DEFAULT_BOOKING_NOTIFICATIONS = ["dashboard", "email"];
+const CORE_BOOKING_FIELDS = new Set(DEFAULT_BOOKING_FIELDS);
+const BOOKING_FIELD_CATALOG = [
+  "caller_email", "reason_for_visit", "date_of_birth", "patient_date_of_birth", "preferred_staff",
+  "location", "party_size", "seating_preference", "dietary_accessibility_notes", "pet_name",
+  "pet_species", "pet_breed", "pet_age", "property_reference", "buyer_or_renter", "financing_status",
+  "move_timeline", "service_address", "issue_description", "urgency_level", "vehicle_make_model",
+  "vehicle_year", "vehicle_registration", "student_name", "subject", "grade_level", "learning_goal",
+  "order_number", "account_number", "company_name", "company_size", "budget_range", "notes",
+] as const;
 const LANGUAGE_OPTIONS = [
   ["en", "English"], ["fr", "French"], ["ar", "Arabic"], ["sw", "Swahili"],
   ["es", "Spanish"], ["de", "German"], ["pt", "Portuguese"], ["it", "Italian"],
@@ -842,6 +854,7 @@ export function AgentCreator({
                   greeting={greeting}
                   bookingEnabled={bookingEnabled}
                   bookingRequiredFields={bookingRequiredFields}
+                  bookingFieldSuggestions={selectedTemplate.bookingRequiredFields}
                   bookingNotificationChannels={bookingNotificationChannels}
                   bookingNotificationRecipient={bookingNotificationRecipient}
                   saveTranscript={saveTranscript}
@@ -1470,7 +1483,7 @@ function languageName(code: string) {
 
 function MainSettings(props: {
   name: string; description: string; language: string; supportedLanguages: string[]; voice: string; timezone: string; maxDuration: string; greeting: string;
-  bookingEnabled: boolean; bookingRequiredFields: string[]; bookingNotificationChannels: string[];
+  bookingEnabled: boolean; bookingRequiredFields: string[]; bookingFieldSuggestions: string[]; bookingNotificationChannels: string[];
   bookingNotificationRecipient: string; saveTranscript: boolean; recordCalls: boolean;
   webVoiceEnabled: boolean; webVoiceAllowedOrigins: string; webVoiceRequireConsent: boolean;
   webVoicePublicId?: string; whatsappEnabled: boolean; whatsappPhoneNumberId: string; phoneNumber?: string | null;
@@ -1522,8 +1535,9 @@ function MainSettings(props: {
     ? `<script src="https://YOUR_SAUTI_DOMAIN/sauti-widget.js" data-base-url="https://YOUR_SAUTI_DOMAIN" data-agent="${props.webVoicePublicId}" data-lang="${widgetLanguage}" data-color="${widgetColor}" data-position="${widgetPosition}" data-label="${widgetLabel.replaceAll("\"", "&quot;")}" defer></script>`
     : "";
   return (
-    <>
-      <StudioHeading eyebrow="Main settings" title="Identity and call setup" description="Configure the essentials callers experience on every conversation." />
+    <div className="main-settings-page">
+      <section className="main-settings-card main-identity-card">
+        <StudioHeading eyebrow="Main settings" title="Identity and call setup" description="Configure the essentials callers experience on every conversation." />
       {!channelConfigured && (
         <div className="studio-warning">
           <CircleAlert size={18} />
@@ -1556,8 +1570,9 @@ function MainSettings(props: {
             options={TIMEZONE_OPTIONS} />
         </label>
       </div>
+      </section>
       <div
-        className={`studio-setting-group web-voice-settings${highlightChannels ? " channel-focus" : ""}`}
+        className={`studio-setting-group main-settings-card web-voice-settings${highlightChannels ? " channel-focus" : ""}`}
         id="agent-channel-settings"
         ref={channelSettingsRef}
         tabIndex={-1}
@@ -1651,7 +1666,7 @@ function MainSettings(props: {
           </div>
         </div>
       </div>
-      <div className="studio-setting-group">
+      <div className="studio-setting-group main-settings-card">
         <h3>Supported caller languages</h3>
         <p>The agent detects these languages during a call. The primary language cannot be removed.</p>
         <div className="studio-language-options">
@@ -1699,24 +1714,17 @@ function MainSettings(props: {
           </div>
         )}
       </div>
-      <div className="studio-setting-group">
+      <div className="studio-setting-group main-settings-card">
         <h3>Capabilities</h3>
         <ToggleRow icon={CalendarCheck} title="Appointment booking" detail="Allow the agent to check availability and create bookings." value={props.bookingEnabled} onChange={props.onBooking} />
         {props.bookingEnabled && (
           <div className="booking-workflow-settings">
-            <label>
-              Required details before booking
-              <input
-                value={props.bookingRequiredFields.join(", ")}
-                onChange={(event) => props.onBookingRequiredFields(event.target.value
-                  .split(",")
-                  .map((field) => field.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"))
-                  .filter(Boolean))}
-                placeholder="caller_name, caller_phone, service_type, appointment_at"
-              />
-              <small>The agent asks for each missing detail before saving. Add vertical fields such as date_of_birth or case_type.</small>
-            </label>
-            <div>
+            <BookingFieldPicker
+              fields={props.bookingRequiredFields}
+              onChange={props.onBookingRequiredFields}
+              suggestions={props.bookingFieldSuggestions}
+            />
+            <div className="booking-notification-settings">
               <span>Notify the business owner</span>
               <div className="studio-language-options">
                 {[{ value: "dashboard", label: "Dashboard" }, { value: "email", label: "Email" }].map((channel) => {
@@ -1751,7 +1759,7 @@ function MainSettings(props: {
           </div>
         )}
       </div>
-      <div className="studio-setting-group">
+      <div className="studio-setting-group main-settings-card">
         <h3>Privacy and call records</h3>
         <ToggleRow icon={MessageSquareText} title="Save transcript" detail="Store the transcript for call review and analytics." value={props.saveTranscript} onChange={props.onSaveTranscript} />
         <ToggleRow
@@ -1762,14 +1770,121 @@ function MainSettings(props: {
           onChange={props.onRecordCalls}
         />
       </div>
-      <div className="studio-setting-group">
+      <div className="studio-setting-group main-settings-card">
         <h3>Inbound greeting</h3>
         <p>The first message callers hear when the agent answers.</p>
         <textarea className="studio-greeting" value={props.greeting} onChange={(event) => props.onGreeting(event.target.value)} />
         <small className="field-help">Use clear, natural language. Variables can be added later.</small>
       </div>
-    </>
+    </div>
   );
+}
+
+function BookingFieldPicker({
+  fields,
+  suggestions,
+  onChange,
+}: {
+  fields: string[];
+  suggestions: string[];
+  onChange: (value: string[]) => void;
+}) {
+  const [customField, setCustomField] = useState("");
+  const normalizedFields = Array.from(new Set([...DEFAULT_BOOKING_FIELDS, ...fields]));
+  const suggestedFields = Array.from(new Set(suggestions))
+    .filter((field) => !CORE_BOOKING_FIELDS.has(field));
+  const optionalFields = Array.from(new Set([...suggestedFields, ...BOOKING_FIELD_CATALOG, ...fields]))
+    .filter((field) => !CORE_BOOKING_FIELDS.has(field));
+  const selectedCount = normalizedFields.length;
+  const atLimit = selectedCount >= 25;
+
+  function toggleField(field: string) {
+    if (CORE_BOOKING_FIELDS.has(field)) return;
+    onChange(normalizedFields.includes(field)
+      ? normalizedFields.filter((item) => item !== field)
+      : [...normalizedFields, field]);
+  }
+
+  function addCustomField() {
+    const normalized = normalizeBookingField(customField);
+    if (!normalized) return;
+    if (!normalizedFields.includes(normalized)) onChange([...normalizedFields, normalized]);
+    setCustomField("");
+  }
+
+  return (
+    <div className="booking-field-picker">
+      <header>
+        <div><strong>Required booking details</strong><small>The agent collects every selected field before creating the booking.</small></div>
+        <span>{selectedCount} selected</span>
+      </header>
+      <div className="booking-field-group">
+        <span>Always required</span>
+        <div className="booking-field-options core">
+          {DEFAULT_BOOKING_FIELDS.map((field) => (
+            <button aria-pressed key={field} type="button" title="Required for every booking">
+              <ShieldCheck size={14} /> {bookingFieldLabel(field)} <small>Required</small>
+            </button>
+          ))}
+        </div>
+      </div>
+      {suggestedFields.length > 0 && (
+        <div className="booking-field-group">
+          <span>Suggested for this business</span>
+          <div className="booking-field-options">
+            {suggestedFields.map((field) => {
+              const selected = normalizedFields.includes(field);
+              return <button aria-pressed={selected} className={selected ? "selected" : ""} disabled={atLimit && !selected} key={field} onClick={() => toggleField(field)} type="button">{selected ? <Check size={14} /> : <Plus size={14} />} {bookingFieldLabel(field)}</button>;
+            })}
+          </div>
+        </div>
+      )}
+      <details className="booking-field-library">
+        <summary>Browse more fields <ChevronDown size={15} /></summary>
+        <div className="booking-field-options">
+          {optionalFields.filter((field) => !suggestedFields.includes(field)).map((field) => {
+            const selected = normalizedFields.includes(field);
+            return <button aria-pressed={selected} className={selected ? "selected" : ""} disabled={atLimit && !selected} key={field} onClick={() => toggleField(field)} type="button">{selected ? <Check size={14} /> : <Plus size={14} />} {bookingFieldLabel(field)}</button>;
+          })}
+        </div>
+      </details>
+      <div className="booking-custom-field">
+        <label htmlFor="custom-booking-field">Need another detail?</label>
+        <div>
+          <input
+            id="custom-booking-field"
+            onChange={(event) => setCustomField(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addCustomField();
+              }
+            }}
+            placeholder="e.g. Insurance member number"
+            value={customField}
+          />
+          <button disabled={atLimit || !normalizeBookingField(customField)} onClick={addCustomField} type="button"><Plus size={15} /> Add field</button>
+        </div>
+        {customField && <small>Saved as <code>{normalizeBookingField(customField)}</code></small>}
+      </div>
+    </div>
+  );
+}
+
+function normalizeBookingField(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^[^a-z]+|_+$/g, "").slice(0, 64);
+}
+
+function bookingFieldLabel(field: string) {
+  const aliases: Record<string, string> = {
+    caller_name: "Customer name",
+    caller_phone: "Phone number",
+    caller_email: "Email address",
+    service_type: "Service",
+    appointment_at: "Date and time",
+    patient_date_of_birth: "Patient date of birth",
+  };
+  return aliases[field] ?? field.split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
 }
 
 function BehaviorSettings({
@@ -2414,6 +2529,13 @@ const WEEK_DAYS = [
   ["Sun", "Sunday"],
 ] as const;
 
+const SCHEDULE_TIME_OPTIONS = Array.from({ length: 96 }, (_, index) => {
+  const hour = Math.floor(index / 4);
+  const minute = (index % 4) * 15;
+  const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  return { value, label: formatScheduleTime(value) };
+});
+
 type ScheduleDay = { enabled: boolean; open: string; close: string };
 type WeeklySchedule = Record<(typeof WEEK_DAYS)[number][0], ScheduleDay>;
 
@@ -2558,13 +2680,70 @@ function WeeklyHoursInput({ value, onChange }: { value: string; onChange: (value
             </button>
             <strong>{label}</strong>
             {current.enabled ? (
-              <div><input aria-label={`${label} opening time`} type="time" value={current.open} onChange={(event) => update(day, { open: event.target.value })} /><span>to</span><input aria-label={`${label} closing time`} type="time" value={current.close} onChange={(event) => update(day, { close: event.target.value })} /></div>
+              <div>
+                <ScheduleTimeSelect ariaLabel={`${label} opening time`} value={current.open} onChange={(open) => update(day, { open })} />
+                <span>to</span>
+                <ScheduleTimeSelect ariaLabel={`${label} closing time`} value={current.close} onChange={(close) => update(day, { close })} />
+              </div>
             ) : <small>Closed</small>}
           </div>
         );
       })}
     </div>
   );
+}
+
+function ScheduleTimeSelect({
+  ariaLabel,
+  value,
+  onChange,
+}: {
+  ariaLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const options = SCHEDULE_TIME_OPTIONS.some((option) => option.value === value)
+    ? SCHEDULE_TIME_OPTIONS
+    : [...SCHEDULE_TIME_OPTIONS, { value, label: formatScheduleTime(value) }]
+      .sort((left, right) => left.value.localeCompare(right.value));
+
+  return (
+    <Select.Root value={value} onValueChange={onChange}>
+      <Select.Trigger aria-label={ariaLabel} className="schedule-time-trigger">
+        <Clock3 size={14} />
+        <Select.Value />
+        <Select.Icon><ChevronDown size={14} /></Select.Icon>
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Content
+          align="start"
+          className="schedule-time-content"
+          collisionPadding={10}
+          position="popper"
+          sideOffset={6}
+        >
+          <Select.ScrollUpButton className="schedule-time-scroll"><ChevronDown size={15} /></Select.ScrollUpButton>
+          <Select.Viewport className="schedule-time-viewport">
+            {options.map((option) => (
+              <Select.Item className="schedule-time-item" key={option.value} value={option.value}>
+                <Select.ItemIndicator><Check size={13} /></Select.ItemIndicator>
+                <Select.ItemText>{option.label}</Select.ItemText>
+              </Select.Item>
+            ))}
+          </Select.Viewport>
+          <Select.ScrollDownButton className="schedule-time-scroll"><ChevronDown size={15} /></Select.ScrollDownButton>
+        </Select.Content>
+      </Select.Portal>
+    </Select.Root>
+  );
+}
+
+function formatScheduleTime(value: string) {
+  const [hourText, minute = "00"] = value.split(":");
+  const hour = Number(hourText);
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${String(displayHour).padStart(2, "0")}:${minute} ${suffix}`;
 }
 
 function variableKind(key: string) {

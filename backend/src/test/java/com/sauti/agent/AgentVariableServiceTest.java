@@ -90,14 +90,23 @@ class AgentVariableServiceTest {
                 "Google Calendar", "Fixed calendar", "Provider default"
         );
         var staleTimezone = new AgentVariable(agent, "business_timezone", "Business timezone", null, true);
+        agent.configureBookingWorkflow(
+                List.of("caller_name", "caller_phone", "service_type", "appointment_at", "patient_date_of_birth"),
+                List.of("dashboard", "email"),
+                "owner@example.com"
+        );
         var staleCalendar = new AgentVariable(agent, "calendar_system", "Calendar system", null, true);
+        var staleFields = new AgentVariable(agent, "required_booking_fields", "Required booking fields", null, true);
+        staleFields.updateValue("name, phone");
         when(repository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
-                .thenReturn(List.of(staleTimezone, staleCalendar));
+                .thenReturn(List.of(staleTimezone, staleCalendar, staleFields));
         var service = new AgentVariableService(repository, mock(AgentRepository.class));
 
         assertThat(service.missingRequired(agent.getId())).isEmpty();
         assertThat(service.resolvePrompt(agent, "Hours use {{business_timezone}} with {{calendar_system}}."))
                 .isEqualTo("Hours use Africa/Cairo with Google Calendar.");
+        assertThat(service.resolvePrompt(agent, "Collect {{required_booking_fields}}; notify {{notification_channels}}."))
+                .isEqualTo("Collect caller_name, caller_phone, service_type, appointment_at, patient_date_of_birth; notify dashboard, email.");
     }
 
     @Test

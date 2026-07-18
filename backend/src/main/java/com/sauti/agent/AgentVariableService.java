@@ -19,7 +19,8 @@ public class AgentVariableService {
     private static final Pattern VARIABLE_KEY = Pattern.compile("[a-z][a-z0-9_]{0,99}");
     private static final Set<String> SYSTEM_MANAGED_VARIABLES = Set.of(
             "agent_name", "timezone", "business_timezone", "calendar_system",
-            "calendar_provider", "routing_policy"
+            "calendar_provider", "routing_policy", "required_booking_fields",
+            "notification_channels"
     );
 
     private final AgentVariableRepository variableRepository;
@@ -173,6 +174,8 @@ public class AgentVariableService {
         if (agent.getRoutingPolicy() != null && !agent.getRoutingPolicy().isBlank()) {
             values.put("routing_policy", agent.getRoutingPolicy());
         }
+        values.put("required_booking_fields", String.join(", ", agent.getBookingRequiredFields()));
+        values.put("notification_channels", String.join(", ", agent.getBookingNotificationChannels()));
 
         var matcher = PLACEHOLDER.matcher(prompt);
         var result = new StringBuffer();

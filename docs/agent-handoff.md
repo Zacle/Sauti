@@ -3329,3 +3329,36 @@ Expected:
   - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-18 - Replace native personalisation time pickers
+
+- Replaced the operating-system `time` inputs in the Personalise weekly-hours editor with a Sauti-themed Radix Select control. The menu now matches the dark agent studio instead of opening the browser's grey multi-column time dialog.
+- Added quarter-hour choices across the full day, readable 12-hour labels, selected-state and keyboard focus styling, scroll controls, viewport-aware placement, and a compact responsive layout. The editor still stores canonical 24-hour `HH:mm` values, so prompts, validation, and booking-hour enforcement remain compatible.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+- Verification:
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-18 - Unify booking intake fields and refine Main settings
+
+- Removed the duplicate owner-editable `required_booking_fields` and `notification_channels` entries from template personalisation. They are now system-managed runtime variables resolved from the agent's authoritative booking workflow, including backward compatibility for existing agents that still have stale saved variables.
+- Replaced the comma-separated booking-field input in Main settings with a structured multi-select editor. The four platform-required fields are visible and locked, each template's vertical-specific fields are recommended automatically, owners can browse a reusable field catalog, and custom human-readable fields are normalized into safe booking keys. Selection is capped at the backend-supported 25 fields.
+- Confirmed that additional configured fields flow through the booking tool's `customer_details` payload and are persisted in each booking's structured `capturedData`; no database migration was required.
+- Refined only Main settings into compact, bordered studio cards matching the supplied design direction. Identity, channels, languages, capabilities, privacy, and greeting now have clearer grouping and denser responsive spacing without changing the other configuration tabs.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/AgentVariableService.java`
+  - `backend/src/main/java/com/sauti/agent/SystemAgentTemplateSeeder.java`
+  - `backend/src/test/java/com/sauti/agent/AgentVariableServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+- Verification:
+  - focused `AgentVariableServiceTest` and `SystemAgentTemplateSeederTest` (successful)
+  - `.\gradlew.bat :backend:test` (successful)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

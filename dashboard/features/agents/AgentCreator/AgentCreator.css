@@ -4864,6 +4864,69 @@
   font-size: 0.73rem;
 }
 
+.schedule-time-trigger {
+  display: grid;
+  width: 100%;
+  min-width: 118px;
+  min-height: 38px;
+  grid-template-columns: 16px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid rgba(91, 151, 199, 0.24);
+  border-radius: 10px;
+  outline: none;
+  color: #e6f0f7;
+  background: #0a2238;
+  font: inherit;
+  font-size: 0.73rem;
+  font-weight: 560;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.schedule-time-trigger > svg:first-child { color: #73a6c2; }
+.schedule-time-trigger > span:nth-child(2) { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.schedule-time-trigger > span:last-child { display: grid; color: #7893a8; transition: transform 160ms ease; }
+.schedule-time-trigger:hover,
+.schedule-time-trigger[data-state="open"] { border-color: rgba(35, 220, 207, 0.55); background: #0b2942; box-shadow: 0 0 0 3px rgba(31, 220, 207, 0.07); }
+.schedule-time-trigger[data-state="open"] > span:last-child { transform: rotate(180deg); }
+.schedule-time-trigger:focus-visible { border-color: #25ded1; box-shadow: 0 0 0 3px rgba(31, 220, 207, 0.12); }
+
+.schedule-time-content {
+  z-index: 180;
+  min-width: var(--radix-select-trigger-width);
+  max-height: min(300px, var(--radix-select-content-available-height));
+  overflow: hidden;
+  border: 1px solid rgba(47, 209, 199, 0.34);
+  border-radius: 12px;
+  color: #dceaf4;
+  background: linear-gradient(155deg, #0d2942, #061a2e);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.56), 0 0 30px -20px rgba(34, 222, 210, 0.65);
+  transform-origin: var(--radix-select-content-transform-origin);
+  animation: scheduleTimeSelectIn 140ms ease-out;
+}
+
+.schedule-time-viewport { padding: 6px; }
+.schedule-time-item { position: relative; display: flex; min-height: 36px; align-items: center; padding: 0 11px 0 34px; border-radius: 8px; outline: 0; color: #b7cad8; font-size: 0.74rem; font-weight: 540; cursor: pointer; user-select: none; }
+.schedule-time-item > span:first-child { position: absolute; left: 10px; display: grid; color: #2ce0d4; }
+.schedule-time-item[data-highlighted] { color: #f2ffff; background: linear-gradient(90deg, rgba(16, 157, 147, 0.34), rgba(18, 70, 101, 0.38)); }
+.schedule-time-item[data-state="checked"] { color: #2ce2d6; background: rgba(12, 107, 114, 0.24); }
+.schedule-time-scroll { display: grid; height: 28px; place-items: center; border: 0; color: #7792a8; background: #092238; cursor: default; }
+.schedule-time-scroll:first-child svg { transform: rotate(180deg); }
+
+@keyframes scheduleTimeSelectIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @media (max-width: 700px) {
   .personalisation-drawer-backdrop {
     padding: 0;
@@ -4889,6 +4952,10 @@
   .personalisation-drawer .weekly-hours-row > div {
     grid-column: 1 / -1;
     margin-left: 31px;
+  }
+
+  .schedule-time-trigger {
+    min-width: 0;
   }
 
   .structured-variable-options {
@@ -5268,6 +5335,245 @@
 .agent-studio .agent-studio-form .studio-form-grid input::placeholder{color:#637d93;opacity:1}
 .agent-studio .agent-studio-form .studio-form-grid input:hover,.agent-studio .agent-studio-form .studio-form-grid select:hover{border-color:rgba(42,220,207,.5);color:#f3ffff;background:#0a263f}
 .agent-studio .agent-studio-form .studio-form-grid input:focus,.agent-studio .agent-studio-form .studio-form-grid select:focus{border-color:#27ded1;color:#f4ffff;background:#0a263f;box-shadow:0 0 0 3px rgba(39,222,209,.1),0 10px 28px rgba(0,0,0,.14)}
+
+/* Main settings uses compact studio cards; other configuration tabs keep their existing layout. */
+.main-settings-page {
+  display: grid;
+  gap: 16px;
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.main-settings-page .main-settings-card {
+  margin: 0;
+  padding: 20px;
+  border: 1px solid rgba(91, 151, 199, 0.18);
+  border-radius: 16px;
+  background: linear-gradient(150deg, rgba(7, 27, 47, 0.9), rgba(5, 21, 38, 0.82));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025), 0 12px 34px rgba(0, 0, 0, 0.08);
+}
+
+.main-settings-page .studio-heading {
+  margin-bottom: 17px;
+  padding-bottom: 15px;
+}
+
+.main-settings-page .studio-heading h2 {
+  font-size: 1.08rem;
+}
+
+.main-settings-page .studio-warning {
+  margin-bottom: 17px;
+}
+
+.main-settings-page .studio-form-grid {
+  gap: 13px 15px;
+}
+
+.main-settings-page .studio-form-grid input,
+.main-settings-page .studio-form-grid .studio-disabled-field {
+  min-height: 46px;
+  border-radius: 11px;
+}
+
+.main-settings-page .studio-setting-group > h3 {
+  font-size: 0.9rem;
+}
+
+.main-settings-page .studio-setting-group > p {
+  margin-bottom: 10px;
+}
+
+.main-settings-page .studio-toggle-row {
+  min-height: 62px;
+  border-radius: 12px;
+}
+
+.main-settings-page .booking-workflow-settings {
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(4, 24, 42, 0.74);
+}
+
+.booking-field-picker {
+  display: grid;
+  gap: 15px;
+}
+
+.booking-field-picker > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.booking-field-picker > header strong,
+.booking-field-picker > header small {
+  display: block;
+}
+
+.booking-field-picker > header strong {
+  color: #e7f1f8;
+  font-size: 0.82rem;
+  font-weight: 620;
+}
+
+.booking-field-picker > header small {
+  margin-top: 4px;
+  color: #718a9f;
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.booking-field-picker > header > span {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid rgba(38, 221, 209, 0.24);
+  border-radius: 999px;
+  color: #2bded2;
+  background: rgba(7, 104, 106, 0.16);
+  font-size: 0.63rem;
+  font-weight: 650;
+}
+
+.booking-field-group {
+  display: grid;
+  gap: 8px;
+}
+
+.booking-field-group > span,
+.booking-custom-field > label {
+  color: #7891a5;
+  font-size: 0.67rem;
+  font-weight: 590;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.booking-field-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.booking-field-options > button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid rgba(93, 149, 195, 0.24);
+  border-radius: 9px;
+  color: #91a8ba;
+  background: rgba(7, 29, 49, 0.88);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.booking-field-options > button:hover {
+  border-color: rgba(39, 221, 209, 0.46);
+  color: #e8fffd;
+  background: rgba(9, 54, 72, 0.84);
+  transform: translateY(-1px);
+}
+
+.booking-field-options > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  transform: none;
+}
+
+.booking-field-options > button.selected,
+.booking-field-options.core > button {
+  border-color: rgba(37, 222, 210, 0.48);
+  color: #37e0d4;
+  background: linear-gradient(145deg, rgba(7, 101, 104, 0.28), rgba(8, 45, 66, 0.76));
+}
+
+.booking-field-options.core > button {
+  cursor: default;
+  transform: none;
+}
+
+.booking-field-options.core > button small {
+  margin-left: 2px;
+  padding-left: 7px;
+  border-left: 1px solid rgba(45, 222, 210, 0.22);
+  color: #718fa3;
+  font-size: 0.58rem;
+}
+
+.booking-field-library {
+  border-top: 1px solid rgba(92, 149, 194, 0.13);
+  border-bottom: 1px solid rgba(92, 149, 194, 0.13);
+}
+
+.booking-field-library summary {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  color: #9cb1c1;
+  font-size: 0.72rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.booking-field-library summary::-webkit-details-marker { display: none; }
+.booking-field-library summary svg { transition: transform 150ms ease; }
+.booking-field-library[open] summary svg { transform: rotate(180deg); }
+.booking-field-library[open] .booking-field-options { padding: 0 0 13px; }
+
+.booking-custom-field {
+  display: grid;
+  gap: 7px;
+}
+
+.booking-custom-field > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.agent-studio-form .booking-custom-field input {
+  min-height: 40px;
+  border-radius: 10px;
+}
+
+.booking-custom-field button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 13px;
+  border: 1px solid rgba(36, 222, 210, 0.48);
+  border-radius: 10px;
+  color: #31ded2;
+  background: rgba(7, 102, 105, 0.18);
+  font: inherit;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.booking-custom-field button:disabled { cursor: not-allowed; opacity: 0.4; }
+.booking-custom-field > small { color: #6d859a; font-size: 0.65rem; }
+.booking-custom-field code { color: #35dcd1; }
+
+.booking-notification-settings {
+  padding-top: 2px;
+}
+
+@media (max-width: 760px) {
+  .main-settings-page .main-settings-card { padding: 16px; }
+  .booking-field-picker > header { align-items: stretch; flex-direction: column; }
+  .booking-field-picker > header > span { align-self: flex-start; }
+  .booking-custom-field > div { grid-template-columns: 1fr; }
+  .booking-custom-field button { justify-content: center; }
+}
 .agent-studio .web-voice-settings{overflow:hidden;padding:22px 0 0;border:1px solid rgba(83,145,193,.2);border-radius:18px;background:linear-gradient(145deg,rgba(8,29,49,.78),rgba(5,20,35,.74))}
 .agent-studio .web-voice-settings>h3,.agent-studio .web-voice-settings>p{padding-inline:22px}
 .agent-studio .web-voice-settings .studio-toggle-row,.agent-studio .web-voice-settings .channel-status{min-height:76px;padding:0 22px;border-top:1px solid rgba(89,149,197,.12);border-bottom:0;background:rgba(5,22,38,.32)}

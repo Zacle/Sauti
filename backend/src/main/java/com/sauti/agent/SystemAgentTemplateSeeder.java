@@ -272,10 +272,8 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 definition("appointment_buffer", "Appointment buffer", "Gap required between appointments", "15 minutes", false),
                 definition("cancellation_policy", "Cancellation policy", "Policy text the agent may explain", "Cancel at least 24 hours ahead", false),
                 definition("confirmation_channels", "Customer confirmations", "SMS, email, both, or none", "SMS and email", false),
-                definition("notification_channels", "Owner notifications", "How the owner is alerted to bookings", "Dashboard and email", true),
                 definition("faq", "Frequently asked questions", "Approved question and answer pairs", "Parking: available behind the building", false),
-                definition("prohibited_statements", "Prohibited statements", "Claims or advice the agent must never provide", "Never diagnose or guarantee outcomes", false),
-                definition("required_booking_fields", "Required booking fields", "Information required before creating a booking", "Name, phone, service, date and time", true)
+                definition("prohibited_statements", "Prohibited statements", "Claims or advice the agent must never provide", "Never diagnose or guarantee outcomes", false)
         );
     }
 
