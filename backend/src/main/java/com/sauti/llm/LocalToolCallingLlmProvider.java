@@ -84,6 +84,7 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                                 "caller_phone", pendingBooking.callerPhone(),
                                 "caller_name_spelling_confirmed", true,
                                 "caller_phone_digits_confirmed", true,
+                                "final_booking_review_confirmed", true,
                                 "service_type", pendingBooking.serviceType()
                         )),
                         tool("send_confirmation_sms", Map.of(

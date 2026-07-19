@@ -470,7 +470,7 @@ function requestCallerResponse(channel: RTCDataChannel, requireAvailabilityTool:
   send(channel, {
     type: "response.create",
     response: {
-      instructions: "Answer exactly once in the current caller language using only configured facts. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. Ask at most one question. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly. Speak whole-hour times naturally without zero minutes or spelling P.M.",
+      instructions: "Answer exactly once in the current caller language using only configured facts. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. Ask at most one question. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly. Speak whole-hour times naturally without zero minutes or spelling P.M. Ask callers to provide identity details naturally; never ask them to use NATO phonetics or dictate a phone digit by digit. Do not read fields back as they are collected. After every required detail is present and availability is confirmed, the agent performs one consolidated final review, and the caller only confirms or corrects it.",
     },
   });
 }
@@ -479,7 +479,7 @@ function requestToolResultResponse(channel: RTCDataChannel) {
   send(channel, {
     type: "response.create",
     response: {
-      instructions: "Give one concise answer based only on the tool output and in the current caller language. Preserve the requested date and time exactly. Availability does not mean booked or held. Never invent a callback, booking, service, or alternative time.",
+      instructions: "Give one concise answer based only on the tool output and in the current caller language. Preserve the requested date and time exactly. Availability does not mean booked or held. Never invent a callback, booking, service, or alternative time. For identity_confirmation_required, all intake is complete: the agent must speak one consolidated final review using agentReadback and bookingReview, then ask whether everything is correct. Never split it into field-by-field confirmations or ask the caller to produce NATO phonetics or digit-by-digit dictation.",
       tool_choice: "none",
     },
   });

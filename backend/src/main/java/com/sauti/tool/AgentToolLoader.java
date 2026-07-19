@@ -36,6 +36,13 @@ public class AgentToolLoader {
         var required = new java.util.ArrayList<String>(
                 (List<String>) schema.getOrDefault("required", List.of())
         );
+        properties.put("final_booking_review_confirmed", Map.of(
+                "type", "boolean",
+                "description", "True only after all required details and availability are complete, the agent performs one consolidated final review, and the caller confirms everything together"
+        ));
+        if (!required.contains("final_booking_review_confirmed")) {
+            required.add("final_booking_review_confirmed");
+        }
         var configured = tool.getAgent().getBookingRequiredFields();
         var topLevel = java.util.Set.of(
                 "caller_name", "caller_phone", "caller_email", "service_type", "appointment_at"

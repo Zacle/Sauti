@@ -173,6 +173,7 @@ class SautiCalendarFulfillmentTest {
                         "caller_phone", "01115753441",
                         "caller_name_spelling_confirmed", true,
                         "caller_phone_digits_confirmed", true,
+                        "final_booking_review_confirmed", true,
                         "service_type", "Consultation"
                 )
         ));
@@ -185,7 +186,8 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
-    void refusesToBookUntilNameAndPhoneReadbacksAreConfirmed() {
+    @SuppressWarnings("unchecked")
+    void refusesToBookUntilConsolidatedFinalReviewIsConfirmed() {
         var fixture = fixture(HOURS, List.of());
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
@@ -194,7 +196,11 @@ class SautiCalendarFulfillmentTest {
                         "appointment_at", "2026-07-23T12:00:00Z",
                         "caller_name", "Zachary",
                         "caller_phone", "01115753441",
-                        "service_type", "Consultation"
+                        "caller_name_spelling_confirmed", true,
+                        "caller_phone_digits_confirmed", true,
+                        "service_type", "Consultation",
+                        "duration_minutes", 45,
+                        "customer_details", Map.of("preferred_staff", "Any available staff")
                 )
         ));
 
@@ -205,10 +211,23 @@ class SautiCalendarFulfillmentTest {
         assertThat((List<?>) result.result().get("unconfirmedFields"))
                 .extracting(Object::toString)
                 .containsExactly("caller_name", "caller_phone");
+        assertThat((Map<String, String>) result.result().get("agentReadback"))
+                .containsEntry("caller_name", "Zulu, Alfa, Charlie, Hotel, Alfa, Romeo, Yankee")
+                .containsEntry("caller_phone", "0, 1, 1, 1, 5, 7, 5, 3, 4, 4, 1");
+        assertThat((Map<String, Object>) result.result().get("bookingReview"))
+                .containsEntry("service", "Consultation")
+                .containsEntry("appointmentAt", "2026-07-23T12:00:00Z")
+                .containsEntry("durationMinutes", 45)
+                .containsEntry("customerDetails", Map.of("preferred_staff", "Any available staff"));
+        assertThat(result.result().get("instruction").toString())
+                .contains("one consolidated final review")
+                .contains("Do not confirm fields separately")
+                .contains("Never ask the caller to use NATO phonetics");
         verifyNoInteractions(fixture.bookingService);
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void requiresASeparateSpellingConfirmationWhenEmailIsProvided() {
         var fixture = fixture(HOURS, List.of());
 
@@ -221,6 +240,7 @@ class SautiCalendarFulfillmentTest {
                         "caller_email", "z@example.com",
                         "caller_name_spelling_confirmed", true,
                         "caller_phone_digits_confirmed", true,
+                        "final_booking_review_confirmed", true,
                         "service_type", "Consultation"
                 )
         ));
@@ -229,6 +249,8 @@ class SautiCalendarFulfillmentTest {
         assertThat((List<?>) result.result().get("unconfirmedFields"))
                 .extracting(Object::toString)
                 .containsExactly("caller_email");
+        assertThat((Map<String, String>) result.result().get("agentReadback"))
+                .containsEntry("caller_email", "Zulu, at sign, Echo, X-ray, Alfa, Mike, Papa, Lima, Echo, dot, Charlie, Oscar, Mike");
         verifyNoInteractions(fixture.bookingService);
     }
 

@@ -39,7 +39,8 @@ class AgentToolLoaderTest {
         var properties = (Map<String, Object>) definition.inputSchema().get("properties");
         var details = (Map<String, Object>) properties.get("customer_details");
         var detailProperties = (Map<String, Object>) details.get("properties");
-        assertThat(required).contains("caller_name", "caller_email", "customer_details");
+        assertThat(required).contains("caller_name", "caller_email", "customer_details", "final_booking_review_confirmed");
+        assertThat(properties).containsKey("final_booking_review_confirmed");
         assertThat((List<String>) details.get("required"))
                 .containsExactly("patient_date_of_birth", "insurance_member_number");
         assertThat(detailProperties).containsKeys("patient_date_of_birth", "insurance_member_number");
