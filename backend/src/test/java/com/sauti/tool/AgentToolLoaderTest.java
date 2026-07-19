@@ -25,9 +25,11 @@ class AgentToolLoaderTest {
                 "properties", Map.of(
                         "caller_name", Map.of("type", "string"),
                         "caller_email", Map.of("type", "string"),
-                        "customer_details", Map.of("type", "object")
+                        "customer_details", Map.of("type", "object"),
+                        "caller_name_spelling_confirmed", Map.of("type", "boolean"),
+                        "final_booking_review_confirmed", Map.of("type", "boolean")
                 ),
-                "required", List.of("caller_name")
+                "required", List.of("caller_name", "caller_name_spelling_confirmed", "final_booking_review_confirmed")
         );
         var tool = new AgentTool(agent, "book_slot", "Create booking", schema, "sauti_calendar", true, 20);
         var repository = mock(AgentToolRepository.class);
@@ -39,8 +41,14 @@ class AgentToolLoaderTest {
         var properties = (Map<String, Object>) definition.inputSchema().get("properties");
         var details = (Map<String, Object>) properties.get("customer_details");
         var detailProperties = (Map<String, Object>) details.get("properties");
-        assertThat(required).contains("caller_name", "caller_email", "customer_details", "final_booking_review_confirmed");
-        assertThat(properties).containsKey("final_booking_review_confirmed");
+        assertThat(required).contains("caller_name", "caller_email", "customer_details")
+                .doesNotContain("caller_name_spelling_confirmed", "final_booking_review_confirmed");
+        assertThat(properties).doesNotContainKeys(
+                "caller_name_spelling_confirmed",
+                "caller_phone_digits_confirmed",
+                "caller_email_spelling_confirmed",
+                "final_booking_review_confirmed"
+        );
         assertThat((List<String>) details.get("required"))
                 .containsExactly("patient_date_of_birth", "insurance_member_number");
         assertThat(detailProperties).containsKeys("patient_date_of_birth", "insurance_member_number");

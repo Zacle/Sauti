@@ -23,23 +23,17 @@ public class DefaultToolSeeder {
                         "time_preference", property("string", "Exact preferred time in HH:mm when provided, otherwise a period such as morning", ""),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("date")), "sauti_calendar", "noop_calendar", 10);
-        seed(agent, "book_slot", "Book only after all required details and availability are complete, then the agent performs one consolidated final readback and the caller confirms it.",
+        seed(agent, "book_slot", "Book after the configured details and availability are complete. Toward the end, the agent should read its understanding back for correction; never require the caller to spell or provide a formal spelling confirmation.",
                 schema(Map.ofEntries(
                         Map.entry("appointment_at", property("string", "Confirmed ISO-8601 appointment datetime", "date-time")),
                         Map.entry("caller_name", property("string", "Caller full name", "")),
                         Map.entry("caller_phone", property("string", "Caller phone number", "phone")),
                         Map.entry("caller_email", property("string", "Caller email when required by this agent", "email")),
-                        Map.entry("caller_name_spelling_confirmed", property("boolean", "True only after all intake is complete and the caller confirms the agent's consolidated final review containing the NATO name readback; never ask the caller to use NATO", "")),
-                        Map.entry("caller_phone_digits_confirmed", property("boolean", "True only after all intake is complete and the caller confirms the agent's consolidated final review containing the digit-by-digit phone readback", "")),
-                        Map.entry("caller_email_spelling_confirmed", property("boolean", "True only after all intake is complete and the caller confirms the agent's consolidated final review containing the NATO email readback; never ask the caller to use NATO", "")),
-                        Map.entry("final_booking_review_confirmed", property("boolean", "True only after every required field and availability are complete, the agent reads the entire booking back once, and the caller confirms the complete final review", "")),
                         Map.entry("service_type", property("string", "Service being booked", "")),
                         Map.entry("duration_minutes", property("integer", "Appointment duration in minutes", "")),
                         Map.entry("customer_details", property("object", "Additional fields required by this agent's booking workflow", ""))
                 ), List.of(
-                        "appointment_at", "caller_name", "caller_phone", "service_type",
-                        "caller_name_spelling_confirmed", "caller_phone_digits_confirmed",
-                        "final_booking_review_confirmed"
+                        "appointment_at", "caller_name", "caller_phone", "service_type"
                 )), "sauti_calendar", "noop_calendar", 20);
         seed(agent, "reschedule_booking", "Reschedule a booking only after checking the new time with check_availability and receiving caller confirmation.",
                 schema(Map.of(

@@ -11,7 +11,6 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.text.Normalizer;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -201,17 +200,6 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     "instruction", "Ask for only the next missing field in the caller's language before booking."
             );
         }
-        var unconfirmedFields = unconfirmedIdentityFields(toolCall.arguments());
-        if (!unconfirmedFields.isEmpty()) {
-            return Map.of(
-                    "status", "identity_confirmation_required",
-                    "bookingCreated", false,
-                    "unconfirmedFields", unconfirmedFields,
-                    "agentReadback", identityReadback(toolCall.arguments(), unconfirmedFields),
-                    "bookingReview", bookingReview(toolCall.arguments(), customerDetails),
-                    "instruction", "All required booking information is now present. Perform one consolidated final review using agentReadback and bookingReview, then ask whether everything is correct. Do not confirm fields separately or earlier in the call. Never ask the caller to use NATO phonetics, spell character by character, or dictate the phone one digit at a time. The caller only confirms or corrects your complete review."
-            );
-        }
         var selectedProvider = call.getAgent().getCalendarProvider();
         com.sauti.calendar.CalendarProvider provider = null;
         try {
@@ -300,117 +288,6 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         } catch (NumberFormatException exception) {
             return defaultValue;
         }
-    }
-
-    private boolean booleanArg(Map<String, Object> arguments, String name) {
-        var value = arguments.get(name);
-        return value instanceof Boolean bool ? bool : value != null && Boolean.parseBoolean(value.toString());
-    }
-
-    private List<String> unconfirmedIdentityFields(Map<String, Object> arguments) {
-        var fields = new java.util.ArrayList<String>();
-        if (!booleanArg(arguments, "final_booking_review_confirmed")) {
-            fields.add("caller_name");
-            fields.add("caller_phone");
-            var email = stringArg(arguments, "caller_email", "");
-            if (!email.isBlank()) fields.add("caller_email");
-            return List.copyOf(fields);
-        }
-        if (!booleanArg(arguments, "caller_name_spelling_confirmed")) {
-            fields.add("caller_name");
-        }
-        if (!booleanArg(arguments, "caller_phone_digits_confirmed")) {
-            fields.add("caller_phone");
-        }
-        var email = stringArg(arguments, "caller_email", "");
-        if (!email.isBlank() && !booleanArg(arguments, "caller_email_spelling_confirmed")) {
-            fields.add("caller_email");
-        }
-        return List.copyOf(fields);
-    }
-
-    private Map<String, String> identityReadback(Map<String, Object> arguments, List<String> fields) {
-        var readback = new LinkedHashMap<String, String>();
-        if (fields.contains("caller_name")) {
-            readback.put("caller_name", natoReadback(stringArg(arguments, "caller_name", "")));
-        }
-        if (fields.contains("caller_phone")) {
-            readback.put("caller_phone", phoneReadback(stringArg(arguments, "caller_phone", "")));
-        }
-        if (fields.contains("caller_email")) {
-            readback.put("caller_email", natoReadback(stringArg(arguments, "caller_email", "")));
-        }
-        return Map.copyOf(readback);
-    }
-
-    private Map<String, Object> bookingReview(Map<String, Object> arguments, Map<String, Object> customerDetails) {
-        var review = new LinkedHashMap<String, Object>();
-        review.put("service", stringArg(arguments, "service_type", ""));
-        review.put("appointmentAt", stringArg(arguments, "appointment_at", ""));
-        review.put("durationMinutes", intArg(arguments, "duration_minutes", 60));
-        if (!customerDetails.isEmpty()) review.put("customerDetails", Map.copyOf(customerDetails));
-        return Map.copyOf(review);
-    }
-
-    private String phoneReadback(String value) {
-        return value.codePoints()
-                .filter(codePoint -> Character.isDigit(codePoint) || codePoint == '+')
-                .mapToObj(codePoint -> codePoint == '+' ? "plus" : new String(Character.toChars(codePoint)))
-                .collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    private String natoReadback(String value) {
-        var normalized = Normalizer.normalize(value, Normalizer.Form.NFD);
-        var words = new java.util.ArrayList<String>();
-        normalized.codePoints().forEach(codePoint -> {
-            if (Character.getType(codePoint) == Character.NON_SPACING_MARK) return;
-            var character = Character.toUpperCase((char) codePoint);
-            var nato = natoWord(character);
-            if (nato != null) words.add(nato);
-            else if (Character.isDigit(codePoint)) words.add(new String(Character.toChars(codePoint)));
-            else switch (codePoint) {
-                case '@' -> words.add("at sign");
-                case '.' -> words.add("dot");
-                case '-' -> words.add("hyphen");
-                case '_' -> words.add("underscore");
-                case '\'' -> words.add("apostrophe");
-                case ' ' -> words.add("space");
-                default -> words.add(new String(Character.toChars(codePoint)));
-            }
-        });
-        return String.join(", ", words);
-    }
-
-    private String natoWord(char character) {
-        return switch (character) {
-            case 'A' -> "Alfa";
-            case 'B' -> "Bravo";
-            case 'C' -> "Charlie";
-            case 'D' -> "Delta";
-            case 'E' -> "Echo";
-            case 'F' -> "Foxtrot";
-            case 'G' -> "Golf";
-            case 'H' -> "Hotel";
-            case 'I' -> "India";
-            case 'J' -> "Juliett";
-            case 'K' -> "Kilo";
-            case 'L' -> "Lima";
-            case 'M' -> "Mike";
-            case 'N' -> "November";
-            case 'O' -> "Oscar";
-            case 'P' -> "Papa";
-            case 'Q' -> "Quebec";
-            case 'R' -> "Romeo";
-            case 'S' -> "Sierra";
-            case 'T' -> "Tango";
-            case 'U' -> "Uniform";
-            case 'V' -> "Victor";
-            case 'W' -> "Whiskey";
-            case 'X' -> "X-ray";
-            case 'Y' -> "Yankee";
-            case 'Z' -> "Zulu";
-            default -> null;
-        };
     }
 
     @SuppressWarnings("unchecked")

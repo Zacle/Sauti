@@ -3499,3 +3499,26 @@ Expected:
   - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-19 - Make the late-call readback non-blocking
+
+- Supersedes the mandatory confirmation-gate design documented immediately above. The supplied Ailsa transcript showed that exposing spelling-confirmation booleans caused the model to repeatedly demand that the caller spell their own name.
+- Removed `caller_name_spelling_confirmed`, `caller_phone_digits_confirmed`, `caller_email_spelling_confirmed`, and `final_booking_review_confirmed` from new booking-tool schemas. The dynamic tool loader also strips these legacy properties and requirements from existing agents at runtime, so agents do not need to be recreated.
+- Removed `identity_confirmation_required` from calendar fulfillment. A booking now depends only on the real configured booking fields; spelling and formal confirmation phrases are not API prerequisites.
+- Strengthened browser, phone, and shared conversation instructions: callers always provide names, emails, and phone numbers naturally and must never be asked to spell them in any form. Toward the end of intake, the agent spells its own interpretation and reads the phone number back once so the caller can correct an error. That accuracy check is not performed after every field and does not require special confirmation wording.
+- Kept the local heuristic provider's natural end-of-intake agent readback, but removed all confirmation flags from its eventual booking call.
+- Added regression coverage proving legacy confirmation fields are removed from model-visible schemas and that normal bookings succeed without any spelling/confirmation booleans.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/llm/{ConversationOrchestrator,LocalToolCallingLlmProvider}.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/{AgentToolLoaderTest,SautiCalendarFulfillmentTest}.java`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+- Verification:
+  - focused conversation, tool-schema, calendar-fulfillment, and authenticated call-flow tests (successful after correcting one wording assertion)
+  - `\.\gradlew.bat :backend:test` (successful)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

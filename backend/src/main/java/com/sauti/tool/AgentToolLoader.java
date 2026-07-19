@@ -36,13 +36,14 @@ public class AgentToolLoader {
         var required = new java.util.ArrayList<String>(
                 (List<String>) schema.getOrDefault("required", List.of())
         );
-        properties.put("final_booking_review_confirmed", Map.of(
-                "type", "boolean",
-                "description", "True only after all required details and availability are complete, the agent performs one consolidated final review, and the caller confirms everything together"
-        ));
-        if (!required.contains("final_booking_review_confirmed")) {
-            required.add("final_booking_review_confirmed");
-        }
+        var legacyConfirmationFields = java.util.Set.of(
+                "caller_name_spelling_confirmed",
+                "caller_phone_digits_confirmed",
+                "caller_email_spelling_confirmed",
+                "final_booking_review_confirmed"
+        );
+        legacyConfirmationFields.forEach(properties::remove);
+        required.removeIf(legacyConfirmationFields::contains);
         var configured = tool.getAgent().getBookingRequiredFields();
         var topLevel = java.util.Set.of(
                 "caller_name", "caller_phone", "caller_email", "service_type", "appointment_at"
@@ -67,7 +68,11 @@ public class AgentToolLoader {
         if (!detailFields.isEmpty() && !required.contains("customer_details")) required.add("customer_details");
         schema.put("properties", Map.copyOf(properties));
         schema.put("required", List.copyOf(required));
-        return new LlmToolDefinition(definition.name(), definition.description(), Map.copyOf(schema));
+        return new LlmToolDefinition(
+                definition.name(),
+                "Create the booking after configured details and availability are complete. The caller states details naturally and is never required to spell them or provide spelling-confirmation flags.",
+                Map.copyOf(schema)
+        );
     }
 
     private String humanize(String field) {
