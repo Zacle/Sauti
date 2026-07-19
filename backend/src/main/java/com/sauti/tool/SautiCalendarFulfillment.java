@@ -196,8 +196,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             return Map.of(
                     "status", "missing_required_information",
                     "bookingCreated", false,
-                    "missingFields", missingFields,
-                    "instruction", "Ask for only the next missing field in the caller's language before booking."
+                    "nextMissingField", missingFields.get(0),
+                    "remainingMissingFieldCount", missingFields.size(),
+                    "instruction", "Ask for exactly nextMissingField in the caller's language. Do not mention, list, or request any other missing field in the same reply."
             );
         }
         var selectedProvider = call.getAgent().getCalendarProvider();

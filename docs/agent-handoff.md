@@ -3522,3 +3522,27 @@ Expected:
   - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-19 - Make booking intake sequential and literal
+
+- Corrected the intake failures shown by the latest Ailsa transcript. Agents now request exactly one missing booking value per reply instead of combining service, staff, name, phone, and email into a single question.
+- Made the configured required-field list a private model checklist rather than caller-facing copy. When `book_slot` is attempted before intake is complete, calendar fulfillment now exposes only `nextMissingField` plus a remaining count; it no longer returns the complete missing-field list that encouraged bundled questions.
+- Neutral acknowledgements such as `okay`, `no problem`, and `just a second` are no longer treated as booking values or silently converted to `any staff`. An any-staff preference is recorded only when the caller explicitly says they have no preference.
+- Added a dedicated pause rule: when a caller asks for a moment, the agent says only a short equivalent of `Take your time` and waits without repeating the pending question or collected details.
+- Prevented contradictory comprehension responses such as `I didn't catch that` immediately before using the caller's correctly understood name.
+- Unclear service transcripts are now clarified with one short question instead of being silently repaired into a plausible service. Spoken dates and times must use natural localized wording and must not expose ISO dates or combine 24-hour notation with AM/PM.
+- Applied the same response constraints to the shared orchestrator, browser OpenAI Realtime runtime, and phone OpenAI Realtime runtime.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+- Verification:
+  - focused `ConversationOrchestratorTest`, `SautiCalendarFulfillmentTest`, and `AgentToolLoaderTest` (successful)
+  - `.\gradlew.bat :backend:test` (successful)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.

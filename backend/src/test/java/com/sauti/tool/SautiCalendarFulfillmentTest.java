@@ -186,7 +186,8 @@ class SautiCalendarFulfillmentTest {
     void requiresTemplateSpecificCustomerDetailsBeforeCreatingBooking() {
         var fixture = fixture(HOURS, List.of());
         when(fixture.agent.getBookingRequiredFields()).thenReturn(List.of(
-                "caller_name", "caller_phone", "service_type", "appointment_at", "patient_date_of_birth"
+                "caller_name", "caller_phone", "service_type", "appointment_at",
+                "patient_date_of_birth", "insurance_member_number"
         ));
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
@@ -202,10 +203,10 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.success()).isTrue();
         assertThat(result.result())
                 .containsEntry("status", "missing_required_information")
-                .containsEntry("bookingCreated", false);
-        assertThat((List<?>) result.result().get("missingFields"))
-                .extracting(Object::toString)
-                .containsExactly("patient_date_of_birth");
+                .containsEntry("bookingCreated", false)
+                .containsEntry("nextMissingField", "patient_date_of_birth")
+                .containsEntry("remainingMissingFieldCount", 2);
+        assertThat(result.result()).doesNotContainKey("missingFields");
         verifyNoInteractions(fixture.bookingService);
     }
 
