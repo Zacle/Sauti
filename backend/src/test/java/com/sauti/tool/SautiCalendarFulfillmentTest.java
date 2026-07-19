@@ -165,14 +165,33 @@ class SautiCalendarFulfillmentTest {
         when(booking.getCalendarSyncStatus()).thenReturn("pending_owner_action");
         when(fixture.bookingService.create(any(), any(), isNull())).thenReturn(booking);
 
+        var arguments = new java.util.LinkedHashMap<String, Object>();
+        arguments.put("appointment_at", "2026-07-23T12:00:00Z");
+        arguments.put("caller_name", "Zachary");
+        arguments.put("caller_phone", "01115753441");
+        arguments.put("caller_email", "zachary.123@gmail.com");
+        arguments.put("service_type", "Consultation");
+        arguments.put("duration_minutes", 75);
+        arguments.put("customer_details", Map.of("preferred_staff", "any available staff"));
+        var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "booking-review", "book_slot", Map.copyOf(arguments)
+        ));
+
+        assertThat(review.success()).isTrue();
+        assertThat(review.result())
+                .containsEntry("status", "booking_review_required")
+                .containsEntry("bookingCreated", false);
+        assertThat(review.result().get("spokenResponse").toString())
+                .contains("Zulu, Alfa, Charlie, Hotel, Alfa, Romeo, Yankee")
+                .contains("0, 1, 1, 1, 5, 7, 5, 3, 4, 4, 1")
+                .contains("at sign", "dot", "Golf, Mike, Alfa, India, Lima")
+                .contains("75 minutes", "Preferred Staff: any available staff")
+                .doesNotContain(review.result().get("reviewToken").toString());
+        verifyNoInteractions(fixture.bookingService);
+
+        arguments.put("review_token", review.result().get("reviewToken"));
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
-                "booking-without-google", "book_slot",
-                Map.of(
-                        "appointment_at", "2026-07-23T12:00:00Z",
-                        "caller_name", "Zachary",
-                        "caller_phone", "01115753441",
-                        "service_type", "Consultation"
-                )
+                "booking-without-google", "book_slot", Map.copyOf(arguments)
         ));
 
         assertThat(result.success()).isTrue();
@@ -207,6 +226,36 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("nextMissingField", "patient_date_of_birth")
                 .containsEntry("remainingMissingFieldCount", 2);
         assertThat(result.result()).doesNotContainKey("missingFields");
+        verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
+    void requiresANewReviewWhenTheCallerCorrectsAReviewedDetail() {
+        var fixture = fixture(HOURS, List.of());
+        var arguments = new java.util.LinkedHashMap<String, Object>();
+        arguments.put("appointment_at", "2026-07-23T12:00:00Z");
+        arguments.put("caller_name", "Zachary");
+        arguments.put("caller_phone", "01115753441");
+        arguments.put("caller_email", "wrong@example.com");
+        arguments.put("service_type", "Men hairstyle");
+        var first = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "review-before-correction", "book_slot", Map.copyOf(arguments)
+        ));
+
+        arguments.put("caller_email", "zachary.123@gmail.com");
+        arguments.put("review_token", first.result().get("reviewToken"));
+        var corrected = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "review-after-correction", "book_slot", Map.copyOf(arguments)
+        ));
+
+        assertThat(corrected.result())
+                .containsEntry("status", "booking_review_required")
+                .containsEntry("bookingCreated", false);
+        assertThat(corrected.result().get("reviewToken"))
+                .isNotEqualTo(first.result().get("reviewToken"));
+        assertThat(corrected.result().get("spokenResponse").toString())
+                .contains("Zulu, Alfa, Charlie, Hotel, Alfa, Romeo, Yankee")
+                .contains("at sign", "Golf, Mike, Alfa, India, Lima");
         verifyNoInteractions(fixture.bookingService);
     }
 

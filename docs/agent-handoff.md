@@ -3546,3 +3546,34 @@ Expected:
   - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
 - Deployment:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+
+### 2026-07-19 - Make configured knowledge and final booking review authoritative
+
+- Fixed the broader configuration gap exposed by the salon transcript. Every populated required or optional agent variable is now injected into the live conversation even when the template prompt omitted its placeholder. Customer-facing facts are separated from private operating rules so agents can answer exact services, prices, hours, policies, locations, memberships, classes, packages, insurance, staff, and vertical-specific facts without exposing transfer destinations or escalation instructions.
+- Structured service-style catalog values into exact entries and explicitly preserve service/price pairs. This applies across the current appointment, support, and sales templates rather than only the salon template.
+- Replaced prompt-only late-call verification with a server-enforced two-step `book_slot` protocol. The first valid call returns a deterministic consolidated review and a private token bound to every value that will be saved. The review includes the agent-spelled NATO name and email, digit-by-digit phone, service, naturally spoken date/time, duration, preferred staff, and all configured custom booking details. A correction changes the payload and invalidates the old token; only a later call with unchanged values and the matching token can create the booking.
+- Preserved explicit `any available staff` as a real booking value and included it in saved custom details and the final review, so the agent must not ask for staff again after the caller has already expressed no preference.
+- Fixed a call-lifecycle defect where the review-only `book_slot` result was incorrectly classified as `booking_made`. The call now remains active while the customer reviews or corrects details, and only an actually persisted booking can produce the booking outcome.
+- Serialized browser and phone OpenAI Realtime `response.create` requests. Tool-result speech now waits for the preceding response to finish, provider-busy errors preserve and retry the pending response, and deterministic tool text is synthesized through the native voice path rather than being injected as mismatched transcript text. This addresses the `Conversation already has an active response in progress` race.
+- Added regression coverage for optional business facts and exact pricing, private operating rules, review-token invalidation after a correction, NATO/digit readback, duration and custom fields, Realtime response serialization/retry, and the authenticated review-to-booking flow.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/AgentVariableService.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/llm/{ConversationOrchestrator,LocalToolCallingLlmProvider}.java`
+  - `backend/src/main/java/com/sauti/session/BookingDraft.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,BookingReviewRenderer,DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/AuthAgentFlowTest.java`
+  - `backend/src/test/java/com/sauti/agent/AgentVariableServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/{AgentToolLoaderTest,SautiCalendarFulfillmentTest}.java`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+- Verification:
+  - focused agent-variable, conversation, calendar-fulfillment, tool-loader, telephony-Realtime, and authenticated-flow tests (successful)
+  - `.\gradlew.bat :backend:test` (successful; 196 tests)
+  - `npm.cmd run typecheck` in `dashboard` (successful)
+  - `npm.cmd run build` in `dashboard` (successful; 50 routes generated)
+- Deployment:
+  - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
+- Follow-up risk:
+  - The consolidated review uses deterministic localized framing for the platform's current English, French, Swahili, and Arabic language set while spelling identity characters with the standard NATO alphabet. Any newly supported caller language should add localized framing tests before launch; the payload and review-token enforcement are language-independent.

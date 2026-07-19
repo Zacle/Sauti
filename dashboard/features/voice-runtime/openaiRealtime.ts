@@ -71,6 +71,8 @@ export async function connectOpenAiRealtime(options: {
   let currentOutputItemId = "";
   let textOutputDisposition: "unknown" | "speech" | "structured" = "unknown";
   let expectedResponses = 0;
+  let responseRequestInFlight = false;
+  let responseCancellationPending = false;
   let currentResponseId = "";
   let discardCurrentResponseOutput = false;
   const ignoredResponseIds = new Set<string>();
@@ -78,16 +80,42 @@ export async function connectOpenAiRealtime(options: {
   let lastCallerTranscript = "";
   let lastCallerTranscriptAt = 0;
   const deferredAgentTranscripts: Array<{ text: string; interrupted: boolean }> = [];
+  const pendingResponseRequests: Array<() => void> = [];
+  let dispatchedResponseRequest: (() => void) | null = null;
+  let callerPreparationChain = Promise.resolve();
 
   const responseId = (event: Record<string, unknown>) => {
     const response = event.response as { id?: string } | undefined;
     return String(event.response_id ?? response?.id ?? "").trim();
   };
 
+  const drainResponseQueue = () => {
+    if (responseActive || responseRequestInFlight || responseCancellationPending) return;
+    const request = pendingResponseRequests.shift();
+    if (!request || channel.readyState !== "open") return;
+    responseRequestInFlight = true;
+    dispatchedResponseRequest = request;
+    expectedResponses += 1;
+    request();
+  };
+
+  const enqueueResponse = (request: () => void) => {
+    pendingResponseRequests.push(request);
+    drainResponseQueue();
+  };
+
+  const finishResponse = () => {
+    responseActive = false;
+    responseRequestInFlight = false;
+    responseCancellationPending = false;
+    currentResponseId = "";
+    window.setTimeout(drainResponseQueue, 0);
+  };
+
   const cancelActiveResponse = () => {
     if (currentResponseId) ignoredResponseIds.add(currentResponseId);
     discardCurrentResponseOutput = true;
-    responseActive = false;
+    responseCancellationPending = responseActive || responseRequestInFlight;
     send(channel, { type: "response.cancel" });
   };
 
@@ -165,13 +193,11 @@ export async function connectOpenAiRealtime(options: {
             options.callbacks.onAgentTextComplete?.(false);
             deliverAgentTranscript(deterministicResponse, false);
           } else {
-            expectedResponses += 1;
-            requestExactToolResponse(channel, deterministicResponse);
+            enqueueResponse(() => requestExactToolResponse(channel, deterministicResponse));
           }
           return;
         }
-        expectedResponses += 1;
-        requestToolResultResponse(channel);
+        enqueueResponse(() => requestToolResultResponse(channel));
       })
       .catch(() => {
         send(channel, {
@@ -205,7 +231,7 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const prepareAndRequestCallerResponse = (transcript: string) => {
-    const request = async () => {
+    callerPreparationChain = callerPreparationChain.then(async () => {
       try {
         const instructions = await options.prepareCallerResponse?.(transcript);
         if (instructions?.trim()) {
@@ -215,10 +241,8 @@ export async function connectOpenAiRealtime(options: {
         // The active Realtime session still has its original safe instructions.
       }
       requiredAvailabilityToolPending = false;
-      expectedResponses += 1;
-      requestCallerResponse(channel, requiredAvailabilityToolPending);
-    };
-    void request();
+      enqueueResponse(() => requestCallerResponse(channel, requiredAvailabilityToolPending));
+    });
   };
 
   channel.onmessage = (message) => {
@@ -235,8 +259,16 @@ export async function connectOpenAiRealtime(options: {
         return;
       }
       expectedResponses -= 1;
+      responseRequestInFlight = false;
+      dispatchedResponseRequest = null;
       responseActive = true;
       currentResponseId = eventResponseId;
+      if (responseCancellationPending) {
+        if (eventResponseId) ignoredResponseIds.add(eventResponseId);
+        discardCurrentResponseOutput = true;
+        send(channel, { type: "response.cancel" });
+        return;
+      }
       discardCurrentResponseOutput = false;
       currentOutputItemId = "";
       textOutputDisposition = "unknown";
@@ -248,9 +280,9 @@ export async function connectOpenAiRealtime(options: {
       if (currentResponseId === eventResponseId) {
         currentResponseId = "";
         discardCurrentResponseOutput = false;
-        responseActive = false;
         agentTranscript = "";
       }
+      finishResponse();
       return;
     }
     if (ignoredResponse || (discardCurrentResponseOutput && type.startsWith("response."))) return;
@@ -360,8 +392,7 @@ export async function connectOpenAiRealtime(options: {
       window.clearTimeout(bargeInTimer);
     }
     if (type === "response.done") {
-      responseActive = false;
-      if (!eventResponseId || currentResponseId === eventResponseId) currentResponseId = "";
+      if (!eventResponseId || currentResponseId === eventResponseId) finishResponse();
     }
     if (type === "output_audio_buffer.started") options.callbacks.onSpeaking(true);
     if (type === "output_audio_buffer.stopped" || type === "output_audio_buffer.cleared") options.callbacks.onSpeaking(false);
@@ -374,7 +405,15 @@ export async function connectOpenAiRealtime(options: {
     if (type === "error") {
       const error = event.error as { message?: string } | undefined;
       const message = error?.message ?? "The realtime voice session encountered an error.";
-      if (!/no active response|response.*not active/i.test(message)) options.callbacks.onError(message);
+      if (/conversation already has an active response|active response in progress/i.test(message)) {
+        if (dispatchedResponseRequest) pendingResponseRequests.unshift(dispatchedResponseRequest);
+        dispatchedResponseRequest = null;
+        responseRequestInFlight = false;
+        expectedResponses = Math.max(0, expectedResponses - 1);
+        responseCancellationPending = true;
+      } else if (!/no active response|response.*not active/i.test(message)) {
+        options.callbacks.onError(message);
+      }
     }
   };
 
@@ -384,8 +423,7 @@ export async function connectOpenAiRealtime(options: {
       window.clearTimeout(timeout);
       options.callbacks.onConnected();
       if (options.greeting.trim()) {
-        expectedResponses += 1;
-        requestGreeting(channel, options.greeting, options.outputMode ?? "audio");
+        enqueueResponse(() => requestGreeting(channel, options.greeting, options.outputMode ?? "audio"));
       }
       resolve();
     };
@@ -413,12 +451,12 @@ export async function connectOpenAiRealtime(options: {
       prepareAndRequestCallerResponse(text);
     },
     speakGreeting: (text) => {
-      expectedResponses += 1;
-      requestGreeting(channel, text, options.outputMode ?? "audio");
+      enqueueResponse(() => requestGreeting(channel, text, options.outputMode ?? "audio"));
     },
     cancelResponse: cancelActiveResponse,
     close: () => {
       window.clearTimeout(bargeInTimer);
+      pendingResponseRequests.length = 0;
       channel.close();
       peer.close();
       remoteSource?.disconnect();
@@ -470,7 +508,7 @@ function requestCallerResponse(channel: RTCDataChannel, requireAvailabilityTool:
   send(channel, {
     type: "response.create",
     response: {
-      instructions: "Answer exactly once in the current caller language using only configured facts. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. Ask for exactly one missing value per reply; never bundle service, staff, name, phone, or email into one question. Neutral replies such as okay, no problem, or just a second are not booking values and never mean any staff. If a service transcript is unclear, ask one short clarification rather than silently converting it to a plausible service. Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly. Speak dates and times naturally: never say an ISO date and never combine 24-hour notation with AM or PM. Customers always state identity details normally. Never ask a customer to spell a name or email in any form or dictate a phone digit by digit. Do not read fields back as they are collected. Toward the end, the agent spells its own understanding and reads the phone back once so the customer can correct errors; this is not a mandatory confirmation gate.",
+      instructions: "Answer exactly once in the current caller language using the authoritative configured business facts. If the caller asks about a configured service, price, policy, location, or other business fact, answer it directly and exactly before continuing. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. Ask for exactly one missing value per reply; never bundle service, staff, name, phone, or email into one question. Neutral replies such as okay, no problem, or just a second are not booking values and never mean any staff. Once the caller explicitly chooses any available staff, retain that value and never ask for staff again. If a service transcript is unclear, ask one short clarification rather than silently converting it to a plausible service. Do not invent services, classes, examples, prices, or completed actions. Preserve names, phone digits, emails, dates, and times exactly. Speak dates and times naturally: never say an ISO date and never combine 24-hour notation with AM or PM. Customers always state identity details normally. Never ask a customer to spell a name or email in any form or dictate a phone digit by digit. Do not read fields back as they are collected. Follow the two-step book_slot review protocol: first obtain and speak the tool-generated review, wait for a later caller turn, then reuse its private review token with unchanged details. Never expose the token.",
     },
   });
 }

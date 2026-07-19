@@ -201,6 +201,20 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     "instruction", "Ask for exactly nextMissingField in the caller's language. Do not mention, list, or request any other missing field in the same reply."
             );
         }
+        var review = BookingReviewRenderer.render(call, toolCall.arguments(), customerDetails);
+        var suppliedReviewToken = stringArg(toolCall.arguments(), "review_token", "");
+        if (!secureEquals(review.token(), suppliedReviewToken)) {
+            var result = new LinkedHashMap<String, Object>();
+            result.put("status", "booking_review_required");
+            result.put("bookingCreated", false);
+            result.put("reviewToken", review.token());
+            result.put("bookingReview", review.fields());
+            result.put("spokenResponse", review.spokenResponse());
+            result.put("instruction", "Speak spokenResponse exactly, then stop and wait for the caller. "
+                    + "Never expose reviewToken. If the caller corrects a value, update it and call book_slot without the old token. "
+                    + "Otherwise, after the caller's next turn, call book_slot with the unchanged values and exact reviewToken.");
+            return Map.copyOf(result);
+        }
         var selectedProvider = call.getAgent().getCalendarProvider();
         com.sauti.calendar.CalendarProvider provider = null;
         try {
@@ -248,6 +262,13 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 ? "Tell the caller the booking was saved in Sauti and provide the booking number. Do not claim an external calendar was updated."
                 : "Tell the caller whether the external calendar was confirmed. Always provide the booking number. If calendarSynced is false, say the booking was saved in Sauti for owner follow-up.");
         return Map.copyOf(result);
+    }
+
+    private boolean secureEquals(String expected, String actual) {
+        return java.security.MessageDigest.isEqual(
+                expected.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                actual.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+        );
     }
 
     private Map<String, Object> reschedule(Call call, LlmToolCall toolCall) {

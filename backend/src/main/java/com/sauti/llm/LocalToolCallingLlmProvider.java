@@ -41,6 +41,21 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                     "رائع، تم حجز موعدك!"
             ), List.of());
         }
+        var bookingReview = latestBookingReview(context);
+        if (bookingReview != null) {
+            var fields = bookingReview.result().get("bookingReview") instanceof Map<?, ?> values
+                    ? values : Map.of();
+            callSessionStore.updatePendingBooking(context.callSid(), new BookingDraft(
+                    field(fields, "callerName", "Caller"),
+                    field(fields, "service", "Appointment"),
+                    "",
+                    field(fields, "appointmentAt", ""),
+                    field(fields, "callerPhone", context.callerPhone()),
+                    true,
+                    bookingReview.result().get("reviewToken").toString()
+            ));
+            return new LlmToolTurnResponse(bookingReview.result().get("spokenResponse").toString(), List.of());
+        }
         if (hasSuccessfulTool(context, "end_call")) {
             return new LlmToolTurnResponse(localized(
                     context.language(),
@@ -78,16 +93,7 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                         "Nitathibitisha miadi hiyo sasa.",
                         "سأؤكد هذا الموعد الآن."
                 ), List.of(
-                        tool("book_slot", Map.of(
-                                "appointment_at", pendingBooking.confirmedSlot(),
-                                "caller_name", pendingBooking.callerName(),
-                                "caller_phone", pendingBooking.callerPhone(),
-                                "service_type", pendingBooking.serviceType()
-                        )),
-                        tool("send_confirmation_sms", Map.of(
-                                "phone", pendingBooking.callerPhone(),
-                                "message", "Your appointment is confirmed."
-                        ))
+                        tool("book_slot", bookingArguments(pendingBooking))
                 ));
             }
         }
@@ -179,6 +185,32 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                 .filter(result -> name.equals(result.name()) && result.success())
                 .reduce((first, second) -> second)
                 .orElse(null);
+    }
+
+    private LlmToolResult latestBookingReview(LlmToolTurnContext context) {
+        return context.toolResults().stream()
+                .filter(result -> "book_slot".equals(result.name()) && result.success())
+                .filter(result -> "booking_review_required".equals(result.result().get("status")))
+                .reduce((first, second) -> second)
+                .orElse(null);
+    }
+
+    private Map<String, Object> bookingArguments(BookingDraft booking) {
+        var arguments = new java.util.LinkedHashMap<String, Object>();
+        arguments.put("appointment_at", booking.confirmedSlot());
+        arguments.put("caller_name", booking.callerName());
+        arguments.put("caller_phone", booking.callerPhone());
+        arguments.put("service_type", booking.serviceType());
+        if (booking.reviewToken() != null && !booking.reviewToken().isBlank()) {
+            arguments.put("review_token", booking.reviewToken());
+        }
+        return Map.copyOf(arguments);
+    }
+
+    private String field(Map<?, ?> fields, String key, String fallback) {
+        var value = fields.get(key);
+        var safeFallback = fallback == null ? "" : fallback;
+        return value == null || value.toString().isBlank() ? safeFallback : value.toString();
     }
 
     private String firstAvailableSlot(LlmToolResult availability, OffsetDateTime fallback) {

@@ -49,6 +49,8 @@ class AgentToolLoaderTest {
                 "caller_email_spelling_confirmed",
                 "final_booking_review_confirmed"
         );
+        assertThat(properties).containsKey("review_token");
+        assertThat(required).doesNotContain("review_token");
         assertThat((List<String>) details.get("required"))
                 .containsExactly("patient_date_of_birth", "insurance_member_number");
         assertThat(detailProperties).containsKeys("patient_date_of_birth", "insurance_member_number");

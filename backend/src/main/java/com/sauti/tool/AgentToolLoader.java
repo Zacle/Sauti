@@ -44,6 +44,10 @@ public class AgentToolLoader {
         );
         legacyConfirmationFields.forEach(properties::remove);
         required.removeIf(legacyConfirmationFields::contains);
+        properties.put("review_token", Map.of(
+                "type", "string",
+                "description", "Private token returned by the immediately preceding booking review. Never say it aloud. Omit it when any booking detail changed."
+        ));
         var configured = tool.getAgent().getBookingRequiredFields();
         var topLevel = java.util.Set.of(
                 "caller_name", "caller_phone", "caller_email", "service_type", "appointment_at"
@@ -70,7 +74,7 @@ public class AgentToolLoader {
         schema.put("required", List.copyOf(required));
         return new LlmToolDefinition(
                 definition.name(),
-                "Create the booking after configured details and availability are complete. The caller states details naturally and is never required to spell them or provide spelling-confirmation flags.",
+                "Two-step booking. First call without review_token after configured details and availability are complete. Speak the returned review and wait. On a later caller turn call again with unchanged details and the returned review_token. The caller states details naturally and is never required to spell them. Never expose the token.",
                 Map.copyOf(schema)
         );
     }

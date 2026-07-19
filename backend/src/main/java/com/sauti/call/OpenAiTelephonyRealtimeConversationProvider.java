@@ -138,6 +138,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private long lastCallerTranscriptAt;
         private volatile String currentResponseId = "";
         private volatile boolean discardCurrentResponseOutput;
+        private volatile boolean responseCancellationPending;
         private final java.util.ArrayDeque<AgentCompletion> deferredAgentCompletions = new java.util.ArrayDeque<>();
 
         RealtimeWebSocketListener(
@@ -162,6 +163,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         synchronized void markCurrentResponseCancelled() {
             if (!currentResponseId.isBlank()) ignoredResponseIds.add(currentResponseId);
             discardCurrentResponseOutput = true;
+            var activeSession = session;
+            responseCancellationPending = responseActive
+                    || (activeSession != null && activeSession.hasResponseOutstanding());
             responseActive = false;
         }
 
@@ -213,6 +217,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         return;
                     }
                     currentResponseId = eventResponseId;
+                    if (responseCancellationPending) {
+                        if (!eventResponseId.isBlank()) ignoredResponseIds.add(eventResponseId);
+                        discardCurrentResponseOutput = true;
+                        activeSession.cancelResponse();
+                        return;
+                    }
                     discardCurrentResponseOutput = false;
                 }
                 var ignoredResponse = !eventResponseId.isBlank() && ignoredResponseIds.contains(eventResponseId);
@@ -221,9 +231,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     if (eventResponseId.equals(currentResponseId)) {
                         currentResponseId = "";
                         discardCurrentResponseOutput = false;
+                        responseCancellationPending = false;
                         responseActive = false;
                         agentText.setLength(0);
                     }
+                    var activeSession = session;
+                    if (activeSession != null) activeSession.responseFinished();
                     return;
                 }
                 if (ignoredResponse || (discardCurrentResponseOutput && type.startsWith("response."))) return;
@@ -308,6 +321,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     }
                     case "response.done" -> {
                         responseActive = false;
+                        responseCancellationPending = false;
                         if (eventResponseId.isBlank() || eventResponseId.equals(currentResponseId)) {
                             currentResponseId = "";
                         }
@@ -319,11 +333,18 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                 completeText("");
                             }
                         }
+                        var activeSession = session;
+                        if (activeSession != null) activeSession.responseFinished();
                     }
                     case "error" -> {
                         var error = event.path("error");
                         var message = error.path("message").asText("OpenAI telephony Realtime failed");
-                        if (!message.toLowerCase().contains("no active response")) {
+                        var normalizedMessage = message.toLowerCase(java.util.Locale.ROOT);
+                        if (normalizedMessage.contains("conversation already has an active response")
+                                || normalizedMessage.contains("active response in progress")) {
+                            var activeSession = session;
+                            if (activeSession != null) activeSession.responseCreationRejectedAsBusy();
+                        } else if (!normalizedMessage.contains("no active response")) {
                             listener.onError(new IllegalStateException(message));
                         }
                     }
@@ -494,19 +515,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 }
                 var deterministicResponse = toolSpokenResponse(result);
                 if (!deterministicResponse.isBlank()) {
-                    send(webSocket, Map.of(
-                            "type", "conversation.item.create",
-                            "item", Map.of(
-                                    "type", "message",
-                                    "role", "assistant",
-                                    "content", java.util.List.of(Map.of(
-                                            "type", "output_text",
-                                            "text", deterministicResponse
-                                    ))
-                            )
-                    ));
-                    listener.onAgentTextDelta(deterministicResponse);
-                    listener.onAgentTextComplete(deterministicResponse, false);
+                    var activeSession = session;
+                    if (activeSession != null) activeSession.requestExactResponse(deterministicResponse);
                     return;
                 }
                 var activeSession = session;
@@ -554,6 +564,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final ScheduledFuture<?> keepAliveTask;
         private final Runnable onCancel;
         private final java.util.concurrent.atomic.AtomicInteger expectedResponses = new java.util.concurrent.atomic.AtomicInteger();
+        private final java.util.ArrayDeque<Map<String, ?>> pendingResponses = new java.util.ArrayDeque<>();
+        private boolean responseOutstanding;
+        private Map<String, ?> inFlightResponse;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
         OpenAiTelephonySession(
@@ -624,30 +637,30 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         void requestResponse() {
-            expectedResponses.incrementAndGet();
-            send(Map.of(
+            enqueueResponse(Map.of(
                     "type", "response.create",
                     "response", Map.of(
-                            "instructions", "Answer exactly once in the current caller language using only configured facts. "
+                            "instructions", "Answer exactly once in the current caller language using the authoritative configured business facts. "
+                                    + "If asked about a configured service, price, policy, location, or other fact, answer directly and exactly before continuing. "
                                     + "Stay in the configured business role and never direct the caller to contact or choose "
                                     + "that same business elsewhere. Do not deny a capability granted by the agent instructions. "
                                     + "Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. "
                                     + "For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. "
                                     + "Ask for exactly one missing value per reply; never bundle service, staff, name, phone, or email into one question. "
                                     + "Neutral replies such as okay, no problem, or just a second are not booking values and never mean any staff. "
+                                    + "Once the caller explicitly chooses any available staff, retain it and never ask for staff again. "
                                     + "If a service transcript is unclear, ask one short clarification rather than silently converting it to a plausible service. "
-                                    + "Do not invent services, classes, examples, or completed actions. Preserve names, phone digits, dates, and times exactly. "
+                                    + "Do not invent services, classes, examples, prices, or completed actions. Preserve names, phone digits, emails, dates, and times exactly. "
                                     + "Speak dates and times naturally: never say an ISO date and never combine 24-hour notation with AM or PM. "
                                     + "Customers always state identity details normally. Never ask a customer to spell a name or email in any form or dictate a phone digit by digit. "
-                                    + "Do not read fields back as they are collected. Toward the end, the agent spells its own understanding and reads the phone back once "
-                                    + "so the customer can correct errors; this is not a mandatory confirmation gate."
+                                    + "Do not read fields back as they are collected. Follow the two-step book_slot review protocol: first obtain and speak the tool-generated review, "
+                                    + "wait for a later caller turn, then reuse its private review token with unchanged details. Never expose the token."
                     )
             ));
         }
 
         void requestToolResultResponse() {
-            expectedResponses.incrementAndGet();
-            send(Map.of(
+            enqueueResponse(Map.of(
                     "type", "response.create",
                     "response", Map.of(
                             "instructions", "Give one concise answer based only on the tool output and in the current "
@@ -660,14 +673,58 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         void requestResponseWithRequiredTool(String toolName) {
-            expectedResponses.incrementAndGet();
-            send(Map.of(
+            enqueueResponse(Map.of(
                     "type", "response.create",
                     "response", Map.of(
                             "instructions", "Call the required availability tool before speaking. Preserve the caller's exact date and time.",
                             "tool_choice", Map.of("type", "function", "name", toolName)
                     )
             ));
+        }
+
+        void requestExactResponse(String text) {
+            if (text == null || text.isBlank()) return;
+            enqueueResponse(Map.of(
+                    "type", "response.create",
+                    "response", Map.of(
+                            "instructions", "Say exactly this text with no additions or omissions: " + text.trim(),
+                            "tool_choice", "none"
+                    )
+            ));
+        }
+
+        private synchronized void enqueueResponse(Map<String, ?> response) {
+            pendingResponses.addLast(response);
+            dispatchNextResponse();
+        }
+
+        private synchronized void dispatchNextResponse() {
+            if (responseOutstanding || pendingResponses.isEmpty()) return;
+            responseOutstanding = true;
+            expectedResponses.incrementAndGet();
+            inFlightResponse = pendingResponses.removeFirst();
+            send(inFlightResponse);
+        }
+
+        synchronized void responseFinished() {
+            responseOutstanding = false;
+            inFlightResponse = null;
+            dispatchNextResponse();
+        }
+
+        synchronized void responseCreationRejectedAsBusy() {
+            if (inFlightResponse != null) {
+                pendingResponses.addFirst(inFlightResponse);
+                inFlightResponse = null;
+            }
+            expectedResponses.updateAndGet(current -> Math.max(0, current - 1));
+            // Keep responseOutstanding true until the provider finishes the
+            // response it reported as active. responseFinished then retries
+            // the preserved request without overlapping response.create calls.
+        }
+
+        synchronized boolean hasResponseOutstanding() {
+            return responseOutstanding;
         }
 
         void updateInstructions(String instructions) {

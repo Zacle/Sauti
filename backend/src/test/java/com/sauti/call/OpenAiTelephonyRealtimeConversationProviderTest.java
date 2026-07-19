@@ -171,7 +171,7 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
-    void speaksTheDeterministicAvailabilityDecisionWithoutAskingTheModelToRewriteIt() {
+    void queuesTheDeterministicAvailabilityDecisionForExactProviderSpeech() {
         var events = new ArrayList<String>();
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
@@ -196,7 +196,61 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 eq(call), eq("availability-1"), eq("check_availability"), anyString()
         );
         verify(session, never()).requestToolResultResponse();
-        assertThat(events).containsExactly("delta:" + spoken, "agent:" + spoken + ":false");
+        verify(session, timeout(1_000)).requestExactResponse(spoken);
+        assertThat(events).isEmpty();
+    }
+
+    @Test
+    void serializesResponseCreationUntilThePreviousResponseIsDone() throws Exception {
+        var webSocket = mock(WebSocket.class);
+        when(webSocket.sendText(anyString(), eq(true)))
+                .thenReturn(CompletableFuture.completedFuture(webSocket));
+        var executor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> keepAlive = mock(ScheduledFuture.class);
+        when(executor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenAnswer(ignored -> keepAlive);
+        var session = new OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession(
+                webSocket, new ObjectMapper(), executor
+        );
+
+        session.requestResponse();
+        session.requestExactResponse("That time is available.");
+
+        verify(webSocket, timeout(1_000).times(1)).sendText(anyString(), eq(true));
+        session.responseFinished();
+        verify(webSocket, timeout(1_000).times(2)).sendText(anyString(), eq(true));
+
+        var payloads = ArgumentCaptor.forClass(String.class);
+        verify(webSocket, times(2)).sendText(payloads.capture(), eq(true));
+        assertThat(payloads.getAllValues())
+                .allMatch(payload -> payload.contains("\"type\":\"response.create\""));
+        assertThat(payloads.getAllValues().get(1)).contains("That time is available.");
+    }
+
+    @Test
+    void retriesAResponseRejectedWhileTheProviderIsBusy() throws Exception {
+        var webSocket = mock(WebSocket.class);
+        when(webSocket.sendText(anyString(), eq(true)))
+                .thenReturn(CompletableFuture.completedFuture(webSocket));
+        var executor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> keepAlive = mock(ScheduledFuture.class);
+        when(executor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenAnswer(ignored -> keepAlive);
+        var session = new OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession(
+                webSocket, new ObjectMapper(), executor
+        );
+
+        session.requestExactResponse("Please confirm the booking details.");
+        session.responseCreationRejectedAsBusy();
+
+        verify(webSocket, timeout(1_000).times(1)).sendText(anyString(), eq(true));
+        session.responseFinished();
+        verify(webSocket, timeout(1_000).times(2)).sendText(anyString(), eq(true));
+
+        var payloads = ArgumentCaptor.forClass(String.class);
+        verify(webSocket, times(2)).sendText(payloads.capture(), eq(true));
+        assertThat(payloads.getAllValues())
+                .allMatch(payload -> payload.contains("Please confirm the booking details."));
     }
 
     @Test

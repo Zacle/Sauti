@@ -162,14 +162,23 @@ class AgentVariableServiceTest {
         required.updateValue("12 Main Street");
         var optional = new AgentVariable(agent, "parking_instructions", "Parking instructions", null, false);
         optional.updateValue("Use the rear entrance");
+        var services = new AgentVariable(agent, "services_and_prices", "Services and prices", null, true);
+        services.updateValue("men hairstyle: $5, women hairstyle: $8, nails: $4");
+        var transfer = new AgentVariable(agent, "transfer_number", "Transfer number", null, false);
+        transfer.updateValue("+20 111 000 0001");
         var emptyOptional = new AgentVariable(agent, "booking_link", "Booking link", null, false);
         when(repository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
-                .thenReturn(List.of(required, optional, emptyOptional));
+                .thenReturn(List.of(required, services, optional, transfer, emptyOptional));
         var service = new AgentVariableService(repository, mock(AgentRepository.class));
 
         assertThat(service.conversationContext(agent))
-                .contains("- Business address: 12 Main Street")
-                .contains("- Parking instructions: Use the rear entrance")
+                .contains("CUSTOMER-FACING BUSINESS FACTS")
+                .contains("- business_address (Business address): 12 Main Street")
+                .contains("- parking_instructions (Parking instructions): Use the rear entrance")
+                .contains("- services_and_prices (Services and prices) — exact approved catalog")
+                .contains("* men hairstyle: $5", "* women hairstyle: $8", "* nails: $4")
+                .contains("PRIVATE OPERATING RULES")
+                .contains("- transfer_number (Transfer number): +20 111 000 0001")
                 .doesNotContain("Booking link");
     }
 }

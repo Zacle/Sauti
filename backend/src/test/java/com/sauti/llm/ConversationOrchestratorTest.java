@@ -55,12 +55,15 @@ class ConversationOrchestratorTest {
         when(router.route(any(Call.class), any(LlmToolCall.class))).thenAnswer(invocation -> {
             LlmToolCall toolCall = invocation.getArgument(1);
             executedTools.add(toolCall.name());
-            return LlmToolResult.success(toolCall, Map.of("ok", true));
+            return LlmToolResult.success(toolCall, "book_slot".equals(toolCall.name())
+                    ? Map.of("bookingCreated", true)
+                    : Map.of("ok", true));
         });
 
         var result = orchestrator.handleUserUtterance(call, "en", "I want to book tomorrow");
 
         assertThat(result.responseText()).isEqualTo("Your appointment is confirmed.");
+        assertThat(result.outcome()).isEqualTo("booking_made");
         assertThat(executedTools).containsExactly("check_availability", "book_slot");
         assertThat(provider.contexts).hasSize(2);
         assertThat(provider.contexts.get(0).toolResults()).isEmpty();
@@ -92,7 +95,9 @@ class ConversationOrchestratorTest {
                 .contains("Never tell the caller to perform the phonetic spelling")
                 .contains("Defer verification until the end of booking intake")
                 .contains("field-by-field confirmations earlier in the call")
-                .contains("not a mandatory confirmation gate")
+                .contains("accuracy opportunity enforced by the booking tool")
+                .contains("quote its configured price when asked")
+                .contains("private review token")
                 .contains("Never ask the caller to spell a name or email at all")
                 .contains("Do not switch language for a single unclear word")
                 .contains("Before a booking tool succeeds")
@@ -327,6 +332,13 @@ class ConversationOrchestratorTest {
                 + "- Hours: Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00";
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn(prompt);
         when(agentVariableService.businessName(call.getAgent())).thenReturn("X-Fit");
+        when(agentVariableService.conversationContext(call.getAgent())).thenReturn("""
+                - services_and_prices (Services and prices) — exact approved catalog; keep each service and its price together:
+                  * men hairstyle: $5
+                  * women hairstyle: $8
+                  * nails: $4
+                - cancellation_policy (Cancellation policy): Give 24 hours notice
+                """);
         when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of());
 
         var instructions = orchestrator.realtimeInstructions(call, "en", "When are you open?");
@@ -336,6 +348,9 @@ class ConversationOrchestratorTest {
                 .contains("not a general-purpose adviser")
                 .contains("Never deny a capability explicitly granted")
                 .contains("Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00")
+                .contains("men hairstyle: $5", "women hairstyle: $8", "nails: $4")
+                .contains("cancellation_policy", "Give 24 hours notice")
+                .contains("Never say one of those configured facts is unavailable")
                 .contains("Use only the current caller language")
                 .contains("Never emit JSON");
     }
