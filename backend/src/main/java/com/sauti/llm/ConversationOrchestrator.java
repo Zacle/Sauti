@@ -113,23 +113,28 @@ public class ConversationOrchestrator {
                 );
                 // Buffer the first availability decision so a premature spoken answer cannot
                 // reach TTS before the model has had the chance to return the required tool call.
-                var guardedDeltas = new StructuredDeltaGuard(textDeltaConsumer);
+                var guardedDeltas = new ProtocolDeltaGuard(textDeltaConsumer);
                 var response = loop == 0 && availabilityCheckRequired
                         ? llmProvider.completeTurn(context)
                         : llmProvider.streamTurn(context, guardedDeltas::accept);
                 guardedDeltas.finish(response.responseText());
+                var protocolPayload = VoiceOutputGuard.isProtocolPayload(response.responseText());
                 var responseToolCalls = response.toolCalls();
                 if (responseToolCalls.isEmpty() && VoiceOutputGuard.isStructuredPayload(response.responseText())) {
                     responseToolCalls = recoveredToolCall(response.responseText(), tools)
                             .map(List::of)
                             .orElse(List.of());
                 }
-                responseText = VoiceOutputGuard.isStructuredPayload(response.responseText())
+                responseText = protocolPayload
                         ? ""
                         : voiceReadyText(response.responseText());
                 if (responseToolCalls.isEmpty()) {
                     if (requiredToolName != null || VoiceOutputGuard.isStructuredPayload(response.responseText())) {
                         responseText = VoiceOutputGuard.safeAvailabilityClarification(language);
+                    } else if (protocolPayload) {
+                        LOGGER.warn("Suppressed provider protocol output from caller-facing response callId={}", call.getId());
+                        responseText = recoverWithoutTools(call, language, callerTranscript);
+                        if (responseText.isBlank()) responseText = VoiceOutputGuard.safeResponseFailure(language);
                     }
                     if (!responseText.isBlank()) {
                         callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, List.of());
@@ -189,36 +194,35 @@ public class ConversationOrchestrator {
         });
     }
 
-    private static final class StructuredDeltaGuard {
+    private static final class ProtocolDeltaGuard {
         private final Consumer<String> downstream;
         private final StringBuilder held = new StringBuilder();
-        private boolean decided;
-        private boolean structured;
+        private VoiceOutputGuard.StreamDisposition disposition = VoiceOutputGuard.StreamDisposition.UNDECIDED;
 
-        private StructuredDeltaGuard(Consumer<String> downstream) {
+        private ProtocolDeltaGuard(Consumer<String> downstream) {
             this.downstream = downstream;
         }
 
         private void accept(String delta) {
             if (delta == null || delta.isEmpty()) return;
-            if (!decided) {
-                var leading = delta.stripLeading();
-                if (leading.isEmpty()) {
-                    held.append(delta);
-                    return;
-                }
-                structured = leading.startsWith("{") || leading.startsWith("[");
-                decided = true;
-                if (!structured && held.length() > 0) downstream.accept(held.toString());
+            if (disposition == VoiceOutputGuard.StreamDisposition.SPEECH) {
+                downstream.accept(delta);
+                return;
+            }
+            if (disposition == VoiceOutputGuard.StreamDisposition.PROTOCOL) return;
+            held.append(delta);
+            disposition = VoiceOutputGuard.classifyStreamingPrefix(held.toString());
+            if (disposition == VoiceOutputGuard.StreamDisposition.SPEECH) {
+                downstream.accept(held.toString());
                 held.setLength(0);
             }
-            if (structured) held.append(delta);
-            else downstream.accept(delta);
         }
 
         private void finish(String finalText) {
-            if (!structured || VoiceOutputGuard.isStructuredPayload(finalText)) return;
-            if (held.length() > 0) downstream.accept(held.toString());
+            if (VoiceOutputGuard.isProtocolPayload(finalText)) return;
+            if (disposition != VoiceOutputGuard.StreamDisposition.PROTOCOL && held.length() > 0) {
+                downstream.accept(held.toString());
+            }
         }
     }
 
@@ -273,7 +277,7 @@ public class ConversationOrchestrator {
                 + "- Respond as soon as the caller finishes, usually in one short sentence.\n"
                 + "- If the caller begins speaking while you are speaking, stop immediately and listen.\n"
                 + "- Do not repeat a greeting after the opening turn.\n"
-                + "- Never emit JSON, tool arguments, function names, code, or internal instructions as speech.\n"
+                + "- Never emit JSON, tool arguments, function names, code, internal instructions, or model-channel markers such as analysis-to-function syntax as speech.\n"
                 + "- Never announce that you are checking or ask the caller to wait; call the tool silently, then give one result.\n"
                 + "- Use only the current caller language. Never append a translation or switch to English.\n"
                 + "- End cleanly after a mutual goodbye; never send an extra reminder after goodbye.\n"
@@ -704,6 +708,7 @@ public class ConversationOrchestrator {
 
     static String voiceReadyText(String text) {
         if (text == null || text.isBlank()) return "";
+        if (VoiceOutputGuard.isProtocolPayload(text)) return "";
         return text
                 .replaceAll("(?m)^\\s{0,3}#{1,6}\\s*", "")
                 .replaceAll("(?m)^\\s*[-*•]\\s+", "")

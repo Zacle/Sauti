@@ -26,6 +26,35 @@ import org.junit.jupiter.api.Test;
 
 class OpenAiTelephonyRealtimeConversationProviderTest {
     @Test
+    void suppressesSplitProtocolMarkersAndRetriesWithoutTools() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.added\",\"item\":{\"type\":\"message\",\"id\":\"leaked-item\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"delta\":\"ana\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"delta\":\"lysis to=functions.get_business_hours code\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"text\":\"analysis to=functions.get_business_hours code\"}", true);
+
+        assertThat(events).isEmpty();
+        verify(session).requestToolResultResponse();
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(webSocket).sendText(payload.capture(), eq(true));
+        assertThat(payload.getValue())
+                .contains("\"type\":\"conversation.item.delete\"")
+                .contains("\"item_id\":\"leaked-item\"");
+    }
+
+    @Test
     void ignoresDuplicateFinalTranscriptionEvents() {
         var events = new ArrayList<String>();
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(

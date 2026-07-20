@@ -3624,3 +3624,25 @@ Expected:
   - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: verify one browser call and one phone call after CI/CD using the saved `$5` catalog. Exact model adherence still depends on receiving the current session update, but the response-level override that deterministically removed those facts is now eliminated.
+
+### 2026-07-20 - Keep model protocol markers out of caller speech
+
+- Fixed the Ailsa transcript failure where malformed provider text such as `analysis to=functions.get_business_hours code` was emitted as an agent turn instead of a native tool call.
+- Added a shared streaming classifier that holds ambiguous prefixes across provider deltas, recognizes model-channel/function markers and structured payloads, and releases ordinary speech only after it is distinguishable from protocol text.
+- Applied the guard to the shared conversation orchestrator, phone OpenAI Realtime transport, and browser OpenAI Realtime transport so protocol text is excluded from caller-facing deltas, completed transcripts, stored assistant turns, and text-to-speech input.
+- Phone and browser Realtime sessions delete the malformed provider message and retry once without tools while retaining the authoritative session prompt and configured business facts. A localized safe clarification is used if the provider repeats the failure.
+- Strengthened the live voice prompt to explicitly prohibit model-channel markers. Added exact split-delta regression coverage for `ana` plus `lysis to=functions.get_business_hours code`, including the no-tool recovery that returns the configured `$5` haircut answer without saving or streaming the leaked marker.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProvider,VoiceOutputGuard}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProviderTest,VoiceOutputGuardTest}.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `ConversationOrchestratorTest`, `VoiceOutputGuardTest`, and `OpenAiTelephonyRealtimeConversationProviderTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: native browser audio is cancelled as soon as its parallel transcript reveals a protocol prefix, but unlike the buffered phone/text paths it cannot retract audio already played before classification. Verify one native browser test after CI/CD; if even a clipped prefix is audible, the native browser path will need delayed playback or text-first synthesis to provide the same hard pre-speech boundary.

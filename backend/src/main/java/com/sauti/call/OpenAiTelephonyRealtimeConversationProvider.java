@@ -126,7 +126,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private boolean responseActive;
         private boolean responseInterrupted;
         private boolean textCompleted;
-        private boolean structuredTextCandidate;
+        private VoiceOutputGuard.StreamDisposition outputDisposition = VoiceOutputGuard.StreamDisposition.UNDECIDED;
+        private int protocolRecoveryAttempts;
         private boolean requiredAvailabilityToolPending;
         private String currentOutputItemId = "";
         private int pendingCallerTranscriptions;
@@ -245,7 +246,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         responseActive = true;
                         responseInterrupted = false;
                         textCompleted = false;
-                        structuredTextCandidate = false;
+                        outputDisposition = VoiceOutputGuard.StreamDisposition.UNDECIDED;
                         currentOutputItemId = "";
                         agentText.setLength(0);
                     }
@@ -275,6 +276,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     case "conversation.item.input_audio_transcription.completed" -> {
                         var transcript = event.path("transcript").asText("").trim();
                         if (CallerTranscriptGuard.accepts(transcript) && acceptCallerTranscript(event.path("item_id").asText(""), transcript)) {
+                            protocolRecoveryAttempts = 0;
                             notifyCallerSpeechStarted();
                             listener.onCallerTranscript(transcript);
                             var activeSession = session;
@@ -296,21 +298,28 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     case "response.output_text.delta" -> {
                         var delta = event.path("delta").asText("");
                         if (!delta.isEmpty()) {
-                            if (agentText.length() == 0) {
-                                var leading = delta.stripLeading();
-                                structuredTextCandidate = leading.startsWith("{") || leading.startsWith("[");
-                            }
                             agentText.append(delta);
-                            if (!responseInterrupted && !requiredAvailabilityToolPending && !structuredTextCandidate) {
+                            if (outputDisposition == VoiceOutputGuard.StreamDisposition.UNDECIDED) {
+                                outputDisposition = VoiceOutputGuard.classifyStreamingPrefix(agentText.toString());
+                                if (!responseInterrupted && !requiredAvailabilityToolPending
+                                        && outputDisposition == VoiceOutputGuard.StreamDisposition.SPEECH) {
+                                    listener.onAgentTextDelta(agentText.toString());
+                                }
+                            } else if (!responseInterrupted && !requiredAvailabilityToolPending
+                                    && outputDisposition == VoiceOutputGuard.StreamDisposition.SPEECH) {
                                 listener.onAgentTextDelta(delta);
                             }
                         }
                     }
                     case "response.output_text.done" -> {
                         var providerText = event.path("text").asText("");
+                        var finalText = providerText.isBlank() ? agentText.toString() : providerText;
                         if (requiredAvailabilityToolPending
-                                || VoiceOutputGuard.isStructuredPayload(providerText.isBlank() ? agentText.toString() : providerText)) {
+                                || VoiceOutputGuard.isStructuredPayload(finalText)) {
                             recoverRequiredAvailabilityTool(webSocket, event.path("text").asText(""));
+                        } else if (outputDisposition == VoiceOutputGuard.StreamDisposition.PROTOCOL
+                                || VoiceOutputGuard.isProtocolPayload(finalText)) {
+                            recoverProtocolOutput(webSocket);
                         } else {
                             completeText(providerText);
                         }
@@ -329,6 +338,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             if (requiredAvailabilityToolPending
                                     || VoiceOutputGuard.isStructuredPayload(agentText.toString())) {
                                 recoverRequiredAvailabilityTool(webSocket, "");
+                            } else if (outputDisposition == VoiceOutputGuard.StreamDisposition.PROTOCOL
+                                    || VoiceOutputGuard.isProtocolPayload(agentText.toString())) {
+                                recoverProtocolOutput(webSocket);
                             } else {
                                 completeText("");
                             }
@@ -462,6 +474,26 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     )
             ));
             executeTool(webSocket, callId, toolName, argumentsJson);
+        }
+
+        private void recoverProtocolOutput(WebSocket webSocket) {
+            agentText.setLength(0);
+            textCompleted = true;
+            requiredAvailabilityToolPending = false;
+            if (!currentOutputItemId.isBlank()) {
+                send(webSocket, Map.of("type", "conversation.item.delete", "item_id", currentOutputItemId));
+            }
+            LOGGER.warn("Suppressed provider protocol output from caller-facing audio callId={}", call.getId());
+            var activeSession = session;
+            if (protocolRecoveryAttempts++ == 0 && activeSession != null) {
+                // Retry once with tools disabled. The complete session prompt and
+                // configured business facts remain authoritative for the answer.
+                activeSession.requestToolResultResponse();
+                return;
+            }
+            var safeText = VoiceOutputGuard.safeResponseFailure(responseLanguage());
+            listener.onAgentTextDelta(safeText);
+            listener.onAgentTextComplete(safeText, false);
         }
 
         private String recoveredToolName(Map<String, Object> arguments) {

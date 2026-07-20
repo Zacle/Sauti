@@ -69,7 +69,8 @@ export async function connectOpenAiRealtime(options: {
   let bargeInTimer = 0;
   let requiredAvailabilityToolPending = false;
   let currentOutputItemId = "";
-  let textOutputDisposition: "unknown" | "speech" | "structured" = "unknown";
+  let textOutputDisposition: "unknown" | "speech" | "protocol" = "unknown";
+  let protocolRecoveryAttempts = 0;
   let expectedResponses = 0;
   let responseRequestInFlight = false;
   let responseCancellationPending = false;
@@ -139,7 +140,8 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const deliverAgentTranscript = (text: string, interrupted: boolean) => {
-    if (!text || isStructuredPayload(text)) return;
+    if (!text || isProtocolPayload(text)) return;
+    protocolRecoveryAttempts = 0;
     if (pendingCallerTranscriptions > 0) {
       deferredAgentTranscripts.push({ text, interrupted });
       return;
@@ -230,6 +232,32 @@ export async function connectOpenAiRealtime(options: {
     executeToolCall(callId, "check_availability", argumentsJson);
   };
 
+  const recoverProtocolOutput = (cancelResponse: boolean) => {
+    agentTranscript = "";
+    textCompletionSent = true;
+    if (currentOutputItemId) {
+      send(channel, { type: "conversation.item.delete", item_id: currentOutputItemId });
+    }
+    if (cancelResponse) {
+      cancelActiveResponse();
+      send(channel, { type: "output_audio_buffer.clear" });
+    }
+    if (protocolRecoveryAttempts++ === 0) {
+      // Keep the complete session prompt and business facts, but prevent the
+      // malformed retry from attempting another tool call.
+      enqueueResponse(() => requestToolResultResponse(channel));
+      return;
+    }
+    if (protocolRecoveryAttempts === 2) {
+      enqueueResponse(() => requestExactToolResponse(
+        channel,
+        localizedResponseFailure(options.responseLanguage),
+      ));
+      return;
+    }
+    options.callbacks.onError("The voice provider returned an invalid internal protocol response.");
+  };
+
   const prepareAndRequestCallerResponse = (transcript: string) => {
     callerPreparationChain = callerPreparationChain.then(async () => {
       try {
@@ -293,6 +321,7 @@ export async function connectOpenAiRealtime(options: {
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
       if (isMeaningfulCallerTranscript(transcript) && shouldProcessCallerTranscript(event, transcript)) {
+        protocolRecoveryAttempts = 0;
         options.callbacks.onCallerTranscript(transcript);
         // The session disables provider-managed response creation. Only a
         // usable final transcript is allowed to advance the conversation.
@@ -308,10 +337,18 @@ export async function connectOpenAiRealtime(options: {
     if (type === "response.output_audio_transcript.delta") {
       responseActive = true;
       agentTranscript += String(event.delta ?? "");
+      if (textOutputDisposition === "unknown") {
+        textOutputDisposition = classifyStreamingPrefix(agentTranscript);
+        if (textOutputDisposition === "protocol") recoverProtocolOutput(true);
+      }
     }
     if (type === "response.output_audio_transcript.done") {
       const transcript = String(event.transcript ?? agentTranscript).trim();
-      deliverAgentTranscript(transcript, agentInterrupted);
+      if (textOutputDisposition === "protocol" || isProtocolPayload(transcript)) {
+        recoverProtocolOutput(false);
+      } else {
+        deliverAgentTranscript(transcript, agentInterrupted);
+      }
       agentTranscript = "";
       agentInterrupted = false;
     }
@@ -322,9 +359,7 @@ export async function connectOpenAiRealtime(options: {
         textCompletionSent = false;
         agentTranscript += delta;
         if (textOutputDisposition === "unknown") {
-          const leading = agentTranscript.trimStart().charAt(0);
-          if (leading === "{" || leading === "[") textOutputDisposition = "structured";
-          else if (leading) textOutputDisposition = "speech";
+          textOutputDisposition = classifyStreamingPrefix(agentTranscript);
           if (textOutputDisposition === "speech" && !requiredAvailabilityToolPending) {
             options.callbacks.onAgentTextDelta?.(agentTranscript);
           }
@@ -336,12 +371,17 @@ export async function connectOpenAiRealtime(options: {
     if (type === "response.output_text.done") {
       const interrupted = agentInterrupted;
       const transcript = String(event.text ?? agentTranscript).trim();
-      if (requiredAvailabilityToolPending || textOutputDisposition === "structured" || isStructuredPayload(transcript)) {
+      if (requiredAvailabilityToolPending || isStructuredPayload(transcript)) {
         agentTranscript = "";
         agentInterrupted = false;
         textCompletionSent = true;
         if (requiredAvailabilityToolPending) recoverRequiredToolText(transcript);
         else options.callbacks.onError("The provider returned an invalid structured voice response. Please try again.");
+        return;
+      }
+      if (textOutputDisposition === "protocol" || isProtocolPayload(transcript)) {
+        agentInterrupted = false;
+        recoverProtocolOutput(false);
         return;
       }
       deliverAgentTranscript(transcript, interrupted);
@@ -355,12 +395,17 @@ export async function connectOpenAiRealtime(options: {
     if (type === "response.done" && options.outputMode === "text" && !textCompletionSent) {
       const interrupted = agentInterrupted;
       const transcript = agentTranscript.trim();
-      if (requiredAvailabilityToolPending || textOutputDisposition === "structured" || isStructuredPayload(transcript)) {
+      if (requiredAvailabilityToolPending || isStructuredPayload(transcript)) {
         agentTranscript = "";
         agentInterrupted = false;
         textCompletionSent = true;
         if (requiredAvailabilityToolPending) recoverRequiredToolText(transcript);
         else options.callbacks.onError("The provider returned an invalid structured voice response. Please try again.");
+        return;
+      }
+      if (textOutputDisposition === "protocol" || isProtocolPayload(transcript)) {
+        agentInterrupted = false;
+        recoverProtocolOutput(false);
         return;
       }
       deliverAgentTranscript(transcript, interrupted);
@@ -545,6 +590,46 @@ function localizedBookingFailure(language?: string) {
     case "sw": return "Sikuweza kuhifadhi miadi kwenye kalenda, kwa hiyo haijawekwa. Ungependa kujaribu tena?";
     default: return "I couldn’t save the appointment to the calendar, so it is not booked. Would you like to try again?";
   }
+}
+
+function localizedResponseFailure(language?: string) {
+  switch (language?.toLocaleLowerCase()) {
+    case "fr": return "Desole, je n'ai pas pu terminer ma reponse. Pouvez-vous repeter votre question, s'il vous plait ?";
+    case "ar": return "عذرا، لم أتمكن من إكمال إجابتي. هل يمكنك تكرار سؤالك من فضلك؟";
+    case "sw": return "Samahani, sikuweza kukamilisha jibu langu. Tafadhali rudia swali lako.";
+    default: return "Sorry, I couldn't complete that answer. Could you repeat your question, please?";
+  }
+}
+
+const protocolPrefixes = [
+  "analysis to=",
+  "assistant to=",
+  "commentary to=",
+  "tool to=",
+  "final to=",
+  "recipient=",
+  "to=functions.",
+  "to=tools.",
+  "<|",
+  "<tool_call",
+  "<function=",
+] as const;
+
+function classifyStreamingPrefix(text: string): "unknown" | "speech" | "protocol" {
+  const normalized = text.trimStart().toLocaleLowerCase();
+  if (!normalized) return "unknown";
+  if (normalized.startsWith("{") || normalized.startsWith("[") || normalized.startsWith("```")) {
+    return "protocol";
+  }
+  for (const prefix of protocolPrefixes) {
+    if (normalized.startsWith(prefix)) return "protocol";
+    if (prefix.startsWith(normalized)) return "unknown";
+  }
+  return "speech";
+}
+
+function isProtocolPayload(text: string) {
+  return isStructuredPayload(text) || classifyStreamingPrefix(text) === "protocol";
 }
 
 function isStructuredPayload(text: string) {

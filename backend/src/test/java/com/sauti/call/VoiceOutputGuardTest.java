@@ -26,6 +26,27 @@ class VoiceOutputGuardTest {
     }
 
     @Test
+    void detectsLeakedModelChannelAndFunctionMarkers() {
+        var leaked = "analysis to=functions.get_business_hours code";
+
+        assertThat(VoiceOutputGuard.isProtocolPayload(leaked)).isTrue();
+        assertThat(VoiceOutputGuard.classifyStreamingPrefix("ana"))
+                .isEqualTo(VoiceOutputGuard.StreamDisposition.UNDECIDED);
+        assertThat(VoiceOutputGuard.classifyStreamingPrefix("analysis "))
+                .isEqualTo(VoiceOutputGuard.StreamDisposition.UNDECIDED);
+        assertThat(VoiceOutputGuard.classifyStreamingPrefix(leaked))
+                .isEqualTo(VoiceOutputGuard.StreamDisposition.PROTOCOL);
+    }
+
+    @Test
+    void releasesNaturalSpeechThatOnlyResemblesAProtocolPrefix() {
+        assertThat(VoiceOutputGuard.classifyStreamingPrefix("Analysis of your request is complete."))
+                .isEqualTo(VoiceOutputGuard.StreamDisposition.SPEECH);
+        assertThat(VoiceOutputGuard.isProtocolPayload("Analysis of your request is complete."))
+                .isFalse();
+    }
+
+    @Test
     void createsRealtimeCallIdsWithinTheProviderLimit() {
         var callId = VoiceOutputGuard.realtimeCallId("recovered-availability");
 

@@ -167,6 +167,47 @@ class ConversationOrchestratorTest {
     }
 
     @Test
+    void suppressesSplitProtocolMarkersAndRetriesWithoutTools() {
+        var provider = new ProtocolLeakProvider();
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(
+                provider, router, toolLoader, callTurnRepository, callSessionStore,
+                agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval,
+                new com.sauti.call.CallIntakeNoteService(callTurnRepository), new ObjectMapper(), 4
+        );
+        var call = activeCall();
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
+        when(callSessionStore.conversationHistory(call.getTwilioCallSid()))
+                .thenReturn(List.of(new ConversationMessage("user", "How much is a men's haircut?")));
+        when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of(
+                new LlmToolDefinition("get_business_hours", "Get business hours", Map.of("type", "object"))
+        ));
+
+        var spokenDeltas = new ArrayList<String>();
+        var result = orchestrator.handleUserUtterance(
+                call, "en", "How much is a men's haircut?", spokenDeltas::add
+        );
+
+        assertThat(spokenDeltas).isEmpty();
+        assertThat(result.responseText()).isEqualTo("A men's haircut is $5.");
+        assertThat(provider.contexts).hasSize(2);
+        assertThat(provider.contexts.get(0).tools()).hasSize(1);
+        assertThat(provider.contexts.get(1).tools()).isEmpty();
+        verify(callSessionStore, never()).appendAssistantMessage(
+                call.getTwilioCallSid(), "analysis to=functions.get_business_hours code", List.of()
+        );
+        verify(callSessionStore).appendAssistantMessage(
+                call.getTwilioCallSid(), "A men's haircut is $5.", List.of()
+        );
+    }
+
+    @Test
     void fallsBackToCallTurnsAndIncludesCurrentCallerTranscriptWhenRedisHistoryIsMissing() {
         var provider = new SingleResponseProvider("What time works best for you?");
         var router = mock(ToolFulfillmentRouter.class);
@@ -420,6 +461,27 @@ class ConversationOrchestratorTest {
                 );
             }
             return new LlmToolTurnResponse("Le creneau de demain a midi est disponible.", List.of());
+        }
+    }
+
+    private static final class ProtocolLeakProvider implements LlmToolCallingProvider {
+        private final List<LlmToolTurnContext> contexts = new ArrayList<>();
+
+        @Override
+        public LlmToolTurnResponse streamTurn(
+                LlmToolTurnContext context,
+                java.util.function.Consumer<String> textDeltaConsumer
+        ) {
+            contexts.add(context);
+            textDeltaConsumer.accept("ana");
+            textDeltaConsumer.accept("lysis to=functions.get_business_hours code");
+            return new LlmToolTurnResponse("analysis to=functions.get_business_hours code", List.of());
+        }
+
+        @Override
+        public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
+            contexts.add(context);
+            return new LlmToolTurnResponse("A men's haircut is $5.", List.of());
         }
     }
 
