@@ -1,7 +1,12 @@
 package com.sauti.call;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.text.Normalizer;
+import java.util.ArrayDeque;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -11,7 +16,7 @@ import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
-/** Bridges OpenAI Realtime text deltas to one warm Cartesia Sonic context. */
+/** Bridges complete, generation-scoped OpenAI responses to serialized Cartesia contexts. */
 @Service
 public class HybridVoiceSessionService {
     private static final Logger LOGGER = LoggerFactory.getLogger(HybridVoiceSessionService.class);
@@ -61,8 +66,19 @@ public class HybridVoiceSessionService {
                 if (state.closed) return;
                 switch (type) {
                     case "tts_delta" -> appendDelta(state, message.path("text").asText(""));
-                    case "tts_complete" -> complete(state);
-                    case "interrupt" -> interrupt(state);
+                    case "tts_complete" -> completeLegacy(state);
+                    case "speak" -> acceptSpeech(
+                            state,
+                            message.path("generation").asLong(-1L),
+                            message.path("id").asText(""),
+                            message.path("text").asText("")
+                    );
+                    case "interrupt" -> interrupt(
+                            state,
+                            message.has("generation")
+                                    ? message.path("generation").asLong(state.clientGeneration + 1L)
+                                    : state.clientGeneration + 1L
+                    );
                     default -> { }
                 }
             }
@@ -81,35 +97,75 @@ public class HybridVoiceSessionService {
         state.rawResponseText.append(delta);
     }
 
-    private void appendValidatedDelta(HybridSession state, String delta) {
-        if (delta == null || delta.isEmpty()) return;
-        state.textBuffer.append(delta);
+    private void synthesize(HybridSession state, String text) {
+        var textBuffer = new StringBuilder(text);
         String phrase;
-        while (!(phrase = WebVoiceSessionService.takeSpeakablePhrase(state.textBuffer, false)).isBlank()) {
-            speak(state, phrase, false);
+        while (!(phrase = WebVoiceSessionService.takeSpeakablePhrase(textBuffer, false)).isBlank()) {
+            writeTts(state, phrase, false);
         }
+        var remaining = WebVoiceSessionService.takeSpeakablePhrase(textBuffer, true);
+        if (!remaining.isBlank()) writeTts(state, remaining, false);
+        writeTts(state, "", true);
     }
 
-    private void complete(HybridSession state) {
+    private void completeLegacy(HybridSession state) {
         var safeText = VoiceOutputGuard.speechText(state.rawResponseText.toString());
         state.rawResponseText.setLength(0);
-        if (safeText.isBlank()) {
-            state.textBuffer.setLength(0);
-            return;
-        }
-        appendValidatedDelta(state, safeText);
-        var remaining = WebVoiceSessionService.takeSpeakablePhrase(state.textBuffer, true);
-        if (!remaining.isBlank()) speak(state, remaining, false);
-        speak(state, "", true);
+        if (safeText.isBlank()) return;
+        acceptSpeech(state, state.clientGeneration, "legacy-" + (++state.legacySpeechSequence), safeText);
     }
 
-    private void interrupt(HybridSession state) {
-        metrics.interruption("hybrid", state.call.getDirection());
-        state.generation++;
-        state.textBuffer.setLength(0);
+    private void acceptSpeech(HybridSession state, long generation, String speechId, String text) {
+        if (generation < 0L || speechId == null || speechId.isBlank() || generation < state.clientGeneration) return;
+        if (generation > state.clientGeneration) {
+            var hadOldOutput = state.currentSpeech != null || !state.pendingSpeech.isEmpty() || state.speaking;
+            state.clientGeneration = generation;
+            state.pendingSpeech.clear();
+            state.currentSpeech = null;
+            state.acceptedSpeechIds.clear();
+            state.acceptedSpeechFingerprints.clear();
+            state.rawResponseText.setLength(0);
+            if (hadOldOutput) resetTts(state, true);
+        }
+        var safeText = VoiceOutputGuard.speechText(text);
+        if (safeText.isBlank()) return;
+        var idKey = generation + ":" + speechId.trim();
+        var fingerprint = generation + ":" + speechFingerprint(safeText);
+        if (!state.acceptedSpeechIds.add(idKey) || !state.acceptedSpeechFingerprints.add(fingerprint)) return;
+        state.pendingSpeech.addLast(new Speech(generation, speechId.trim(), safeText));
+        startNextSpeech(state);
+    }
+
+    private void startNextSpeech(HybridSession state) {
+        if (state.currentSpeech != null || state.pendingSpeech.isEmpty()) return;
+        var next = state.pendingSpeech.removeFirst();
+        if (next.generation() != state.clientGeneration) {
+            startNextSpeech(state);
+            return;
+        }
+        state.currentSpeech = next;
+        synthesize(state, next.text());
+    }
+
+    private void interrupt(HybridSession state, long generation) {
+        if (generation <= state.clientGeneration) return;
+        var hadOldOutput = state.currentSpeech != null || !state.pendingSpeech.isEmpty() || state.speaking;
+        state.clientGeneration = generation;
+        state.pendingSpeech.clear();
+        state.currentSpeech = null;
+        state.acceptedSpeechIds.clear();
+        state.acceptedSpeechFingerprints.clear();
         state.rawResponseText.setLength(0);
+        if (hadOldOutput) {
+            metrics.interruption("hybrid", state.call.getDirection());
+            resetTts(state, true);
+        }
+    }
+
+    private void resetTts(HybridSession state, boolean clearAudio) {
+        state.ttsGeneration++;
         closeTts(state);
-        sendJson(state, Map.of("type", "clear_audio"));
+        if (clearAudio) sendJson(state, Map.of("type", "clear_audio"));
         if (state.speaking) {
             state.speaking = false;
             sendJson(state, Map.of("type", "speaking", "value", false));
@@ -118,7 +174,7 @@ public class HybridVoiceSessionService {
     }
 
     private void openTts(HybridSession state) {
-        var generation = state.generation;
+        var generation = state.ttsGeneration;
         var language = state.call.getLanguageDetected() == null
                 ? state.call.getAgent().getDefaultLanguage()
                 : state.call.getLanguageDetected();
@@ -147,7 +203,9 @@ public class HybridVoiceSessionService {
                 synchronized (state) {
                     if (!state.current(generation)) return;
                     state.speaking = false;
+                    state.currentSpeech = null;
                     sendJson(state, Map.of("type", "speaking", "value", false));
+                    startNextSpeech(state);
                 }
             }
 
@@ -171,8 +229,8 @@ public class HybridVoiceSessionService {
         });
     }
 
-    private void speak(HybridSession state, String text, boolean flush) {
-        var generation = state.generation;
+    private void writeTts(HybridSession state, String text, boolean flush) {
+        var generation = state.ttsGeneration;
         var targetTts = state.tts;
         // A response can produce several phrases before Cartesia's WebSocket
         // finishes opening. CompletableFuture dependants are not FIFO, so chain
@@ -220,13 +278,18 @@ public class HybridVoiceSessionService {
     private static final class HybridSession {
         private final Call call;
         private final WebSocketSession socket;
-        private final StringBuilder textBuffer = new StringBuilder();
         private final StringBuilder rawResponseText = new StringBuilder();
+        private final ArrayDeque<Speech> pendingSpeech = new ArrayDeque<>();
+        private final Set<String> acceptedSpeechIds = new HashSet<>();
+        private final Set<String> acceptedSpeechFingerprints = new HashSet<>();
         private final Runnable onClose;
         private final long startedNanos = System.nanoTime();
         private CompletableFuture<RealtimeTtsSession> tts = CompletableFuture.completedFuture(null);
         private CompletableFuture<Void> ttsWrites = CompletableFuture.completedFuture(null);
-        private int generation;
+        private long clientGeneration;
+        private long legacySpeechSequence;
+        private int ttsGeneration;
+        private Speech currentSpeech;
         private boolean speaking;
         private boolean firstAudioRecorded;
         private boolean closed;
@@ -238,18 +301,28 @@ public class HybridVoiceSessionService {
         }
 
         private boolean current(int expectedGeneration) {
-            return !closed && generation == expectedGeneration && socket.isOpen();
+            return !closed && ttsGeneration == expectedGeneration && socket.isOpen();
         }
 
         private synchronized void close() {
             if (closed) return;
             closed = true;
-            generation++;
-            textBuffer.setLength(0);
+            ttsGeneration++;
+            pendingSpeech.clear();
+            currentSpeech = null;
             onClose.run();
             tts.thenAccept(session -> { if (session != null) session.close(); });
             tts = CompletableFuture.completedFuture(null);
             ttsWrites = CompletableFuture.completedFuture(null);
         }
     }
+
+    private static String speechFingerprint(String value) {
+        return Normalizer.normalize(value, Normalizer.Form.NFKC)
+                .strip()
+                .replaceAll("\\s+", " ")
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private record Speech(long generation, String id, String text) { }
 }

@@ -283,6 +283,33 @@ class DefaultTwilioMediaStreamServiceTest {
         assertThat(frames).anySatisfy(frame -> assertThat(frame).contains("\"event\":\"media\""));
     }
 
+    @Test
+    void serializesCompletedPhoneResponsesAcrossCartesiaContexts() {
+        var call = activeCall("CA-SERIAL-TTS");
+        call.getAgent().updateTtsVoiceId("cartesia:voice-1");
+        var realtimeSession = mock(TelephonyRealtimeConversationProvider.Session.class);
+        var realtimeListener = new java.util.concurrent.atomic.AtomicReference<TelephonyRealtimeConversationProvider.Listener>();
+        when(realtimeConversationProvider.supports(call)).thenReturn(true);
+        when(realtimeConversationProvider.open(eq(call), any())).thenAnswer(invocation -> {
+            realtimeListener.set(invocation.getArgument(1));
+            return CompletableFuture.completedFuture(realtimeSession);
+        });
+        when(callRepository.findByTwilioCallSid("CA-SERIAL-TTS")).thenReturn(Optional.of(call));
+        ttsProvider.autoComplete = false;
+
+        service.start(
+                "CA-SERIAL-TTS", "MZ-SERIAL-TTS", TwilioMediaFormat.unknown(), Map.of(), ignored -> { }
+        );
+        realtimeListener.get().onAgentTextComplete("First response.", false);
+        realtimeListener.get().onAgentTextComplete("Second response.", false);
+
+        awaitUntil(() -> ttsProvider.spokenText.contains("First response. "));
+        assertThat(ttsProvider.spokenText).doesNotContain("Second response. ");
+
+        ttsProvider.sessions.get(0).complete();
+        awaitUntil(() -> ttsProvider.spokenText.contains("Second response. "));
+    }
+
     private void awaitUntil(BooleanSupplier condition) {
         var deadline = System.currentTimeMillis() + 1000;
         while (System.currentTimeMillis() < deadline) {
@@ -339,14 +366,15 @@ class DefaultTwilioMediaStreamServiceTest {
     }
 
     private static final class FakeRealtimeTextToSpeechProvider implements RealtimeTextToSpeechProvider {
-        private final List<String> spokenText = new ArrayList<>();
-        private final List<FakeRealtimeTtsSession> sessions = new ArrayList<>();
+        private final List<String> spokenText = new CopyOnWriteArrayList<>();
+        private final List<FakeRealtimeTtsSession> sessions = new CopyOnWriteArrayList<>();
+        private volatile boolean autoComplete = true;
         private int openCount;
 
         @Override
         public CompletableFuture<RealtimeTtsSession> open(String language, String voiceId, TtsAudioListener listener) {
             openCount++;
-            var session = new FakeRealtimeTtsSession(listener, spokenText);
+            var session = new FakeRealtimeTtsSession(listener, spokenText, () -> autoComplete);
             sessions.add(session);
             return CompletableFuture.completedFuture(session);
         }
@@ -355,20 +383,30 @@ class DefaultTwilioMediaStreamServiceTest {
     private static final class FakeRealtimeTtsSession implements RealtimeTtsSession {
         private final TtsAudioListener listener;
         private final List<String> spokenText;
+        private final BooleanSupplier autoComplete;
         private boolean closed;
 
-        private FakeRealtimeTtsSession(TtsAudioListener listener, List<String> spokenText) {
+        private FakeRealtimeTtsSession(
+                TtsAudioListener listener,
+                List<String> spokenText,
+                BooleanSupplier autoComplete
+        ) {
             this.listener = listener;
             this.spokenText = spokenText;
+            this.autoComplete = autoComplete;
         }
 
         @Override
         public void speak(String text, boolean flush) {
             spokenText.add(text);
             emitAudioIfNeeded(text);
-            if (flush) {
+            if (flush && autoComplete.getAsBoolean()) {
                 listener.onComplete();
             }
+        }
+
+        private void complete() {
+            listener.onComplete();
         }
 
         private void emitAudio() {

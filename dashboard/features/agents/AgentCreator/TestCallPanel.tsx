@@ -233,10 +233,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted));
           if (isFarewell(text)) nativeEndPendingRef.current = true;
         },
-        onAgentTextDelta: hybrid ? (delta) => sendHybridEvent({ type: "tts_delta", text: delta }) : undefined,
-        onAgentTextComplete: hybrid ? (interrupted) => {
-          if (!interrupted) sendHybridEvent({ type: "tts_complete" });
-        } : undefined,
+        onAgentSpeech: hybrid ? (speech) => sendHybridEvent({ type: "speak", ...speech }) : undefined,
         onSpeaking: (value) => {
           updateStatus(value ? "speaking" : "listening");
           if (!value && nativeEndPendingRef.current) {
@@ -244,21 +241,12 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             window.setTimeout(() => void endCall("completed"), 220);
           }
         },
-        onCallerSpeechStarted: (agentWasResponding) => {
-          const context = audioContextRef.current;
-          const cartesiaStillAudible = hybrid && (
-            statusRef.current === "speaking"
-            || Boolean(context && playbackTimeRef.current > context.currentTime + 0.03)
-          );
+        onCallerSpeechStarted: (_agentWasResponding, generation) => {
           updateStatus("capturing");
-          if (!hybrid && agentWasResponding) {
-            openAiConnectionRef.current?.cancelResponse();
-          }
-          if (hybrid && (agentWasResponding || cartesiaStillAudible)) {
-            // Cancel even when OpenAI finished generating before Cartesia
-            // finished speaking. Late text deltas must not restart the old
-            // sentence in the newly opened Cartesia stream.
-            interruptHybridResponse(true);
+          if (hybrid) {
+            // Always advance the external TTS generation. A Cartesia context
+            // may still be generating even before its first audio frame arrives.
+            interruptHybridResponse(false, generation);
           }
         },
         onError: (message) => setError(message),
@@ -280,10 +268,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       .then(() => undefined, () => undefined);
   }
 
-  function interruptHybridResponse(cancelModel: boolean) {
+  function interruptHybridResponse(cancelModel: boolean, generation?: number) {
     if (cancelModel) openAiConnectionRef.current?.cancelResponse();
     clearRealtimePlayback();
-    sendHybridEvent({ type: "interrupt" });
+    sendHybridEvent({ type: "interrupt", ...(generation === undefined ? {} : { generation }) });
   }
 
   async function prepareAudio(stream: MediaStream) {

@@ -3652,3 +3652,28 @@ Expected:
   - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: complete-response validation deliberately trades some first-audio latency for a hard pre-speech boundary. Run one browser call and one carrier call after CI/CD to measure the resulting pause. Before deploying with any legacy `openai:` voice, confirm `CARTESIA_DEFAULT_VOICE_ID` is configured or migrate that agent to a `cartesia:` voice.
+
+### 2026-07-20 - Make interruption cancellation generation-safe and speech exactly-once
+
+- Fixed the repeated post-interruption response shown by the booking-review transcript. The root problem was not prompt wording: cancellation stopped the active OpenAI response and audible buffer, but asynchronous caller preparation and tool promises remained eligible to enqueue or speak after the caller had moved to a newer turn.
+- Browser Realtime now assigns every caller turn, response request, tool execution, deferred transcript, and speech message to an output generation. Sustained caller speech advances the generation, cancels the provider response, purges queued work, and makes every late completion from the prior generation speech-ineligible. Async caller-instruction preparation also rechecks its generation after the HTTP wait.
+- Replaced the browser-to-hybrid `tts_delta`/`tts_complete` pair with one validated `speak` message carrying a generation and speech ID. Speech and transcript persistence now cross the boundary together, after pending caller transcription is resolved, instead of TTS being sent while the corresponding transcript was deferred.
+- Added exactly-once guards using both speech identity and normalized content. Different provider response IDs or tool-call IDs can no longer make the same booking review audible twice within one caller turn.
+- Semantically identical tool calls in one turn now share one execution, including when JSON property order differs. Realtime sessions disable parallel tool calls, and one generation can schedule at most one deterministic tool speech or one model follow-up. Tool outputs are still returned to the provider, but a tool that finishes after interruption cannot speak or enqueue a stale response.
+- Hybrid and phone Cartesia output now serialize complete utterance contexts. A second valid utterance waits for the first Cartesia `onComplete`; contexts are no longer allowed to multiplex PCM chunks and produce broken, interleaved speech.
+- Applied the same generation-scoped response queue, stale async-tool suppression, speech deduplication, atomic complete-message delivery, and queued-response purge to telephony Realtime. DTMF text turns also advance the generation before requesting a response.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{DefaultTwilioMediaStreamService,HybridVoiceSessionService,OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/test/java/com/sauti/call/{DefaultTwilioMediaStreamServiceTest,HybridVoiceSessionServiceTest,OpenAiRealtimeServiceTest,OpenAiTelephonyRealtimeConversationProviderTest}.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused hybrid, phone-media, Realtime configuration, and telephony Realtime regression tests - passed.
+  - `.\gradlew.bat :backend:test` - passed; 223 tests.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+  - `git diff --check` - passed before the handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: run one browser test call and one carrier call after CI/CD, interrupting both an ordinary answer and the final booking review before Cartesia emits its first frame and again mid-playback. The automated coverage controls both timing windows, but real microphone echo/VAD and carrier buffering still require an end-to-end production check.

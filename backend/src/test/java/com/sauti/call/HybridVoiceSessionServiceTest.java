@@ -170,9 +170,123 @@ class HybridVoiceSessionServiceTest {
         );
 
         service.start("interrupt-hybrid", agentId.toString(), socket);
+        service.accept("interrupt-hybrid", "{\"type\":\"speak\",\"generation\":0,"
+                + "\"id\":\"active\",\"text\":\"This response is still active.\"}");
         service.accept("interrupt-hybrid", "{\"type\":\"interrupt\"}");
 
         verify(first).close();
         verify(provider, times(2)).open(eq("en"), eq("cartesia:english-voice"), any());
+    }
+
+    @Test
+    void speaksTheSameCompletedResponseOnlyOnceEvenWithDifferentMessageIds() {
+        var repository = mock(CallRepository.class);
+        var provider = mock(RealtimeTextToSpeechProvider.class);
+        var tts = mock(RealtimeTtsSession.class);
+        var socket = mock(WebSocketSession.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.isActive()).thenReturn(true);
+        when(call.getDirection()).thenReturn("test");
+        when(call.getTwilioCallSid()).thenReturn("dedupe-hybrid");
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getTtsVoiceId()).thenReturn("cartesia:english-voice");
+        when(repository.findByTwilioCallSid("dedupe-hybrid")).thenReturn(Optional.of(call));
+        when(socket.isOpen()).thenReturn(true);
+        when(provider.open(eq("en"), eq("cartesia:english-voice"), any()))
+                .thenReturn(CompletableFuture.completedFuture(tts));
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
+
+        service.start("dedupe-hybrid", agentId.toString(), socket);
+        service.accept("dedupe-hybrid", "{\"type\":\"speak\",\"generation\":2,"
+                + "\"id\":\"response-a\",\"text\":\"Please confirm the booking details.\"}");
+        service.accept("dedupe-hybrid", "{\"type\":\"speak\",\"generation\":2,"
+                + "\"id\":\"response-b\",\"text\":\"  Please confirm the booking details.  \"}");
+
+        verify(tts, times(2)).speak(anyString(), anyBoolean());
+    }
+
+    @Test
+    void waitsForCartesiaCompletionBeforeStartingTheNextResponse() {
+        var repository = mock(CallRepository.class);
+        var provider = mock(RealtimeTextToSpeechProvider.class);
+        var tts = mock(RealtimeTtsSession.class);
+        var socket = mock(WebSocketSession.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.isActive()).thenReturn(true);
+        when(call.getDirection()).thenReturn("web");
+        when(call.getTwilioCallSid()).thenReturn("serial-hybrid");
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getTtsVoiceId()).thenReturn("cartesia:english-voice");
+        when(repository.findByTwilioCallSid("serial-hybrid")).thenReturn(Optional.of(call));
+        when(socket.isOpen()).thenReturn(true);
+        when(provider.open(eq("en"), eq("cartesia:english-voice"), any()))
+                .thenReturn(CompletableFuture.completedFuture(tts));
+        var listener = ArgumentCaptor.forClass(TtsAudioListener.class);
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
+
+        service.start("serial-hybrid", agentId.toString(), socket);
+        verify(provider).open(eq("en"), eq("cartesia:english-voice"), listener.capture());
+        service.accept("serial-hybrid", "{\"type\":\"speak\",\"generation\":3,"
+                + "\"id\":\"first\",\"text\":\"First response.\"}");
+        service.accept("serial-hybrid", "{\"type\":\"speak\",\"generation\":3,"
+                + "\"id\":\"second\",\"text\":\"Second response.\"}");
+
+        verify(tts, times(2)).speak(anyString(), anyBoolean());
+        listener.getValue().onComplete();
+        verify(tts, times(4)).speak(anyString(), anyBoolean());
+    }
+
+    @Test
+    void ignoresLateSpeechFromTheGenerationThatWasInterrupted() {
+        var repository = mock(CallRepository.class);
+        var provider = mock(RealtimeTextToSpeechProvider.class);
+        var first = mock(RealtimeTtsSession.class);
+        var second = mock(RealtimeTtsSession.class);
+        var socket = mock(WebSocketSession.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.isActive()).thenReturn(true);
+        when(call.getDirection()).thenReturn("test");
+        when(call.getTwilioCallSid()).thenReturn("stale-hybrid");
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getTtsVoiceId()).thenReturn("cartesia:english-voice");
+        when(repository.findByTwilioCallSid("stale-hybrid")).thenReturn(Optional.of(call));
+        when(socket.isOpen()).thenReturn(true);
+        when(provider.open(eq("en"), eq("cartesia:english-voice"), any()))
+                .thenReturn(CompletableFuture.completedFuture(first), CompletableFuture.completedFuture(second));
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
+
+        service.start("stale-hybrid", agentId.toString(), socket);
+        service.accept("stale-hybrid", "{\"type\":\"speak\",\"generation\":0,"
+                + "\"id\":\"old-a\",\"text\":\"Old response.\"}");
+        service.accept("stale-hybrid", "{\"type\":\"interrupt\",\"generation\":1}");
+        service.accept("stale-hybrid", "{\"type\":\"speak\",\"generation\":0,"
+                + "\"id\":\"old-b\",\"text\":\"Old response arriving late.\"}");
+
+        verify(second, never()).speak(anyString(), anyBoolean());
+
+        service.accept("stale-hybrid", "{\"type\":\"speak\",\"generation\":1,"
+                + "\"id\":\"new\",\"text\":\"New response.\"}");
+        verify(second, times(2)).speak(anyString(), anyBoolean());
     }
 }

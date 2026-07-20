@@ -3,9 +3,8 @@ export type OpenAiRealtimeCallbacks = {
   onCallerTranscript: (text: string) => void;
   onAgentTranscript: (text: string, interrupted: boolean) => void;
   onSpeaking: (speaking: boolean) => void;
-  onCallerSpeechStarted: (agentWasResponding: boolean) => void;
-  onAgentTextDelta?: (delta: string) => void;
-  onAgentTextComplete?: (interrupted: boolean) => void;
+  onCallerSpeechStarted: (agentWasResponding: boolean, generation: number) => void;
+  onAgentSpeech?: (speech: { id: string; generation: number; text: string }) => void;
   onError: (message: string) => void;
   executeTool: (callId: string, name: string, argumentsJson: string) => Promise<Record<string, unknown>>;
 };
@@ -17,6 +16,17 @@ export type OpenAiRealtimeConnection = {
   sendUserText: (text: string) => void;
   speakGreeting: (text: string) => void;
   cancelResponse: () => void;
+};
+
+type AgentSpeech = {
+  id: string;
+  generation: number;
+  text: string;
+};
+
+type PendingResponseRequest = {
+  generation: number;
+  send: () => void;
 };
 
 export async function connectOpenAiRealtime(options: {
@@ -58,15 +68,23 @@ export async function connectOpenAiRealtime(options: {
   let responseRequestInFlight = false;
   let responseCancellationPending = false;
   let currentResponseId = "";
+  let currentResponseGeneration = 0;
+  let outputGeneration = 0;
+  let callerTurnGeneration: number | null = null;
+  let localSpeechSequence = 0;
   let discardCurrentResponseOutput = false;
   const ignoredResponseIds = new Set<string>();
   const processedCallerItemIds = new Set<string>();
   const processedToolCallIds = new Set<string>();
   let lastCallerTranscript = "";
   let lastCallerTranscriptAt = 0;
-  const deferredAgentTranscripts: Array<{ text: string; interrupted: boolean }> = [];
-  const pendingResponseRequests: Array<() => void> = [];
-  let dispatchedResponseRequest: (() => void) | null = null;
+  const deferredAgentSpeech: Array<AgentSpeech> = [];
+  const deliveredSpeechIds = new Set<string>();
+  const deliveredSpeechFingerprints = new Set<string>();
+  const toolExecutions = new Map<string, Promise<Record<string, unknown>>>();
+  const toolFollowupGenerations = new Set<number>();
+  const pendingResponseRequests: PendingResponseRequest[] = [];
+  let dispatchedResponseRequest: PendingResponseRequest | null = null;
   let callerPreparationChain = Promise.resolve();
 
   const responseId = (event: Record<string, unknown>) => {
@@ -76,16 +94,20 @@ export async function connectOpenAiRealtime(options: {
 
   const drainResponseQueue = () => {
     if (responseActive || responseRequestInFlight || responseCancellationPending) return;
-    const request = pendingResponseRequests.shift();
+    let request = pendingResponseRequests.shift();
+    while (request && request.generation !== outputGeneration) {
+      request = pendingResponseRequests.shift();
+    }
     if (!request || channel.readyState !== "open") return;
     responseRequestInFlight = true;
     dispatchedResponseRequest = request;
     expectedResponses += 1;
-    request();
+    request.send();
   };
 
-  const enqueueResponse = (request: () => void) => {
-    pendingResponseRequests.push(request);
+  const enqueueResponse = (request: () => void, generation = outputGeneration) => {
+    if (generation !== outputGeneration) return;
+    pendingResponseRequests.push({ generation, send: request });
     drainResponseQueue();
   };
 
@@ -94,6 +116,7 @@ export async function connectOpenAiRealtime(options: {
     responseRequestInFlight = false;
     responseCancellationPending = false;
     currentResponseId = "";
+    currentResponseGeneration = outputGeneration;
     window.setTimeout(drainResponseQueue, 0);
   };
 
@@ -102,6 +125,27 @@ export async function connectOpenAiRealtime(options: {
     discardCurrentResponseOutput = true;
     responseCancellationPending = responseActive || responseRequestInFlight;
     send(channel, { type: "response.cancel" });
+  };
+
+  const invalidateOutputForCallerTurn = () => {
+    outputGeneration += 1;
+    callerTurnGeneration = outputGeneration;
+    for (let index = pendingResponseRequests.length - 1; index >= 0; index -= 1) {
+      if (pendingResponseRequests[index]?.generation !== outputGeneration) {
+        pendingResponseRequests.splice(index, 1);
+      }
+    }
+    for (let index = deferredAgentSpeech.length - 1; index >= 0; index -= 1) {
+      if (deferredAgentSpeech[index]?.generation !== outputGeneration) {
+        deferredAgentSpeech.splice(index, 1);
+      }
+    }
+    toolFollowupGenerations.clear();
+    toolExecutions.clear();
+    deliveredSpeechIds.clear();
+    deliveredSpeechFingerprints.clear();
+    if (responseActive || responseRequestInFlight) cancelActiveResponse();
+    return outputGeneration;
   };
 
   const shouldProcessCallerTranscript = (event: Record<string, unknown>, transcript: string) => {
@@ -123,74 +167,108 @@ export async function connectOpenAiRealtime(options: {
     return true;
   };
 
-  const deliverAgentTranscript = (text: string, interrupted: boolean) => {
-    const speech = sanitizeVoiceOutput(text);
+  const emitAgentSpeech = (candidate: AgentSpeech) => {
+    if (candidate.generation !== outputGeneration) return;
+    const speech = sanitizeVoiceOutput(candidate.text);
     if (!speech) return;
     protocolRecoveryAttempts = 0;
+    options.callbacks.onAgentSpeech?.({ ...candidate, text: speech });
+    options.callbacks.onAgentTranscript(speech, false);
+  };
+
+  const deliverAgentSpeech = (candidate: AgentSpeech) => {
+    if (candidate.generation !== outputGeneration) return false;
+    const speech = sanitizeVoiceOutput(candidate.text);
+    if (!speech) return false;
+    const idKey = `${candidate.generation}:${candidate.id}`;
+    const fingerprintKey = `${candidate.generation}:${speechFingerprint(speech)}`;
+    if (deliveredSpeechIds.has(idKey) || deliveredSpeechFingerprints.has(fingerprintKey)) return false;
+    deliveredSpeechIds.add(idKey);
+    deliveredSpeechFingerprints.add(fingerprintKey);
     if (pendingCallerTranscriptions > 0) {
-      deferredAgentTranscripts.push({ text: speech, interrupted });
-      return;
+      deferredAgentSpeech.push({ ...candidate, text: speech });
+      return true;
     }
-    options.callbacks.onAgentTranscript(speech, interrupted);
+    emitAgentSpeech({ ...candidate, text: speech });
+    return true;
   };
 
-  const flushDeferredAgentTranscripts = () => {
+  const flushDeferredAgentSpeech = () => {
     if (pendingCallerTranscriptions > 0) return;
-    while (deferredAgentTranscripts.length > 0) {
-      const transcript = deferredAgentTranscripts.shift();
-      if (transcript) options.callbacks.onAgentTranscript(transcript.text, transcript.interrupted);
+    while (deferredAgentSpeech.length > 0) {
+      const speech = deferredAgentSpeech.shift();
+      if (speech) emitAgentSpeech(speech);
     }
   };
 
-  const deliverToolFailure = (name: string) => {
+  const deliverToolFailure = (name: string, generation: number, speechId: string) => {
     const failure = name === "check_availability"
       ? localizedAvailabilityFailure(options.responseLanguage)
       : name === "book_slot"
         ? localizedBookingFailure(options.responseLanguage)
         : localizedAvailabilityClarification(options.responseLanguage);
-    options.callbacks.onAgentTextDelta?.(failure);
-    options.callbacks.onAgentTextComplete?.(false);
-    deliverAgentTranscript(failure, false);
+    deliverAgentSpeech({ id: speechId, generation, text: failure });
   };
 
-  const executeToolCall = (callId: string, name: string, argumentsJson: string) => {
-    void options.callbacks.executeTool(callId, name, argumentsJson)
+  const executeToolCall = (
+    callId: string,
+    name: string,
+    argumentsJson: string,
+    generation: number,
+  ) => {
+    const executionKey = `${generation}:${name}:${canonicalJson(argumentsJson)}`;
+    let execution = toolExecutions.get(executionKey);
+    if (!execution) {
+      execution = options.callbacks.executeTool(callId, name, argumentsJson);
+      toolExecutions.set(executionKey, execution);
+    }
+    void execution
       .then((result) => {
         send(channel, {
           type: "conversation.item.create",
           item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) },
         });
+        if (generation !== outputGeneration) return;
         if (result.success === false) {
-          deliverToolFailure(name);
+          deliverToolFailure(name, generation, `tool-failure:${callId}`);
           return;
         }
         const deterministicResponse = toolSpokenResponse(name, result);
         if (deterministicResponse) {
           if ((options.outputMode ?? "text") === "text") {
-            send(channel, {
-              type: "conversation.item.create",
-              item: {
-                type: "message",
-                role: "assistant",
-                content: [{ type: "output_text", text: deterministicResponse }],
-              },
+            const accepted = deliverAgentSpeech({
+              id: `tool:${callId}`,
+              generation,
+              text: deterministicResponse,
             });
-            options.callbacks.onAgentTextDelta?.(deterministicResponse);
-            options.callbacks.onAgentTextComplete?.(false);
-            deliverAgentTranscript(deterministicResponse, false);
+            if (accepted) {
+              send(channel, {
+                type: "conversation.item.create",
+                item: {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: deterministicResponse }],
+                },
+              });
+            }
           } else {
-            enqueueResponse(() => requestExactToolResponse(channel, deterministicResponse));
+            enqueueResponse(() => requestExactToolResponse(channel, deterministicResponse), generation);
           }
           return;
         }
-        enqueueResponse(() => requestToolResultResponse(channel));
+        if (!toolFollowupGenerations.has(generation)) {
+          toolFollowupGenerations.add(generation);
+          enqueueResponse(() => requestToolResultResponse(channel), generation);
+        }
       })
       .catch(() => {
         send(channel, {
           type: "conversation.item.create",
           item: { type: "function_call_output", call_id: callId, output: JSON.stringify({ success: false }) },
         });
-        deliverToolFailure(name);
+        if (generation === outputGeneration) {
+          deliverToolFailure(name, generation, `tool-failure:${callId}`);
+        }
       });
   };
 
@@ -220,17 +298,21 @@ export async function connectOpenAiRealtime(options: {
     options.callbacks.onError("The voice provider returned an invalid internal protocol response.");
   };
 
-  const prepareAndRequestCallerResponse = (transcript: string) => {
+  const prepareAndRequestCallerResponse = (transcript: string, generation: number) => {
     callerPreparationChain = callerPreparationChain.then(async () => {
+      if (generation !== outputGeneration) return;
       try {
         const instructions = await options.prepareCallerResponse?.(transcript);
+        if (generation !== outputGeneration) return;
         if (instructions?.trim()) {
           send(channel, { type: "session.update", session: { type: "realtime", instructions } });
         }
       } catch {
         // The active Realtime session still has its original safe instructions.
       }
-      enqueueResponse(() => requestCallerResponse(channel));
+      if (generation === outputGeneration) {
+        enqueueResponse(() => requestCallerResponse(channel), generation);
+      }
     });
   };
 
@@ -260,12 +342,14 @@ export async function connectOpenAiRealtime(options: {
         responseActive = false;
         return;
       }
+      const requestedGeneration = dispatchedResponseRequest?.generation ?? outputGeneration;
       expectedResponses -= 1;
       responseRequestInFlight = false;
       dispatchedResponseRequest = null;
       responseActive = true;
       currentResponseId = eventResponseId;
-      if (responseCancellationPending) {
+      currentResponseGeneration = requestedGeneration;
+      if (responseCancellationPending || requestedGeneration !== outputGeneration) {
         if (eventResponseId) ignoredResponseIds.add(eventResponseId);
         discardCurrentResponseOutput = true;
         send(channel, { type: "response.cancel" });
@@ -301,18 +385,21 @@ export async function connectOpenAiRealtime(options: {
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
       if (isMeaningfulCallerTranscript(transcript) && shouldProcessCallerTranscript(event, transcript)) {
+        const generation = callerTurnGeneration ?? invalidateOutputForCallerTurn();
         protocolRecoveryAttempts = 0;
         options.callbacks.onCallerTranscript(transcript);
         // The session disables provider-managed response creation. Only a
         // usable final transcript is allowed to advance the conversation.
-        prepareAndRequestCallerResponse(transcript);
+        prepareAndRequestCallerResponse(transcript, generation);
       }
+      callerTurnGeneration = null;
       pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
-      flushDeferredAgentTranscripts();
+      flushDeferredAgentSpeech();
     }
     if (type === "conversation.item.input_audio_transcription.failed") {
+      callerTurnGeneration = null;
       pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
-      flushDeferredAgentTranscripts();
+      flushDeferredAgentSpeech();
     }
     if (type === "response.output_audio_transcript.delta"
       || type === "response.output_audio_transcript.done") {
@@ -355,12 +442,16 @@ export async function connectOpenAiRealtime(options: {
         recoverProtocolOutput(false);
         return;
       }
-      if (!interrupted) options.callbacks.onAgentTextDelta?.(speech);
-      deliverAgentTranscript(speech, interrupted);
+      if (!interrupted) {
+        deliverAgentSpeech({
+          id: eventResponseId || currentResponseId || `response-${++localSpeechSequence}`,
+          generation: currentResponseGeneration,
+          text: speech,
+        });
+      }
       agentTranscript = "";
       agentInterrupted = false;
       textCompletionSent = true;
-      options.callbacks.onAgentTextComplete?.(interrupted);
     }
     if (type === "input_audio_buffer.speech_started") {
       pendingCallerTranscriptions += 1;
@@ -371,13 +462,15 @@ export async function connectOpenAiRealtime(options: {
       if (debounceMs > 0) {
         bargeInTimer = window.setTimeout(() => {
           if (callerSpeechActive) {
+            const generation = callerTurnGeneration ?? invalidateOutputForCallerTurn();
             agentInterrupted = agentWasResponding;
-            options.callbacks.onCallerSpeechStarted(agentWasResponding);
+            options.callbacks.onCallerSpeechStarted(agentWasResponding, generation);
           }
         }, debounceMs);
       } else {
+        const generation = callerTurnGeneration ?? invalidateOutputForCallerTurn();
         agentInterrupted = agentWasResponding;
-        options.callbacks.onCallerSpeechStarted(agentWasResponding);
+        options.callbacks.onCallerSpeechStarted(agentWasResponding, generation);
       }
     }
     if (type === "input_audio_buffer.speech_stopped") {
@@ -392,7 +485,9 @@ export async function connectOpenAiRealtime(options: {
       const name = String(event.name ?? "");
       const argumentsJson = String(event.arguments ?? "{}");
       responseHasToolCall = true;
-      if (acceptToolCall(callId)) executeToolCall(callId, name, argumentsJson);
+      if (acceptToolCall(callId)) {
+        executeToolCall(callId, name, argumentsJson, currentResponseGeneration);
+      }
     }
     if (type === "error") {
       const error = event.error as { message?: string } | undefined;
@@ -435,11 +530,13 @@ export async function connectOpenAiRealtime(options: {
     peer,
     channel,
     sendUserText: (text) => {
+      const generation = invalidateOutputForCallerTurn();
+      callerTurnGeneration = null;
       send(channel, {
         type: "conversation.item.create",
         item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
       });
-      prepareAndRequestCallerResponse(text);
+      prepareAndRequestCallerResponse(text, generation);
     },
     speakGreeting: (text) => {
       enqueueResponse(() => requestGreeting(channel, text, options.outputMode ?? "text"));
@@ -513,6 +610,27 @@ function toolSpokenResponse(name: string, result: Record<string, unknown>) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
   const response = (payload as Record<string, unknown>).spokenResponse;
   return typeof response === "string" ? response.trim() : "";
+}
+
+function canonicalJson(value: string) {
+  try {
+    return stableJson(JSON.parse(value) as unknown);
+  } catch {
+    return value.trim();
+  }
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function speechFingerprint(value: string) {
+  return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase();
 }
 
 function localizedBookingFailure(language?: string) {

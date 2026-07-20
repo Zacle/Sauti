@@ -246,6 +246,10 @@ public class OpenAiRealtimeService {
         if (!tools.isEmpty()) {
             session.put("tools", tools);
             session.put("tool_choice", "auto");
+            // Voice turns must resolve tools in a deterministic order. Parallel
+            // calls can race side effects and produce more than one caller-facing
+            // follow-up for a single utterance.
+            session.put("parallel_tool_calls", false);
         }
         return session;
     }

@@ -2,6 +2,7 @@ package com.sauti.call;
 
 import com.sauti.session.CallSessionStore;
 import com.sauti.dashboard.DashboardEventPublisher;
+import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
@@ -140,7 +141,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             public void onComplete() {
                 session.enqueue(() -> {
                     if (session.acceptsTtsGeneration(generation)) {
-                        session.sendCurrentMark();
+                        session.completeTtsResponse();
                     }
                 });
             }
@@ -513,13 +514,9 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
     }
 
     private void handleRealtimeAgentDelta(String callSid, String delta) {
-        if (delta == null || delta.isEmpty()) return;
-        var session = sessions.get(callSid);
-        if (session == null) return;
-        session.enqueue(() -> {
-            if (session.beginRealtimeResponse()) beginTtsResponse(session, false);
-            session.appendRealtimeText(delta);
-        });
+        // Provider text is deliberately held until onAgentTextComplete. Sending
+        // deltas to external TTS would let an interrupted or tool-only response
+        // escape before its complete message and generation have been validated.
     }
 
     private void handleRealtimeAgentComplete(String callSid, String text, boolean interrupted) {
@@ -536,11 +533,9 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                         );
                         return;
                     }
-                    if (session.beginRealtimeResponse()) beginTtsResponse(session, false);
                     var terminal = session.realtimeCallerWasEnding()
                             && callPipelineService.looksLikeConversationEnding(text);
-                    session.setCloseAfterCurrentMark(terminal);
-                    session.completeRealtimeText(text);
+                    streamTtsResponse(session, text, terminal);
                     callPipelineService.recordRealtimeTranscript(
                             call.getTenant().getId(), call.getId(), "agent", text, false
                     );
@@ -627,12 +622,14 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
     }
 
     private void streamTtsResponse(TwilioMediaSession session, String responseText, boolean closeAfterPlayback) {
-        beginTtsResponse(session, closeAfterPlayback);
-        var chunks = sentenceChunker.chunks(responseText);
-        for (var chunk : chunks) {
-            session.speak(chunk, false);
-        }
-        session.speak("", true);
+        session.queueTtsResponse(() -> {
+            beginTtsResponse(session, closeAfterPlayback);
+            var chunks = sentenceChunker.chunks(responseText);
+            for (var chunk : chunks) {
+                session.speak(chunk, false);
+            }
+            session.speak("", true);
+        });
     }
 
     private void beginTtsResponse(TwilioMediaSession session, boolean closeAfterPlayback) {
@@ -710,8 +707,11 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         private UUID pendingTransferCallId;
         private final StringBuilder dtmfBuffer = new StringBuilder();
         private final StringBuilder realtimeTextBuffer = new StringBuilder();
+        private final ArrayDeque<QueuedTtsResponse> pendingTtsResponses = new ArrayDeque<>();
         private long dtmfVersion;
         private boolean realtimeResponseOpen;
+        private boolean ttsResponseActive;
+        private int speechQueueGeneration;
         private boolean realtimeReceivedDelta;
         private boolean realtimeCallerEnding;
         private boolean cascadeFallbackActive;
@@ -796,7 +796,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         }
 
         private synchronized boolean isAgentBusy() {
-            return speaking || realtimeResponseOpen;
+            return speaking || realtimeResponseOpen || ttsResponseActive;
         }
 
         private synchronized boolean canSendReminder(int afterSeconds, int maximum) {
@@ -878,8 +878,44 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             });
         }
 
+        private void queueTtsResponse(Runnable response) {
+            QueuedTtsResponse next = null;
+            synchronized (this) {
+                pendingTtsResponses.addLast(new QueuedTtsResponse(speechQueueGeneration, response));
+                if (!ttsResponseActive) {
+                    ttsResponseActive = true;
+                    next = pendingTtsResponses.removeFirst();
+                }
+            }
+            enqueueTtsResponse(next);
+        }
+
+        private void completeTtsResponse() {
+            sendCurrentMark();
+            QueuedTtsResponse next = null;
+            synchronized (this) {
+                ttsResponseActive = false;
+                if (!pendingTtsResponses.isEmpty()) {
+                    ttsResponseActive = true;
+                    next = pendingTtsResponses.removeFirst();
+                }
+            }
+            enqueueTtsResponse(next);
+        }
+
+        private void enqueueTtsResponse(QueuedTtsResponse response) {
+            if (response == null) return;
+            enqueue(() -> {
+                synchronized (this) {
+                    if (response.generation() != speechQueueGeneration) return;
+                }
+                response.start().run();
+            });
+        }
+
         private synchronized boolean sendRealtimeUserText(String text) {
             if (!(sttSession instanceof TelephonyRealtimeConversationProvider.Session realtime)) return false;
+            interruptCurrentTurn();
             realtime.sendUserText(text);
             return true;
         }
@@ -1057,7 +1093,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         private boolean interruptCurrentTurn() {
             CompletableFuture<RealtimeTtsSession> sessionToClose;
             synchronized (this) {
-                if (!speaking) {
+                if (!speaking && !ttsResponseActive && pendingTtsResponses.isEmpty()) {
                     return false;
                 }
                 speaking = false;
@@ -1068,6 +1104,9 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 realtimeResponseOpen = false;
                 realtimeReceivedDelta = false;
                 realtimeTextBuffer.setLength(0);
+                ttsResponseActive = false;
+                speechQueueGeneration++;
+                pendingTtsResponses.clear();
                 sessionToClose = ttsSessionFuture;
             }
             sessionToClose.thenAccept(ttsSession -> {
@@ -1092,6 +1131,9 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             synchronized (this) {
                 currentStt = sttSession;
                 sttSession = null;
+                pendingTtsResponses.clear();
+                ttsResponseActive = false;
+                speechQueueGeneration++;
             }
             if (currentStt != null) currentStt.close();
             sttSessionFuture.thenAccept(initialStt -> {
@@ -1104,6 +1146,8 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             });
             turnExecutor.shutdown();
         }
+
+        private record QueuedTtsResponse(int generation, Runnable start) { }
     }
 
     private interface TtsSessionFactory {

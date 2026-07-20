@@ -132,10 +132,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
               queueTranscriptWrite(() => recordPublicRealtimeTranscript(session.sessionId, session.token, "agent", text, interrupted));
               if (isFarewell(text)) nativeEndPendingRef.current = true;
             },
-            onAgentTextDelta: hybrid ? (delta) => sendHybridEvent({ type: "tts_delta", text: delta }) : undefined,
-            onAgentTextComplete: hybrid ? (interrupted) => {
-              if (!interrupted) sendHybridEvent({ type: "tts_complete" });
-            } : undefined,
+            onAgentSpeech: hybrid ? (speech) => sendHybridEvent({ type: "speak", ...speech }) : undefined,
             onSpeaking: (value) => {
               updateSpeaking(value);
               if (!value && nativeEndPendingRef.current) {
@@ -143,23 +140,14 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
                 window.setTimeout(end, 220);
               }
             },
-            onCallerSpeechStarted: (agentWasResponding) => {
-              const cartesiaStillAudible = hybrid && (
-                speakingRef.current
-                || playbackTimeRef.current > context.currentTime + 0.03
-              );
+            onCallerSpeechStarted: (_agentWasResponding, generation) => {
               updateSpeaking(false);
               setPartial("Listening...");
-              if (!hybrid && agentWasResponding) {
-                openAiConnectionRef.current?.cancelResponse();
-              }
-              if (hybrid && (agentWasResponding || cartesiaStillAudible)) {
-                // OpenAI may finish generating text before Cartesia finishes
-                // playing it. Cancel the model in both cases so late deltas
-                // cannot restart the interrupted sentence.
-                openAiConnectionRef.current?.cancelResponse();
+              if (hybrid) {
+                // Always advance the external TTS generation. A Cartesia context
+                // may still be generating before its first audio frame arrives.
                 clearPlayback();
-                sendHybridEvent({ type: "interrupt" });
+                sendHybridEvent({ type: "interrupt", generation });
               }
             },
             onError: setError,

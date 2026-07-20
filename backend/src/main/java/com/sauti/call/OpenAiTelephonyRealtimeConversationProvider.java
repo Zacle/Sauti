@@ -138,9 +138,17 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private String lastCallerTranscript = "";
         private long lastCallerTranscriptAt;
         private volatile String currentResponseId = "";
+        private volatile long turnGeneration;
+        private volatile long currentResponseGeneration;
         private volatile boolean discardCurrentResponseOutput;
         private volatile boolean responseCancellationPending;
         private final java.util.ArrayDeque<AgentCompletion> deferredAgentCompletions = new java.util.ArrayDeque<>();
+        private final java.util.Set<String> deliveredSpeechIds = new java.util.HashSet<>();
+        private final java.util.Set<String> deliveredSpeechFingerprints = new java.util.HashSet<>();
+        private final java.util.Set<Long> toolFollowupGenerations = new java.util.HashSet<>();
+        private final java.util.Set<Long> toolSpeechGenerations = new java.util.HashSet<>();
+        private final java.util.Map<String, CompletableFuture<com.sauti.llm.LlmToolResult>> toolExecutions =
+                new java.util.HashMap<>();
 
         RealtimeWebSocketListener(
                 ObjectMapper objectMapper,
@@ -161,12 +169,20 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         synchronized void markCurrentResponseCancelled() {
+            var activeSession = session;
+            turnGeneration = Math.max(turnGeneration + 1L, activeSession == null ? 0L : activeSession.currentGeneration());
             if (!currentResponseId.isBlank()) ignoredResponseIds.add(currentResponseId);
             discardCurrentResponseOutput = true;
-            var activeSession = session;
             responseCancellationPending = responseActive
                     || (activeSession != null && activeSession.hasResponseOutstanding());
             responseActive = false;
+            deferredAgentCompletions.clear();
+            deliveredSpeechIds.clear();
+            deliveredSpeechFingerprints.clear();
+            toolFollowupGenerations.clear();
+            toolSpeechGenerations.clear();
+            toolExecutions.clear();
+            if (activeSession != null) activeSession.discardResponsesBefore(turnGeneration);
         }
 
         @Override
@@ -212,15 +228,18 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     if (activeSession != null && !activeSession.consumeExpectedResponse()) {
                         if (!eventResponseId.isBlank()) ignoredResponseIds.add(eventResponseId);
                         discardCurrentResponseOutput = true;
-                        activeSession.cancelResponse();
+                        activeSession.cancelProviderResponse();
                         responseActive = false;
                         return;
                     }
+                    currentResponseGeneration = activeSession == null
+                            ? turnGeneration
+                            : activeSession.dispatchedGeneration();
                     currentResponseId = eventResponseId;
-                    if (responseCancellationPending) {
+                    if (responseCancellationPending || currentResponseGeneration != turnGeneration) {
                         if (!eventResponseId.isBlank()) ignoredResponseIds.add(eventResponseId);
                         discardCurrentResponseOutput = true;
-                        activeSession.cancelResponse();
+                        activeSession.cancelProviderResponse();
                         return;
                     }
                     discardCurrentResponseOutput = false;
@@ -317,9 +336,13 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     case "response.function_call_arguments.done" -> {
                         responseHasToolCall = true;
                         var callId = event.path("call_id").asText("");
-                        if (acceptToolCall(callId)) executeTool(webSocket, event);
+                        if (acceptToolCall(callId)) {
+                            executeTool(webSocket, event, currentResponseGeneration);
+                        }
                     }
                     case "response.done" -> {
+                        var completedResponseId = eventResponseId.isBlank() ? currentResponseId : eventResponseId;
+                        var completedGeneration = currentResponseGeneration;
                         responseActive = false;
                         responseCancellationPending = false;
                         if (eventResponseId.isBlank() || eventResponseId.equals(currentResponseId)) {
@@ -330,9 +353,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             textCompleted = true;
                         } else if (!textCompleted && agentText.length() > 0) {
                             if (VoiceOutputGuard.isProtocolPayload(agentText.toString())) {
-                                recoverProtocolOutput(webSocket);
+                                recoverProtocolOutput(webSocket, completedGeneration);
                             } else {
-                                completeText("");
+                                completeText("", completedGeneration, completedResponseId);
                             }
                         }
                         var activeSession = session;
@@ -397,7 +420,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             callerSpeechNotified = false;
         }
 
-        private void completeText(String providerText) {
+        private void completeText(String providerText, long generation, String speechId) {
             if (textCompleted) return;
             var rawText = providerText == null || providerText.isBlank()
                     ? agentText.toString().trim()
@@ -406,10 +429,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             agentText.setLength(0);
             textCompleted = true;
             if (finalText.isBlank()) return;
+            var completion = new AgentCompletion(
+                    finalText,
+                    responseInterrupted,
+                    generation,
+                    speechId == null || speechId.isBlank() ? "response-unknown" : speechId
+            );
             if (pendingCallerTranscriptions > 0) {
-                deferredAgentCompletions.addLast(new AgentCompletion(finalText, responseInterrupted));
+                deferredAgentCompletions.addLast(completion);
             } else {
-                deliverAgentCompletion(new AgentCompletion(finalText, responseInterrupted));
+                deliverAgentCompletion(completion);
             }
         }
 
@@ -420,24 +449,28 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             }
         }
 
-        private void deliverAgentCompletion(AgentCompletion completion) {
+        private synchronized void deliverAgentCompletion(AgentCompletion completion) {
             // Model output is released only after the complete message has passed
-            // the speech/protocol guard. Server-generated recovery text may still
-            // use the explicit delta path because it is not provider output.
-            if (!completion.interrupted()) listener.onAgentTextDelta(completion.text());
+            // the speech/protocol guard. The telephony service receives one atomic
+            // completion and serializes it as one external TTS context.
+            if (completion.interrupted() || completion.generation() != turnGeneration) return;
+            var id = completion.generation() + ":" + completion.id();
+            var fingerprint = completion.generation() + ":" + speechFingerprint(completion.text());
+            if (!deliveredSpeechIds.add(id) || !deliveredSpeechFingerprints.add(fingerprint)) return;
             listener.onAgentTextComplete(completion.text(), completion.interrupted());
         }
 
-        private void executeTool(WebSocket webSocket, JsonNode event) {
+        private void executeTool(WebSocket webSocket, JsonNode event, long generation) {
             executeTool(
                     webSocket,
                     event.path("call_id").asText(""),
                     event.path("name").asText(""),
-                    event.path("arguments").asText("{}")
+                    event.path("arguments").asText("{}"),
+                    generation
             );
         }
 
-        private void recoverProtocolOutput(WebSocket webSocket) {
+        private void recoverProtocolOutput(WebSocket webSocket, long generation) {
             agentText.setLength(0);
             textCompleted = true;
             if (!currentOutputItemId.isBlank()) {
@@ -445,15 +478,14 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             }
             LOGGER.warn("Suppressed provider protocol output from caller-facing audio callId={}", call.getId());
             var activeSession = session;
-            if (protocolRecoveryAttempts++ == 0 && activeSession != null) {
+            if (protocolRecoveryAttempts++ == 0 && activeSession != null && generation == turnGeneration) {
                 // Retry once with tools disabled. The complete session prompt and
                 // configured business facts remain authoritative for the answer.
-                activeSession.requestToolResultResponse();
+                activeSession.requestToolResultResponse(generation);
                 return;
             }
             var safeText = VoiceOutputGuard.safeResponseFailure(responseLanguage());
-            listener.onAgentTextDelta(safeText);
-            listener.onAgentTextComplete(safeText, false);
+            deliverAgentCompletion(new AgentCompletion(safeText, false, generation, "protocol-recovery"));
         }
 
         private String responseLanguage() {
@@ -463,16 +495,24 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     : detected;
         }
 
-        private void executeTool(WebSocket webSocket, String callId, String name, String arguments) {
-            CompletableFuture.runAsync(() -> {
-                com.sauti.llm.LlmToolResult result;
+        private void executeTool(
+                WebSocket webSocket,
+                String callId,
+                String name,
+                String arguments,
+                long generation
+        ) {
+            var executionKey = generation + ":" + name + ":" + canonicalJson(arguments);
+            var execution = toolExecutions.computeIfAbsent(executionKey, ignored -> CompletableFuture.supplyAsync(() -> {
                 try {
-                    result = realtimeService.executeTool(call, callId, name, arguments);
+                    return realtimeService.executeTool(call, callId, name, arguments);
                 } catch (RuntimeException exception) {
-                    result = new com.sauti.llm.LlmToolResult(
+                    return new com.sauti.llm.LlmToolResult(
                             callId, name, false, Map.of(), "Tool execution failed"
                     );
                 }
+            }));
+            execution.thenAccept(result -> {
                 send(webSocket, Map.of(
                         "type", "conversation.item.create",
                         "item", Map.of(
@@ -481,25 +521,34 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                 "output", write(result)
                         )
                 ));
+                if (!isCurrentGeneration(generation)) return;
                 if (!result.success()) {
                     var safeText = switch (name) {
                         case "check_availability" -> VoiceOutputGuard.safeAvailabilityFailure(responseLanguage());
                         case "book_slot" -> VoiceOutputGuard.safeBookingFailure(responseLanguage());
                         default -> VoiceOutputGuard.safeAvailabilityClarification(responseLanguage());
                     };
-                    listener.onAgentTextDelta(safeText);
-                    listener.onAgentTextComplete(safeText, false);
+                    deliverAgentCompletion(new AgentCompletion(
+                            safeText, false, generation, "tool-failure:" + callId
+                    ));
                     return;
                 }
                 var deterministicResponse = toolSpokenResponse(result);
                 if (!deterministicResponse.isBlank()) {
                     var activeSession = session;
-                    if (activeSession != null) activeSession.requestExactResponse(deterministicResponse);
+                    if (activeSession != null && claimToolSpeech(generation)) {
+                        activeSession.requestExactResponse(deterministicResponse, generation);
+                    }
                     return;
                 }
                 var activeSession = session;
-                if (activeSession != null) activeSession.requestToolResultResponse();
-                else send(webSocket, Map.of("type", "response.create"));
+                if (activeSession != null) {
+                    if (claimToolFollowup(generation)) {
+                        activeSession.requestToolResultResponse(generation);
+                    }
+                } else {
+                    send(webSocket, Map.of("type", "response.create"));
+                }
             });
         }
 
@@ -524,7 +573,54 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             }
         }
 
-        private record AgentCompletion(String text, boolean interrupted) { }
+        private String canonicalJson(String value) {
+            try {
+                return canonicalJsonNode(objectMapper.readTree(value));
+            } catch (Exception ignored) {
+                return value == null ? "" : value.trim();
+            }
+        }
+
+        private String canonicalJsonNode(JsonNode node) throws Exception {
+            if (node == null || node.isNull()) return "null";
+            if (node.isArray()) {
+                var values = new java.util.ArrayList<String>();
+                for (var value : node) values.add(canonicalJsonNode(value));
+                return "[" + String.join(",", values) + "]";
+            }
+            if (node.isObject()) {
+                var names = new java.util.ArrayList<String>();
+                node.fieldNames().forEachRemaining(names::add);
+                names.sort(String::compareTo);
+                var fields = new java.util.ArrayList<String>();
+                for (var name : names) {
+                    fields.add(objectMapper.writeValueAsString(name) + ":" + canonicalJsonNode(node.get(name)));
+                }
+                return "{" + String.join(",", fields) + "}";
+            }
+            return node.toString();
+        }
+
+        private synchronized boolean isCurrentGeneration(long generation) {
+            return generation == turnGeneration;
+        }
+
+        private synchronized boolean claimToolSpeech(long generation) {
+            return generation == turnGeneration && toolSpeechGenerations.add(generation);
+        }
+
+        private synchronized boolean claimToolFollowup(long generation) {
+            return generation == turnGeneration && toolFollowupGenerations.add(generation);
+        }
+
+        private String speechFingerprint(String value) {
+            return java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKC)
+                    .strip()
+                    .replaceAll("\\s+", " ")
+                    .toLowerCase(java.util.Locale.ROOT);
+        }
+
+        private record AgentCompletion(String text, boolean interrupted, long generation, String id) { }
 
         private boolean isOutputItem(JsonNode event, String expectedType) {
             var itemId = event.path("item_id").asText("");
@@ -545,9 +641,10 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final ScheduledFuture<?> keepAliveTask;
         private final Runnable onCancel;
         private final java.util.concurrent.atomic.AtomicInteger expectedResponses = new java.util.concurrent.atomic.AtomicInteger();
-        private final java.util.ArrayDeque<Map<String, ?>> pendingResponses = new java.util.ArrayDeque<>();
+        private final java.util.ArrayDeque<QueuedResponse> pendingResponses = new java.util.ArrayDeque<>();
         private boolean responseOutstanding;
-        private Map<String, ?> inFlightResponse;
+        private QueuedResponse inFlightResponse;
+        private long generation;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
         OpenAiTelephonySession(
@@ -600,6 +697,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         @Override
         public void sendUserText(String text) {
             if (text == null || text.isBlank()) return;
+            cancelResponse();
             send(Map.of(
                     "type", "conversation.item.create",
                     "item", Map.of(
@@ -613,7 +711,15 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         @Override
         public void cancelResponse() {
+            synchronized (this) {
+                generation++;
+                pendingResponses.removeIf(response -> response.generation() != generation);
+            }
             onCancel.run();
+            send(Map.of("type", "response.cancel"));
+        }
+
+        void cancelProviderResponse() {
             send(Map.of("type", "response.cancel"));
         }
 
@@ -625,12 +731,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         void requestToolResultResponse() {
+            requestToolResultResponse(currentGeneration());
+        }
+
+        void requestToolResultResponse(long expectedGeneration) {
             enqueueResponse(Map.of(
                     "type", "response.create",
                     "response", Map.of(
                             "tool_choice", "none"
                     )
-            ));
+            ), expectedGeneration);
         }
 
         void requestResponseWithRequiredTool(String toolName) {
@@ -643,6 +753,10 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         void requestExactResponse(String text) {
+            requestExactResponse(text, currentGeneration());
+        }
+
+        void requestExactResponse(String text, long expectedGeneration) {
             if (text == null || text.isBlank()) return;
             enqueueResponse(Map.of(
                     "type", "response.create",
@@ -650,20 +764,29 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             "instructions", "Say exactly this text with no additions or omissions: " + text.trim(),
                             "tool_choice", "none"
                     )
-            ));
+            ), expectedGeneration);
         }
 
-        private synchronized void enqueueResponse(Map<String, ?> response) {
-            pendingResponses.addLast(response);
+        private void enqueueResponse(Map<String, ?> response) {
+            enqueueResponse(response, currentGeneration());
+        }
+
+        private synchronized void enqueueResponse(Map<String, ?> response, long expectedGeneration) {
+            if (expectedGeneration != generation) return;
+            pendingResponses.addLast(new QueuedResponse(expectedGeneration, response));
             dispatchNextResponse();
         }
 
         private synchronized void dispatchNextResponse() {
-            if (responseOutstanding || pendingResponses.isEmpty()) return;
+            if (responseOutstanding) return;
+            while (!pendingResponses.isEmpty() && pendingResponses.peekFirst().generation() != generation) {
+                pendingResponses.removeFirst();
+            }
+            if (pendingResponses.isEmpty()) return;
             responseOutstanding = true;
             expectedResponses.incrementAndGet();
             inFlightResponse = pendingResponses.removeFirst();
-            send(inFlightResponse);
+            send(inFlightResponse.payload());
         }
 
         synchronized void responseFinished() {
@@ -687,6 +810,19 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             return responseOutstanding;
         }
 
+        synchronized long currentGeneration() {
+            return generation;
+        }
+
+        synchronized long dispatchedGeneration() {
+            return inFlightResponse == null ? generation : inFlightResponse.generation();
+        }
+
+        synchronized void discardResponsesBefore(long minimumGeneration) {
+            if (minimumGeneration > generation) generation = minimumGeneration;
+            pendingResponses.removeIf(response -> response.generation() < generation);
+        }
+
         void updateInstructions(String instructions) {
             if (instructions == null || instructions.isBlank()) return;
             send(Map.of(
@@ -702,6 +838,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 if (expectedResponses.compareAndSet(current, current - 1)) return true;
             }
         }
+
+        private record QueuedResponse(long generation, Map<String, ?> payload) { }
 
         private synchronized void send(Map<String, ?> event) {
             try {

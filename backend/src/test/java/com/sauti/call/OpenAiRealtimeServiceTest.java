@@ -16,6 +16,7 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -61,7 +62,11 @@ class OpenAiRealtimeServiceTest {
         when(agent.getTtsVoiceId()).thenReturn("cartesia:french-voice");
         when(agent.getBargeInSensitivity()).thenReturn(0.8);
         when(agent.getSttEndpointingMs()).thenReturn(410);
-        when(loader.loadForAgent(agent.getId())).thenReturn(List.of());
+        when(loader.loadForAgent(agent.getId())).thenReturn(List.of(
+                new com.sauti.llm.LlmToolDefinition(
+                        "check_availability", "Check one time", Map.of("type", "object")
+                )
+        ));
         when(orchestrator.realtimeInstructions(call, "fr")).thenReturn("Speak French concisely.");
         var mapper = new ObjectMapper();
         var service = new OpenAiRealtimeService(
@@ -79,6 +84,7 @@ class OpenAiRealtimeServiceTest {
                 .contains("\"silence_duration_ms\":410")
                 .contains("\"create_response\":false")
                 .contains("\"interrupt_response\":false")
+                .contains("\"parallel_tool_calls\":false")
                 .contains("\"threshold\":0.6");
         assertThat(configurationNode.at("/audio/input/format/type").asText()).isEqualTo("audio/pcm");
         assertThat(configurationNode.at("/audio/input/format/rate").asInt()).isEqualTo(24000);
