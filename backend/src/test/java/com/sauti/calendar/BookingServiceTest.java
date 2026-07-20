@@ -1,6 +1,7 @@
 package com.sauti.calendar;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
@@ -69,6 +70,76 @@ class BookingServiceTest {
         verify(fixture.provider, never()).createEvent(any());
     }
 
+    @Test
+    void rejectsAnOverlappingLocalBookingBeforeSavingOrCallingTheProvider() {
+        var fixture = fixture("Google Calendar");
+        var existing = new Booking(
+                fixture.tenant,
+                fixture.requestAgent,
+                null,
+                "Existing customer",
+                "0100000000",
+                null,
+                "Haircut",
+                fixture.request.appointmentAt(),
+                fixture.request.durationMinutes(),
+                "{}"
+        );
+        when(fixture.bookingRepository
+                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        any(), any(), any(), any(), any()
+                )).thenReturn(List.of(existing));
+
+        assertThatThrownBy(() -> fixture.service.create(
+                fixture.tenant.getId(), fixture.request, fixture.provider
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("no longer available");
+
+        verify(fixture.bookingRepository, never()).saveAndFlush(any(Booking.class));
+        verify(fixture.provider, never()).createEvent(any());
+    }
+
+    @Test
+    void removesLocallyOccupiedIntervalsFromProviderAvailability() {
+        var fixture = fixture("Google Calendar");
+        var existing = new Booking(
+                fixture.tenant,
+                fixture.requestAgent,
+                null,
+                "Existing customer",
+                "0100000000",
+                null,
+                "Haircut",
+                fixture.request.appointmentAt(),
+                fixture.request.durationMinutes(),
+                "{}"
+        );
+        when(fixture.bookingRepository
+                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        any(), any(), any(), any(), any()
+                )).thenReturn(List.of(existing));
+        var occupied = new CalendarAvailabilitySlot(
+                fixture.request.appointmentAt(),
+                fixture.request.appointmentAt().plusMinutes(60),
+                "occupied"
+        );
+        var available = new CalendarAvailabilitySlot(
+                fixture.request.appointmentAt().plusMinutes(60),
+                fixture.request.appointmentAt().plusMinutes(120),
+                "available"
+        );
+
+        var result = fixture.service.excludeLocalConflicts(
+                fixture.tenant.getId(),
+                fixture.requestAgent.getId(),
+                fixture.request.appointmentAt().toLocalDate(),
+                java.time.ZoneId.of("UTC"),
+                List.of(occupied, available)
+        );
+
+        assertThat(result).containsExactly(available);
+    }
+
     private Fixture fixture(String calendarProvider) {
         var tenant = new Tenant("Hairy", "owner@example.com", "KE");
         var agent = new Agent(tenant, "Ailsa", "Hello", "Prompt");
@@ -106,11 +177,12 @@ class BookingServiceTest {
                 agent.getId(), null, "Zachary", "01115753441", null, "Haircut",
                 OffsetDateTime.now().plusDays(2), 60, Map.of("style", "Fade")
         );
-        return new Fixture(tenant, bookingRepository, transactionManager, provider, eventPublisher, service, request);
+        return new Fixture(tenant, agent, bookingRepository, transactionManager, provider, eventPublisher, service, request);
     }
 
     private record Fixture(
             Tenant tenant,
+            Agent requestAgent,
             BookingRepository bookingRepository,
             PlatformTransactionManager transactionManager,
             CalendarProvider provider,

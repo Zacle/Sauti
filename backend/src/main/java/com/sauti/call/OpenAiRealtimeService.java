@@ -8,6 +8,7 @@ import com.sauti.llm.LlmToolResult;
 import com.sauti.tool.AgentToolLoader;
 import com.sauti.tool.ToolFulfillmentRouter;
 import com.sauti.session.CallSessionStore;
+import com.sauti.nlp.LanguageDetector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -33,6 +34,7 @@ public class OpenAiRealtimeService {
     private final AgentToolLoader agentToolLoader;
     private final ToolFulfillmentRouter toolRouter;
     private final CallSessionStore callSessionStore;
+    private final LanguageDetector languageDetector;
     private final HttpClient httpClient;
     private final String apiKey;
     private final String callsUrl;
@@ -45,6 +47,7 @@ public class OpenAiRealtimeService {
             AgentToolLoader agentToolLoader,
             ToolFulfillmentRouter toolRouter,
             CallSessionStore callSessionStore,
+            LanguageDetector languageDetector,
             @Value("${spring.ai.openai.api-key:}") String apiKey,
             @Value("${sauti.realtime.openai.calls-url:https://api.openai.com/v1/realtime/calls}") String callsUrl,
             @Value("${sauti.realtime.openai.model:gpt-realtime-1.5}") String model,
@@ -55,6 +58,7 @@ public class OpenAiRealtimeService {
         this.agentToolLoader = agentToolLoader;
         this.toolRouter = toolRouter;
         this.callSessionStore = callSessionStore;
+        this.languageDetector = languageDetector;
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.callsUrl = callsUrl;
         this.model = model;
@@ -83,10 +87,27 @@ public class OpenAiRealtimeService {
     }
 
     public String realtimeInstructions(Call call, String callerTranscript) {
-        var language = call.getLanguageDetected() == null
+        var currentLanguage = call.getLanguageDetected() == null
                 ? call.getAgent().getDefaultLanguage()
                 : call.getLanguageDetected();
+        var detectedLanguage = languageDetector.detect(
+                callerTranscript,
+                currentLanguage,
+                call.getAgent().getSupportedLanguages()
+        );
+        var language = shouldFollowDetectedLanguage(callerTranscript, currentLanguage, detectedLanguage)
+                ? detectedLanguage
+                : currentLanguage;
         return conversationOrchestrator.realtimeInstructions(call, language, callerTranscript);
+    }
+
+    private boolean shouldFollowDetectedLanguage(String transcript, String currentLanguage, String detectedLanguage) {
+        if (transcript == null || transcript.isBlank() || detectedLanguage == null || detectedLanguage.isBlank()) {
+            return false;
+        }
+        if (detectedLanguage.equalsIgnoreCase(currentLanguage)) return true;
+        var wordCount = transcript.trim().split("\\s+").length;
+        return wordCount >= 3;
     }
 
     public String createWebRtcSession(Call call, String sdpOffer) {

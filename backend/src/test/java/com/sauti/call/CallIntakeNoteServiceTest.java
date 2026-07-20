@@ -103,6 +103,19 @@ class CallIntakeNoteServiceTest {
                 .containsEntry("preferred_time", "20:00");
     }
 
+    @Test
+    void keepsOnlyTheLiteralNameBeforeTheCallerContinuesTheirRequest() {
+        var repository = mock(CallTurnRepository.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId)).thenReturn(List.of());
+
+        assertThat(new CallIntakeNoteService(repository).notes(
+                call, "My name is Fatou and I want to book a consultation tomorrow."
+        )).containsEntry("caller_name", "Fatou");
+    }
+
     private CallTurn turn(String caller, String agent) {
         var turn = mock(CallTurn.class);
         when(turn.getCallerTranscript()).thenReturn(caller);

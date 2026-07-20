@@ -51,6 +51,9 @@ class AgentToolLoaderTest {
         );
         assertThat(properties).containsKey("review_token");
         assertThat(required).doesNotContain("review_token");
+        assertThat(definition.description())
+                .contains("pass the preceding review_token")
+                .contains("focused correction review");
         assertThat((List<String>) details.get("required"))
                 .containsExactly("patient_date_of_birth", "insurance_member_number");
         assertThat(detailProperties).containsKeys("patient_date_of_birth", "insurance_member_number");

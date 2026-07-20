@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.isNull;
 
 import com.sauti.agent.Agent;
@@ -14,7 +15,10 @@ import com.sauti.calendar.BookingService;
 import com.sauti.calendar.CalendarAvailabilitySlot;
 import com.sauti.calendar.CalendarProvider;
 import com.sauti.call.Call;
+import com.sauti.call.CallIntakeNoteService;
 import com.sauti.llm.LlmToolCall;
+import com.sauti.llm.ConversationMessage;
+import com.sauti.session.CallSessionStore;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -79,6 +83,42 @@ class SautiCalendarFulfillmentTest {
         @SuppressWarnings("unchecked")
         var matching = (Map<String, String>) result.result().get("matchingSlot");
         assertThat(matching.get("start")).startsWith("2026-07-22T15:00");
+    }
+
+    @Test
+    void excludesAnExistingSautiBookingAndReturnsNearbyAlternatives() {
+        var openHours = """
+                {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
+                """;
+        var occupied = new CalendarAvailabilitySlot(
+                OffsetDateTime.parse("2026-07-22T12:00:00Z"),
+                OffsetDateTime.parse("2026-07-22T13:00:00Z"),
+                "12:00"
+        );
+        var alternative = new CalendarAvailabilitySlot(
+                OffsetDateTime.parse("2026-07-22T13:00:00Z"),
+                OffsetDateTime.parse("2026-07-22T14:00:00Z"),
+                "13:00"
+        );
+        var fixture = fixture(openHours, List.of(occupied, alternative));
+        when(fixture.bookingService.excludeLocalConflicts(
+                any(), any(), any(), any(), any()
+        )).thenReturn(List.of(alternative));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "availability-local-conflict", "check_availability",
+                Map.of("date", "2026-07-22", "time_preference", "12:00", "duration_minutes", 60)
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "requested_time_unavailable")
+                .containsEntry("requestedTimeAvailable", false)
+                .containsEntry("totalAvailableSlots", 1);
+        @SuppressWarnings("unchecked")
+        var slots = (List<Map<String, String>>) result.result().get("slots");
+        assertThat(slots).singleElement().satisfies(slot ->
+                assertThat(slot.get("start")).startsWith("2026-07-22T13:00")
+        );
     }
 
     @Test
@@ -182,9 +222,9 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "booking_review_required")
                 .containsEntry("bookingCreated", false);
         assertThat(review.result().get("spokenResponse").toString())
-                .contains("Zulu, Alfa, Charlie, Hotel, Alfa, Romeo, Yankee")
+                .contains("Z for Zulu, A for Alfa, C for Charlie, H for Hotel, A for Alfa, R for Romeo, Y for Yankee")
                 .contains("0, 1, 1, 1, 5, 7, 5, 3, 4, 4, 1")
-                .contains("at sign", "dot", "Golf, Mike, Alfa, India, Lima")
+                .contains("at sign", "dot", "G for Golf, M for Mike, A for Alfa, I for India, L for Lima")
                 .contains("75 minutes", "Preferred Staff: any available staff")
                 .doesNotContain(review.result().get("reviewToken").toString());
         verifyNoInteractions(fixture.bookingService);
@@ -254,9 +294,75 @@ class SautiCalendarFulfillmentTest {
         assertThat(corrected.result().get("reviewToken"))
                 .isNotEqualTo(first.result().get("reviewToken"));
         assertThat(corrected.result().get("spokenResponse").toString())
-                .contains("Zulu, Alfa, Charlie, Hotel, Alfa, Romeo, Yankee")
-                .contains("at sign", "Golf, Mike, Alfa, India, Lima");
+                .contains("Thanks for the correction")
+                .contains("email spelled")
+                .contains("at sign", "G for Golf, M for Mike, A for Alfa, I for India, L for Lima")
+                .doesNotContain("the name", "phone number", "Men hairstyle");
         verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
+    void usesTheCallersExactLatestPhoneDigitsInsteadOfModelReconstruction() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage(
+                        "user", "Of course, my number is 0111-575-3441."
+                )));
+        when(fixture.intakeNotes.notes(
+                fixture.call, "Of course, my number is 0111-575-3441."
+        )).thenReturn(Map.of("caller_name", "Akari"));
+        var arguments = new java.util.LinkedHashMap<String, Object>();
+        arguments.put("appointment_at", "2026-07-23T12:00:00Z");
+        arguments.put("caller_name", "Zachary");
+        arguments.put("caller_phone", "011175753441");
+        arguments.put("service_type", "Men hairstyle");
+
+        var first = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "exact-phone-review", "book_slot", Map.copyOf(arguments)
+        ));
+
+        assertThat(first.result().get("spokenResponse").toString())
+                .contains("Akari: A for Alfa, K for Kilo, A for Alfa, R for Romeo, I for India")
+                .doesNotContain("Zachary")
+                .contains("0, 1, 1, 1, 5, 7, 5, 3, 4, 4, 1")
+                .doesNotContain("0, 1, 1, 1, 7, 5, 7, 5");
+
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage(
+                        "user", "Actually, the corrected number is 0115753441."
+                )));
+        arguments.put("caller_name", "Akari");
+        arguments.put("review_token", first.result().get("reviewToken"));
+        arguments.put("caller_phone", "011157543441");
+        var correction = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "exact-phone-correction", "book_slot", Map.copyOf(arguments)
+        ));
+
+        assertThat(correction.result())
+                .containsEntry("correctionReview", true)
+                .containsEntry("changedFields", List.of("caller_phone"));
+        assertThat(correction.result().get("spokenResponse").toString())
+                .contains("phone number 0, 1, 1, 5, 7, 5, 3, 4, 4, 1")
+                .doesNotContain("Men hairstyle", "A for Alfa");
+
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(booking.getBookingReference()).thenReturn("SAT-PHONEOK");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T12:00:00Z"));
+        when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
+        when(fixture.bookingService.create(any(), any(), any())).thenReturn(booking);
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "It is okay.")));
+        arguments.put("review_token", correction.result().get("reviewToken"));
+        arguments.put("caller_phone", "011157543441");
+        var booked = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "book-after-phone-approval", "book_slot", Map.copyOf(arguments)
+        ));
+
+        assertThat(booked.result()).containsEntry("bookingCreated", true);
+        verify(fixture.bookingService).create(any(), argThat(request ->
+                "0115753441".equals(request.callerPhone()) && "Akari".equals(request.callerName())
+        ), any());
     }
 
     @Test
@@ -304,17 +410,22 @@ class SautiCalendarFulfillmentTest {
     private Fixture fixture(String hours, List<CalendarAvailabilitySlot> slots) {
         var factory = mock(CalendarProviderFactory.class);
         var bookingService = mock(BookingService.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var intakeNotes = mock(CallIntakeNoteService.class);
         var call = mock(Call.class);
         var agent = mock(Agent.class);
         var tool = mock(AgentTool.class);
         var provider = mock(CalendarProvider.class);
         when(call.getAgent()).thenReturn(agent);
+        when(call.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(call.getTwilioCallSid()).thenReturn("call-sid");
         var tenant = mock(com.sauti.tenant.Tenant.class);
         var tenantId = java.util.UUID.randomUUID();
         when(call.getTenant()).thenReturn(tenant);
         when(tenant.getId()).thenReturn(tenantId);
         when(call.getLanguageDetected()).thenReturn("en");
         when(agent.getDefaultLanguage()).thenReturn("en");
+        when(agent.getId()).thenReturn(java.util.UUID.randomUUID());
         when(agent.getTimezone()).thenReturn("UTC");
         when(agent.getOperatingHours()).thenReturn(hours);
         when(agent.getSystemPrompt()).thenReturn("");
@@ -325,13 +436,17 @@ class SautiCalendarFulfillmentTest {
         when(provider.availability(
                 agent, LocalDate.of(2026, 7, 22), 60, java.time.ZoneId.of("UTC")
         )).thenReturn(slots);
+        when(bookingService.excludeLocalConflicts(any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(4));
         return new Fixture(
-                new SautiCalendarFulfillment(factory, bookingService),
+                new SautiCalendarFulfillment(factory, bookingService, callSessionStore, intakeNotes),
                 call,
                 agent,
                 tool,
                 provider,
-                bookingService
+                bookingService,
+                callSessionStore,
+                intakeNotes
         );
     }
 
@@ -341,7 +456,9 @@ class SautiCalendarFulfillmentTest {
             Agent agent,
             AgentTool tool,
             CalendarProvider provider,
-            BookingService bookingService
+            BookingService bookingService,
+            CallSessionStore callSessionStore,
+            CallIntakeNoteService intakeNotes
     ) {
     }
 }

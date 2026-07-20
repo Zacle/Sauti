@@ -194,7 +194,10 @@ public class CallIntakeNoteService {
     }
 
     private String cleanName(String value) {
-        return value.trim().replaceAll("[.!?]+$", "").replaceAll("\\s+", " ");
+        return value.trim()
+                .replaceFirst("(?iu)\\s+(?:and\\s+i\\b|et\\s+je\\b|et\\s+j['’]|na\\s+(?:nina|nataka)\\b|و\\s*أنا\\b).*$", "")
+                .replaceAll("[.!?]+$", "")
+                .replaceAll("\\s+", " ");
     }
 
     private String normalize(String value) {

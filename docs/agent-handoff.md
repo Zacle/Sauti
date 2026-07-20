@@ -3577,3 +3577,30 @@ Expected:
   - Not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD chain.
 - Follow-up risk:
   - The consolidated review uses deterministic localized framing for the platform's current English, French, Swahili, and Arabic language set while spelling identity characters with the standard NATO alphabet. Any newly supported caller language should add localized framing tests before launch; the payload and review-token enforcement are language-independent.
+
+### 2026-07-20 - Lossless booking corrections, natural turn behavior, and local conflict protection
+
+- Corrected the failures shown in the Ailsa booking transcript. Final reviews now introduce NATO readback clearly (for example, `Z for Zulu, A for Alfa`) instead of speaking only code words with no explanation.
+- Replaced the irreversible review hash with a signed, call-bound review snapshot. When a caller changes one value, the server can compare the old and new booking payloads and return a focused correction readback instead of repeating the entire name, phone, service, date, and duration. The preceding private token must be retained for a correction; the latest token is reused only after approval.
+- Made caller phone capture lossless at the booking boundary. The server reads the latest accepted caller transcript, preserves leading zeroes, replaces rather than merges corrected digit sequences, and carries the exact reviewed phone value into the final create call even if the model reconstructs different digits afterward.
+- Connected calendar fulfillment to authoritative call-intake notes for the initial caller name/email/phone. Literal names such as `Akari` are no longer silently replaced by familiar names such as `Zachary`; name extraction also stops before a following phrase such as `and I want to book...`.
+- Strengthened browser, phone, and shared Realtime instructions to react briefly and naturally, vary acknowledgements, stay in the caller's substantial current language, never repeat the same sentence/summary twice, treat names as opaque values, and reconfirm only the corrected field.
+- Added per-turn language detection before generating updated Realtime instructions. A substantial English turn now overrides stale language state while single noisy words cannot switch the call language.
+- Made Sauti's booking database part of live availability. Confirmed or pending local bookings are removed from provider-returned slots, so an occupied requested time becomes `requested_time_unavailable` and the existing availability response offers nearby returned alternatives.
+- Added a second overlap check immediately before the database insert. A stale review or concurrent booking attempt cannot knowingly create another appointment that overlaps an existing non-cancelled Sauti booking.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/{BookingRepository,BookingService}.java`
+  - `backend/src/main/java/com/sauti/call/{CallIntakeNoteService,OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,BookingReviewRenderer,DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - corresponding backend regression tests
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused calendar fulfillment, booking service, language/runtime, call-intake, orchestrator, tool-schema, and authenticated flow tests - passed.
+  - `.\gradlew.bat :backend:test` - passed; 202 tests.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+  - `git diff --check` - passed before the handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: actual microphone/carrier testing is still required to validate STT segmentation around spoken digit groups and expressive delivery for the selected Cartesia voice. Provider controls were intentionally not forced to one static emotion because Sonic 3.5 derives emotion from transcript context; mismatched forced emotion can degrade delivery.

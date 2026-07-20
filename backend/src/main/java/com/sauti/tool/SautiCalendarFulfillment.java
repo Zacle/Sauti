@@ -4,8 +4,10 @@ import com.sauti.calendar.BookingDtos.CreateBookingRequest;
 import com.sauti.calendar.BookingService;
 import com.sauti.agent.OperatingHoursSchedule;
 import com.sauti.call.Call;
+import com.sauti.call.CallIntakeNoteService;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
+import com.sauti.session.CallSessionStore;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
@@ -16,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,10 +28,22 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     private static final Logger LOGGER = LoggerFactory.getLogger(SautiCalendarFulfillment.class);
     private final CalendarProviderFactory calendarProviderFactory;
     private final BookingService bookingService;
+    private final CallSessionStore callSessionStore;
+    private final CallIntakeNoteService intakeNotes;
+    private static final Pattern SPOKEN_DIGIT_SEQUENCE = Pattern.compile(
+            "(?<!\\d)(\\+?\\d(?:[\\s().-]*\\d){3,14})(?!\\d)"
+    );
 
-    public SautiCalendarFulfillment(CalendarProviderFactory calendarProviderFactory, BookingService bookingService) {
+    public SautiCalendarFulfillment(
+            CalendarProviderFactory calendarProviderFactory,
+            BookingService bookingService,
+            CallSessionStore callSessionStore,
+            CallIntakeNoteService intakeNotes
+    ) {
         this.calendarProviderFactory = calendarProviderFactory;
         this.bookingService = bookingService;
+        this.callSessionStore = callSessionStore;
+        this.intakeNotes = intakeNotes;
     }
 
     @Override
@@ -85,6 +100,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             try {
                 var provider = calendarProviderFactory.forTool(toolConfig, call.getTenant().getId());
                 availableSlots = provider.availability(call.getAgent(), date, duration, timezone);
+                availableSlots = bookingService.excludeLocalConflicts(
+                        call.getTenant().getId(), call.getAgent().getId(), date, timezone, availableSlots
+                );
             } catch (RuntimeException exception) {
                 calendarLive = false;
                 LOGGER.warn("Live calendar availability failed for call {} and agent {}: {}",
@@ -190,8 +208,10 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     }
 
     private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, AgentTool toolConfig) {
-        var customerDetails = customerDetails(toolCall.arguments());
-        var missingFields = missingRequiredBookingFields(call, toolCall.arguments(), customerDetails);
+        var suppliedReviewToken = stringArg(toolCall.arguments(), "review_token", "");
+        var arguments = normalizePhoneFromLatestCaller(call, toolCall.arguments(), suppliedReviewToken);
+        var customerDetails = customerDetails(arguments);
+        var missingFields = missingRequiredBookingFields(call, arguments, customerDetails);
         if (!missingFields.isEmpty()) {
             return Map.of(
                     "status", "missing_required_information",
@@ -201,8 +221,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     "instruction", "Ask for exactly nextMissingField in the caller's language. Do not mention, list, or request any other missing field in the same reply."
             );
         }
-        var review = BookingReviewRenderer.render(call, toolCall.arguments(), customerDetails);
-        var suppliedReviewToken = stringArg(toolCall.arguments(), "review_token", "");
+        var review = BookingReviewRenderer.render(call, arguments, customerDetails, suppliedReviewToken);
         if (!secureEquals(review.token(), suppliedReviewToken)) {
             var result = new LinkedHashMap<String, Object>();
             result.put("status", "booking_review_required");
@@ -210,9 +229,12 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             result.put("reviewToken", review.token());
             result.put("bookingReview", review.fields());
             result.put("spokenResponse", review.spokenResponse());
-            result.put("instruction", "Speak spokenResponse exactly, then stop and wait for the caller. "
-                    + "Never expose reviewToken. If the caller corrects a value, update it and call book_slot without the old token. "
-                    + "Otherwise, after the caller's next turn, call book_slot with the unchanged values and exact reviewToken.");
+            result.put("correctionReview", review.correction());
+            result.put("changedFields", review.changedFields());
+            result.put("instruction", "Speak spokenResponse exactly once, then stop and wait for the caller. "
+                    + "Never expose reviewToken. On a correction, keep the preceding reviewToken, change only the corrected value, "
+                    + "and call book_slot with that preceding token so the server confirms only the changed field. "
+                    + "After the caller approves the latest review, call book_slot with unchanged values and the latest exact reviewToken.");
             return Map.copyOf(result);
         }
         var selectedProvider = call.getAgent().getCalendarProvider();
@@ -232,12 +254,12 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 new CreateBookingRequest(
                         call.getAgent().getId(),
                         call.getId(),
-                        requiredStringArg(toolCall.arguments(), "caller_name"),
-                        stringArg(toolCall.arguments(), "caller_phone", call.getCallerNumber()),
-                        stringArg(toolCall.arguments(), "caller_email", ""),
-                        requiredStringArg(toolCall.arguments(), "service_type"),
-                        OffsetDateTime.parse(requiredStringArg(toolCall.arguments(), "appointment_at")),
-                        intArg(toolCall.arguments(), "duration_minutes", 60),
+                        requiredStringArg(arguments, "caller_name"),
+                        stringArg(arguments, "caller_phone", call.getCallerNumber()),
+                        stringArg(arguments, "caller_email", ""),
+                        requiredStringArg(arguments, "service_type"),
+                        OffsetDateTime.parse(requiredStringArg(arguments, "appointment_at")),
+                        intArg(arguments, "duration_minutes", 60),
                         customerDetails
                 ),
                 provider
@@ -262,6 +284,65 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 ? "Tell the caller the booking was saved in Sauti and provide the booking number. Do not claim an external calendar was updated."
                 : "Tell the caller whether the external calendar was confirmed. Always provide the booking number. If calendarSynced is false, say the booking was saved in Sauti for owner follow-up.");
         return Map.copyOf(result);
+    }
+
+    private Map<String, Object> normalizePhoneFromLatestCaller(
+            Call call,
+            Map<String, Object> originalArguments,
+            String suppliedReviewToken
+    ) {
+        var latest = latestCallerTranscript(call);
+        var normalized = new LinkedHashMap<String, Object>(originalArguments);
+        BookingReviewRenderer.reviewedValue(call, suppliedReviewToken, "caller_phone")
+                .ifPresent(value -> normalized.put("caller_phone", value));
+        if (suppliedReviewToken.isBlank()) {
+            try {
+                var notes = intakeNotes.notes(call, latest);
+                copyAuthoritativeNote(notes, normalized, "caller_name");
+                copyAuthoritativeNote(notes, normalized, "caller_email");
+                copyAuthoritativeNote(notes, normalized, "caller_phone");
+            } catch (RuntimeException exception) {
+                LOGGER.debug("Authoritative intake notes unavailable for callId={}", call.getId());
+            }
+        }
+        if (latest.isBlank()) return Map.copyOf(normalized);
+        var matcher = SPOKEN_DIGIT_SEQUENCE.matcher(latest);
+        String candidate = null;
+        while (matcher.find()) {
+            var digits = matcher.group(1).replaceAll("\\D", "");
+            var minimumLength = suppliedReviewToken.isBlank() ? 9 : 4;
+            if (digits.length() >= minimumLength && digits.length() <= 15) {
+                candidate = matcher.group(1).trim().startsWith("+") ? "+" + digits : digits;
+            }
+        }
+        if (candidate == null) return Map.copyOf(normalized);
+        normalized.put("caller_phone", candidate);
+        return Map.copyOf(normalized);
+    }
+
+    private void copyAuthoritativeNote(
+            Map<String, String> notes,
+            Map<String, Object> arguments,
+            String key
+    ) {
+        var value = notes.get(key);
+        if (value != null && !value.isBlank()) arguments.put(key, value);
+    }
+
+    private String latestCallerTranscript(Call call) {
+        try {
+            var history = callSessionStore.conversationHistory(call.getTwilioCallSid());
+            if (history == null) return "";
+            for (int index = history.size() - 1; index >= 0; index--) {
+                var message = history.get(index);
+                if ("user".equals(message.role()) && message.content() != null && !message.content().isBlank()) {
+                    return message.content();
+                }
+            }
+        } catch (RuntimeException exception) {
+            LOGGER.debug("Caller transcript unavailable while normalizing booking details callId={}", call.getId());
+        }
+        return "";
     }
 
     private boolean secureEquals(String expected, String actual) {

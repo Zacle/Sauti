@@ -23,7 +23,7 @@ public class DefaultToolSeeder {
                         "time_preference", property("string", "Exact preferred time in HH:mm when provided, otherwise a period such as morning", ""),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("date")), "sauti_calendar", "noop_calendar", 10);
-        seed(agent, "book_slot", "Two-step booking: call without review_token after all configured details and availability are complete; speak the returned review and wait for the caller. On a later caller turn, call again with unchanged details and the returned review_token. Never ask the caller to spell or expose the token.",
+        seed(agent, "book_slot", "Two-step booking: call without review_token after all configured details and availability are complete; speak the returned review and wait. On a correction, change only that field and pass the preceding review_token for a focused correction review. After approval, call again with unchanged details and the latest review_token. Never ask the caller to spell or expose the token.",
                 schema(Map.ofEntries(
                         Map.entry("appointment_at", property("string", "Confirmed ISO-8601 appointment datetime", "date-time")),
                         Map.entry("caller_name", property("string", "Caller full name", "")),
@@ -31,7 +31,7 @@ public class DefaultToolSeeder {
                         Map.entry("caller_email", property("string", "Caller email when required by this agent", "email")),
                         Map.entry("service_type", property("string", "Service being booked", "")),
                         Map.entry("duration_minutes", property("integer", "Appointment duration in minutes", "")),
-                        Map.entry("review_token", property("string", "Private token returned by the immediately preceding booking review; never say it aloud", "")),
+                        Map.entry("review_token", property("string", "Private token from the preceding review; keep it when correcting a value, and never say it aloud", "")),
                         Map.entry("customer_details", property("object", "Additional fields required by this agent's booking workflow", ""))
                 ), List.of(
                         "appointment_at", "caller_name", "caller_phone", "service_type"

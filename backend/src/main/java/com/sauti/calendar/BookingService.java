@@ -12,6 +12,8 @@ import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import java.util.UUID;
 import java.util.Objects;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -83,6 +85,24 @@ public class BookingService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public List<CalendarAvailabilitySlot> excludeLocalConflicts(
+            UUID tenantId,
+            UUID agentId,
+            LocalDate date,
+            ZoneId timezone,
+            List<CalendarAvailabilitySlot> providerSlots
+    ) {
+        if (providerSlots == null || providerSlots.isEmpty()) return List.of();
+        var dayStart = date.atStartOfDay(timezone).toOffsetDateTime();
+        var bookings = bookingsInWindow(tenantId, agentId, dayStart.minusDays(1), dayStart.plusDays(1));
+        return providerSlots.stream()
+                .filter(slot -> bookings.stream().noneMatch(booking -> overlaps(
+                        slot.start(), slot.end(), booking.getAppointmentAt(), bookingEnd(booking)
+                )))
+                .toList();
+    }
+
     public Booking create(UUID tenantId, CreateBookingRequest request) {
         var booking = persistLocalBooking(tenantId, request);
         return synchronizeCreatedBooking(booking, providerFor(booking.getAgent()));
@@ -100,6 +120,19 @@ public class BookingService {
         if (!agent.isBookingEnabled()) {
             throw new IllegalArgumentException("Booking is not enabled for this agent");
         }
+        var requestedDuration = request.durationMinutes() == null ? 60 : request.durationMinutes();
+        var requestedEnd = request.appointmentAt().plusMinutes(requestedDuration);
+        var conflicts = bookingsInWindow(
+                tenantId,
+                agent.getId(),
+                request.appointmentAt().minusDays(1),
+                requestedEnd
+        );
+        if (conflicts.stream().anyMatch(existing -> overlaps(
+                request.appointmentAt(), requestedEnd, existing.getAppointmentAt(), bookingEnd(existing)
+        ))) {
+            throw new IllegalArgumentException("The requested appointment time is no longer available");
+        }
         Call call = null;
         if (request.callId() != null) {
             call = callRepository.findByIdAndTenantId(request.callId(), tenantId)
@@ -113,10 +146,36 @@ public class BookingService {
                 request.callerPhone(),
                 request.callerEmail(),
                 request.serviceType(),
-                request.appointmentAt(), request.durationMinutes() == null ? 60 : request.durationMinutes(),
+                request.appointmentAt(), requestedDuration,
                 json(request.capturedData())
         ));
         }));
+    }
+
+    private List<Booking> bookingsInWindow(
+            UUID tenantId,
+            UUID agentId,
+            java.time.OffsetDateTime start,
+            java.time.OffsetDateTime end
+    ) {
+        var bookings = bookingRepository
+                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        tenantId, agentId, "cancelled", start, end
+                );
+        return bookings == null ? List.of() : bookings;
+    }
+
+    private java.time.OffsetDateTime bookingEnd(Booking booking) {
+        return booking.getAppointmentAt().plusMinutes(Math.max(1, booking.getDurationMinutes()));
+    }
+
+    private boolean overlaps(
+            java.time.OffsetDateTime firstStart,
+            java.time.OffsetDateTime firstEnd,
+            java.time.OffsetDateTime secondStart,
+            java.time.OffsetDateTime secondEnd
+    ) {
+        return firstStart.isBefore(secondEnd) && secondStart.isBefore(firstEnd);
     }
 
     private Booking synchronizeCreatedBooking(Booking localBooking, CalendarProvider provider) {
