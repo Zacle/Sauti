@@ -3604,3 +3604,23 @@ Expected:
   - `git diff --check` - passed before the handoff update.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: actual microphone/carrier testing is still required to validate STT segmentation around spoken digit groups and expressive delivery for the selected Cartesia voice. Provider controls were intentionally not forced to one static emotion because Sonic 3.5 derives emotion from transcript context; mismatched forced emotion can degrade delivery.
+
+### 2026-07-20 - Preserve personalized facts in every Realtime response
+
+- Fixed the exact cause of the salon price hallucination where the configured `men hairstyle: $5` became `$30`. Browser and phone Realtime paths were adding shortened `response.create.instructions` to ordinary replies. OpenAI applies those instructions as a response-only override, so the complete session prompt containing owner-configured service/price facts was discarded for that turn.
+- Normal caller replies now send a bare `response.create` and inherit the transcript-aware session instructions installed immediately beforehand. This keeps every populated personalization value, exact service-price pair, caller-name preservation rule, and booking-intake rule active.
+- Availability-tool requests and tool-result follow-ups now override only `tool_choice`, not instructions. The post-availability reply therefore retains the rule to ask for exactly one missing value instead of bundling phone number and email in one question.
+- Kept response-specific instructions only for deliberately deterministic speech such as the configured opening greeting and server-rendered booking review text.
+- Added phone-Realtime regression coverage proving normal and tool-result responses contain no response-level instruction override.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `AgentVariableServiceTest`, `ConversationOrchestratorTest`, and `OpenAiTelephonyRealtimeConversationProviderTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: verify one browser call and one phone call after CI/CD using the saved `$5` catalog. Exact model adherence still depends on receiving the current session update, but the response-level override that deterministically removed those facts is now eliminated.

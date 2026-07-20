@@ -499,25 +499,22 @@ function requestCallerResponse(channel: RTCDataChannel, requireAvailabilityTool:
     send(channel, {
       type: "response.create",
       response: {
-        instructions: "Call the required availability tool before speaking. Preserve the caller's exact date and time.",
         tool_choice: { type: "function", name: "check_availability" },
       },
     });
     return;
   }
-  send(channel, {
-    type: "response.create",
-    response: {
-      instructions: "Answer exactly once in the current caller language using the authoritative configured business facts. If the caller asks about a configured service, price, policy, location, or other business fact, answer it directly and exactly before continuing. Stay in the configured business role and never direct the caller to contact or choose that same business elsewhere. Do not deny a capability granted by the agent instructions. Treat a booking request as a new booking unless the caller explicitly says reschedule or cancel. For a new booking never ask for a booking ID or ordinary duration, and never say you cannot create it when book_slot is available. Ask for exactly one missing value per reply; never bundle service, staff, name, phone, or email into one question. Neutral replies such as okay, no problem, or just a second are not booking values and never mean any staff. Once the caller explicitly chooses any available staff, retain that value and never ask for staff again. If a service transcript is unclear, ask one short clarification rather than silently converting it to a plausible service. Do not invent services, classes, examples, prices, or completed actions. Preserve names, phone digits, emails, dates, and times exactly. Treat caller names as opaque literal values and never autocorrect them to familiar names. For phone corrections, replace the old candidate with exactly the new digits; never merge, insert, reorder, or duplicate digits. Speak dates and times naturally: never say an ISO date and never combine 24-hour notation with AM or PM. Customers always state identity details normally. Never ask a customer to spell a name or email in any form or dictate a phone digit by digit. Do not read fields back as they are collected. Follow the two-step book_slot review protocol: first obtain and speak the tool-generated review once, then wait. On a correction, change only that field and pass the preceding private review token so only the corrected field is reconfirmed. After approval, reuse the latest review token with unchanged details. Never expose the token. React briefly and naturally before acting, vary acknowledgements, and never repeat the same sentence or full summary twice in a row.",
-    },
-  });
+  // The full, transcript-aware agent prompt was applied with session.update
+  // immediately before this request. Response-level instructions override that
+  // session prompt in the Realtime API, which would discard personalized facts
+  // such as service prices and the one-field-at-a-time intake rules.
+  send(channel, { type: "response.create" });
 }
 
 function requestToolResultResponse(channel: RTCDataChannel) {
   send(channel, {
     type: "response.create",
     response: {
-      instructions: "Give one concise, natural answer based only on the tool output and in the current caller language. Preserve the requested date and time exactly. Availability does not mean booked or held. Never invent a callback, booking, service, or alternative time. If the tool says the requested time is unavailable, say so and offer the returned nearby slots. Never ask the caller to spell a name or email or provide phonetic or digit-by-digit dictation.",
       tool_choice: "none",
     },
   });
