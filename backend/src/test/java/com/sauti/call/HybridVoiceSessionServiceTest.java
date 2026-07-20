@@ -2,11 +2,13 @@ package com.sauti.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -65,6 +67,80 @@ class HybridVoiceSessionServiceTest {
         verify(socket).sendMessage(binary.capture());
         assertThat(binary.getValue().getPayloadLength()).isEqualTo(4);
         verify(socket, atLeastOnce()).sendMessage(any(TextMessage.class));
+    }
+
+    @Test
+    void validatesTheCompleteMessageBeforeSynthesizingAndStripsTheAssistantLabel() throws Exception {
+        var repository = mock(CallRepository.class);
+        var provider = mock(RealtimeTextToSpeechProvider.class);
+        var tts = mock(RealtimeTtsSession.class);
+        var socket = mock(WebSocketSession.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.isActive()).thenReturn(true);
+        when(call.getDirection()).thenReturn("test");
+        when(call.getTwilioCallSid()).thenReturn("guarded-hybrid");
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getTtsVoiceId()).thenReturn("cartesia:english-voice");
+        when(repository.findByTwilioCallSid("guarded-hybrid")).thenReturn(Optional.of(call));
+        when(socket.isOpen()).thenReturn(true);
+        when(provider.open(eq("en"), eq("cartesia:english-voice"), any()))
+                .thenReturn(CompletableFuture.completedFuture(tts));
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
+
+        service.start("guarded-hybrid", agentId.toString(), socket);
+        service.accept("guarded-hybrid", "{\"type\":\"tts_delta\",\"text\":\"assis\"}");
+        service.accept("guarded-hybrid", "{\"type\":\"tts_delta\","
+                + "\"text\":\"tant: Hi Walker, a haircut costs 5 dollars.\"}");
+
+        verify(tts, never()).speak(anyString(), eq(false));
+
+        service.accept("guarded-hybrid", "{\"type\":\"tts_complete\"}");
+
+        var spoken = ArgumentCaptor.forClass(String.class);
+        verify(tts, times(2)).speak(spoken.capture(), anyBoolean());
+        assertThat(spoken.getAllValues().get(0).trim())
+                .isEqualTo("Hi Walker, a haircut costs 5 dollars.");
+        assertThat(spoken.getAllValues().get(1)).isEmpty();
+    }
+
+    @Test
+    void neverSynthesizesProtocolThatFollowsNaturalLookingText() {
+        var repository = mock(CallRepository.class);
+        var provider = mock(RealtimeTextToSpeechProvider.class);
+        var tts = mock(RealtimeTtsSession.class);
+        var socket = mock(WebSocketSession.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.isActive()).thenReturn(true);
+        when(call.getDirection()).thenReturn("web");
+        when(call.getTwilioCallSid()).thenReturn("protocol-hybrid");
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getTtsVoiceId()).thenReturn("cartesia:english-voice");
+        when(repository.findByTwilioCallSid("protocol-hybrid")).thenReturn(Optional.of(call));
+        when(socket.isOpen()).thenReturn(true);
+        when(provider.open(eq("en"), eq("cartesia:english-voice"), any()))
+                .thenReturn(CompletableFuture.completedFuture(tts));
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
+
+        service.start("protocol-hybrid", agentId.toString(), socket);
+        service.accept("protocol-hybrid", "{\"type\":\"tts_delta\","
+                + "\"text\":\"Hi Walker.\\nanalysis to=functions.get_business_hours code\"}");
+        service.accept("protocol-hybrid", "{\"type\":\"tts_complete\"}");
+
+        verify(tts, never()).speak(anyString(), anyBoolean());
     }
 
     @Test

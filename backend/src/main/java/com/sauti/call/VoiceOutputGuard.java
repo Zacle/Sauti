@@ -1,77 +1,90 @@
 package com.sauti.call;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Map;
-import java.util.Optional;
+import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 /** Keeps provider/tool protocol payloads out of caller-facing speech and transcripts. */
 public final class VoiceOutputGuard {
-    private static final java.util.List<String> PROTOCOL_PREFIXES = java.util.List.of(
-            "analysis to=",
-            "assistant to=",
-            "commentary to=",
-            "tool to=",
-            "final to=",
-            "recipient=",
-            "to=functions.",
-            "to=tools.",
-            "<|",
-            "<tool_call",
-            "<function="
+    private static final Set<String> SPOKEN_ROLE_LABELS = Set.of(
+            "assistant", "agent", "ai", "ai assistant", "virtual assistant", "answer", "response", "final"
     );
-
-    public enum StreamDisposition {
-        UNDECIDED,
-        SPEECH,
-        PROTOCOL
-    }
+    private static final Set<String> PRIVATE_ROLE_LABELS = Set.of(
+            "analysis", "reasoning", "commentary", "tool", "tools", "function", "functions",
+            "system", "developer", "user", "caller", "recipient"
+    );
+    private static final Pattern ROLE_LABEL = Pattern.compile(
+            "(?iu)^(?:\\*\\*|__)?([\\p{L}][\\p{L}\\p{N}_ ]{0,39})(?:\\*\\*|__)?"
+                    + "(?:\\s*:\\s*|\\s+[\\-\\u2013\\u2014]\\s+)"
+    );
+    private static final Pattern PRIVATE_ROLE_LINE = Pattern.compile(
+            "(?imu)(?:^|\\R)\\s*(?:\\*\\*|__)?"
+                    + "(?:analysis|reasoning|commentary|tool|tools|function|functions|system|developer|user|caller|recipient)"
+                    + "(?:\\*\\*|__)?\\s*(?::|[\\-\\u2013\\u2014])"
+    );
+    private static final Pattern ROUTED_CHANNEL = Pattern.compile(
+            "(?imu)(?:^|\\R)\\s*[\\p{L}_][\\p{L}\\p{N}_-]{0,39}\\s+(?:to|recipient)\\s*="
+    );
+    private static final Pattern PRIVATE_ROUTING = Pattern.compile(
+            "(?iu)\\b(?:analysis|reasoning|commentary|tool|tools|function|functions|assistant|final)"
+                    + "\\s+(?:to|recipient)\\s*="
+    );
+    private static final Pattern NAMESPACE_CALL = Pattern.compile(
+            "(?iu)\\b(?:functions|tools)\\.[A-Za-z_][A-Za-z0-9_.-]*(?:\\s|\\(|$)"
+    );
+    private static final Pattern STRUCTURED_LINE = Pattern.compile(
+            "(?mu)(?:^|\\R)\\s*(?:\\{|\\[|```|<\\||<tool_call|<function(?:=|\\s))"
+    );
+    private static final Pattern INLINE_STRUCTURED = Pattern.compile(
+            "(?u)(?:\\{|\\[)\\s*[\"']?[\\p{L}_][\\p{L}\\p{N}_-]{0,63}[\"']?\\s*:"
+    );
 
     private VoiceOutputGuard() {
     }
 
-    public static boolean isStructuredPayload(String text) {
-        var normalized = unwrapCodeFence(text);
-        if (normalized.isBlank()) return false;
-        return (normalized.startsWith("{") && normalized.endsWith("}"))
-                || (normalized.startsWith("[") && normalized.endsWith("]"));
-    }
-
     public static boolean isProtocolPayload(String text) {
-        if (isStructuredPayload(text)) return true;
-        return classifyStreamingPrefix(text) == StreamDisposition.PROTOCOL;
+        return text != null && !text.isBlank() && speechText(text).isBlank();
     }
 
     /**
-     * Classifies the beginning of a streamed model response before it is sent to
-     * TTS. Partial protocol markers stay undecided until they can be distinguished
-     * from normal speech, so even a marker split across provider deltas is held.
+     * Returns caller-safe speech from one complete provider message. Realtime
+     * deltas must not be passed individually: a later delta can turn an
+     * apparently natural prefix into private protocol output.
      */
-    public static StreamDisposition classifyStreamingPrefix(String text) {
-        if (text == null || text.isBlank()) return StreamDisposition.UNDECIDED;
-        var normalized = text.stripLeading().toLowerCase(java.util.Locale.ROOT);
-        if (normalized.startsWith("{") || normalized.startsWith("[") || normalized.startsWith("```")) {
-            return StreamDisposition.PROTOCOL;
-        }
-        for (var prefix : PROTOCOL_PREFIXES) {
-            if (normalized.startsWith(prefix)) return StreamDisposition.PROTOCOL;
-            if (prefix.startsWith(normalized)) return StreamDisposition.UNDECIDED;
-        }
-        return StreamDisposition.SPEECH;
+    public static String speechText(String text) {
+        return speechText(text, 0);
     }
 
-    public static Optional<Map<String, Object>> parseObject(ObjectMapper objectMapper, String text) {
-        var normalized = unwrapCodeFence(text);
-        if (!normalized.startsWith("{") || !normalized.endsWith("}")) return Optional.empty();
-        try {
-            return Optional.of(objectMapper.readValue(normalized, new TypeReference<>() { }));
-        } catch (Exception ignored) {
-            return Optional.empty();
+    private static String speechText(String text, int depth) {
+        if (text == null || text.isBlank() || depth > 3) return "";
+        var candidate = text.stripLeading();
+        var normalized = candidate.toLowerCase(Locale.ROOT);
+
+        // Real tools are provider function_call items. Structured content or
+        // private routing syntax inside a message is therefore never inferred
+        // as a tool and never allowed to become speech.
+        if (STRUCTURED_LINE.matcher(candidate).find()
+                || INLINE_STRUCTURED.matcher(candidate).find()
+                || PRIVATE_ROLE_LINE.matcher(candidate).find()
+                || PRIVATE_ROUTING.matcher(candidate).find()
+                || ROUTED_CHANNEL.matcher(candidate).find()
+                || NAMESPACE_CALL.matcher(candidate).find()
+                || normalized.startsWith("to=")
+                || normalized.startsWith("recipient=")) return "";
+
+        var role = ROLE_LABEL.matcher(candidate);
+        if (role.find()) {
+            var label = role.group(1).strip().replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+            if (PRIVATE_ROLE_LABELS.contains(label)) return "";
+            if (SPOKEN_ROLE_LABELS.contains(label)) {
+                return speechText(candidate.substring(role.end()).stripLeading(), depth + 1);
+            }
         }
+        return candidate.trim();
     }
 
     public static String safeAvailabilityClarification(String language) {
-        return switch (language == null ? "en" : language.toLowerCase(java.util.Locale.ROOT)) {
+        return switch (language == null ? "en" : language.toLowerCase(Locale.ROOT)) {
             case "fr" -> "Je n’ai pas pu vérifier ce créneau. Pouvez-vous répéter la date et l’heure, s’il vous plaît ?";
             case "ar" -> "لم أتمكن من التحقق من هذا الموعد. هل يمكنك تكرار التاريخ والوقت من فضلك؟";
             case "sw" -> "Sikuweza kuthibitisha muda huo. Tafadhali rudia tarehe na saa.";
@@ -80,7 +93,7 @@ public final class VoiceOutputGuard {
     }
 
     public static String safeAvailabilityFailure(String language) {
-        return switch (language == null ? "en" : language.toLowerCase(java.util.Locale.ROOT)) {
+        return switch (language == null ? "en" : language.toLowerCase(Locale.ROOT)) {
             case "fr" -> "Je ne peux pas confirmer le calendrier en direct pour le moment. Le creneau demande n'est pas reserve.";
             case "ar" -> "تعذر تأكيد التقويم المباشر الآن. الموعد المطلوب غير محجوز.";
             case "sw" -> "Siwezi kuthibitisha kalenda kwa sasa. Muda ulioomba haujawekwa nafasi.";
@@ -89,7 +102,7 @@ public final class VoiceOutputGuard {
     }
 
     public static String safeBookingFailure(String language) {
-        return switch (language == null ? "en" : language.toLowerCase(java.util.Locale.ROOT)) {
+        return switch (language == null ? "en" : language.toLowerCase(Locale.ROOT)) {
             case "fr" -> "Je n’ai pas pu enregistrer le rendez-vous dans le calendrier. Il n’est pas réservé. Souhaitez-vous réessayer ?";
             case "ar" -> "لم أتمكن من حفظ الموعد في التقويم، لذلك لم يتم حجزه. هل تريد المحاولة مرة أخرى؟";
             case "sw" -> "Sikuweza kuhifadhi miadi kwenye kalenda, kwa hiyo haijawekwa. Ungependa kujaribu tena?";
@@ -98,31 +111,11 @@ public final class VoiceOutputGuard {
     }
 
     public static String safeResponseFailure(String language) {
-        return switch (language == null ? "en" : language.toLowerCase(java.util.Locale.ROOT)) {
+        return switch (language == null ? "en" : language.toLowerCase(Locale.ROOT)) {
             case "fr" -> "Desole, je n'ai pas pu terminer ma reponse. Pouvez-vous repeter votre question, s'il vous plait ?";
             case "ar" -> "عذرا، لم أتمكن من إكمال إجابتي. هل يمكنك تكرار سؤالك من فضلك؟";
             case "sw" -> "Samahani, sikuweza kukamilisha jibu langu. Tafadhali rudia swali lako.";
             default -> "Sorry, I couldn't complete that answer. Could you repeat your question, please?";
         };
-    }
-
-    /** OpenAI Realtime limits function call IDs to 32 characters. */
-    public static String realtimeCallId(String prefix) {
-        var normalizedPrefix = prefix == null ? "call" : prefix.replaceAll("[^A-Za-z0-9_-]", "");
-        if (normalizedPrefix.isBlank()) normalizedPrefix = "call";
-        normalizedPrefix = normalizedPrefix.substring(0, Math.min(normalizedPrefix.length(), 8));
-        var random = java.util.UUID.randomUUID().toString().replace("-", "");
-        return normalizedPrefix + "_" + random.substring(0, 31 - normalizedPrefix.length());
-    }
-
-    public static String unwrapCodeFence(String text) {
-        if (text == null) return "";
-        var normalized = text.trim();
-        if (normalized.startsWith("```")) {
-            normalized = normalized.replaceFirst("(?is)^```(?:json)?\\s*", "")
-                    .replaceFirst("(?is)\\s*```$", "")
-                    .trim();
-        }
-        return normalized;
     }
 }

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.sauti.agent.Agent;
@@ -294,6 +295,47 @@ class CallPipelineServiceTest {
         var captor = ArgumentCaptor.forClass(CallTurn.class);
         org.mockito.Mockito.verify(callTurnRepository).save(captor.capture());
         assertThat(captor.getValue().isInterrupted()).isTrue();
+    }
+
+    @Test
+    void storesOnlySanitizedAgentSpeechFromRealtimeProviders() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                mock(LanguageDetector.class),
+                mock(ConversationOrchestrator.class),
+                mock(StreamingTtsProvider.class),
+                callSessionStore,
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var call = activeCall("CA-guarded");
+        when(callRepository.findByIdAndTenantId(call.getId(), call.getTenant().getId()))
+                .thenReturn(Optional.of(call));
+        when(callTurnRepository.countByCall_Id(call.getId())).thenReturn(0);
+
+        service.recordRealtimeTranscript(
+                call.getTenant().getId(), call.getId(), "agent",
+                "assistant: Hi Walker, a men's haircut costs 5 dollars.", false
+        );
+        service.recordRealtimeTranscript(
+                call.getTenant().getId(), call.getId(), "agent",
+                "Hi Walker.\nanalysis to=functions.get_business_hours code", false
+        );
+
+        var turn = ArgumentCaptor.forClass(CallTurn.class);
+        verify(callTurnRepository, times(1)).save(turn.capture());
+        assertThat(turn.getValue().getAgentResponse())
+                .isEqualTo("Hi Walker, a men's haircut costs 5 dollars.");
+        verify(callSessionStore, times(1)).appendAssistantMessage(
+                "CA-guarded", "Hi Walker, a men's haircut costs 5 dollars.", List.of()
+        );
     }
 
     @Test

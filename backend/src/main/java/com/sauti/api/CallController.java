@@ -113,7 +113,8 @@ public class CallController {
     }
 
     private String cachedHybridGreeting(com.sauti.call.Call call, String greeting, String mode) {
-        if (!"hybrid_realtime".equals(mode) || greeting == null || greeting.isBlank()) return null;
+        if (!"hybrid_realtime".equals(mode) || greeting == null || greeting.isBlank()
+                || !openAiRealtimeService.usesCartesiaVoice(call)) return null;
         try {
             var language = call.getLanguageDetected() == null
                     ? call.getAgent().getDefaultLanguage()
@@ -133,8 +134,8 @@ public class CallController {
 
     private String realtimeMode(com.sauti.call.Call call) {
         if (!openAiRealtimeService.enabled()) return "cascade";
-        if (openAiRealtimeService.usesOpenAiVoice(call)) return "openai_realtime";
-        if (openAiRealtimeService.usesCartesiaVoice(call) && cartesiaClient.isConfigured()) return "hybrid_realtime";
+        if ((openAiRealtimeService.usesCartesiaVoice(call) || openAiRealtimeService.usesOpenAiVoice(call))
+                && cartesiaClient.isConfigured()) return "hybrid_realtime";
         return "cascade";
     }
 

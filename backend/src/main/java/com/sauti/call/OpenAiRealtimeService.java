@@ -178,7 +178,9 @@ public class OpenAiRealtimeService {
     }
 
     private Map<String, Object> sessionConfiguration(Call call, boolean telephony) {
-        var nativeAudio = usesOpenAiVoice(call);
+        // All model output is text-first. Native provider audio begins playback
+        // before the parallel transcript can be validated, so it cannot enforce
+        // the speech/tool boundary required by Sauti.
         var input = new LinkedHashMap<String, Object>();
         input.put("noise_reduction", Map.of("type", "near_field"));
         if (telephony) {
@@ -197,9 +199,9 @@ public class OpenAiRealtimeService {
                 // channel. Use a slightly stricter and more patient endpoint in
                 // hybrid mode so playback leakage and natural mid-sentence pauses
                 // do not create a new turn prematurely.
-                "threshold", telephony ? telephonyThreshold : (nativeAudio ? 0.55 : 0.60),
+                "threshold", telephony ? telephonyThreshold : 0.60,
                 "prefix_padding_ms", 250,
-                "silence_duration_ms", telephony ? telephonySilenceMs : (nativeAudio ? 320 : 520),
+                "silence_duration_ms", telephony ? telephonySilenceMs : 520,
                 // A response is requested only after a non-empty final caller
                 // transcript is accepted. Provider-managed responses could run
                 // on noise/empty VAD turns and make the agent speak twice.
@@ -233,22 +235,14 @@ public class OpenAiRealtimeService {
         session.put("type", "realtime");
         session.put("model", model);
         session.put("instructions", conversationOrchestrator.realtimeInstructions(call, call.getLanguageDetected()));
-        session.put("output_modalities", List.of(nativeAudio ? "audio" : "text"));
+        session.put("output_modalities", List.of("text"));
         // Audio responses consume substantially more tokens than their transcript.
         // An artificially small cap can cut audible speech in the middle of a word.
         // Conversational brevity is enforced by the prompt instead.
         session.put("max_output_tokens", "inf");
-        if (nativeAudio) {
-            var voice = call.getAgent().getTtsVoiceId().substring(VOICE_PREFIX.length());
-            session.put("audio", Map.of(
-                    "input", input,
-                    "output", Map.of("voice", voice, "speed", 1.08)
-            ));
-        } else {
-            // Hybrid mode keeps OpenAI's native audio understanding and VAD, but
-            // streams response text to Cartesia instead of asking OpenAI to speak.
-            session.put("audio", Map.of("input", input));
-        }
+        // OpenAI supplies audio understanding and VAD. Validated response text
+        // is synthesized only after the client has accepted a message item.
+        session.put("audio", Map.of("input", input));
         if (!tools.isEmpty()) {
             session.put("tools", tools);
             session.put("tool_choice", "auto");

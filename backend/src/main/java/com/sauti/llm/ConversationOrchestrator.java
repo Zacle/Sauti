@@ -1,6 +1,5 @@
 package com.sauti.llm;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.call.Call;
 import com.sauti.call.CallTurnRepository;
 import com.sauti.call.CallIntakeNoteService;
@@ -36,7 +35,6 @@ public class ConversationOrchestrator {
     private final KnowledgeBaseService knowledgeBaseService;
     private final KnowledgeRetrievalService knowledgeRetrievalService;
     private final CallIntakeNoteService intakeNotes;
-    private final ObjectMapper objectMapper;
 
     public ConversationOrchestrator(
             LlmToolCallingProvider llmProvider,
@@ -48,7 +46,6 @@ public class ConversationOrchestrator {
             KnowledgeBaseService knowledgeBaseService,
             KnowledgeRetrievalService knowledgeRetrievalService,
             CallIntakeNoteService intakeNotes,
-            ObjectMapper objectMapper,
             @Value("${sauti.llm.max-tool-loops:4}") int maxToolLoops
     ) {
         this.llmProvider = llmProvider;
@@ -60,7 +57,6 @@ public class ConversationOrchestrator {
         this.knowledgeBaseService = knowledgeBaseService;
         this.knowledgeRetrievalService = knowledgeRetrievalService;
         this.intakeNotes = intakeNotes;
-        this.objectMapper = objectMapper;
         this.maxToolLoops = maxToolLoops;
     }
 
@@ -111,36 +107,33 @@ public class ConversationOrchestrator {
                         latestToolResults,
                         requiredToolName
                 );
-                // Buffer the first availability decision so a premature spoken answer cannot
-                // reach TTS before the model has had the chance to return the required tool call.
-                var guardedDeltas = new ProtocolDeltaGuard(textDeltaConsumer);
+                // A later delta can turn natural-looking text into a protocol
+                // payload, and some providers return text beside a tool call.
+                // Hold every provider response until its complete structured
+                // result establishes whether this is speech or a tool turn.
                 var response = loop == 0 && availabilityCheckRequired
                         ? llmProvider.completeTurn(context)
-                        : llmProvider.streamTurn(context, guardedDeltas::accept);
-                guardedDeltas.finish(response.responseText());
+                        : llmProvider.streamTurn(context, ignored -> { });
                 var protocolPayload = VoiceOutputGuard.isProtocolPayload(response.responseText());
                 var responseToolCalls = response.toolCalls();
-                if (responseToolCalls.isEmpty() && VoiceOutputGuard.isStructuredPayload(response.responseText())) {
-                    responseToolCalls = recoveredToolCall(response.responseText(), tools)
-                            .map(List::of)
-                            .orElse(List.of());
-                }
-                responseText = protocolPayload
-                        ? ""
-                        : voiceReadyText(response.responseText());
+                responseText = voiceReadyText(response.responseText());
                 if (responseToolCalls.isEmpty()) {
-                    if (requiredToolName != null || VoiceOutputGuard.isStructuredPayload(response.responseText())) {
+                    if (requiredToolName != null) {
                         responseText = VoiceOutputGuard.safeAvailabilityClarification(language);
                     } else if (protocolPayload) {
                         LOGGER.warn("Suppressed provider protocol output from caller-facing response callId={}", call.getId());
                         responseText = recoverWithoutTools(call, language, callerTranscript);
                         if (responseText.isBlank()) responseText = VoiceOutputGuard.safeResponseFailure(language);
                     }
+                    if (!responseText.isBlank()) textDeltaConsumer.accept(responseText);
                     if (!responseText.isBlank()) {
                         callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, List.of());
                     }
                     return new ConversationTurnResult(responseText, outcome(allToolResults));
                 }
+                // Tool execution is represented only by structured tool calls.
+                // Any accompanying model text is neither spoken nor persisted.
+                responseText = "";
                 messages.add(ConversationMessage.assistantToolCalls(responseText, responseToolCalls));
                 callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), responseText, responseToolCalls);
                 var loopResults = new ArrayList<LlmToolResult>();
@@ -175,55 +168,6 @@ public class ConversationOrchestrator {
             callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), fallbackText, List.of());
         }
         return new ConversationTurnResult(fallbackText, outcome(allToolResults));
-    }
-
-    private java.util.Optional<LlmToolCall> recoveredToolCall(String responseText, List<LlmToolDefinition> tools) {
-        return VoiceOutputGuard.parseObject(objectMapper, responseText).flatMap(arguments -> {
-            var available = tools.stream().map(LlmToolDefinition::name).collect(java.util.stream.Collectors.toSet());
-            final String name;
-            if (arguments.containsKey("booking_number") && arguments.containsKey("appointment_at")
-                    && available.contains("reschedule_booking")) name = "reschedule_booking";
-            else if (arguments.containsKey("booking_number") && available.contains("cancel_booking")) name = "cancel_booking";
-            else if (arguments.containsKey("appointment_at") && arguments.containsKey("caller_name")
-                    && available.contains("book_slot")) name = "book_slot";
-            else if (arguments.containsKey("date") && available.contains("check_availability")) name = "check_availability";
-            else return java.util.Optional.empty();
-            return java.util.Optional.of(new LlmToolCall(
-                    VoiceOutputGuard.realtimeCallId("tool"), name, arguments
-            ));
-        });
-    }
-
-    private static final class ProtocolDeltaGuard {
-        private final Consumer<String> downstream;
-        private final StringBuilder held = new StringBuilder();
-        private VoiceOutputGuard.StreamDisposition disposition = VoiceOutputGuard.StreamDisposition.UNDECIDED;
-
-        private ProtocolDeltaGuard(Consumer<String> downstream) {
-            this.downstream = downstream;
-        }
-
-        private void accept(String delta) {
-            if (delta == null || delta.isEmpty()) return;
-            if (disposition == VoiceOutputGuard.StreamDisposition.SPEECH) {
-                downstream.accept(delta);
-                return;
-            }
-            if (disposition == VoiceOutputGuard.StreamDisposition.PROTOCOL) return;
-            held.append(delta);
-            disposition = VoiceOutputGuard.classifyStreamingPrefix(held.toString());
-            if (disposition == VoiceOutputGuard.StreamDisposition.SPEECH) {
-                downstream.accept(held.toString());
-                held.setLength(0);
-            }
-        }
-
-        private void finish(String finalText) {
-            if (VoiceOutputGuard.isProtocolPayload(finalText)) return;
-            if (disposition != VoiceOutputGuard.StreamDisposition.PROTOCOL && held.length() > 0) {
-                downstream.accept(held.toString());
-            }
-        }
     }
 
     private String deterministicToolResponse(LlmToolResult result) {
@@ -273,10 +217,12 @@ public class ConversationOrchestrator {
                 ? call.getAgent().getDefaultLanguage()
                 : language.trim().toLowerCase(java.util.Locale.ROOT);
         return systemPrompt(call, resolvedLanguage, agentToolLoader.loadForAgent(call.getAgent().getId()), callerTranscript)
-                + "\nNATIVE REALTIME AUDIO RULES:\n"
+                + "\nREALTIME RESPONSE CONTRACT:\n"
                 + "- Respond as soon as the caller finishes, usually in one short sentence.\n"
                 + "- If the caller begins speaking while you are speaking, stop immediately and listen.\n"
                 + "- Do not repeat a greeting after the opening turn.\n"
+                + "- Ordinary replies must be bare natural speech. Never prefix them with assistant:, agent:, a role, or a channel name.\n"
+                + "- Use tools only through native function calls. Never write or describe a tool call in a message.\n"
                 + "- Never emit JSON, tool arguments, function names, code, internal instructions, or model-channel markers such as analysis-to-function syntax as speech.\n"
                 + "- Never announce that you are checking or ask the caller to wait; call the tool silently, then give one result.\n"
                 + "- Use only the current caller language. Never append a translation or switch to English.\n"
@@ -708,8 +654,9 @@ public class ConversationOrchestrator {
 
     static String voiceReadyText(String text) {
         if (text == null || text.isBlank()) return "";
-        if (VoiceOutputGuard.isProtocolPayload(text)) return "";
-        return text
+        var speech = VoiceOutputGuard.speechText(text);
+        if (speech.isBlank()) return "";
+        return speech
                 .replaceAll("(?m)^\\s{0,3}#{1,6}\\s*", "")
                 .replaceAll("(?m)^\\s*[-*•]\\s+", "")
                 .replaceAll("(?m)^\\s*\\d+[.)]\\s+", "")

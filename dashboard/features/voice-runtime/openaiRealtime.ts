@@ -13,7 +13,6 @@ export type OpenAiRealtimeCallbacks = {
 export type OpenAiRealtimeConnection = {
   peer: RTCPeerConnection;
   channel: RTCDataChannel;
-  remoteStream: MediaStream;
   close: () => void;
   sendUserText: (text: string) => void;
   speakGreeting: (text: string) => void;
@@ -29,34 +28,18 @@ export async function connectOpenAiRealtime(options: {
   recordingDestination?: MediaStreamAudioDestinationNode | null;
   outputMode?: "audio" | "text";
   bargeInDebounceMs?: number;
-  availabilityToolEnabled?: boolean;
   prepareCallerResponse?: (text: string) => Promise<string | null>;
   responseLanguage?: string;
 }): Promise<OpenAiRealtimeConnection> {
-  const peer = new RTCPeerConnection();
-  const remoteStream = new MediaStream();
-  const audio = options.playbackContext ? null : new Audio();
-  if (audio) {
-    audio.autoplay = true;
-    audio.srcObject = remoteStream;
+  if ((options.outputMode ?? "text") === "audio") {
+    throw new Error("Native Realtime audio is disabled because agent speech must be validated before playback.");
   }
-  let remoteSource: MediaStreamAudioSourceNode | null = null;
+  const peer = new RTCPeerConnection();
   options.microphone.getTracks().forEach((track) => peer.addTrack(track, options.microphone));
   peer.ontrack = (event) => {
-    const incoming = event.streams[0];
-    if (incoming) incoming.getTracks().forEach((track) => remoteStream.addTrack(track));
-    else remoteStream.addTrack(event.track);
-    if (options.playbackContext && !remoteSource) {
-      remoteSource = options.playbackContext.createMediaStreamSource(remoteStream);
-      remoteSource.connect(options.playbackContext.destination);
-      if (options.recordingDestination) remoteSource.connect(options.recordingDestination);
-    } else if (audio) {
-      void audio.play().catch(() => {
-        if (peer.connectionState !== "closed") {
-          options.callbacks.onError("Voice playback could not start. Select Start test call again.");
-        }
-      });
-    }
+    // This session is text-only. Stop any unexpected provider audio track so it
+    // cannot bypass complete-message validation and the guarded TTS channel.
+    event.track.stop();
   };
 
   const channel = peer.createDataChannel("oai-events");
@@ -67,9 +50,9 @@ export async function connectOpenAiRealtime(options: {
   let pendingCallerTranscriptions = 0;
   let callerSpeechActive = false;
   let bargeInTimer = 0;
-  let requiredAvailabilityToolPending = false;
   let currentOutputItemId = "";
-  let textOutputDisposition: "unknown" | "speech" | "protocol" = "unknown";
+  const outputItemTypes = new Map<string, string>();
+  let responseHasToolCall = false;
   let protocolRecoveryAttempts = 0;
   let expectedResponses = 0;
   let responseRequestInFlight = false;
@@ -78,6 +61,7 @@ export async function connectOpenAiRealtime(options: {
   let discardCurrentResponseOutput = false;
   const ignoredResponseIds = new Set<string>();
   const processedCallerItemIds = new Set<string>();
+  const processedToolCallIds = new Set<string>();
   let lastCallerTranscript = "";
   let lastCallerTranscriptAt = 0;
   const deferredAgentTranscripts: Array<{ text: string; interrupted: boolean }> = [];
@@ -140,13 +124,14 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const deliverAgentTranscript = (text: string, interrupted: boolean) => {
-    if (!text || isProtocolPayload(text)) return;
+    const speech = sanitizeVoiceOutput(text);
+    if (!speech) return;
     protocolRecoveryAttempts = 0;
     if (pendingCallerTranscriptions > 0) {
-      deferredAgentTranscripts.push({ text, interrupted });
+      deferredAgentTranscripts.push({ text: speech, interrupted });
       return;
     }
-    options.callbacks.onAgentTranscript(text, interrupted);
+    options.callbacks.onAgentTranscript(speech, interrupted);
   };
 
   const flushDeferredAgentTranscripts = () => {
@@ -169,7 +154,6 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const executeToolCall = (callId: string, name: string, argumentsJson: string) => {
-    requiredAvailabilityToolPending = false;
     void options.callbacks.executeTool(callId, name, argumentsJson)
       .then((result) => {
         send(channel, {
@@ -182,7 +166,7 @@ export async function connectOpenAiRealtime(options: {
         }
         const deterministicResponse = toolSpokenResponse(name, result);
         if (deterministicResponse) {
-          if (options.outputMode === "text") {
+          if ((options.outputMode ?? "text") === "text") {
             send(channel, {
               type: "conversation.item.create",
               item: {
@@ -208,28 +192,6 @@ export async function connectOpenAiRealtime(options: {
         });
         deliverToolFailure(name);
       });
-  };
-
-  const recoverRequiredToolText = (text: string) => {
-    const parsed = parseStructuredObject(text);
-    if (currentOutputItemId) {
-      send(channel, { type: "conversation.item.delete", item_id: currentOutputItemId });
-    }
-    if (!parsed) {
-      const clarification = localizedAvailabilityClarification(options.responseLanguage);
-      options.callbacks.onAgentTextDelta?.(clarification);
-      options.callbacks.onAgentTextComplete?.(false);
-      deliverAgentTranscript(clarification, false);
-      requiredAvailabilityToolPending = false;
-      return;
-    }
-    const callId = realtimeCallId("avail");
-    const argumentsJson = JSON.stringify(parsed);
-    send(channel, {
-      type: "conversation.item.create",
-      item: { type: "function_call", call_id: callId, name: "check_availability", arguments: argumentsJson },
-    });
-    executeToolCall(callId, "check_availability", argumentsJson);
   };
 
   const recoverProtocolOutput = (cancelResponse: boolean) => {
@@ -268,9 +230,21 @@ export async function connectOpenAiRealtime(options: {
       } catch {
         // The active Realtime session still has its original safe instructions.
       }
-      requiredAvailabilityToolPending = false;
-      enqueueResponse(() => requestCallerResponse(channel, requiredAvailabilityToolPending));
+      enqueueResponse(() => requestCallerResponse(channel));
     });
+  };
+
+  const isOutputItem = (event: Record<string, unknown>, expectedType: string) => {
+    const itemId = String(event.item_id ?? "").trim();
+    if (itemId) return outputItemTypes.get(itemId) === expectedType;
+    if (currentOutputItemId) return outputItemTypes.get(currentOutputItemId) === expectedType;
+    return false;
+  };
+
+  const acceptToolCall = (callId: string) => {
+    if (!callId || processedToolCallIds.has(callId)) return false;
+    processedToolCallIds.add(callId);
+    return true;
   };
 
   channel.onmessage = (message) => {
@@ -299,8 +273,10 @@ export async function connectOpenAiRealtime(options: {
       }
       discardCurrentResponseOutput = false;
       currentOutputItemId = "";
-      textOutputDisposition = "unknown";
+      outputItemTypes.clear();
+      responseHasToolCall = false;
       agentTranscript = "";
+      textCompletionSent = false;
     }
     const ignoredResponse = Boolean(eventResponseId && ignoredResponseIds.has(eventResponseId));
     if (ignoredResponse && type === "response.done") {
@@ -314,9 +290,13 @@ export async function connectOpenAiRealtime(options: {
       return;
     }
     if (ignoredResponse || (discardCurrentResponseOutput && type.startsWith("response."))) return;
-    if (type === "response.output_item.added") {
+    if (type === "response.output_item.added" || type === "response.output_item.created") {
       const item = event.item as { id?: string; type?: string } | undefined;
-      if (item?.type === "message") currentOutputItemId = item.id ?? "";
+      const itemId = String(item?.id ?? "").trim();
+      const itemType = String(item?.type ?? "").trim();
+      if (itemId) outputItemTypes.set(itemId, itemType);
+      if (itemType === "message") currentOutputItemId = itemId;
+      if (itemType === "function_call") responseHasToolCall = true;
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
@@ -334,81 +314,49 @@ export async function connectOpenAiRealtime(options: {
       pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
       flushDeferredAgentTranscripts();
     }
-    if (type === "response.output_audio_transcript.delta") {
-      responseActive = true;
-      agentTranscript += String(event.delta ?? "");
-      if (textOutputDisposition === "unknown") {
-        textOutputDisposition = classifyStreamingPrefix(agentTranscript);
-        if (textOutputDisposition === "protocol") recoverProtocolOutput(true);
-      }
-    }
-    if (type === "response.output_audio_transcript.done") {
-      const transcript = String(event.transcript ?? agentTranscript).trim();
-      if (textOutputDisposition === "protocol" || isProtocolPayload(transcript)) {
-        recoverProtocolOutput(false);
-      } else {
-        deliverAgentTranscript(transcript, agentInterrupted);
-      }
-      agentTranscript = "";
-      agentInterrupted = false;
+    if (type === "response.output_audio_transcript.delta"
+      || type === "response.output_audio_transcript.done") {
+      if (!textCompletionSent) recoverProtocolOutput(true);
+      return;
     }
     if (type === "response.output_text.delta") {
+      if (!isOutputItem(event, "message")) return;
       const delta = String(event.delta ?? "");
       if (delta) {
         responseActive = true;
         textCompletionSent = false;
         agentTranscript += delta;
-        if (textOutputDisposition === "unknown") {
-          textOutputDisposition = classifyStreamingPrefix(agentTranscript);
-          if (textOutputDisposition === "speech" && !requiredAvailabilityToolPending) {
-            options.callbacks.onAgentTextDelta?.(agentTranscript);
-          }
-        } else if (textOutputDisposition === "speech" && !requiredAvailabilityToolPending) {
-          options.callbacks.onAgentTextDelta?.(delta);
-        }
       }
     }
     if (type === "response.output_text.done") {
-      const interrupted = agentInterrupted;
       const transcript = String(event.text ?? agentTranscript).trim();
-      if (requiredAvailabilityToolPending || isStructuredPayload(transcript)) {
+      if (!isOutputItem(event, "message")) {
         agentTranscript = "";
-        agentInterrupted = false;
-        textCompletionSent = true;
-        if (requiredAvailabilityToolPending) recoverRequiredToolText(transcript);
-        else options.callbacks.onError("The provider returned an invalid structured voice response. Please try again.");
         return;
       }
-      if (textOutputDisposition === "protocol" || isProtocolPayload(transcript)) {
-        agentInterrupted = false;
-        recoverProtocolOutput(false);
-        return;
-      }
-      deliverAgentTranscript(transcript, interrupted);
-      agentTranscript = "";
-      agentInterrupted = false;
-      textCompletionSent = true;
-      options.callbacks.onAgentTextComplete?.(interrupted);
+      // Wait for response.done before validating or releasing the message. A
+      // later item may establish that this is a tool turn, making all message
+      // text in the same response silent.
+      agentTranscript = transcript;
     }
     // A completed response is a defensive flush for transports that omit the
     // more specific output_text.done event.
-    if (type === "response.done" && options.outputMode === "text" && !textCompletionSent) {
+    if (type === "response.done" && responseHasToolCall) {
+      agentTranscript = "";
+      agentInterrupted = false;
+      textCompletionSent = true;
+    } else if (type === "response.done" && (options.outputMode ?? "text") === "text"
+      && !textCompletionSent && agentTranscript.trim()) {
       const interrupted = agentInterrupted;
       const transcript = agentTranscript.trim();
-      if (requiredAvailabilityToolPending || isStructuredPayload(transcript)) {
-        agentTranscript = "";
-        agentInterrupted = false;
-        textCompletionSent = true;
-        if (requiredAvailabilityToolPending) recoverRequiredToolText(transcript);
-        else options.callbacks.onError("The provider returned an invalid structured voice response. Please try again.");
-        return;
-      }
-      if (textOutputDisposition === "protocol" || isProtocolPayload(transcript)) {
+      const speech = sanitizeVoiceOutput(transcript);
+      if (!speech) {
         agentInterrupted = false;
         recoverProtocolOutput(false);
         return;
       }
-      deliverAgentTranscript(transcript, interrupted);
+      if (!interrupted) options.callbacks.onAgentTextDelta?.(speech);
+      deliverAgentTranscript(speech, interrupted);
       agentTranscript = "";
       agentInterrupted = false;
       textCompletionSent = true;
@@ -439,13 +387,12 @@ export async function connectOpenAiRealtime(options: {
     if (type === "response.done") {
       if (!eventResponseId || currentResponseId === eventResponseId) finishResponse();
     }
-    if (type === "output_audio_buffer.started") options.callbacks.onSpeaking(true);
-    if (type === "output_audio_buffer.stopped" || type === "output_audio_buffer.cleared") options.callbacks.onSpeaking(false);
     if (type === "response.function_call_arguments.done") {
       const callId = String(event.call_id ?? "");
       const name = String(event.name ?? "");
       const argumentsJson = String(event.arguments ?? "{}");
-      executeToolCall(callId, name, argumentsJson);
+      responseHasToolCall = true;
+      if (acceptToolCall(callId)) executeToolCall(callId, name, argumentsJson);
     }
     if (type === "error") {
       const error = event.error as { message?: string } | undefined;
@@ -468,7 +415,7 @@ export async function connectOpenAiRealtime(options: {
       window.clearTimeout(timeout);
       options.callbacks.onConnected();
       if (options.greeting.trim()) {
-        enqueueResponse(() => requestGreeting(channel, options.greeting, options.outputMode ?? "audio"));
+        enqueueResponse(() => requestGreeting(channel, options.greeting, options.outputMode ?? "text"));
       }
       resolve();
     };
@@ -487,7 +434,6 @@ export async function connectOpenAiRealtime(options: {
   return {
     peer,
     channel,
-    remoteStream,
     sendUserText: (text) => {
       send(channel, {
         type: "conversation.item.create",
@@ -496,7 +442,7 @@ export async function connectOpenAiRealtime(options: {
       prepareAndRequestCallerResponse(text);
     },
     speakGreeting: (text) => {
-      enqueueResponse(() => requestGreeting(channel, text, options.outputMode ?? "audio"));
+      enqueueResponse(() => requestGreeting(channel, text, options.outputMode ?? "text"));
     },
     cancelResponse: cancelActiveResponse,
     close: () => {
@@ -504,11 +450,6 @@ export async function connectOpenAiRealtime(options: {
       pendingResponseRequests.length = 0;
       channel.close();
       peer.close();
-      remoteSource?.disconnect();
-      remoteSource = null;
-      remoteStream.getTracks().forEach((track) => track.stop());
-      audio?.pause();
-      if (audio) audio.srcObject = null;
     },
   };
 }
@@ -539,16 +480,7 @@ function requestGreeting(channel: RTCDataChannel, greeting: string, outputMode: 
   });
 }
 
-function requestCallerResponse(channel: RTCDataChannel, requireAvailabilityTool: boolean) {
-  if (requireAvailabilityTool) {
-    send(channel, {
-      type: "response.create",
-      response: {
-        tool_choice: { type: "function", name: "check_availability" },
-      },
-    });
-    return;
-  }
+function requestCallerResponse(channel: RTCDataChannel) {
   // The full, transcript-aware agent prompt was applied with session.update
   // immediately before this request. Response-level instructions override that
   // session prompt in the Realtime API, which would discard personalized facts
@@ -601,53 +533,46 @@ function localizedResponseFailure(language?: string) {
   }
 }
 
-const protocolPrefixes = [
-  "analysis to=",
-  "assistant to=",
-  "commentary to=",
-  "tool to=",
-  "final to=",
-  "recipient=",
-  "to=functions.",
-  "to=tools.",
-  "<|",
-  "<tool_call",
-  "<function=",
-] as const;
+const spokenRoleLabels = new Set([
+  "assistant", "agent", "ai", "ai assistant", "virtual assistant", "answer", "response", "final",
+]);
+const privateRoleLabels = new Set([
+  "analysis", "reasoning", "commentary", "tool", "tools", "function", "functions",
+  "system", "developer", "user", "caller", "recipient",
+]);
+const roleLabelPattern = /^(?:\*\*|__)?([\p{L}][\p{L}\p{N}_ ]{0,39})(?:\*\*|__)?(?:\s*:\s*|\s+[\-\u2013\u2014]\s+)/iu;
+const privateRoleLinePattern = /(?:^|\r?\n)\s*(?:\*\*|__)?(?:analysis|reasoning|commentary|tool|tools|function|functions|system|developer|user|caller|recipient)(?:\*\*|__)?\s*(?::|[\-\u2013\u2014])/imu;
+const routedChannelPattern = /(?:^|\r?\n)\s*[\p{L}_][\p{L}\p{N}_-]{0,39}\s+(?:to|recipient)\s*=/imu;
+const privateRoutingPattern = /\b(?:analysis|reasoning|commentary|tool|tools|function|functions|assistant|final)\s+(?:to|recipient)\s*=/iu;
+const namespaceCallPattern = /\b(?:functions|tools)\.[A-Za-z_][A-Za-z0-9_.-]*(?:\s|\(|$)/iu;
+const structuredLinePattern = /(?:^|\r?\n)\s*(?:\{|\[|```|<\||<tool_call|<function(?:=|\s))/mu;
+const inlineStructuredPattern = /(?:\{|\[)\s*["']?[\p{L}_][\p{L}\p{N}_-]{0,63}["']?\s*:/u;
 
-function classifyStreamingPrefix(text: string): "unknown" | "speech" | "protocol" {
-  const normalized = text.trimStart().toLocaleLowerCase();
-  if (!normalized) return "unknown";
-  if (normalized.startsWith("{") || normalized.startsWith("[") || normalized.startsWith("```")) {
-    return "protocol";
+function sanitizeVoiceOutput(text: string, depth = 0): string {
+  if (!text?.trim() || depth > 3) return "";
+  const candidate = text.trimStart();
+  const normalized = candidate.toLocaleLowerCase();
+
+  if (structuredLinePattern.test(candidate)
+    || inlineStructuredPattern.test(candidate)
+    || privateRoleLinePattern.test(candidate)
+    || privateRoutingPattern.test(candidate)
+    || routedChannelPattern.test(candidate)
+    || namespaceCallPattern.test(candidate)
+    || normalized.startsWith("to=")
+    || normalized.startsWith("recipient=")) {
+    return "";
   }
-  for (const prefix of protocolPrefixes) {
-    if (normalized.startsWith(prefix)) return "protocol";
-    if (prefix.startsWith(normalized)) return "unknown";
+
+  const role = candidate.match(roleLabelPattern);
+  if (role?.[0] && role[1]) {
+    const label = role[1].trim().replace(/\s+/gu, " ").toLocaleLowerCase();
+    if (privateRoleLabels.has(label)) return "";
+    if (spokenRoleLabels.has(label)) {
+      return sanitizeVoiceOutput(candidate.slice(role[0].length).trimStart(), depth + 1);
+    }
   }
-  return "speech";
-}
-
-function isProtocolPayload(text: string) {
-  return isStructuredPayload(text) || classifyStreamingPrefix(text) === "protocol";
-}
-
-function isStructuredPayload(text: string) {
-  const normalized = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  return (normalized.startsWith("{") && normalized.endsWith("}"))
-    || (normalized.startsWith("[") && normalized.endsWith("]"));
-}
-
-function parseStructuredObject(text: string): Record<string, unknown> | null {
-  if (!isStructuredPayload(text)) return null;
-  try {
-    const parsed = JSON.parse(text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : null;
-  } catch {
-    return null;
-  }
+  return candidate.trim();
 }
 
 function localizedAvailabilityClarification(language?: string) {
@@ -666,12 +591,6 @@ function localizedAvailabilityFailure(language?: string) {
     case "sw": return "Siwezi kuthibitisha kalenda kwa sasa. Muda ulioomba haujawekwa nafasi.";
     default: return "I cannot confirm the live calendar right now. Your requested time is not booked.";
   }
-}
-
-function realtimeCallId(prefix: string) {
-  const normalizedPrefix = prefix.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 8) || "call";
-  const random = crypto.randomUUID().replaceAll("-", "");
-  return `${normalizedPrefix}_${random.slice(0, 31 - normalizedPrefix.length)}`;
 }
 
 function send(channel: RTCDataChannel, event: Record<string, unknown>) {

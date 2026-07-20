@@ -119,21 +119,21 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final Call call;
         private final Listener listener;
         private final Map<String, Object> sessionConfiguration;
-        private final boolean availabilityToolEnabled;
         private final StringBuilder payload = new StringBuilder();
         private final StringBuilder agentText = new StringBuilder();
         private volatile OpenAiTelephonySession session;
         private boolean responseActive;
         private boolean responseInterrupted;
         private boolean textCompleted;
-        private VoiceOutputGuard.StreamDisposition outputDisposition = VoiceOutputGuard.StreamDisposition.UNDECIDED;
         private int protocolRecoveryAttempts;
-        private boolean requiredAvailabilityToolPending;
         private String currentOutputItemId = "";
+        private final java.util.Map<String, String> outputItemTypes = new java.util.HashMap<>();
+        private boolean responseHasToolCall;
         private int pendingCallerTranscriptions;
         private boolean callerSpeechActive;
         private boolean callerSpeechNotified;
         private final java.util.LinkedHashSet<String> processedCallerItemIds = new java.util.LinkedHashSet<>();
+        private final java.util.LinkedHashSet<String> processedToolCallIds = new java.util.LinkedHashSet<>();
         private final java.util.Set<String> ignoredResponseIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
         private String lastCallerTranscript = "";
         private long lastCallerTranscriptAt;
@@ -154,7 +154,6 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             this.call = call;
             this.listener = listener;
             this.sessionConfiguration = sessionConfiguration;
-            this.availabilityToolEnabled = hasConfiguredTool(sessionConfiguration, "check_availability");
         }
 
         void attach(OpenAiTelephonySession session) {
@@ -246,15 +245,18 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         responseActive = true;
                         responseInterrupted = false;
                         textCompleted = false;
-                        outputDisposition = VoiceOutputGuard.StreamDisposition.UNDECIDED;
                         currentOutputItemId = "";
+                        outputItemTypes.clear();
+                        responseHasToolCall = false;
                         agentText.setLength(0);
                     }
-                    case "response.output_item.added" -> {
+                    case "response.output_item.added", "response.output_item.created" -> {
                         var item = event.path("item");
-                        if ("message".equals(item.path("type").asText(""))) {
-                            currentOutputItemId = item.path("id").asText("");
-                        }
+                        var itemId = item.path("id").asText("");
+                        var itemType = item.path("type").asText("");
+                        if (!itemId.isBlank()) outputItemTypes.put(itemId, itemType);
+                        if ("message".equals(itemType)) currentOutputItemId = itemId;
+                        if ("function_call".equals(itemType)) responseHasToolCall = true;
                     }
                     case "input_audio_buffer.speech_started" -> {
                         pendingCallerTranscriptions++;
@@ -282,7 +284,6 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             var activeSession = session;
                             if (activeSession != null) {
                                 activeSession.updateInstructions(realtimeService.realtimeInstructions(call, transcript));
-                                requiredAvailabilityToolPending = false;
                                 activeSession.requestResponse();
                             }
                         }
@@ -296,37 +297,27 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         flushDeferredAgentCompletions();
                     }
                     case "response.output_text.delta" -> {
+                        if (!isOutputItem(event, "message")) break;
                         var delta = event.path("delta").asText("");
-                        if (!delta.isEmpty()) {
-                            agentText.append(delta);
-                            if (outputDisposition == VoiceOutputGuard.StreamDisposition.UNDECIDED) {
-                                outputDisposition = VoiceOutputGuard.classifyStreamingPrefix(agentText.toString());
-                                if (!responseInterrupted && !requiredAvailabilityToolPending
-                                        && outputDisposition == VoiceOutputGuard.StreamDisposition.SPEECH) {
-                                    listener.onAgentTextDelta(agentText.toString());
-                                }
-                            } else if (!responseInterrupted && !requiredAvailabilityToolPending
-                                    && outputDisposition == VoiceOutputGuard.StreamDisposition.SPEECH) {
-                                listener.onAgentTextDelta(delta);
-                            }
-                        }
+                        if (!delta.isEmpty()) agentText.append(delta);
                     }
                     case "response.output_text.done" -> {
                         var providerText = event.path("text").asText("");
                         var finalText = providerText.isBlank() ? agentText.toString() : providerText;
-                        if (requiredAvailabilityToolPending
-                                || VoiceOutputGuard.isStructuredPayload(finalText)) {
-                            recoverRequiredAvailabilityTool(webSocket, event.path("text").asText(""));
-                        } else if (outputDisposition == VoiceOutputGuard.StreamDisposition.PROTOCOL
-                                || VoiceOutputGuard.isProtocolPayload(finalText)) {
-                            recoverProtocolOutput(webSocket);
-                        } else {
-                            completeText(providerText);
+                        if (!isOutputItem(event, "message")) {
+                            agentText.setLength(0);
+                            break;
                         }
+                        // Wait for response.done before validating or releasing
+                        // the message. A later item may establish that the same
+                        // response is a tool turn, making all message text silent.
+                        agentText.setLength(0);
+                        agentText.append(finalText);
                     }
                     case "response.function_call_arguments.done" -> {
-                        requiredAvailabilityToolPending = false;
-                        executeTool(webSocket, event);
+                        responseHasToolCall = true;
+                        var callId = event.path("call_id").asText("");
+                        if (acceptToolCall(callId)) executeTool(webSocket, event);
                     }
                     case "response.done" -> {
                         responseActive = false;
@@ -334,12 +325,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         if (eventResponseId.isBlank() || eventResponseId.equals(currentResponseId)) {
                             currentResponseId = "";
                         }
-                        if (!textCompleted && agentText.length() > 0) {
-                            if (requiredAvailabilityToolPending
-                                    || VoiceOutputGuard.isStructuredPayload(agentText.toString())) {
-                                recoverRequiredAvailabilityTool(webSocket, "");
-                            } else if (outputDisposition == VoiceOutputGuard.StreamDisposition.PROTOCOL
-                                    || VoiceOutputGuard.isProtocolPayload(agentText.toString())) {
+                        if (responseHasToolCall) {
+                            agentText.setLength(0);
+                            textCompleted = true;
+                        } else if (!textCompleted && agentText.length() > 0) {
+                            if (VoiceOutputGuard.isProtocolPayload(agentText.toString())) {
                                 recoverProtocolOutput(webSocket);
                             } else {
                                 completeText("");
@@ -409,25 +399,33 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         private void completeText(String providerText) {
             if (textCompleted) return;
-            var finalText = providerText == null || providerText.isBlank()
+            var rawText = providerText == null || providerText.isBlank()
                     ? agentText.toString().trim()
                     : providerText.trim();
+            var finalText = VoiceOutputGuard.speechText(rawText);
             agentText.setLength(0);
             textCompleted = true;
             if (finalText.isBlank()) return;
             if (pendingCallerTranscriptions > 0) {
                 deferredAgentCompletions.addLast(new AgentCompletion(finalText, responseInterrupted));
             } else {
-                listener.onAgentTextComplete(finalText, responseInterrupted);
+                deliverAgentCompletion(new AgentCompletion(finalText, responseInterrupted));
             }
         }
 
         private void flushDeferredAgentCompletions() {
             if (pendingCallerTranscriptions > 0) return;
             while (!deferredAgentCompletions.isEmpty()) {
-                var completion = deferredAgentCompletions.removeFirst();
-                listener.onAgentTextComplete(completion.text(), completion.interrupted());
+                deliverAgentCompletion(deferredAgentCompletions.removeFirst());
             }
+        }
+
+        private void deliverAgentCompletion(AgentCompletion completion) {
+            // Model output is released only after the complete message has passed
+            // the speech/protocol guard. Server-generated recovery text may still
+            // use the explicit delta path because it is not provider output.
+            if (!completion.interrupted()) listener.onAgentTextDelta(completion.text());
+            listener.onAgentTextComplete(completion.text(), completion.interrupted());
         }
 
         private void executeTool(WebSocket webSocket, JsonNode event) {
@@ -439,47 +437,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             );
         }
 
-        private void recoverRequiredAvailabilityTool(WebSocket webSocket, String providerText) {
-            var finalText = providerText == null || providerText.isBlank()
-                    ? agentText.toString().trim()
-                    : providerText.trim();
-            agentText.setLength(0);
-            textCompleted = true;
-            requiredAvailabilityToolPending = false;
-            if (!currentOutputItemId.isBlank()) {
-                send(webSocket, Map.of("type", "conversation.item.delete", "item_id", currentOutputItemId));
-            }
-            var arguments = VoiceOutputGuard.parseObject(objectMapper, finalText);
-            if (arguments.isEmpty()) {
-                listener.onAgentTextComplete(
-                        VoiceOutputGuard.safeAvailabilityClarification(responseLanguage()),
-                        false
-                );
-                return;
-            }
-            var toolName = recoveredToolName(arguments.get());
-            if (toolName == null) {
-                listener.onAgentTextComplete(VoiceOutputGuard.safeAvailabilityClarification(responseLanguage()), false);
-                return;
-            }
-            var callId = VoiceOutputGuard.realtimeCallId("tool");
-            var argumentsJson = write(arguments.get());
-            send(webSocket, Map.of(
-                    "type", "conversation.item.create",
-                    "item", Map.of(
-                            "type", "function_call",
-                            "call_id", callId,
-                            "name", toolName,
-                            "arguments", argumentsJson
-                    )
-            ));
-            executeTool(webSocket, callId, toolName, argumentsJson);
-        }
-
         private void recoverProtocolOutput(WebSocket webSocket) {
             agentText.setLength(0);
             textCompleted = true;
-            requiredAvailabilityToolPending = false;
             if (!currentOutputItemId.isBlank()) {
                 send(webSocket, Map.of("type", "conversation.item.delete", "item_id", currentOutputItemId));
             }
@@ -494,20 +454,6 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             var safeText = VoiceOutputGuard.safeResponseFailure(responseLanguage());
             listener.onAgentTextDelta(safeText);
             listener.onAgentTextComplete(safeText, false);
-        }
-
-        private String recoveredToolName(Map<String, Object> arguments) {
-            if (arguments.containsKey("booking_number") && arguments.containsKey("appointment_at")
-                    && hasConfiguredTool(sessionConfiguration, "reschedule_booking")) return "reschedule_booking";
-            if (arguments.containsKey("booking_number") && hasConfiguredTool(sessionConfiguration, "cancel_booking")) {
-                return "cancel_booking";
-            }
-            if (arguments.containsKey("appointment_at") && arguments.containsKey("caller_name")
-                    && hasConfiguredTool(sessionConfiguration, "book_slot")) return "book_slot";
-            if (arguments.containsKey("date") && hasConfiguredTool(sessionConfiguration, "check_availability")) {
-                return "check_availability";
-            }
-            return null;
         }
 
         private String responseLanguage() {
@@ -580,13 +526,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         private record AgentCompletion(String text, boolean interrupted) { }
 
-        private static boolean hasConfiguredTool(Map<String, Object> configuration, String name) {
-            var configuredTools = configuration.get("tools");
-            if (!(configuredTools instanceof Iterable<?> tools)) return false;
-            for (var tool : tools) {
-                if (tool instanceof Map<?, ?> definition && name.equals(definition.get("name"))) return true;
-            }
+        private boolean isOutputItem(JsonNode event, String expectedType) {
+            var itemId = event.path("item_id").asText("");
+            if (!itemId.isBlank()) return expectedType.equals(outputItemTypes.get(itemId));
+            if (!currentOutputItemId.isBlank()) return expectedType.equals(outputItemTypes.get(currentOutputItemId));
             return false;
+        }
+
+        private boolean acceptToolCall(String callId) {
+            if (callId == null || callId.isBlank() || !processedToolCallIds.add(callId)) return false;
+            return true;
         }
     }
 

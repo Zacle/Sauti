@@ -137,7 +137,8 @@ public class PublicWebVoiceController {
             String language,
             String mode
     ) {
-        if (!"hybrid_realtime".equals(mode) || greeting == null || greeting.isBlank()) return null;
+        if (!"hybrid_realtime".equals(mode) || greeting == null || greeting.isBlank()
+                || !openAiRealtimeService.usesCartesiaVoice(call)) return null;
         try {
             var audio = CompletableFuture.supplyAsync(() ->
                             voiceCatalogService.cachedCartesiaGreeting(
@@ -154,8 +155,8 @@ public class PublicWebVoiceController {
 
     private String realtimeMode(com.sauti.call.Call call) {
         if (!openAiRealtimeService.enabled()) return "realtime";
-        if (openAiRealtimeService.usesOpenAiVoice(call)) return "openai_realtime";
-        if (openAiRealtimeService.usesCartesiaVoice(call) && cartesiaClient.isConfigured()) return "hybrid_realtime";
+        if ((openAiRealtimeService.usesCartesiaVoice(call) || openAiRealtimeService.usesOpenAiVoice(call))
+                && cartesiaClient.isConfigured()) return "hybrid_realtime";
         return "realtime";
     }
 

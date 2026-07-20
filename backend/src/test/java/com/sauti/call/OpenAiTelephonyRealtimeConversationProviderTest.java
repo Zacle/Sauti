@@ -46,6 +46,9 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 "{\"type\":\"response.output_text.done\",\"text\":\"analysis to=functions.get_business_hours code\"}", true);
 
         assertThat(events).isEmpty();
+        socketListener.onText(webSocket, "{\"type\":\"response.done\"}", true);
+
+        assertThat(events).isEmpty();
         verify(session).requestToolResultResponse();
         var payload = ArgumentCaptor.forClass(String.class);
         verify(webSocket).sendText(payload.capture(), eq(true));
@@ -106,12 +109,75 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         verify(session).requestResponse();
 
         socketListener.onText(webSocket, "{\"type\":\"response.created\"}", true);
-        socketListener.onText(webSocket, "{\"type\":\"response.output_text.delta\",\"delta\":\"I can help.\"}", true);
-        socketListener.onText(webSocket, "{\"type\":\"response.output_text.done\",\"text\":\"I can help.\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.created\",\"item\":{\"type\":\"message\",\"id\":\"message-1\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"item_id\":\"message-1\",\"delta\":\"I can help.\"}", true);
+        assertThat(events).containsExactly("speech", "caller:Please book Monday");
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"item_id\":\"message-1\",\"text\":\"I can help.\"}", true);
+        socketListener.onText(webSocket, "{\"type\":\"response.done\"}", true);
 
         assertThat(events).containsExactly(
                 "speech", "caller:Please book Monday", "delta:I can help.", "agent:I can help.:false"
         );
+    }
+
+    @Test
+    void stripsAssistantRoleLabelOnlyAfterTheCompleteMessageIsValidated() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.created\",\"item\":{\"type\":\"message\",\"id\":\"message-1\"}}",
+                true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"item_id\":\"message-1\",\"delta\":\"assis\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"item_id\":\"message-1\","
+                        + "\"delta\":\"tant: Hi Walker, a men's haircut costs 5 dollars.\"}", true);
+
+        assertThat(events).isEmpty();
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"item_id\":\"message-1\","
+                        + "\"text\":\"assistant: Hi Walker, a men's haircut costs 5 dollars.\"}", true);
+        socketListener.onText(webSocket, "{\"type\":\"response.done\"}", true);
+
+        assertThat(events).containsExactly(
+                "delta:Hi Walker, a men's haircut costs 5 dollars.",
+                "agent:Hi Walker, a men's haircut costs 5 dollars.:false"
+        );
+        verify(session, never()).requestToolResultResponse();
+    }
+
+    @Test
+    void neverSpeaksTextEventsAttachedToANonMessageItem() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.created\","
+                        + "\"item\":{\"type\":\"function_call\",\"id\":\"call-item\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"item_id\":\"call-item\",\"delta\":\"Do not speak\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"item_id\":\"call-item\",\"text\":\"Do not speak\"}", true);
+
+        assertThat(events).isEmpty();
+        verify(session, never()).requestToolResultResponse();
     }
 
     @Test
@@ -156,16 +222,10 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
-    void convertsStructuredAvailabilityTextIntoASilentToolCall() {
+    void rejectsTextualToolArgumentsInsteadOfExecutingThem() {
         var events = new ArrayList<String>();
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
-        var toolResult = new com.sauti.llm.LlmToolResult(
-                "recovered", "check_availability", true,
-                Map.of("status", "requested_time_available"), ""
-        );
-        when(realtimeService.executeTool(eq(call), anyString(), eq("check_availability"), anyString()))
-                .thenReturn(toolResult);
         var tools = List.of(Map.of("type", "function", "name", "check_availability"));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
                 new ObjectMapper(), realtimeService, call, new RecordingListener(events), Map.of("tools", tools)
@@ -188,15 +248,14 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         socketListener.onText(webSocket,
                 "{\"type\":\"response.output_text.done\",\"text\":\"{\\\"date\\\":\\\"2030-01-15\\\",\\\"time_preference\\\":\\\"12:00\\\"}\"}",
                 true);
+        socketListener.onText(webSocket, "{\"type\":\"response.done\"}", true);
 
         assertThat(events).containsExactly("speech", "caller:Demain a midi");
-        var recoveredCallId = ArgumentCaptor.forClass(String.class);
-        verify(realtimeService, timeout(1_000)).executeTool(
-                eq(call), recoveredCallId.capture(), eq("check_availability"),
-                eq("{\"date\":\"2030-01-15\",\"time_preference\":\"12:00\"}")
-        );
-        assertThat(recoveredCallId.getValue()).hasSizeLessThanOrEqualTo(32);
-        verify(session, timeout(1_000)).requestToolResultResponse();
+        verify(realtimeService, never()).executeTool(any(), anyString(), anyString(), anyString());
+        verify(session).requestToolResultResponse();
+        var deleted = ArgumentCaptor.forClass(String.class);
+        verify(webSocket).sendText(deleted.capture(), eq(true));
+        assertThat(deleted.getValue()).contains("conversation.item.delete", "msg-1");
     }
 
     @Test
@@ -227,6 +286,69 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         verify(session, never()).requestToolResultResponse();
         verify(session, timeout(1_000)).requestExactResponse(spoken);
         assertThat(events).isEmpty();
+    }
+
+    @Test
+    void executesEachNativeToolCallIdOnlyOnce() {
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        when(realtimeService.executeTool(eq(call), eq("tool-1"), eq("check_availability"), anyString()))
+                .thenReturn(new com.sauti.llm.LlmToolResult(
+                        "tool-1", "check_availability", true, Map.of(), ""
+                ));
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call,
+                new RecordingListener(new ArrayList<>()), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+        var event = "{\"type\":\"response.function_call_arguments.done\","
+                + "\"call_id\":\"tool-1\",\"name\":\"check_availability\",\"arguments\":\"{}\"}";
+
+        socketListener.onText(mock(WebSocket.class), event, true);
+        socketListener.onText(mock(WebSocket.class), event, true);
+
+        verify(realtimeService, timeout(1_000).times(1))
+                .executeTool(eq(call), eq("tool-1"), eq("check_availability"), anyString());
+    }
+
+    @Test
+    void suppressesMessagePreambleWhenTheSameResponseContainsANativeToolCall() {
+        var events = new ArrayList<String>();
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        when(realtimeService.executeTool(eq(call), eq("tool-2"), eq("check_availability"), anyString()))
+                .thenReturn(new com.sauti.llm.LlmToolResult(
+                        "tool-2", "check_availability", true, Map.of(), ""
+                ));
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call, new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket, "{\"type\":\"response.created\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.added\",\"item\":{\"type\":\"message\",\"id\":\"msg-2\"}}",
+                true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"item_id\":\"msg-2\",\"delta\":\"Let me check.\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"item_id\":\"msg-2\",\"text\":\"Let me check.\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.added\","
+                        + "\"item\":{\"type\":\"function_call\",\"id\":\"tool-item-2\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.function_call_arguments.done\","
+                        + "\"call_id\":\"tool-2\",\"name\":\"check_availability\",\"arguments\":\"{}\"}", true);
+        socketListener.onText(webSocket, "{\"type\":\"response.done\"}", true);
+
+        assertThat(events).isEmpty();
+        verify(realtimeService, timeout(1_000)).executeTool(
+                eq(call), eq("tool-2"), eq("check_availability"), anyString()
+        );
     }
 
     @Test
@@ -336,7 +458,11 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         socketListener.onText(webSocket,
                 "{\"type\":\"response.created\",\"response\":{\"id\":\"response-old\"}}", true);
         socketListener.onText(webSocket,
-                "{\"type\":\"response.output_text.delta\",\"response_id\":\"response-old\",\"delta\":\"Old start.\"}", true);
+                "{\"type\":\"response.output_item.created\",\"response_id\":\"response-old\","
+                        + "\"item\":{\"type\":\"message\",\"id\":\"old-message\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.delta\",\"response_id\":\"response-old\","
+                        + "\"item_id\":\"old-message\",\"delta\":\"Old start.\"}", true);
         socketListener.markCurrentResponseCancelled();
         socketListener.onText(webSocket,
                 "{\"type\":\"response.output_text.delta\",\"response_id\":\"response-old\",\"delta\":\" Late duplicate.\"}", true);
@@ -346,12 +472,18 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         socketListener.onText(webSocket,
                 "{\"type\":\"response.created\",\"response\":{\"id\":\"response-new\"}}", true);
         socketListener.onText(webSocket,
-                "{\"type\":\"response.output_text.delta\",\"response_id\":\"response-new\",\"delta\":\"Fresh answer.\"}", true);
+                "{\"type\":\"response.output_item.created\",\"response_id\":\"response-new\","
+                        + "\"item\":{\"type\":\"message\",\"id\":\"new-message\"}}", true);
         socketListener.onText(webSocket,
-                "{\"type\":\"response.output_text.done\",\"response_id\":\"response-new\",\"text\":\"Fresh answer.\"}", true);
+                "{\"type\":\"response.output_text.delta\",\"response_id\":\"response-new\","
+                        + "\"item_id\":\"new-message\",\"delta\":\"Fresh answer.\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"response_id\":\"response-new\","
+                        + "\"item_id\":\"new-message\",\"text\":\"Fresh answer.\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\",\"response\":{\"id\":\"response-new\"}}", true);
 
         assertThat(events).containsExactly(
-                "delta:Old start.",
                 "delta:Fresh answer.",
                 "agent:Fresh answer.:false"
         );

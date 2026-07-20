@@ -335,8 +335,9 @@ public class CallPipelineService {
             return;
         }
         if (!"agent".equalsIgnoreCase(role)) return;
-        if (VoiceOutputGuard.isStructuredPayload(text)) {
-            LOGGER.warn("Blocked structured provider payload from agent transcript for callId={}", callId);
+        normalized = VoiceOutputGuard.speechText(text);
+        if (normalized.isBlank()) {
+            LOGGER.warn("Blocked non-speech provider output from agent transcript for callId={}", callId);
             return;
         }
 

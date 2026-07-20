@@ -3625,24 +3625,30 @@ Expected:
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: verify one browser call and one phone call after CI/CD using the saved `$5` catalog. Exact model adherence still depends on receiving the current session update, but the response-level override that deterministically removed those facts is now eliminated.
 
-### 2026-07-20 - Keep model protocol markers out of caller speech
+### 2026-07-20 - Enforce a typed tool/speech boundary before audio
 
-- Fixed the Ailsa transcript failure where malformed provider text such as `analysis to=functions.get_business_hours code` was emitted as an agent turn instead of a native tool call.
-- Added a shared streaming classifier that holds ambiguous prefixes across provider deltas, recognizes model-channel/function markers and structured payloads, and releases ordinary speech only after it is distinguishable from protocol text.
-- Applied the guard to the shared conversation orchestrator, phone OpenAI Realtime transport, and browser OpenAI Realtime transport so protocol text is excluded from caller-facing deltas, completed transcripts, stored assistant turns, and text-to-speech input.
-- Phone and browser Realtime sessions delete the malformed provider message and retry once without tools while retaining the authoritative session prompt and configured business facts. A localized safe clarification is used if the provider repeats the failure.
-- Strengthened the live voice prompt to explicitly prohibit model-channel markers. Added exact split-delta regression coverage for `ana` plus `lysis to=functions.get_business_hours code`, including the no-tool recovery that returns the configured `$5` haircut answer without saving or streaming the leaked marker.
+- Supersedes the earlier prefix-streaming mitigation. Prefix inspection was not a sufficient production boundary because protocol could appear after natural-looking text, and native provider audio could already be playing before its parallel transcript was validated.
+- Tool execution now has exactly one entry point: provider-native `function_call` events. Text or JSON in a message is never parsed, repaired, or inferred into a tool call. Native call IDs are retained for the full Realtime session so a replayed event cannot repeat a side effect.
+- Realtime output items are tracked by provider item ID and type. Only `message` items can be considered for speech. Message text is held through `response.done`; if the same response also contains a `function_call`, all accompanying message text stays silent and only the native tool event runs.
+- `VoiceOutputGuard` validates the complete message, removes accidental caller-facing wrappers such as `assistant:`, and rejects private roles, channel routing, function namespaces, code, and structured tool arguments even when they occur after a natural sentence. The same guard is applied again at transcript persistence and the server-side hybrid TTS WebSocket.
+- Browser Realtime is now text-first only. Unexpected WebRTC output-audio tracks are stopped immediately and cannot bypass the guarded Cartesia TTS channel. Both saved `cartesia:` voices and legacy `openai:` voices use hybrid text-first mode when OpenAI Realtime and Cartesia are configured; a legacy OpenAI voice requires `CARTESIA_DEFAULT_VOICE_ID` because provider-native audio is intentionally no longer an audible path.
+- The shared cascaded orchestrator also buffers complete provider turns. It discards any text returned beside structured tool calls, rejects textual tool arguments, and emits only the validated final message to TTS/history.
+- Realtime instructions now state the contract directly: ordinary replies are bare natural speech without speaker labels, and tools are used only through native function calls.
+- Added regression coverage for the exact `assistant: Hi Walker...` transcript, split role labels, protocol after a natural prefix, textual JSON that must not execute, non-message text events, combined message-plus-tool responses, duplicate native call IDs, server-side hybrid TTS validation, and sanitized transcript storage.
 - Files touched:
-  - `backend/src/main/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProvider,VoiceOutputGuard}.java`
+  - `backend/src/main/java/com/sauti/api/{CallController,PublicWebVoiceController}.java`
+  - `backend/src/main/java/com/sauti/call/{CallPipelineService,HybridVoiceSessionService,OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider,VoiceOutputGuard}.java`
   - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
-  - `backend/src/test/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProviderTest,VoiceOutputGuardTest}.java`
+  - `backend/src/test/java/com/sauti/call/{CallPipelineServiceTest,HybridVoiceSessionServiceTest,OpenAiRealtimeServiceTest,OpenAiTelephonyRealtimeConversationProviderTest,VoiceOutputGuardTest}.java`
   - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
   - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
   - `docs/agent-handoff.md`
 - Verification:
-  - focused `ConversationOrchestratorTest`, `VoiceOutputGuardTest`, and `OpenAiTelephonyRealtimeConversationProviderTest` - passed.
-  - `.\gradlew.bat :backend:test` - passed.
+  - focused protocol-boundary, telephony Realtime, hybrid TTS, transcript persistence, Realtime configuration, and orchestrator tests - passed.
+  - `.\gradlew.bat :backend:test` - passed; 215 tests.
   - `npm.cmd run typecheck` in `dashboard/` - passed.
   - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
-- Known follow-up/risk: native browser audio is cancelled as soon as its parallel transcript reveals a protocol prefix, but unlike the buffered phone/text paths it cannot retract audio already played before classification. Verify one native browser test after CI/CD; if even a clipped prefix is audible, the native browser path will need delayed playback or text-first synthesis to provide the same hard pre-speech boundary.
+- Known follow-up/risk: complete-response validation deliberately trades some first-audio latency for a hard pre-speech boundary. Run one browser call and one carrier call after CI/CD to measure the resulting pause. Before deploying with any legacy `openai:` voice, confirm `CARTESIA_DEFAULT_VOICE_ID` is configured or migrate that agent to a `cartesia:` voice.

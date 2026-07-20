@@ -115,7 +115,6 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
           greeting: cachedGreeting ? "" : session.greeting,
           outputMode: hybrid ? "text" : "audio",
           bargeInDebounceMs: hybrid ? 180 : 0,
-          availabilityToolEnabled: session.availabilityToolEnabled,
           responseLanguage: session.language,
           prepareCallerResponse: (text) => recordPublicRealtimeTranscript(
             session.sessionId, session.token, "caller", text,

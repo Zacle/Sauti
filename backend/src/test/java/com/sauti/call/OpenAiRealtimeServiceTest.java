@@ -85,7 +85,7 @@ class OpenAiRealtimeServiceTest {
     }
 
     @Test
-    void createsAProviderBoundRealtimeSessionWithoutExposingTheApiKey() throws Exception {
+    void createsATextFirstProviderSessionForLegacyOpenAiVoicesWithoutExposingTheApiKey() throws Exception {
         var receivedAuthorization = new AtomicReference<String>();
         var receivedBody = new AtomicReference<String>();
         var server = HttpServer.create(new InetSocketAddress(0), 0);
@@ -124,13 +124,16 @@ class OpenAiRealtimeServiceTest {
             assertThat(receivedBody.get())
                     .contains("sauti-offer")
                     .contains("gpt-realtime-1.5")
-                    .contains("openai:marin".substring("openai:".length()))
+                    .contains("\"output_modalities\":[\"text\"]")
+                    .contains("\"audio\":{\"input\":")
                     .contains("\"max_output_tokens\":\"inf\"")
-                    .contains("\"threshold\":0.55")
-                    .contains("\"silence_duration_ms\":320")
+                    .contains("\"threshold\":0.6")
+                    .contains("\"silence_duration_ms\":520")
                     .contains("\"create_response\":false")
                     .contains("\"interrupt_response\":false")
-                    .contains("gpt-4o-mini-transcribe");
+                    .contains("gpt-4o-mini-transcribe")
+                    .doesNotContain("marin")
+                    .doesNotContain("\"output\":{\"voice\"");
         } finally {
             server.stop(0);
         }

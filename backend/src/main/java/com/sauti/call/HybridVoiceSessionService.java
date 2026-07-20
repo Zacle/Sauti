@@ -41,10 +41,6 @@ public class HybridVoiceSessionService {
                 .filter(candidate -> agentKey.equals(candidate.getAgent().getId().toString())
                         || agentKey.equals(candidate.getAgent().getWebVoicePublicId()))
                 .orElseThrow(() -> new IllegalArgumentException("Hybrid voice call is unavailable"));
-        var voiceId = call.getAgent().getTtsVoiceId();
-        if (voiceId == null || !voiceId.startsWith(CartesiaRealtimeTextToSpeechClient.VOICE_PREFIX)) {
-            throw new IllegalArgumentException("Hybrid voice requires a Cartesia voice");
-        }
         var state = new HybridSession(call, socket, () -> metrics.sessionEnded("hybrid", call.getDirection()));
         var previous = sessions.put(callSid, state);
         if (previous != null) previous.close();
@@ -82,6 +78,11 @@ public class HybridVoiceSessionService {
 
     private void appendDelta(HybridSession state, String delta) {
         if (delta == null || delta.isEmpty()) return;
+        state.rawResponseText.append(delta);
+    }
+
+    private void appendValidatedDelta(HybridSession state, String delta) {
+        if (delta == null || delta.isEmpty()) return;
         state.textBuffer.append(delta);
         String phrase;
         while (!(phrase = WebVoiceSessionService.takeSpeakablePhrase(state.textBuffer, false)).isBlank()) {
@@ -90,6 +91,13 @@ public class HybridVoiceSessionService {
     }
 
     private void complete(HybridSession state) {
+        var safeText = VoiceOutputGuard.speechText(state.rawResponseText.toString());
+        state.rawResponseText.setLength(0);
+        if (safeText.isBlank()) {
+            state.textBuffer.setLength(0);
+            return;
+        }
+        appendValidatedDelta(state, safeText);
         var remaining = WebVoiceSessionService.takeSpeakablePhrase(state.textBuffer, true);
         if (!remaining.isBlank()) speak(state, remaining, false);
         speak(state, "", true);
@@ -99,6 +107,7 @@ public class HybridVoiceSessionService {
         metrics.interruption("hybrid", state.call.getDirection());
         state.generation++;
         state.textBuffer.setLength(0);
+        state.rawResponseText.setLength(0);
         closeTts(state);
         sendJson(state, Map.of("type", "clear_audio"));
         if (state.speaking) {
@@ -212,6 +221,7 @@ public class HybridVoiceSessionService {
         private final Call call;
         private final WebSocketSession socket;
         private final StringBuilder textBuffer = new StringBuilder();
+        private final StringBuilder rawResponseText = new StringBuilder();
         private final Runnable onClose;
         private final long startedNanos = System.nanoTime();
         private CompletableFuture<RealtimeTtsSession> tts = CompletableFuture.completedFuture(null);

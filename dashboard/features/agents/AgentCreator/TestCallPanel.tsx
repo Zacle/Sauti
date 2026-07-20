@@ -211,7 +211,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       greeting,
       outputMode: hybrid ? "text" : "audio",
       bargeInDebounceMs: hybrid ? 180 : 0,
-      availabilityToolEnabled: started.availabilityToolEnabled,
       responseLanguage: started.call.languageDetected ?? undefined,
       prepareCallerResponse: (text) => recordTestRealtimeTranscript(started.call.id, "caller", text)
         .then((response) => response.instructions),
