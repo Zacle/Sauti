@@ -201,6 +201,36 @@ class CallIntakeNoteServiceTest {
                 .contains("do not advance to another booking field");
     }
 
+    @Test
+    void tracksAnActiveBookingAndThenHonorsTheCallersWithdrawal() {
+        var repository = mock(CallTurnRepository.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        var openingTurn = turn(
+                "Hello, my name is Zachary. I'm calling to get an appointment, please.",
+                "What service would you like to book?"
+        );
+        var serviceTurn = turn(
+                "I would like to book a men's hairstyle for myself.",
+                "What phone number can we use?"
+        );
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId))
+                .thenReturn(List.of(openingTurn, serviceTurn));
+
+        var service = new CallIntakeNoteService(repository);
+        assertThat(service.notes(call, "082-011-0502"))
+                .containsEntry("booking_intent", "active");
+
+        var withdrawal = "Everything is wrong, but don't book yet. I will call you back later.";
+        assertThat(service.notes(call, withdrawal))
+                .containsEntry("booking_intent", "paused");
+        assertThat(service.promptBlock(call, withdrawal))
+                .contains("BOOKING IS PAUSED BY THE CALLER")
+                .contains("Confirm briefly that no booking will be made")
+                .contains("close warmly");
+    }
+
     private CallTurn turn(String caller, String agent) {
         var turn = mock(CallTurn.class);
         when(turn.getCallerTranscript()).thenReturn(caller);

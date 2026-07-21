@@ -3,6 +3,7 @@ package com.sauti.llm;
 import com.sauti.call.Call;
 import com.sauti.call.CallTurnRepository;
 import com.sauti.call.CallIntakeNoteService;
+import com.sauti.call.BookingConversationPolicy;
 import com.sauti.call.VoiceOutputGuard;
 import com.sauti.agent.AgentVariableService;
 import com.sauti.agent.KnowledgeBaseService;
@@ -76,23 +77,29 @@ public class ConversationOrchestrator {
         var systemPrompt = systemPrompt(call, language, tools, callerTranscript);
         callSessionStore.upsertSystemMessage(call.getTwilioCallSid(), systemPrompt);
         callSessionStore.appendUserMessage(call.getTwilioCallSid(), callerTranscript);
+        if (BookingConversationPolicy.pausesBooking(callerTranscript)) {
+            var response = BookingConversationPolicy.pausedResponse(language);
+            textDeltaConsumer.accept(response);
+            callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), response, List.of());
+            return new ConversationTurnResult(response, "");
+        }
         var messages = messages(call, callerTranscript);
         var responseText = "";
-        // Tool choice is delegated to the multilingual model. Calendar tools
-        // return structured facts and enforce business constraints server-side.
-        var availabilityCheckRequired = false;
+        // Tool choice starts with the multilingual model. A successful tool may
+        // return one server-authorized next tool when a workflow transition must
+        // happen silently and atomically, such as availability -> booking review.
+        String requiredNextTool = null;
 
         try {
             for (int loop = 0; loop < maxToolLoops; loop++) {
-                var requiredToolName = loop == 0 && availabilityCheckRequired
-                        ? "check_availability"
-                        : null;
+                var requiredToolName = requiredNextTool;
+                requiredNextTool = null;
                 var loopTools = requiredToolName == null
                         ? tools
                         : tools.stream().filter(tool -> requiredToolName.equals(tool.name())).toList();
-                var loopSystemPrompt = loop == 0 && availabilityCheckRequired
-                        ? systemPrompt + "\nMANDATORY NEXT ACTION: Call `check_availability` now before speaking. "
-                                + "Use the caller's stated date and exact time. Do not answer with availability text yet."
+                var loopSystemPrompt = requiredToolName != null
+                        ? systemPrompt + "\nMANDATORY NEXT ACTION: Call `" + requiredToolName + "` now before speaking. "
+                                + "Do not add a preamble, ask permission, or ask the caller to wait."
                         : systemPrompt;
                 var context = new LlmToolTurnContext(
                         AgentContext.from(call.getAgent()),
@@ -111,7 +118,7 @@ public class ConversationOrchestrator {
                 // payload, and some providers return text beside a tool call.
                 // Hold every provider response until its complete structured
                 // result establishes whether this is speech or a tool turn.
-                var response = loop == 0 && availabilityCheckRequired
+                var response = requiredToolName != null
                         ? llmProvider.completeTurn(context)
                         : llmProvider.streamTurn(context, ignored -> { });
                 var protocolPayload = VoiceOutputGuard.isProtocolPayload(response.responseText());
@@ -119,7 +126,9 @@ public class ConversationOrchestrator {
                 responseText = voiceReadyText(response.responseText());
                 if (responseToolCalls.isEmpty()) {
                     if (requiredToolName != null) {
-                        responseText = VoiceOutputGuard.safeAvailabilityClarification(language);
+                        responseText = "book_slot".equals(requiredToolName)
+                                ? VoiceOutputGuard.safeBookingFailure(language)
+                                : VoiceOutputGuard.safeAvailabilityClarification(language);
                     } else if (protocolPayload) {
                         LOGGER.warn("Suppressed provider protocol output from caller-facing response callId={}", call.getId());
                         responseText = recoverWithoutTools(call, language, callerTranscript);
@@ -151,6 +160,11 @@ public class ConversationOrchestrator {
                     }
                 }
                 latestToolResults = List.copyOf(loopResults);
+                requiredNextTool = loopResults.stream()
+                        .map(this::serverAuthorizedNextTool)
+                        .filter(value -> !value.isBlank())
+                        .findFirst()
+                        .orElse(null);
             }
         } catch (RuntimeException exception) {
             LOGGER.warn("Conversation turn failed for callId={} language={}; retrying without tools", call.getId(), language, exception);
@@ -172,9 +186,15 @@ public class ConversationOrchestrator {
 
     private String deterministicToolResponse(LlmToolResult result) {
         if (llmProvider.requiresAvailabilityFollowUpForState()) return "";
-        if (!result.success() || !"check_availability".equals(result.name())) return "";
+        if (!result.success()) return "";
         var response = result.result().get("spokenResponse");
         return response == null ? "" : voiceReadyText(response.toString());
+    }
+
+    private String serverAuthorizedNextTool(LlmToolResult result) {
+        if (!result.success()) return "";
+        var value = result.result().get("nextTool");
+        return "book_slot".equals(value) ? value.toString() : "";
     }
 
     public String generateOpeningGreeting(Call call, String language, String channel) {
@@ -366,11 +386,13 @@ public class ConversationOrchestrator {
                 - For a reschedule or cancellation, ask for the customer-facing booking number. Check availability for a proposed replacement time, confirm the requested change, then use the matching booking tool. Never claim the change succeeded before its tool result.
                 - Do not ask how long a normal appointment should last. Use the configured tool default. Ask about duration only when the caller explicitly requests a special duration or the configured business workflow explicitly requires it.
                 - New-booking sequence: collect every configured required field; check availability when a date or time is present; then call `book_slot` without a review token. The tool returns the exact consolidated review and a private review token. Do not invent your own review preamble, ask whether the caller is ready for a review, or say the booking failed before this tool result. Speak the returned review once, stop, and let the caller correct anything. If the caller corrects one value, change only that value and call `book_slot` with the preceding review token; speak only the focused correction review returned by the tool. Do not repeat the other correct details. After the caller approves the latest review, call `book_slot` again with unchanged details and the latest exact review token. Never invent or expose the token. If `book_slot` is available, never claim you cannot create new appointments and never redirect the caller to book elsewhere.
+                - After `check_availability` confirms the caller's requested time and all collected booking details are present, call `book_slot` immediately in the same turn. Do not announce that you will prepare or review details, do not ask the caller to hold, and do not require an acknowledgement such as "OK" before starting the server-generated review.
                 - Accept partial information gracefully. If the caller gives you the date without the type, use what you have. Ask only for what is genuinely missing.
                 - Treat a caller detail as collected only when the caller explicitly says that detail. Never infer a caller name, number, address, email, or confirmation from a greeting, acknowledgement, thanks, "avec plaisir", "d'accord", "yes", or from your own agent name. If the reply does not answer the detail you just requested, briefly repeat that same request and do not advance to the next field.
                 - Neutral acknowledgements such as "okay", "OK", "no problem", "sure", "of course", or "just a second" are not values for service, staff, contact, date, or time. In particular, never convert them into "any staff" or "no preference". Record any staff only when the caller explicitly says any staff, anyone, whoever is available, or no preference.
                 - Once the caller explicitly says any staff, anyone available, or no preference, record preferred_staff as `any available staff`, retain it, and never ask about staff again.
                 - If the caller asks for a moment or says "just a second", respond only with a short "Take your time" in their language and wait. Do not repeat the pending question, options, or collected details in that turn.
+                - If the caller says not to book yet and that they will call back later, do not call any booking tool. Explicitly reassure them that nothing will be booked, thank them, and close warmly; a bare "goodbye" is too abrupt.
                 - If you correctly understood and used a caller's name or detail, never precede that with "I didn't catch that" or an apology for not understanding.
                 - If the caller declines to give one piece of contact info (e.g. "I don't want to give my email"), accept that warmly and immediately offer the alternative ("No worries — could I take your phone number instead?"). Never press or repeat the request.
                 - If the caller sounds confused ("pardon?", "what do you mean?", "je n'ai pas compris"), briefly apologize, restate the same request in simpler words, and do not move to a new topic.

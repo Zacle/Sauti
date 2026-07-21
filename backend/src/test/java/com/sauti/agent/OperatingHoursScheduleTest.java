@@ -124,6 +124,25 @@ class OperatingHoursScheduleTest {
     }
 
     @Test
+    void groupsIdenticalStructuredHoursInsteadOfReadingEveryDaySeparately() {
+        var structuredWeekdays = """
+                {
+                  "monday":{"enabled":true,"start":"09:00","end":"17:00"},
+                  "tuesday":{"enabled":true,"start":"09:00","end":"17:00"},
+                  "wednesday":{"enabled":true,"start":"09:00","end":"17:00"},
+                  "thursday":{"enabled":true,"start":"09:00","end":"17:00"},
+                  "friday":{"enabled":true,"start":"09:00","end":"17:00"},
+                  "saturday":{"enabled":false,"start":"09:00","end":"17:00"},
+                  "sunday":{"enabled":false,"start":"09:00","end":"17:00"}
+                }
+                """;
+
+        assertThat(OperatingHoursSchedule.describeForSpeech(structuredWeekdays, "en"))
+                .isEqualTo("We are open Monday through Friday from 9 in the morning to 5 in the evening. "
+                        + "We are closed Saturday and Sunday.");
+    }
+
+    @Test
     void recoversHoursAndExceptionsFromGeneratedPrompts() {
         var agent = org.mockito.Mockito.mock(Agent.class);
         org.mockito.Mockito.when(agent.getOperatingHours()).thenReturn("always");

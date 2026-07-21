@@ -55,6 +55,13 @@ class OpenAiRealtimeServiceTest {
         assertThat(service.prepareCallerResponse(
                 call, "Is a women's hairstyle available?"
         ).directResponse()).isBlank();
+
+        assertThat(service.prepareCallerResponse(
+                call, "Everything is wrong, but don't book yet. I will call you back later."
+        ).directResponse())
+                .contains("I won’t book anything")
+                .contains("when you’re ready")
+                .endsWith("Goodbye.");
     }
 
     @Test

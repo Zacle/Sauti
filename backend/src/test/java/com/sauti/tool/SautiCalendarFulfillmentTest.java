@@ -86,6 +86,66 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
+    void advancesACompleteActiveIntakeStraightFromAvailabilityToBookingReview() {
+        var openHours = """
+                {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
+                """;
+        var slot = new CalendarAvailabilitySlot(
+                OffsetDateTime.parse("2026-07-22T15:00:00Z"),
+                OffsetDateTime.parse("2026-07-22T16:00:00Z"),
+                "15:00"
+        );
+        var fixture = fixture(openHours, List.of(slot));
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Friday at 3 p.m.")));
+        when(fixture.intakeNotes.notes(fixture.call, "Friday at 3 p.m.")).thenReturn(Map.of(
+                "booking_intent", "active",
+                "caller_name", "Zachary",
+                "appointment_name", "Zachary",
+                "caller_phone", "0820110502",
+                "service_type", "Men's hairstyle"
+        ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "availability-ready-for-review", "check_availability",
+                Map.of("date", "2026-07-22", "time_preference", "15:00", "duration_minutes", 60)
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "requested_time_available")
+                .containsEntry("nextTool", "book_slot");
+        assertThat(result.result().get("instruction").toString())
+                .contains("Call book_slot immediately without speaking")
+                .contains("without", "asking permission", "wait");
+    }
+
+    @Test
+    void doesNotStartABookingReviewForAnAvailabilityOnlyQuestion() {
+        var openHours = """
+                {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
+                """;
+        var slot = new CalendarAvailabilitySlot(
+                OffsetDateTime.parse("2026-07-22T15:00:00Z"),
+                OffsetDateTime.parse("2026-07-22T16:00:00Z"),
+                "15:00"
+        );
+        var fixture = fixture(openHours, List.of(slot));
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Is Wednesday at 3 p.m. available?")));
+        when(fixture.intakeNotes.notes(fixture.call, "Is Wednesday at 3 p.m. available?"))
+                .thenReturn(Map.of());
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "availability-information-only", "check_availability",
+                Map.of("date", "2026-07-22", "time_preference", "15:00", "duration_minutes", 60)
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "requested_time_available")
+                .doesNotContainKey("nextTool");
+    }
+
+    @Test
     void excludesAnExistingSautiBookingAndReturnsNearbyAlternatives() {
         var openHours = """
                 {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}

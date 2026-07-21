@@ -79,6 +79,10 @@ public class CallIntakeNoteService {
         if (notes.containsKey("booking_for_relation") && !notes.containsKey("appointment_name")) {
             result.append("- booking subject name is still missing; never substitute caller_name for it.\n");
         }
+        if ("paused".equals(notes.get("booking_intent"))) {
+            result.append("- BOOKING IS PAUSED BY THE CALLER: do not call a booking tool or save anything. "
+                    + "Confirm briefly that no booking will be made, thank the caller, and close warmly.\n");
+        }
         if (phoneStillPending) {
             result.append("- CURRENT PENDING FIELD: caller_phone. The latest caller turn did not provide a usable complete phone number. "
                     + "Do not say it was captured and do not advance to another booking field. Answer a question if they asked one; "
@@ -91,6 +95,8 @@ public class CallIntakeNoteService {
         if (callerText == null || callerText.isBlank()) return;
         var normalized = normalize(callerText);
         var previous = normalize(previousAgent);
+        var bookingIntent = bookingIntent(normalized);
+        if (!bookingIntent.isBlank()) notes.put("booking_intent", bookingIntent);
         var name = NAME.matcher(callerText.trim());
         if (name.find()) {
             var callerName = cleanName(name.group(1));
@@ -262,6 +268,18 @@ public class CallIntakeNoteService {
                 .map(Map.Entry::getKey)
                 .findFirst()
                 .orElse("");
+    }
+
+    private String bookingIntent(String normalized) {
+        if (normalized.matches(".*\\b(?:do not|dont|don't|not ready to)\\s+(?:book|schedule|save|confirm)\\b.*")
+                || normalized.matches(".*\\b(?:book|schedule|save|confirm)\\s+(?:it\\s+)?(?:later|another time)\\b.*")) {
+            return "paused";
+        }
+        if (normalized.matches(".*\\b(?:book|schedule|reserve)\\b.*")
+                || normalized.matches(".*\\b(?:make|get|arrange|set up)\\b.{0,24}\\b(?:appointment|booking|reservation)\\b.*")) {
+            return "active";
+        }
+        return "";
     }
 
     private boolean asksForName(String previous) {

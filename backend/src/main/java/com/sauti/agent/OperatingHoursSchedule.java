@@ -188,6 +188,7 @@ public final class OperatingHoursSchedule {
                     : "We are open Monday through Friday from 9 in the morning to 5 in the evening, and closed Saturday and Sunday.";
         }
         var schedule = parse(value);
+        if (!normalizedLanguage.startsWith("fr")) return describeEnglishScheduleForSpeech(schedule);
         var openings = new java.util.ArrayList<String>();
         var closed = new java.util.ArrayList<String>();
         for (var day : DayOfWeek.values()) {
@@ -202,12 +203,53 @@ public final class OperatingHoursSchedule {
                         + spokenTime(configured.end(), normalizedLanguage));
             }
         }
-        if (normalizedLanguage.startsWith("fr")) {
-            return "Nous sommes ouverts " + String.join(", ", openings) + ". Nous sommes fermés "
-                    + String.join(", ", closed) + ".";
-        }
-        return "We are open " + String.join(", ", openings) + ". We are closed "
+        return "Nous sommes ouverts " + String.join(", ", openings) + ". Nous sommes fermés "
                 + String.join(", ", closed) + ".";
+    }
+
+    private static String describeEnglishScheduleForSpeech(Map<String, DaySchedule> schedule) {
+        var runs = new java.util.ArrayList<ScheduleRun>();
+        ScheduleRun current = null;
+        for (var day : DayOfWeek.values()) {
+            var configured = schedule.get(day.name().toLowerCase(Locale.ROOT));
+            if (configured == null) configured = new DaySchedule(false, "09:00", "17:00");
+            if (current != null && sameSpeechSchedule(current.schedule(), configured)) {
+                current = new ScheduleRun(current.first(), day, current.schedule());
+                runs.set(runs.size() - 1, current);
+            } else {
+                current = new ScheduleRun(day, day, configured);
+                runs.add(current);
+            }
+        }
+        var openings = runs.stream()
+                .filter(run -> run.schedule().enabled())
+                .map(run -> dayRange(run.first(), run.last()) + " from "
+                        + spokenTime(run.schedule().start(), "en") + " to "
+                        + spokenTime(run.schedule().end(), "en"))
+                .toList();
+        var closed = runs.stream()
+                .filter(run -> !run.schedule().enabled())
+                .map(run -> dayRange(run.first(), run.last()))
+                .toList();
+        if (openings.isEmpty()) return "We are closed every day.";
+        var response = "We are open " + String.join(", ", openings) + ".";
+        return closed.isEmpty() ? response : response + " We are closed " + String.join(", ", closed) + ".";
+    }
+
+    private static boolean sameSpeechSchedule(DaySchedule first, DaySchedule second) {
+        if (!first.enabled() && !second.enabled()) return true;
+        return first.enabled() && second.enabled()
+                && first.start().equals(second.start())
+                && first.end().equals(second.end());
+    }
+
+    private static String dayRange(DayOfWeek first, DayOfWeek last) {
+        var firstLabel = spokenDay(first, "en");
+        if (first == last) return firstLabel;
+        var lastLabel = spokenDay(last, "en");
+        return last.getValue() - first.getValue() == 1
+                ? firstLabel + " and " + lastLabel
+                : firstLabel + " through " + lastLabel;
     }
 
     private static TimeRange range(LocalDate date, LocalTime startTime, LocalTime endTime, ZoneId timezone) {
@@ -302,6 +344,9 @@ public final class OperatingHoursSchedule {
     }
 
     public record DaySchedule(boolean enabled, String start, String end) {
+    }
+
+    private record ScheduleRun(DayOfWeek first, DayOfWeek last, DaySchedule schedule) {
     }
 
     public record TimeRange(OffsetDateTime start, OffsetDateTime end) {

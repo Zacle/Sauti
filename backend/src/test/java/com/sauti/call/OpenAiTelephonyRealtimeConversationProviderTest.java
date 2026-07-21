@@ -466,6 +466,33 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void chainsAvailableCompleteIntakeDirectlyToTheBookingToolWithoutSpeakingAPreamble() {
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        when(realtimeService.executeTool(eq(call), eq("availability-review"), eq("check_availability"), anyString()))
+                .thenReturn(new com.sauti.llm.LlmToolResult(
+                        "availability-review", "check_availability", true,
+                        Map.of("status", "requested_time_available", "nextTool", "book_slot"), ""
+                ));
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call,
+                new RecordingListener(new ArrayList<>()), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.function_call_arguments.done\","
+                        + "\"call_id\":\"availability-review\",\"name\":\"check_availability\","
+                        + "\"arguments\":\"{\\\"date\\\":\\\"2026-07-24\\\",\\\"time_preference\\\":\\\"15:00\\\"}\"}",
+                true);
+
+        verify(session, timeout(1_000)).requestResponseWithRequiredTool("book_slot");
+        verify(session, never()).requestToolResultResponse();
+        verify(session, never()).requestExactResponse(anyString(), anyLong());
+    }
+
+    @Test
     void executesEachNativeToolCallIdOnlyOnce() {
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);

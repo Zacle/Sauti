@@ -703,6 +703,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     ));
                     return;
                 }
+                var nextTool = toolNextTool(result);
+                if (!nextTool.isBlank()) {
+                    var activeSession = session;
+                    if (activeSession != null) activeSession.requestResponseWithRequiredTool(nextTool);
+                    return;
+                }
                 var deterministicResponse = toolSpokenResponse(result);
                 if (!deterministicResponse.isBlank()) {
                     var activeSession = session;
@@ -725,6 +731,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private String toolSpokenResponse(com.sauti.llm.LlmToolResult result) {
             var value = result.result().get("spokenResponse");
             return value == null ? "" : value.toString().trim();
+        }
+
+        private String toolNextTool(com.sauti.llm.LlmToolResult result) {
+            var value = result.result().get("nextTool");
+            return "book_slot".equals(value) ? value.toString() : "";
         }
 
         private String write(Object value) {

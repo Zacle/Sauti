@@ -287,6 +287,11 @@ export async function connectOpenAiRealtime(options: {
           deliverToolFailure(name, generation, `tool-failure:${callId}`);
           return;
         }
+        const nextTool = toolNextTool(result);
+        if (nextTool) {
+          enqueueResponse(() => requestRequiredToolResponse(channel, nextTool), generation);
+          return;
+        }
         const deterministicResponse = toolSpokenResponse(name, result);
         if (deterministicResponse) {
           if ((options.outputMode ?? "text") === "text") {
@@ -747,6 +752,15 @@ function requestToolResultResponse(channel: RTCDataChannel) {
   });
 }
 
+function requestRequiredToolResponse(channel: RTCDataChannel, toolName: string) {
+  send(channel, {
+    type: "response.create",
+    response: {
+      tool_choice: { type: "function", name: toolName },
+    },
+  });
+}
+
 function requestExactToolResponse(channel: RTCDataChannel, response: string) {
   send(channel, {
     type: "response.create",
@@ -763,6 +777,13 @@ function toolSpokenResponse(name: string, result: Record<string, unknown>) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
   const response = (payload as Record<string, unknown>).spokenResponse;
   return typeof response === "string" ? response.trim() : "";
+}
+
+function toolNextTool(result: Record<string, unknown>) {
+  const payload = result.result;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
+  const nextTool = (payload as Record<string, unknown>).nextTool;
+  return nextTool === "book_slot" ? nextTool : "";
 }
 
 function canonicalJson(value: string) {

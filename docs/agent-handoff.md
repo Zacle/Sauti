@@ -3836,3 +3836,31 @@ Expected:
   - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat the exact Agent Studio call from the screenshot, one broad-hours question, one date-specific availability question, and one carrier call. Test silence/echo during a pending answer and a deliberate spoken interruption. Automated tests cover event ordering and deterministic replies, but real microphone acoustic echo, browser scheduling, carrier buffering, and provider latency still require live validation. If these remain unstable after the lifecycle fix, migrate the media/turn-taking layer to a dedicated voice runtime rather than adding more local VAD heuristics.
+
+### 2026-07-21 - Make the booking flow continuous and honor caller withdrawal
+
+- Fixed the latest Zachary transcript as a workflow problem rather than another phrasing exception. Structured weekly schedules with identical hours are now grouped for speech, so the default salon schedule is announced as Monday through Friday, 9 in the morning to 5 in the evening, with the weekend closed instead of reading every weekday separately.
+- Removed the model-controlled gap between a successful availability check and the booking review. When the requested slot is available and server-owned intake state confirms an active booking with recipient, service, and phone collected, the availability tool authorizes `book_slot` as the one required next tool. Browser Realtime, phone Realtime, and the turn-based orchestrator execute that transition silently; they cannot insert a promise to prepare the details, ask the caller to hold, or wait for an unnecessary `OK` before the server-generated review.
+- Kept information-only availability questions separate from booking intake. The automatic review transition is not returned unless the authoritative intake state says the caller is actively booking and the required pre-review identity/contact details are present.
+- Added deterministic withdrawal handling for explicit deferred stops such as `don't book yet` plus `I will call you back later`. No booking tool is called, and every runtime now reassures the caller that nothing will be booked, thanks them, and closes warmly. The matcher is intentionally narrow so a correction such as `don't book Friday; book Saturday instead` remains an active booking change.
+- Reinforced the shared prompt and intake notes so the same behavior applies to every agent and conversation runtime, while business facts and booking state remain server-owned.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/OperatingHoursSchedule.java`
+  - `backend/src/main/java/com/sauti/call/{BookingConversationPolicy,CallIntakeNoteService,OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/test/java/com/sauti/agent/OperatingHoursScheduleTest.java`
+  - `backend/src/test/java/com/sauti/call/{BookingConversationPolicyTest,CallIntakeNoteServiceTest,OpenAiRealtimeServiceTest,OpenAiTelephonyRealtimeConversationProviderTest}.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused transcript-shaped operating-hours, intake-state, withdrawal, calendar fulfillment, phone Realtime, and orchestrator tests - passed; 86 tests.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` in `dashboard/` - passed; 3 turn-gate regressions.
+  - `npm.cmd run lint` and `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+  - `git diff --check` - passed before the handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat this exact call in Agent Studio and on one carrier call. Confirm that the hours are grouped, Friday at 3 p.m. moves directly into one booking review, and `don't book yet; I will call back later` produces an explicit no-booking reassurance. Automated tests cover the server transition and all three runtime paths, but live Realtime model argument quality and external provider event ordering still need an end-to-end call.

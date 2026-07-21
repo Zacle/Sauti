@@ -127,9 +127,12 @@ public class OpenAiRealtimeService {
                 ? detectedLanguage
                 : currentLanguage;
         var instructions = conversationOrchestrator.realtimeInstructions(call, language, callerTranscript);
+        var directResponse = BookingConversationPolicy.pausesBooking(callerTranscript)
+                ? BookingConversationPolicy.pausedResponse(language)
+                : directBusinessHoursResponse(call, callerTranscript, language);
         return new RealtimeTranscriptResponse(
                 instructions,
-                directBusinessHoursResponse(call, callerTranscript, language)
+                directResponse
         );
     }
 

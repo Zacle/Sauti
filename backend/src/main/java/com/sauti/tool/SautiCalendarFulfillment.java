@@ -134,7 +134,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("totalAvailableSlots", slots.size());
         result.put("slots", relevantSlots(slots, requestedTime));
         result.put("nextOpenBusinessWindows", nextOpenBusinessWindows(effectiveHours, date, timezone));
-        result.put("status", !businessOpen
+        var status = !businessOpen
                 ? "closed_by_business_hours"
                 : Boolean.FALSE.equals(withinOperatingHours)
                     ? "outside_business_hours"
@@ -146,8 +146,26 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                         ? "requested_time_unavailable"
                         : requestedTime.isPresent()
                             ? "requested_time_available"
-                            : "slots_available");
+                            : "slots_available";
+        result.put("status", status);
+        if ("requested_time_available".equals(status) && readyForAutomaticBookingReview(call)) {
+            result.put("nextTool", "book_slot");
+            result.put("instruction", "The requested time is available and the caller has an active booking intake. "
+                    + "Call book_slot immediately without speaking, asking permission, or asking the caller to wait. "
+                    + "The booking tool will validate missing fields and produce the exact review.");
+        }
         return Map.copyOf(result);
+    }
+
+    private boolean readyForAutomaticBookingReview(Call call) {
+        var latestCaller = latestCallerTranscript(call);
+        var notes = intakeNotes.notes(call, latestCaller);
+        var recipientKnown = notes.containsKey("appointment_name")
+                || (!notes.containsKey("booking_for_relation") && notes.containsKey("caller_name"));
+        return "active".equals(notes.get("booking_intent"))
+                && recipientKnown
+                && notes.containsKey("caller_phone")
+                && notes.containsKey("service_type");
     }
 
     private Map<String, Object> missingDate(Call call, ZoneId timezone) {

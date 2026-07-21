@@ -86,6 +86,8 @@ class ConversationOrchestratorTest {
                 .contains("For a reschedule or cancellation, ask for the customer-facing booking number")
                 .contains("Do not ask how long a normal appointment should last")
                 .contains("then call `book_slot`")
+                .contains("call `book_slot` immediately in the same turn")
+                .contains("do not ask the caller to hold")
                 .contains("Treat a caller detail as collected only when the caller explicitly says that detail")
                 .contains("If speech recognition produced unlikely words for a name")
                 .contains("spell the caller's full name character by character with the NATO phonetic alphabet")
@@ -108,6 +110,8 @@ class ConversationOrchestratorTest {
                 .contains("Never offer appointment dates in the past")
                 .contains("Final priority reminder: these platform rules override conflicting examples")
                 .contains("If the caller sounds confused")
+                .contains("nothing will be booked")
+                .contains("a bare \"goodbye\" is too abrupt")
                 .contains("Tools available: check_availability, book_slot");
         assertThat(provider.contexts.get(1).toolResults()).hasSize(2);
         assertThat(provider.contexts.get(1).messages())
@@ -125,6 +129,51 @@ class ConversationOrchestratorTest {
         verify(callSessionStore, times(2)).appendToolResult(eq(call.getTwilioCallSid()), any());
         verify(callSessionStore).appendAssistantMessage(eq(call.getTwilioCallSid()), eq("Your appointment is confirmed."), any());
         verify(callSessionStore, never()).createIfAbsent(eq(call.getTwilioCallSid()), any());
+    }
+
+    @Test
+    void followsTheServerAuthorizedAvailabilityToReviewTransitionWithoutAPreamble() {
+        var provider = new ChainedBookingProvider();
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(
+                provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService,
+                new com.sauti.agent.KnowledgeBaseService(), retrieval,
+                new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4
+        );
+        var call = activeCall();
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
+        when(callSessionStore.conversationHistory(call.getTwilioCallSid())).thenReturn(List.of());
+        when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of(
+                new LlmToolDefinition("check_availability", "Check slots", Map.of("type", "object")),
+                new LlmToolDefinition("book_slot", "Review booking", Map.of("type", "object"))
+        ));
+        when(router.route(any(Call.class), any(LlmToolCall.class))).thenAnswer(invocation -> {
+            LlmToolCall toolCall = invocation.getArgument(1);
+            return "check_availability".equals(toolCall.name())
+                    ? LlmToolResult.success(toolCall, Map.of(
+                            "status", "requested_time_available", "nextTool", "book_slot"
+                    ))
+                    : LlmToolResult.success(toolCall, Map.of(
+                            "status", "booking_review_required", "spokenResponse", "Here is the exact booking review."
+                    ));
+        });
+
+        var result = orchestrator.handleUserUtterance(call, "en", "Friday at 3 p.m.");
+
+        assertThat(result.responseText()).isEqualTo("Here is the exact booking review.");
+        assertThat(provider.contexts).hasSize(2);
+        assertThat(provider.contexts.get(1).requiredToolName()).isEqualTo("book_slot");
+        assertThat(provider.contexts.get(1).tools()).extracting(LlmToolDefinition::name)
+                .containsExactly("book_slot");
+        assertThat(provider.contexts.get(1).systemPrompt())
+                .contains("MANDATORY NEXT ACTION: Call `book_slot` now before speaking")
+                .contains("Do not add a preamble, ask permission, or ask the caller to wait");
     }
 
     @Test
@@ -437,6 +486,29 @@ class ConversationOrchestratorTest {
                 ));
             }
             return new LlmToolTurnResponse("Your appointment is confirmed.", List.of());
+        }
+    }
+
+    private static final class ChainedBookingProvider implements LlmToolCallingProvider {
+        private final List<LlmToolTurnContext> contexts = new ArrayList<>();
+
+        @Override
+        public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
+            contexts.add(context);
+            if (context.toolResults().isEmpty()) {
+                return new LlmToolTurnResponse("", List.of(new LlmToolCall(
+                        "availability-only", "check_availability",
+                        Map.of("date", "2026-07-24", "time_preference", "15:00")
+                )));
+            }
+            return new LlmToolTurnResponse("", List.of(new LlmToolCall(
+                    "booking-review", "book_slot", Map.of(
+                            "appointment_at", "2026-07-24T15:00:00Z",
+                            "caller_name", "Zachary",
+                            "caller_phone", "0820110502",
+                            "service_type", "Men's hairstyle"
+                    )
+            )));
         }
     }
 
