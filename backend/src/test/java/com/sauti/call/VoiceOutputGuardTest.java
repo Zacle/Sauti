@@ -41,6 +41,27 @@ class VoiceOutputGuardTest {
     }
 
     @Test
+    void stripsStandaloneResponseHeadingsButRejectsHeadingOnlyOutput() {
+        assertThat(VoiceOutputGuard.speechText("ANSWER")).isEmpty();
+        assertThat(VoiceOutputGuard.speechText("ANSWER\n----------")).isEmpty();
+        assertThat(VoiceOutputGuard.speechText("## FINAL ANSWER\nI can help with that."))
+                .isEqualTo("I can help with that.");
+        assertThat(VoiceOutputGuard.speechText("**RESPONSE**\n---\nA women's hairstyle costs 8 dollars."))
+                .isEqualTo("A women's hairstyle costs 8 dollars.");
+    }
+
+    @Test
+    void keepsNaturalUsesOfAnswerWhileRejectingStandalonePrivateSections() {
+        assertThat(VoiceOutputGuard.speechText("The answer is five dollars."))
+                .isEqualTo("The answer is five dollars.");
+        assertThat(VoiceOutputGuard.speechText("Answer Salon opens at nine."))
+                .isEqualTo("Answer Salon opens at nine.");
+        assertThat(VoiceOutputGuard.speechText("ANALYSIS\n---\nI should inspect the tools."))
+                .isEmpty();
+        assertThat(VoiceOutputGuard.speechText("COMMENTARY")).isEmpty();
+    }
+
+    @Test
     void rejectsPrivateRolesAndGenericRoutedChannels() {
         assertThat(VoiceOutputGuard.speechText("analysis: I should inspect the tools."))
                 .isEmpty();

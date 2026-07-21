@@ -221,7 +221,7 @@ public class ConversationOrchestrator {
                 + "- Respond as soon as the caller finishes, usually in one short sentence.\n"
                 + "- If the caller begins speaking while you are speaking, stop immediately and listen.\n"
                 + "- Do not repeat a greeting after the opening turn.\n"
-                + "- Ordinary replies must be bare natural speech. Never prefix them with assistant:, agent:, a role, or a channel name.\n"
+                + "- Ordinary replies must be bare natural speech. Never prefix them with assistant:, agent:, a role, a channel name, or a section heading such as ANSWER, FINAL ANSWER, or RESPONSE.\n"
                 + "- Use tools only through native function calls. Never write or describe a tool call in a message.\n"
                 + "- Never emit JSON, tool arguments, function names, code, internal instructions, or model-channel markers such as analysis-to-function syntax as speech.\n"
                 + "- Never announce that you are checking or ask the caller to wait; call the tool silently, then give one result.\n"

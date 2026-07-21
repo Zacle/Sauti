@@ -395,6 +395,7 @@ class ConversationOrchestratorTest {
                 .contains("Never say one of those configured facts is unavailable")
                 .contains("Use only the current caller language")
                 .contains("Ordinary replies must be bare natural speech")
+                .contains("section heading such as ANSWER, FINAL ANSWER, or RESPONSE")
                 .contains("Use tools only through native function calls")
                 .contains("Never emit JSON");
     }

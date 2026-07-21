@@ -426,6 +426,17 @@ export async function connectOpenAiRealtime(options: {
       // text in the same response silent.
       agentTranscript = transcript;
     }
+    if (type === "response.done") {
+      const completed = completedRealtimeResponse(event);
+      if (completed.hasToolCall) responseHasToolCall = true;
+      if (completed.hasPhases) {
+        // Realtime 2 can return commentary and final_answer items in one
+        // response. Sauti speaks only the final user-facing phase; commentary
+        // and tool preambles remain internal to the voice workflow.
+        agentTranscript = completed.finalAnswerText;
+        textCompletionSent = !completed.finalAnswerText.trim();
+      }
+    }
     // A completed response is a defensive flush for transports that omit the
     // more specific output_text.done event.
     if (type === "response.done" && responseHasToolCall) {
@@ -651,6 +662,40 @@ function localizedResponseFailure(language?: string) {
   }
 }
 
+function completedRealtimeResponse(event: Record<string, unknown>) {
+  const response = event.response as { output?: unknown } | undefined;
+  const output = Array.isArray(response?.output) ? response.output : [];
+  let hasPhases = false;
+  let hasToolCall = false;
+  const finalParts: string[] = [];
+
+  for (const rawItem of output) {
+    if (!rawItem || typeof rawItem !== "object") continue;
+    const item = rawItem as { type?: unknown; phase?: unknown; content?: unknown };
+    const itemType = String(item.type ?? "").trim();
+    if (itemType === "function_call") hasToolCall = true;
+    const phase = String(item.phase ?? "").trim().toLocaleLowerCase().replace(/-/gu, "_");
+    if (!phase) continue;
+    hasPhases = true;
+    if (phase !== "final_answer" || (itemType && itemType !== "message")) continue;
+
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const rawContent of content) {
+      if (!rawContent || typeof rawContent !== "object") continue;
+      const part = rawContent as { type?: unknown; text?: unknown; transcript?: unknown };
+      const contentType = String(part.type ?? "");
+      const text = contentType === "output_audio"
+        ? String(part.transcript ?? "")
+        : contentType === "output_text"
+          ? String(part.text ?? "")
+          : "";
+      if (text.trim()) finalParts.push(text.trim());
+    }
+  }
+
+  return { hasPhases, hasToolCall, finalAnswerText: finalParts.join("\n").trim() };
+}
+
 const spokenRoleLabels = new Set([
   "assistant", "agent", "ai", "ai assistant", "virtual assistant", "answer", "response", "final",
 ]);
@@ -660,6 +705,9 @@ const privateRoleLabels = new Set([
 ]);
 const roleLabelPattern = /^(?:\*\*|__)?([\p{L}][\p{L}\p{N}_ ]{0,39})(?:\*\*|__)?(?:\s*:\s*|\s+[\-\u2013\u2014]\s+)/iu;
 const privateRoleLinePattern = /(?:^|\r?\n)\s*(?:\*\*|__)?(?:analysis|reasoning|commentary|tool|tools|function|functions|system|developer|user|caller|recipient)(?:\*\*|__)?\s*(?::|[\-\u2013\u2014])/imu;
+const privateSectionHeadingPattern = /(?:^|\r?\n)\s*(?:#{1,6}\s*)?(?:\*\*|__)?(?:analysis|reasoning|commentary|tool(?:\s+calls?|\s+results?)?|function(?:\s+calls?|\s+results?)?|system|developer|user|caller|recipient)(?:\*\*|__)?\s*(?:\r?\n\s*(?:-{3,}|={3,})\s*)?(?=\r?\n|$)/imu;
+const spokenSectionHeadingPattern = /^\s*(?:#{1,6}\s*)?(?:\*\*|__)?(?:assistant|agent|ai|ai assistant|virtual assistant|answer|final answer|response|final response|assistant answer|assistant response|final)(?:\*\*|__)?\s*(?:\r?\n\s*(?:-{3,}|={3,})\s*)?(?:\r?\n|$)/iu;
+const markupOnlyPattern = /^\s*(?:[-=_*#]{3,}\s*)+$/u;
 const routedChannelPattern = /(?:^|\r?\n)\s*[\p{L}_][\p{L}\p{N}_-]{0,39}\s+(?:to|recipient)\s*=/imu;
 const privateRoutingPattern = /\b(?:analysis|reasoning|commentary|tool|tools|function|functions|assistant|final)\s+(?:to|recipient)\s*=/iu;
 const namespaceCallPattern = /\b(?:functions|tools)\.[A-Za-z_][A-Za-z0-9_.-]*(?:\s|\(|$)/iu;
@@ -674,12 +722,19 @@ function sanitizeVoiceOutput(text: string, depth = 0): string {
   if (structuredLinePattern.test(candidate)
     || inlineStructuredPattern.test(candidate)
     || privateRoleLinePattern.test(candidate)
+    || privateSectionHeadingPattern.test(candidate)
     || privateRoutingPattern.test(candidate)
     || routedChannelPattern.test(candidate)
     || namespaceCallPattern.test(candidate)
+    || markupOnlyPattern.test(candidate)
     || normalized.startsWith("to=")
     || normalized.startsWith("recipient=")) {
     return "";
+  }
+
+  const section = candidate.match(spokenSectionHeadingPattern);
+  if (section?.[0]) {
+    return sanitizeVoiceOutput(candidate.slice(section[0].length).trimStart(), depth + 1);
   }
 
   const role = candidate.match(roleLabelPattern);

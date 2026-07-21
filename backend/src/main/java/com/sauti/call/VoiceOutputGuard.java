@@ -22,6 +22,19 @@ public final class VoiceOutputGuard {
                     + "(?:analysis|reasoning|commentary|tool|tools|function|functions|system|developer|user|caller|recipient)"
                     + "(?:\\*\\*|__)?\\s*(?::|[\\-\\u2013\\u2014])"
     );
+    private static final Pattern PRIVATE_SECTION_HEADING = Pattern.compile(
+            "(?imu)(?:^|\\R)\\s*(?:#{1,6}\\s*)?(?:\\*\\*|__)?"
+                    + "(?:analysis|reasoning|commentary|tool(?:\\s+calls?|\\s+results?)?|"
+                    + "function(?:\\s+calls?|\\s+results?)?|system|developer|user|caller|recipient)"
+                    + "(?:\\*\\*|__)?\\s*(?:\\R\\s*(?:-{3,}|={3,})\\s*)?(?=\\R|$)"
+    );
+    private static final Pattern SPOKEN_SECTION_HEADING = Pattern.compile(
+            "(?iu)^\\s*(?:#{1,6}\\s*)?(?:\\*\\*|__)?"
+                    + "(?:assistant|agent|ai|ai assistant|virtual assistant|answer|final answer|"
+                    + "response|final response|assistant answer|assistant response|final)"
+                    + "(?:\\*\\*|__)?\\s*(?:\\R\\s*(?:-{3,}|={3,})\\s*)?(?:\\R|$)"
+    );
+    private static final Pattern MARKUP_ONLY = Pattern.compile("(?s)^\\s*(?:[-=_*#]{3,}\\s*)+$");
     private static final Pattern ROUTED_CHANNEL = Pattern.compile(
             "(?imu)(?:^|\\R)\\s*[\\p{L}_][\\p{L}\\p{N}_-]{0,39}\\s+(?:to|recipient)\\s*="
     );
@@ -66,11 +79,21 @@ public final class VoiceOutputGuard {
         if (STRUCTURED_LINE.matcher(candidate).find()
                 || INLINE_STRUCTURED.matcher(candidate).find()
                 || PRIVATE_ROLE_LINE.matcher(candidate).find()
+                || PRIVATE_SECTION_HEADING.matcher(candidate).find()
                 || PRIVATE_ROUTING.matcher(candidate).find()
                 || ROUTED_CHANNEL.matcher(candidate).find()
                 || NAMESPACE_CALL.matcher(candidate).find()
+                || MARKUP_ONLY.matcher(candidate).matches()
                 || normalized.startsWith("to=")
                 || normalized.startsWith("recipient=")) return "";
+
+        // Models sometimes format a normal reply as an ANSWER/RESPONSE
+        // section. Strip the presentation wrapper only when it is the complete
+        // first line; words such as "The answer is..." remain natural speech.
+        var section = SPOKEN_SECTION_HEADING.matcher(candidate);
+        if (section.find()) {
+            return speechText(candidate.substring(section.end()).stripLeading(), depth + 1);
+        }
 
         var role = ROLE_LABEL.matcher(candidate);
         if (role.find()) {

@@ -3677,3 +3677,26 @@ Expected:
   - `git diff --check` - passed before the handoff update.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: run one browser test call and one carrier call after CI/CD, interrupting both an ordinary answer and the final booking review before Cartesia emits its first frame and again mid-playback. The automated coverage controls both timing windows, but real microphone echo/VAD and carrier buffering still require an end-to-end production check.
+
+### 2026-07-21 - Separate Realtime response phases and suppress standalone output markers
+
+- Fixed the exact transcript leak where the model spoke `ANSWER` instead of a natural reply. The previous complete-message guard recognized labels such as `answer:` but allowed a standalone response-section heading with no colon.
+- Expanded the shared backend and browser speech guards to handle standalone and Markdown-style `ANSWER`, `FINAL ANSWER`, `RESPONSE`, assistant, and agent headings. A heading wrapped around real text is removed before speech; a heading-only response is rejected and recovered without being spoken. Natural sentences such as `The answer is five dollars` and names such as `Answer Salon` remain unchanged.
+- Added equivalent protection for standalone private sections such as `ANALYSIS`, `COMMENTARY`, tool/function call/result headings, and presentation-only separators so protocol formatting cannot cross the caller-facing TTS boundary.
+- Made browser and phone Realtime completion handling phase-aware. When `response.done.response.output` contains phase metadata, only `final_answer` message content can reach transcripts or Cartesia; commentary stays silent, and any function-call item keeps the whole response on the tool path. Older Realtime responses without phases retain the existing complete streamed-text fallback.
+- Strengthened the Realtime prompt contract to forbid response-section headings in ordinary speech.
+- Why: tool events and model commentary are protocol, while caller-facing speech is a validated final message. Treating every textual Realtime output as equivalent allowed presentation/channel markers to become audio and would remain unsafe as phased Realtime models are introduced.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProvider,VoiceOutputGuard}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProviderTest,VoiceOutputGuardTest}.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused voice-output guard, telephony Realtime, and conversation-instruction tests - passed.
+  - `.\gradlew.bat :backend:test` - passed; 228 tests.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: after CI/CD, run one browser test call and one carrier call against both the current configured Realtime model and any future `gpt-realtime-2` upgrade. Automated tests cover the exact marker leak, legacy no-phase output, commentary-only output, and mixed commentary/final output; live provider event ordering and model behavior still need an end-to-end check.

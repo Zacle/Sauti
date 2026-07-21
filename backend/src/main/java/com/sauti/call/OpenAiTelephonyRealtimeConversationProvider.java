@@ -341,6 +341,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         }
                     }
                     case "response.done" -> {
+                        if (responseContainsToolCall(event)) responseHasToolCall = true;
+                        var phasedFinalText = phasedFinalAnswerText(event);
+                        if (phasedFinalText != null) {
+                            // Realtime 2 can return commentary and final_answer
+                            // items together. Only the final user-facing phase
+                            // is eligible for the external Cartesia speech path.
+                            agentText.setLength(0);
+                            agentText.append(phasedFinalText);
+                            textCompleted = phasedFinalText.isBlank();
+                        }
                         var completedResponseId = eventResponseId.isBlank() ? currentResponseId : eventResponseId;
                         var completedGeneration = currentResponseGeneration;
                         responseActive = false;
@@ -402,6 +412,52 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private String responseId(JsonNode event) {
             var direct = event.path("response_id").asText("").trim();
             return direct.isBlank() ? event.path("response").path("id").asText("").trim() : direct;
+        }
+
+        private boolean responseContainsToolCall(JsonNode event) {
+            var output = event.path("response").path("output");
+            if (!output.isArray()) return false;
+            for (var item : output) {
+                if ("function_call".equals(item.path("type").asText(""))) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Returns null when the response has no phase metadata, preserving the
+         * legacy streamed-text fallback. Returns an empty string when phases are
+         * present but no final_answer text exists, which intentionally keeps
+         * commentary silent without treating it as malformed protocol.
+         */
+        private String phasedFinalAnswerText(JsonNode event) {
+            var output = event.path("response").path("output");
+            if (!output.isArray()) return null;
+            var hasPhases = false;
+            var finalText = new StringBuilder();
+            for (var item : output) {
+                var phase = item.path("phase").asText("").trim()
+                        .toLowerCase(java.util.Locale.ROOT)
+                        .replace('-', '_');
+                if (phase.isBlank()) continue;
+                hasPhases = true;
+                var itemType = item.path("type").asText("");
+                if (!"final_answer".equals(phase)
+                        || (!itemType.isBlank() && !"message".equals(itemType))) continue;
+                var content = item.path("content");
+                if (!content.isArray()) continue;
+                for (var part : content) {
+                    var contentType = part.path("type").asText("");
+                    var text = switch (contentType) {
+                        case "output_text" -> part.path("text").asText("");
+                        case "output_audio" -> part.path("transcript").asText("");
+                        default -> "";
+                    };
+                    if (text.isBlank()) continue;
+                    if (!finalText.isEmpty()) finalText.append('\n');
+                    finalText.append(text.trim());
+                }
+            }
+            return hasPhases ? finalText.toString().trim() : null;
         }
 
         private synchronized void notifyActiveCallerSpeechStarted() {

@@ -27,6 +27,80 @@ import org.junit.jupiter.api.Test;
 
 class OpenAiTelephonyRealtimeConversationProviderTest {
     @Test
+    void suppressesStandaloneAnswerMarkerAndRetriesWithoutSpeakingIt() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.created\",\"item\":{\"type\":\"message\",\"id\":\"answer-item\"}}",
+                true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"item_id\":\"answer-item\",\"text\":\"ANSWER\"}",
+                true);
+        socketListener.onText(webSocket, "{\"type\":\"response.done\"}", true);
+
+        assertThat(events).isEmpty();
+        verify(session).requestToolResultResponse(0L);
+        var deleted = ArgumentCaptor.forClass(String.class);
+        verify(webSocket).sendText(deleted.capture(), eq(true));
+        assertThat(deleted.getValue()).contains("conversation.item.delete", "answer-item");
+    }
+
+    @Test
+    void speaksOnlyTheFinalAnswerPhaseFromAMultiPhaseResponse() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.created\",\"item\":{\"type\":\"message\",\"id\":\"phase-item\"}}",
+                true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"item_id\":\"phase-item\",\"text\":\"ANSWER\"}",
+                true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\",\"response\":{\"id\":\"phase-response\",\"output\":["
+                        + "{\"type\":\"message\",\"phase\":\"commentary\",\"content\":[{\"type\":\"output_text\",\"text\":\"ANSWER\"}]},"
+                        + "{\"type\":\"message\",\"phase\":\"final_answer\",\"content\":[{\"type\":\"output_text\",\"text\":\"I'm here to help. What would you like to know?\"}]}]}}",
+                true);
+
+        assertThat(events).containsExactly(
+                "agent:I'm here to help. What would you like to know?:false"
+        );
+        verify(session, never()).requestToolResultResponse();
+    }
+
+    @Test
+    void keepsACommentaryOnlyPhaseSilentWithoutTreatingItAsFinalSpeech() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.done\",\"response\":{\"output\":[{\"type\":\"message\","
+                        + "\"phase\":\"commentary\",\"content\":[{\"type\":\"output_text\",\"text\":\"Let me check.\"}]}]}}",
+                true);
+
+        assertThat(events).isEmpty();
+        verify(session, never()).requestToolResultResponse();
+    }
+
+    @Test
     void suppressesSplitProtocolMarkersAndRetriesWithoutTools() {
         var events = new ArrayList<String>();
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
