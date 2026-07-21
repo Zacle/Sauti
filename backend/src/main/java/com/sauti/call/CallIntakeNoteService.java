@@ -12,6 +12,11 @@ public class CallIntakeNoteService {
     private static final Pattern NAME = Pattern.compile(
             "(?iu)(?:mon nom(?: complet)? (?:c'est|est)|je m'appelle|my (?:full )?name is)\\s+([\\p{L}' -]{2,60})"
     );
+    private static final Pattern APPOINTMENT_NAME = Pattern.compile(
+            "(?iu)(?:(?:her|his|their|the (?:patient|client|guest)(?:'s)?|my (?:wife|husband|partner|daughter|son|mother|father)(?:'s)?)"
+                    + " (?:full )?name (?:is|is going to be)|(?:the )?(?:appointment|booking|reservation) (?:is )?for)"
+                    + "\\s+([\\p{L}'’ -]{2,60})"
+    );
     private static final Pattern PHONE_CONTEXT = Pattern.compile(
             "(?iu)(?:num[eé]ro|t[eé]l[eé]phone|phone|contact|joindre)"
     );
@@ -52,8 +57,19 @@ public class CallIntakeNoteService {
     public String promptBlock(Call call, String currentCallerTranscript) {
         var notes = notes(call, currentCallerTranscript);
         if (notes.isEmpty()) return "AUTHORITATIVE CALL NOTES: none collected yet.";
-        var result = new StringBuilder("AUTHORITATIVE CALL NOTES (derived from the complete call; do not ask for filled fields again):\n");
-        notes.forEach((key, value) -> result.append("- ").append(key).append(": ").append(value).append('\n'));
+        var result = new StringBuilder("AUTHORITATIVE CURRENT CALL STATE (derived from the complete call; retain these values and do not ask for filled fields again):\n");
+        notes.forEach((key, value) -> result.append("- ")
+                .append(switch (key) {
+                    case "caller_name" -> "caller_name (person speaking)";
+                    case "appointment_name" -> "appointment_name (person receiving the booked service)";
+                    case "booking_for_relation" -> "booking_for_relation (appointment is for this other person)";
+                    case "service_type" -> "service_type selected for this booking";
+                    default -> key;
+                })
+                .append(": ").append(value).append('\n'));
+        if (notes.containsKey("booking_for_relation") && !notes.containsKey("appointment_name")) {
+            result.append("- booking subject name is still missing; never substitute caller_name for it.\n");
+        }
         return result.toString().trim();
     }
 
@@ -62,7 +78,30 @@ public class CallIntakeNoteService {
         var normalized = normalize(callerText);
         var previous = normalize(previousAgent);
         var name = NAME.matcher(callerText.trim());
-        if (name.find()) notes.put("caller_name", cleanName(name.group(1)));
+        if (name.find()) {
+            var callerName = cleanName(name.group(1));
+            notes.put("caller_name", callerName);
+            if (!notes.containsKey("booking_for_relation")) notes.putIfAbsent("appointment_name", callerName);
+        }
+
+        var relationship = bookingRelationship(normalized);
+        if (!relationship.isBlank()) {
+            notes.put("booking_for_relation", relationship);
+            if (notes.getOrDefault("appointment_name", "").equals(notes.getOrDefault("caller_name", ""))) {
+                notes.remove("appointment_name");
+            }
+        }
+
+        var appointmentName = APPOINTMENT_NAME.matcher(callerText.trim());
+        if (appointmentName.find()) {
+            putAppointmentName(notes, appointmentName.group(1));
+        } else if (asksForName(previous) && plausibleNameOnly(callerText)) {
+            putAppointmentName(notes, callerText);
+        }
+
+        if (asksForService(previous) && plausibleServiceAnswer(callerText)) {
+            notes.put("service_type", cleanAnswer(callerText));
+        }
 
         var email = EMAIL.matcher(callerText);
         if (email.find()) notes.put("caller_email", email.group());
@@ -191,6 +230,62 @@ public class CallIntakeNoteService {
 
     private boolean affirmative(String text) {
         return text.matches(".*\\b(oui|yes|correct|exact|parfait|d'accord|pas de probleme|c'est bien|ca marche)\\b.*");
+    }
+
+    private String bookingRelationship(String normalized) {
+        var patterns = Map.ofEntries(
+                Map.entry("wife", "(?:for|pour) (?:my |ma )?(?:wife|femme)"),
+                Map.entry("husband", "(?:for|pour) (?:my |mon )?(?:husband|mari)"),
+                Map.entry("partner", "(?:for|pour) (?:my |mon |ma )?partner"),
+                Map.entry("daughter", "(?:for|pour) (?:my |ma )?(?:daughter|fille)"),
+                Map.entry("son", "(?:for|pour) (?:my |mon )?(?:son|fils)"),
+                Map.entry("mother", "(?:for|pour) (?:my |ma )?(?:mother|mere)"),
+                Map.entry("father", "(?:for|pour) (?:my |mon )?(?:father|pere)"),
+                Map.entry("someone else", "(?:for|pour) (?:someone else|quelqu'un d'autre)"),
+                Map.entry("patient", "(?:for|pour) (?:the |a |le |un )?(?:patient|client|guest)"));
+        return patterns.entrySet().stream()
+                .filter(entry -> normalized.matches(".*\\b" + entry.getValue() + "\\b.*"))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse("");
+    }
+
+    private boolean asksForName(String previous) {
+        return previous.matches(".*\\b(name|nom|jina)\\b.*")
+                && previous.matches(".*\\b(what|who|have|share|tell|give|could|may|quel|comment|donner|dire|appelle)\\b.*");
+    }
+
+    private boolean asksForService(String previous) {
+        return previous.matches(".*\\b(service|hairstyle|haircut|prestation|soin|appointment for|booking for)\\b.*")
+                && previous.matches(".*\\b(what|which|would|want|like|quel|quelle|souhaite|voudrait)\\b.*");
+    }
+
+    private boolean plausibleNameOnly(String value) {
+        var candidate = cleanAnswer(value);
+        var normalized = normalize(candidate);
+        if (!candidate.matches("[\\p{L}'’ -]{2,60}") || candidate.trim().split("\\s+").length > 5) return false;
+        return !normalized.matches("(?:yes|no|okay|ok|sure|correct|right|ready|oui|non|d'accord|merci|thank you|thanks)");
+    }
+
+    private boolean plausibleServiceAnswer(String value) {
+        var candidate = cleanAnswer(value);
+        var normalized = normalize(candidate);
+        return candidate.matches("[\\p{L}0-9'’ &-]{2,80}")
+                && candidate.trim().split("\\s+").length <= 10
+                && !normalized.matches("(?:yes|no|okay|ok|sure|correct|right|ready|oui|non|d'accord|merci|thank you|thanks)");
+    }
+
+    private void putAppointmentName(Map<String, String> notes, String value) {
+        var candidate = cleanName(cleanAnswer(value));
+        var normalized = normalize(candidate);
+        if (candidate.isBlank() || normalized.matches("(?:my wife|my husband|my partner|ma femme|mon mari)")) return;
+        notes.put("appointment_name", candidate);
+    }
+
+    private String cleanAnswer(String value) {
+        return value == null ? "" : value.trim()
+                .replaceAll("^[\\s,;:]+|[\\s.!?,;:]+$", "")
+                .replaceAll("\\s+", " ");
     }
 
     private String cleanName(String value) {

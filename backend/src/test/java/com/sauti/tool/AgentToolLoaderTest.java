@@ -41,19 +41,23 @@ class AgentToolLoaderTest {
         var properties = (Map<String, Object>) definition.inputSchema().get("properties");
         var details = (Map<String, Object>) properties.get("customer_details");
         var detailProperties = (Map<String, Object>) details.get("properties");
-        assertThat(required).contains("caller_name", "caller_email", "customer_details")
-                .doesNotContain("caller_name_spelling_confirmed", "final_booking_review_confirmed");
+        assertThat(required).contains("appointment_name", "caller_email", "customer_details")
+                .doesNotContain("caller_name", "caller_name_spelling_confirmed", "final_booking_review_confirmed");
         assertThat(properties).doesNotContainKeys(
                 "caller_name_spelling_confirmed",
                 "caller_phone_digits_confirmed",
                 "caller_email_spelling_confirmed",
                 "final_booking_review_confirmed"
         );
-        assertThat(properties).containsKey("review_token");
+        assertThat(properties).containsKeys("appointment_name", "review_token")
+                .doesNotContainKey("caller_name");
         assertThat(required).doesNotContain("review_token");
         assertThat(definition.description())
+                .contains("person receiving the service")
                 .contains("pass the preceding review_token")
                 .contains("focused correction review");
+        assertThat(((Map<String, Object>) properties.get("appointment_name")).get("description").toString())
+                .contains("may differ from the person speaking");
         assertThat((List<String>) details.get("required"))
                 .containsExactly("patient_date_of_birth", "insurance_member_number");
         assertThat(detailProperties).containsKeys("patient_date_of_birth", "insurance_member_number");

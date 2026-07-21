@@ -116,6 +116,61 @@ class CallIntakeNoteServiceTest {
         )).containsEntry("caller_name", "Fatou");
     }
 
+    @Test
+    void keepsTheSpeakerSeparateFromThePersonReceivingTheService() {
+        var repository = mock(CallTurnRepository.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        var history = List.of(
+                turn("Hello, my name is Zachary.", "How can I help?"),
+                turn("I would like to book for my wife.", "What service would she like?"),
+                turn("A woman hairstyle.", "What phone number can we use to reach her?"),
+                turn("010-575-3441", "What date and time would she prefer?"),
+                turn("Next Thursday at 1 p.m.", "Could I have your wife's name for the booking?")
+        );
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId)).thenReturn(history);
+
+        var service = new CallIntakeNoteService(repository);
+        var notes = service.notes(call, "Alexandra");
+
+        assertThat(notes)
+                .containsEntry("caller_name", "Zachary")
+                .containsEntry("booking_for_relation", "wife")
+                .containsEntry("appointment_name", "Alexandra")
+                .containsEntry("service_type", "A woman hairstyle")
+                .containsEntry("caller_phone", "0105753441")
+                .containsEntry("preferred_day", "thursday")
+                .containsEntry("preferred_time", "13:00");
+        assertThat(service.promptBlock(call, "Alexandra"))
+                .contains("caller_name (person speaking): Zachary")
+                .contains("appointment_name (person receiving the booked service): Alexandra");
+    }
+
+    @Test
+    void leavesTheAppointmentNameMissingAfterAThirdPartyBookingIntent() {
+        var repository = mock(CallTurnRepository.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        var history = List.of(
+                turn("My name is Zachary.", "How can I help?"),
+                turn("I want to book for my wife.", "What service would she like?")
+        );
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId)).thenReturn(history);
+
+        var service = new CallIntakeNoteService(repository);
+        var notes = service.notes(call, "A woman hairstyle.");
+
+        assertThat(notes)
+                .containsEntry("caller_name", "Zachary")
+                .containsEntry("booking_for_relation", "wife")
+                .doesNotContainKey("appointment_name");
+        assertThat(service.promptBlock(call, "A woman hairstyle."))
+                .contains("booking subject name is still missing")
+                .contains("never substitute caller_name for it");
+    }
+
     private CallTurn turn(String caller, String agent) {
         var turn = mock(CallTurn.class);
         when(turn.getCallerTranscript()).thenReturn(caller);

@@ -649,7 +649,7 @@ function localizedBookingFailure(language?: string) {
     case "fr": return "Je n’ai pas pu enregistrer le rendez-vous dans le calendrier. Il n’est pas réservé. Souhaitez-vous réessayer ?";
     case "ar": return "لم أتمكن من حفظ الموعد في التقويم، لذلك لم يتم حجزه. هل تريد المحاولة مرة أخرى؟";
     case "sw": return "Sikuweza kuhifadhi miadi kwenye kalenda, kwa hiyo haijawekwa. Ungependa kujaribu tena?";
-    default: return "I couldn’t save the appointment to the calendar, so it is not booked. Would you like to try again?";
+    default: return "I couldn’t complete the booking, so it is not saved. I still have the details. Would you like me to try once more?";
   }
 }
 

@@ -9,13 +9,16 @@ import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
 import com.sauti.session.CallSessionStore;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.text.Normalizer;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -209,18 +212,35 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
 
     private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, AgentTool toolConfig) {
         var suppliedReviewToken = stringArg(toolCall.arguments(), "review_token", "");
-        var arguments = normalizePhoneFromLatestCaller(call, toolCall.arguments(), suppliedReviewToken);
+        var latestCaller = latestCallerTranscript(call);
+        var callerApprovedReview = callerApprovedLatestReview(latestCaller);
+        var arguments = new LinkedHashMap<>(normalizeBookingArgumentsFromConversation(
+                call, toolCall.arguments(), suppliedReviewToken, latestCaller
+        ));
+        if (!suppliedReviewToken.isBlank() && callerApprovedReview) {
+            restoreReviewedValues(call, suppliedReviewToken, arguments);
+        }
         var customerDetails = customerDetails(arguments);
         var missingFields = missingRequiredBookingFields(call, arguments, customerDetails);
         if (!missingFields.isEmpty()) {
             return Map.of(
                     "status", "missing_required_information",
                     "bookingCreated", false,
-                    "nextMissingField", missingFields.get(0),
+                    "nextMissingField", exposedBookingField(missingFields.get(0)),
                     "remainingMissingFieldCount", missingFields.size(),
                     "instruction", "Ask for exactly nextMissingField in the caller's language. Do not mention, list, or request any other missing field in the same reply."
             );
         }
+        var appointmentAt = normalizedAppointmentAt(call, stringArg(arguments, "appointment_at", ""));
+        if (appointmentAt.isEmpty()) {
+            return Map.of(
+                    "status", "invalid_booking_information",
+                    "bookingCreated", false,
+                    "nextInvalidField", "appointment_at",
+                    "instruction", "The appointment date or time was not a valid calendar value. Ask only for the date and time again. Do not claim that the calendar or booking provider failed."
+            );
+        }
+        arguments.put("appointment_at", appointmentAt.get().toString());
         var review = BookingReviewRenderer.render(call, arguments, customerDetails, suppliedReviewToken);
         if (!secureEquals(review.token(), suppliedReviewToken)) {
             var result = new LinkedHashMap<String, Object>();
@@ -236,6 +256,13 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     + "and call book_slot with that preceding token so the server confirms only the changed field. "
                     + "After the caller approves the latest review, call book_slot with unchanged values and the latest exact reviewToken.");
             return Map.copyOf(result);
+        }
+        if (!callerApprovedReview) {
+            return Map.of(
+                    "status", "booking_confirmation_required",
+                    "bookingCreated", false,
+                    "instruction", "Do not save or repeat the full review. Answer the caller's question if they asked one; otherwise ask them briefly to correct any wrong detail or say that the review is correct. Call book_slot again only after their next clear approval or correction."
+            );
         }
         var selectedProvider = call.getAgent().getCalendarProvider();
         com.sauti.calendar.CalendarProvider provider = null;
@@ -286,24 +313,38 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         return Map.copyOf(result);
     }
 
-    private Map<String, Object> normalizePhoneFromLatestCaller(
+    private Map<String, Object> normalizeBookingArgumentsFromConversation(
             Call call,
             Map<String, Object> originalArguments,
-            String suppliedReviewToken
+            String suppliedReviewToken,
+            String latest
     ) {
-        var latest = latestCallerTranscript(call);
         var normalized = new LinkedHashMap<String, Object>(originalArguments);
+        var suppliedAppointmentName = normalized.remove("appointment_name");
+        if (suppliedAppointmentName != null && !suppliedAppointmentName.toString().isBlank()) {
+            normalized.put("caller_name", suppliedAppointmentName.toString());
+        }
         BookingReviewRenderer.reviewedValue(call, suppliedReviewToken, "caller_phone")
                 .ifPresent(value -> normalized.put("caller_phone", value));
-        if (suppliedReviewToken.isBlank()) {
-            try {
-                var notes = intakeNotes.notes(call, latest);
+        try {
+            var notes = intakeNotes.notes(call, latest);
+            var appointmentName = notes.get("appointment_name");
+            var otherPerson = notes.get("booking_for_relation");
+            if (appointmentName != null && !appointmentName.isBlank()) {
+                normalized.put("caller_name", appointmentName);
+            } else if (otherPerson != null && !otherPerson.isBlank()) {
+                // A model must not silently put the person speaking on an
+                // appointment that the conversation says is for someone else.
+                normalized.remove("caller_name");
+            } else if (suppliedReviewToken.isBlank()) {
                 copyAuthoritativeNote(notes, normalized, "caller_name");
+            }
+            if (suppliedReviewToken.isBlank()) {
                 copyAuthoritativeNote(notes, normalized, "caller_email");
                 copyAuthoritativeNote(notes, normalized, "caller_phone");
-            } catch (RuntimeException exception) {
-                LOGGER.debug("Authoritative intake notes unavailable for callId={}", call.getId());
             }
+        } catch (RuntimeException exception) {
+            LOGGER.debug("Authoritative intake notes unavailable for callId={}", call.getId());
         }
         if (latest.isBlank()) return Map.copyOf(normalized);
         var matcher = SPOKEN_DIGIT_SEQUENCE.matcher(latest);
@@ -320,6 +361,70 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         return Map.copyOf(normalized);
     }
 
+    private Optional<OffsetDateTime> normalizedAppointmentAt(Call call, String raw) {
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        try {
+            return Optional.of(OffsetDateTime.parse(raw.trim()));
+        } catch (RuntimeException ignored) {
+            try {
+                var timezone = ZoneId.of(call.getAgent().getTimezone());
+                return Optional.of(LocalDateTime.parse(raw.trim()).atZone(timezone).toOffsetDateTime());
+            } catch (RuntimeException invalidLocalDateTime) {
+                return Optional.empty();
+            }
+        }
+    }
+
+    private void restoreReviewedValues(
+            Call call,
+            String reviewToken,
+            Map<String, Object> arguments
+    ) {
+        for (var key : List.of(
+                "caller_name", "caller_phone", "caller_email", "service_type", "appointment_at", "duration_minutes"
+        )) {
+            BookingReviewRenderer.reviewedValue(call, reviewToken, key)
+                    .ifPresent(value -> arguments.put(key, value));
+        }
+        var details = new LinkedHashMap<>(customerDetails(arguments));
+        var topLevel = java.util.Set.of(
+                "caller_name", "caller_phone", "caller_email", "service_type", "appointment_at"
+        );
+        call.getAgent().getBookingRequiredFields().stream()
+                .filter(field -> !topLevel.contains(field))
+                .forEach(field -> BookingReviewRenderer.reviewedValue(call, reviewToken, "detail." + field)
+                        .ifPresent(value -> details.put(field, value)));
+        if (!details.isEmpty()) arguments.put("customer_details", Map.copyOf(details));
+    }
+
+    private boolean callerApprovedLatestReview(String transcript) {
+        var normalized = Normalizer.normalize(transcript == null ? "" : transcript, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .toLowerCase(Locale.ROOT)
+                .replace('’', '\'')
+                .replaceAll("[^\\p{L}\\p{N}' ]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        if (normalized.isBlank()) return false;
+        if (normalized.matches(".*\\b(no corrections?|nothing (?:is )?wrong|everything is (?:right|correct)|"
+                + "hakuna marekebisho|kila kitu kiko sawa)\\b.*")) {
+            return true;
+        }
+        if (normalized.matches(".*\\b(but|actually|instead|change|correct that|correction|wrong|incorrect|not right|"
+                + "pas correct|modifier|changer|lakini|badilisha|si sahihi|لكن|خطأ|غير صحيح|غيره)\\b.*")) {
+            return false;
+        }
+        if (normalized.matches("^(?:yes|yeah|yep|oui|ndiyo|ndio|نعم)\\b.*")) return true;
+        return normalized.matches(
+                "(?:(?:yes|yeah|yep)(?: it is| (?:that is|that's|everything is) (?:right|correct|fine))?|"
+                        + "correct|confirmed|(?:that is|that's|it is) (?:right|correct|fine|okay)|right|sounds (?:right|good)|"
+                        + "looks good|all good|okay|ok|go ahead|save it|book it|please (?:save|book) it|"
+                        + "oui|c'est correct|c'est exact|exact|d'accord|parfait|"
+                        + "ndiyo|ndio|sahihi|sawa|iko sawa|endelea|hifadhi|weka miadi|"
+                        + "نعم|صحيح|تمام|موافق|احجز|احفظ)"
+        );
+    }
+
     private void copyAuthoritativeNote(
             Map<String, String> notes,
             Map<String, Object> arguments,
@@ -327,6 +432,10 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     ) {
         var value = notes.get(key);
         if (value != null && !value.isBlank()) arguments.put(key, value);
+    }
+
+    private String exposedBookingField(String field) {
+        return "caller_name".equals(field) ? "appointment_name" : field;
     }
 
     private String latestCallerTranscript(Call call) {

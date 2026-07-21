@@ -357,11 +357,13 @@ public class ConversationOrchestrator {
                 - A configured service catalog is exact: preserve each service-price pair, quote its configured price when asked, and never replace it with an industry assumption. If the caller's wording is an unambiguous ordinary variant of one configured service, use that configured service; if it could match more than one or speech recognition is doubtful, ask one clarification.
                 - Only start collecting name/contact details once the caller clearly wants to book, be called back, be transferred, or leave a message.
                 - Follow the configured required-field order. Ask one missing field per turn and retain confirmed answers.
+                - Keep the person speaking separate from the person receiving the service. `caller_name` in authoritative call state identifies the speaker; `appointment_name` identifies who the appointment is for. If the caller books for a wife, husband, child, patient, guest, or anyone else, keep addressing the caller naturally and pass only the service recipient as the booking tool's `appointment_name`. Never overwrite the appointment subject with the speaker's name.
+                - If `booking_for_relation` is present but `appointment_name` is not, the recipient's name is still missing. Ask for that person's name once at the configured point in the intake and never infer it from the caller's identity.
                 - A request to book, schedule, reserve, or arrange an appointment is a NEW booking unless the caller explicitly says they want to change, reschedule, or cancel an existing booking.
                 - For a new booking, never ask for a booking ID. Booking IDs are only for an explicitly requested reschedule or cancellation of an existing booking.
                 - For a reschedule or cancellation, ask for the customer-facing booking number. Check availability for a proposed replacement time, confirm the requested change, then use the matching booking tool. Never claim the change succeeded before its tool result.
                 - Do not ask how long a normal appointment should last. Use the configured tool default. Ask about duration only when the caller explicitly requests a special duration or the configured business workflow explicitly requires it.
-                - New-booking sequence: collect every configured required field; check availability when a date or time is present; then call `book_slot` without a review token. The tool returns the exact consolidated review and a private review token. Speak that review once, stop, and let the caller correct anything. If the caller corrects one value, change only that value and call `book_slot` with the preceding review token; speak only the focused correction review returned by the tool. Do not repeat the other correct details. After the caller approves the latest review, call `book_slot` again with unchanged details and the latest exact review token. Never invent or expose the token. If `book_slot` is available, never claim you cannot create new appointments and never redirect the caller to book elsewhere.
+                - New-booking sequence: collect every configured required field; check availability when a date or time is present; then call `book_slot` without a review token. The tool returns the exact consolidated review and a private review token. Do not invent your own review preamble, ask whether the caller is ready for a review, or say the booking failed before this tool result. Speak the returned review once, stop, and let the caller correct anything. If the caller corrects one value, change only that value and call `book_slot` with the preceding review token; speak only the focused correction review returned by the tool. Do not repeat the other correct details. After the caller approves the latest review, call `book_slot` again with unchanged details and the latest exact review token. Never invent or expose the token. If `book_slot` is available, never claim you cannot create new appointments and never redirect the caller to book elsewhere.
                 - Accept partial information gracefully. If the caller gives you the date without the type, use what you have. Ask only for what is genuinely missing.
                 - Treat a caller detail as collected only when the caller explicitly says that detail. Never infer a caller name, number, address, email, or confirmation from a greeting, acknowledgement, thanks, "avec plaisir", "d'accord", "yes", or from your own agent name. If the reply does not answer the detail you just requested, briefly repeat that same request and do not advance to the next field.
                 - Neutral acknowledgements such as "okay", "OK", "no problem", "sure", "of course", or "just a second" are not values for service, staff, contact, date, or time. In particular, never convert them into "any staff" or "no preference". Record any staff only when the caller explicitly says any staff, anyone, whoever is available, or no preference.
@@ -415,7 +417,7 @@ public class ConversationOrchestrator {
                 today(call),
                 OperatingHoursSchedule.describe(effectiveHours),
                 intakeNotes.promptBlock(call, callerTranscript),
-                call.getAgent().getBookingRequiredFields(),
+                bookingPromptFields(call),
                 toolBlock,
                 knowledgeBaseBlock(call) + safetyGuardrailsBlock(call),
                 afterHoursBlock(call),
@@ -425,6 +427,12 @@ public class ConversationOrchestrator {
                         callerTranscript
                 )
         );
+    }
+
+    private List<String> bookingPromptFields(Call call) {
+        return call.getAgent().getBookingRequiredFields().stream()
+                .map(field -> "caller_name".equals(field) ? "appointment_name" : field)
+                .toList();
     }
 
     private String openingPrompt(Call call, String language, String channel) {

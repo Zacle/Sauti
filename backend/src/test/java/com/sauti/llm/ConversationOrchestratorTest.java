@@ -397,6 +397,8 @@ class ConversationOrchestratorTest {
                 .contains("Ordinary replies must be bare natural speech")
                 .contains("section heading such as ANSWER, FINAL ANSWER, or RESPONSE")
                 .contains("Use tools only through native function calls")
+                .contains("Keep the person speaking separate from the person receiving the service")
+                .contains("Do not invent your own review preamble")
                 .contains("Never emit JSON");
     }
 

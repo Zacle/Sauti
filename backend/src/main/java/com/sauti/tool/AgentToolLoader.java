@@ -48,12 +48,21 @@ public class AgentToolLoader {
                 "type", "string",
                 "description", "Private token returned by the immediately preceding booking review. Never say it aloud. Keep passing the preceding token when correcting one value so only that correction is reconfirmed."
         ));
+        properties.remove("caller_name");
+        properties.put("appointment_name", Map.of(
+                "type", "string",
+                "description", "Full name to place on the appointment. This is the person receiving the service and may differ from the person speaking when they book for a wife, husband, child, patient, guest, or other person."
+        ));
+        if (required.remove("caller_name") && !required.contains("appointment_name")) {
+            required.add("appointment_name");
+        }
         var configured = tool.getAgent().getBookingRequiredFields();
         var topLevel = java.util.Set.of(
                 "caller_name", "caller_phone", "caller_email", "service_type", "appointment_at"
         );
         configured.stream().filter(topLevel::contains).forEach(field -> {
-            if (!required.contains(field)) required.add(field);
+            var exposedField = "caller_name".equals(field) ? "appointment_name" : field;
+            if (!required.contains(exposedField)) required.add(exposedField);
         });
 
         var detailFields = configured.stream().filter(field -> !topLevel.contains(field)).toList();
@@ -74,7 +83,7 @@ public class AgentToolLoader {
         schema.put("required", List.copyOf(required));
         return new LlmToolDefinition(
                 definition.name(),
-                "Two-step booking. First call without review_token after configured details and availability are complete. Speak the returned review and wait. On a correction, change only that field and pass the preceding review_token so the server returns a focused correction review. After approval, call again with unchanged details and the latest review_token. The caller states details naturally and is never required to spell them. Never expose the token.",
+                "Two-step booking. appointment_name is the person receiving the service, not necessarily the person speaking. First call without review_token after configured details and availability are complete. Speak the returned review and wait. On a correction, change only that field and pass the preceding review_token so the server returns a focused correction review. After approval, call again with unchanged details and the latest review_token. The caller states details naturally and is never required to spell them. Never expose the token.",
                 Map.copyOf(schema)
         );
     }

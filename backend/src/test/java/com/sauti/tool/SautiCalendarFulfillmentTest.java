@@ -229,6 +229,8 @@ class SautiCalendarFulfillmentTest {
                 .doesNotContain(review.result().get("reviewToken").toString());
         verifyNoInteractions(fixture.bookingService);
 
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Everything is correct.")));
         arguments.put("review_token", review.result().get("reviewToken"));
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "booking-without-google", "book_slot", Map.copyOf(arguments)
@@ -239,6 +241,132 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "booking_saved_pending_calendar")
                 .containsEntry("bookingNumber", "SAT-AB12CD34")
                 .containsEntry("calendarSynced", false);
+    }
+
+    @Test
+    void usesTheAppointmentRecipientsNameInsteadOfThePersonSpeaking() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Alexandra")));
+        when(fixture.intakeNotes.notes(fixture.call, "Alexandra")).thenReturn(Map.of(
+                "caller_name", "Zachary",
+                "booking_for_relation", "wife",
+                "appointment_name", "Alexandra",
+                "service_type", "A woman hairstyle"
+        ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "wife-booking-review", "book_slot", Map.of(
+                        "appointment_at", "2026-07-23T13:00:00Z",
+                        "appointment_name", "Alexandra",
+                        "caller_phone", "0105753441",
+                        "service_type", "Women hairstyle"
+                )
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result()).containsEntry("status", "booking_review_required");
+        assertThat(result.result().get("spokenResponse").toString())
+                .contains("Alexandra: A for Alfa, L for Lima, E for Echo, X for X-ray")
+                .doesNotContain("Zachary: Z for Zulu");
+    }
+
+    @Test
+    void refusesToUseTheSpeakersNameWhenTheThirdPartyNameIsStillMissing() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "I am booking for my wife.")));
+        when(fixture.intakeNotes.notes(fixture.call, "I am booking for my wife.")).thenReturn(Map.of(
+                "caller_name", "Zachary",
+                "booking_for_relation", "wife"
+        ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "wife-name-missing", "book_slot", Map.of(
+                        "appointment_at", "2026-07-23T13:00:00Z",
+                        "caller_name", "Zachary",
+                        "caller_phone", "0105753441",
+                        "service_type", "Women hairstyle"
+                )
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "missing_required_information")
+                .containsEntry("nextMissingField", "appointment_name");
+        verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
+    void normalizesARealtimeLocalAppointmentUsingTheBusinessTimezone() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.agent.getTimezone()).thenReturn("Africa/Cairo");
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "local-time-review", "book_slot", Map.of(
+                        "appointment_at", "2026-07-23T13:00:00",
+                        "appointment_name", "Alexandra",
+                        "caller_phone", "0105753441",
+                        "service_type", "Women hairstyle"
+                )
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result()).containsEntry("status", "booking_review_required");
+        @SuppressWarnings("unchecked")
+        var review = (Map<String, Object>) result.result().get("bookingReview");
+        assertThat(review).containsEntry("appointmentAt", "2026-07-23T13:00+03:00");
+    }
+
+    @Test
+    void requiresARealApprovalAfterTheServerGeneratedReview() {
+        var fixture = fixture(HOURS, List.of());
+        var arguments = new java.util.LinkedHashMap<String, Object>();
+        arguments.put("appointment_at", "2026-07-23T13:00:00Z");
+        arguments.put("caller_name", "Alexandra");
+        arguments.put("caller_phone", "0105753441");
+        arguments.put("service_type", "Women hairstyle");
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Alexandra")));
+        var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "review-before-confusion", "book_slot", Map.copyOf(arguments)
+        ));
+        arguments.put("review_token", review.result().get("reviewToken"));
+
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "What do you want me to do?")));
+        var notApproved = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "not-an-approval", "book_slot", Map.copyOf(arguments)
+        ));
+
+        assertThat(notApproved.success()).isTrue();
+        assertThat(notApproved.result())
+                .containsEntry("status", "booking_confirmation_required")
+                .containsEntry("bookingCreated", false);
+        verifyNoInteractions(fixture.bookingService);
+
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(booking.getBookingReference()).thenReturn("SAT-WIFEOK");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T13:00:00Z"));
+        when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
+        when(fixture.bookingService.create(any(), any(), any())).thenReturn(booking);
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Yes, it is.")));
+        var reviewToken = arguments.get("review_token");
+        arguments.clear();
+        arguments.put("review_token", reviewToken);
+        arguments.put("appointment_name", "Zachary");
+        var approved = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "actual-approval", "book_slot", Map.copyOf(arguments)
+        ));
+
+        assertThat(approved.result())
+                .containsEntry("bookingCreated", true)
+                .containsEntry("bookingNumber", "SAT-WIFEOK");
+        verify(fixture.bookingService).create(any(), argThat(request ->
+                "Alexandra".equals(request.callerName())
+        ), any());
     }
 
     @Test

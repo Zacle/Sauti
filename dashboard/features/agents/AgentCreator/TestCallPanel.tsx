@@ -52,7 +52,10 @@ const DEFAULT_SETTINGS: TestSettings = {
   detectVoicemail: true,
   handleCallScreening: true,
 };
-const REALTIME_PCM_PREROLL_SECONDS = 0.08;
+const REALTIME_PCM_INITIAL_PREROLL_SECONDS = 0.16;
+const REALTIME_PCM_MAX_PREROLL_SECONDS = 0.32;
+const REALTIME_PCM_UNDERRUN_STEP_SECONDS = 0.04;
+const REALTIME_PCM_QUEUE_SAFETY_SECONDS = 0.025;
 const PLAYBACK_DRAIN_GRACE_MS = 80;
 
 export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProps) {
@@ -101,6 +104,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const playbackTimeRef = useRef(0);
   const playbackSourcesRef = useRef(new Set<AudioBufferSourceNode>());
   const playbackCompletionTimerRef = useRef(0);
+  const pcmPrerollRef = useRef(REALTIME_PCM_INITIAL_PREROLL_SECONDS);
+  const pcmPlaybackActiveRef = useRef(false);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
   const nativeRealtimeRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
@@ -417,9 +422,17 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     source.connect(context.destination);
     if (recordingDestinationRef.current) source.connect(recordingDestinationRef.current);
     const queuedUntil = playbackTimeRef.current;
-    const startAt = queuedUntil > context.currentTime + 0.01
+    const hasBufferedLead = queuedUntil > context.currentTime + REALTIME_PCM_QUEUE_SAFETY_SECONDS;
+    if (!hasBufferedLead && pcmPlaybackActiveRef.current) {
+      pcmPrerollRef.current = Math.min(
+        REALTIME_PCM_MAX_PREROLL_SECONDS,
+        pcmPrerollRef.current + REALTIME_PCM_UNDERRUN_STEP_SECONDS,
+      );
+    }
+    const startAt = hasBufferedLead
       ? queuedUntil
-      : context.currentTime + REALTIME_PCM_PREROLL_SECONDS;
+      : context.currentTime + pcmPrerollRef.current;
+    pcmPlaybackActiveRef.current = true;
     source.start(startAt);
     playbackTimeRef.current = startAt + buffer.duration;
     playbackSourcesRef.current.add(source);
@@ -431,6 +444,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     const context = audioContextRef.current;
     const remainingMs = context ? Math.max(0, playbackTimeRef.current - context.currentTime) * 1000 : 0;
     playbackCompletionTimerRef.current = window.setTimeout(() => {
+      pcmPlaybackActiveRef.current = false;
+      pcmPrerollRef.current = REALTIME_PCM_INITIAL_PREROLL_SECONDS;
+      playbackTimeRef.current = audioContextRef.current?.currentTime ?? 0;
       if (statusRef.current === "speaking" && !endingRef.current) updateStatus("listening");
     }, remainingMs + PLAYBACK_DRAIN_GRACE_MS);
   }
@@ -441,6 +457,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       try { source.stop(); } catch { /* already stopped */ }
     });
     playbackSourcesRef.current.clear();
+    pcmPlaybackActiveRef.current = false;
+    pcmPrerollRef.current = REALTIME_PCM_INITIAL_PREROLL_SECONDS;
     playbackTimeRef.current = audioContextRef.current?.currentTime ?? 0;
   }
 

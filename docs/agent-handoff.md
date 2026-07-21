@@ -3723,3 +3723,33 @@ Expected:
   - `git diff --check` - passed before the handoff update.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: after CI/CD, run one browser test call, one public Web Voice call, and one carrier call. Interrupt an ordinary reply and a booking review mid-sentence, then allow a later reply to finish without interruption. Automated coverage verifies generation ordering and terminal state, but microphone echo, browser audio scheduling, and carrier buffering still require live end-to-end confirmation.
+
+### 2026-07-21 - Make booking state participant-aware and playback buffering adaptive
+
+- Fixed the wife-booking transcript where the caller identified himself as Zachary but the appointment was for Alexandra. The old design used `caller_name` for both the person speaking and the person receiving the service, so the authoritative intake pass overwrote Alexandra with Zachary during final review.
+- The model-facing `book_slot` contract now exposes `appointment_name` for the service recipient. The fulfillment boundary translates it to the legacy persisted `caller_name` booking field, preserving database/API compatibility while removing the ambiguity from every LLM provider and language. Existing legacy `caller_name` tool payloads remain accepted.
+- Authoritative call state now tracks the speaker, third-party relationship, appointment recipient, selected service, phone, day, and time separately. A third-party intent such as `book for my wife` clears any implicit self-booking name until the recipient's name is collected. The live prompt receives this compact current state on every caller turn.
+- The booking server now treats the review token as the durable booking snapshot. On a clear natural approval it restores all reviewed top-level and configured custom fields before saving, so missing or reconstructed model arguments cannot alter the confirmed appointment. Corrections still produce a focused new review. Questions, confusion, or unrelated acknowledgements cannot authorize a save.
+- Realtime local datetimes without an explicit UTC offset are normalized in the configured business timezone. Invalid dates/times return structured intake validation instead of being announced as calendar-provider failures. Genuine failures now tell the caller that Sauti retained the details for one retry.
+- This follows OpenAI's current Realtime guidance: the session conversation is stateful, while complex flows benefit from explicit conversation states and dynamic `session.update` instructions. Sauti keeps the provider conversation and reinforces it with server-owned booking state rather than relying on model recollection alone.
+- Browser Cartesia playback now starts with 160 ms of PCM preroll and increases the target by 40 ms after a detected underrun, up to 320 ms for that utterance. A completed or interrupted utterance resets the target. This absorbs real WebSocket/main-thread jitter without permanently adding the maximum latency to every response.
+- Added transcript-shaped regressions for the exact Zachary/Alexandra sequence, third-party bookings without a recipient name, model-facing `appointment_name`, local datetime normalization, confused non-approval, natural approvals, and restoring the reviewed recipient after the model supplies a wrong or incomplete final payload.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{CallIntakeNoteService,VoiceOutputGuard}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/call/CallIntakeNoteServiceTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/{AgentToolLoaderTest,SautiCalendarFulfillmentTest}.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused intake-state, booking-fulfillment, tool-schema, conversation-prompt, and authenticated end-to-end flow tests - passed.
+  - `.\gradlew.bat :backend:test` - passed; 237 tests.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+  - `git diff --check` - passed before the handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat the Zachary/Alexandra browser call and one carrier call, including `yes, all of those details are correct`, a correction after the review, and a confused question before approval. For audio, test on both a stable and deliberately throttled connection; the adaptive jitter target is bounded at 320 ms, but only real browser scheduling, microphone echo, and carrier buffering can validate the final perceived smoothness.
