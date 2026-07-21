@@ -5,10 +5,39 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class CallIntakeNoteServiceTest {
+
+    @Test
+    void semanticSessionStateOverridesLegacyTranscriptPatternExtraction() {
+        var repository = mock(CallTurnRepository.class);
+        var sessions = mock(com.sauti.session.CallSessionStore.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        when(call.getTwilioCallSid()).thenReturn("semantic-session");
+        when(sessions.conversationState("semantic-session")).thenReturn(Optional.of(
+                new com.sauti.session.ConversationState(
+                        Map.of("caller_name", "Zachary", "appointment_name", "Zachary"),
+                        "self", "active", 3
+                )
+        ));
+
+        var service = new CallIntakeNoteService(repository, sessions);
+
+        assertThat(service.notes(call, "可以更正我刚才说的名字吗？"))
+                .containsEntry("caller_name", "Zachary")
+                .containsEntry("appointment_name", "Zachary")
+                .containsEntry("booking_subject", "self")
+                .containsEntry("conversation_state_revision", "3");
+        assertThat(service.promptBlock(call, "different wording"))
+                .contains("AUTHORITATIVE SEMANTIC CALL STATE")
+                .contains("latest explicit caller correction wins");
+    }
 
     @Test
     void retainsEarlyCallerDetailsAcrossTheCompleteCall() {

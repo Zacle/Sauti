@@ -23,45 +23,37 @@ import org.junit.jupiter.api.Test;
 
 class OpenAiRealtimeServiceTest {
     @Test
-    void answersGeneralHoursQuestionsDirectlyButLeavesSpecificSlotsToTheCalendar() {
+    void routesEveryCallerMeaningThroughTheLanguageIndependentSemanticTool() {
         var orchestrator = mock(ConversationOrchestrator.class);
+        var loader = mock(AgentToolLoader.class);
         var call = mock(Call.class);
         var agent = mock(Agent.class);
         when(call.getAgent()).thenReturn(agent);
         when(call.getLanguageDetected()).thenReturn("en");
+        when(agent.getId()).thenReturn(UUID.randomUUID());
         when(agent.getDefaultLanguage()).thenReturn("en");
-        when(agent.getSupportedLanguages()).thenReturn(List.of("en"));
-        when(agent.getOperatingHours()).thenReturn("weekdays");
+        when(agent.getSupportedLanguages()).thenReturn(List.of("en", "fr", "ar", "sw"));
+        when(loader.loadForAgent(agent.getId())).thenReturn(List.of(
+                com.sauti.tool.ConversationStateTool.definition()
+        ));
         var service = new OpenAiRealtimeService(
-                new ObjectMapper(), orchestrator, mock(AgentToolLoader.class), mock(ToolFulfillmentRouter.class),
+                new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
                 mock(com.sauti.session.CallSessionStore.class), new SimpleLanguageDetector(),
                 "server-secret", "http://localhost/unused", "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
         );
 
-        for (var question : List.of(
+        for (var callerTurn : List.of(
                 "When are you available?",
-                "Which days and times are you available?",
-                "Could you tell me the date you are available?",
-                "What are your business hours?"
+                "À quels moments votre salon accueille-t-il les clients ?",
+                "متى يمكنني الحضور؟",
+                "Ningependa kurudi baadaye bila kuweka nafasi sasa.",
+                "My name was recognized incorrectly."
         )) {
-            assertThat(service.prepareCallerResponse(call, question).directResponse())
-                    .as(question)
-                    .contains("Monday", "Friday", "9 in the morning", "5 in the evening");
+            var preparation = service.prepareCallerResponse(call, callerTurn);
+            assertThat(preparation.directResponse()).as(callerTurn).isBlank();
+            assertThat(preparation.requiredTool()).as(callerTurn)
+                    .isEqualTo(com.sauti.tool.ConversationStateTool.NAME);
         }
-
-        assertThat(service.prepareCallerResponse(
-                call, "Is Thursday at 1 p.m. available?"
-        ).directResponse()).isBlank();
-        assertThat(service.prepareCallerResponse(
-                call, "Is a women's hairstyle available?"
-        ).directResponse()).isBlank();
-
-        assertThat(service.prepareCallerResponse(
-                call, "Everything is wrong, but don't book yet. I will call you back later."
-        ).directResponse())
-                .contains("I won’t book anything")
-                .contains("when you’re ready")
-                .endsWith("Goodbye.");
     }
 
     @Test
@@ -107,7 +99,8 @@ class OpenAiRealtimeServiceTest {
         when(loader.loadForAgent(agent.getId())).thenReturn(List.of(
                 new com.sauti.llm.LlmToolDefinition(
                         "check_availability", "Check one time", Map.of("type", "object")
-                )
+                ),
+                com.sauti.tool.ConversationStateTool.definition()
         ));
         when(orchestrator.realtimeInstructions(call, "fr")).thenReturn("Speak French concisely.");
         var mapper = new ObjectMapper();
@@ -127,6 +120,7 @@ class OpenAiRealtimeServiceTest {
                 .contains("\"create_response\":false")
                 .contains("\"interrupt_response\":false")
                 .contains("\"parallel_tool_calls\":false")
+                .contains("\"name\":\"update_conversation_state\"")
                 .contains("\"threshold\":0.6");
         assertThat(configurationNode.at("/audio/input/format/type").asText()).isEqualTo("audio/pcm");
         assertThat(configurationNode.at("/audio/input/format/rate").asInt()).isEqualTo(24000);

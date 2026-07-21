@@ -17,4 +17,9 @@ public interface LlmToolCallingProvider {
     default boolean requiresAvailabilityFollowUpForState() {
         return false;
     }
+
+    /** True when the provider can populate the multilingual semantic turn tool. */
+    default boolean supportsSemanticTurnTool() {
+        return true;
+    }
 }

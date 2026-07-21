@@ -2,8 +2,6 @@ package com.sauti.llm;
 
 import com.sauti.call.Call;
 import com.sauti.call.CallTurnRepository;
-import com.sauti.call.CallIntakeNoteService;
-import com.sauti.call.BookingConversationPolicy;
 import com.sauti.call.VoiceOutputGuard;
 import com.sauti.agent.AgentVariableService;
 import com.sauti.agent.KnowledgeBaseService;
@@ -12,6 +10,7 @@ import com.sauti.knowledge.KnowledgeRetrievalService;
 import com.sauti.session.CallSessionStore;
 import com.sauti.tool.AgentToolLoader;
 import com.sauti.tool.ToolFulfillmentRouter;
+import com.sauti.tool.ConversationStateTool;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -35,7 +34,6 @@ public class ConversationOrchestrator {
     private final AgentVariableService agentVariableService;
     private final KnowledgeBaseService knowledgeBaseService;
     private final KnowledgeRetrievalService knowledgeRetrievalService;
-    private final CallIntakeNoteService intakeNotes;
 
     public ConversationOrchestrator(
             LlmToolCallingProvider llmProvider,
@@ -46,7 +44,6 @@ public class ConversationOrchestrator {
             AgentVariableService agentVariableService,
             KnowledgeBaseService knowledgeBaseService,
             KnowledgeRetrievalService knowledgeRetrievalService,
-            CallIntakeNoteService intakeNotes,
             @Value("${sauti.llm.max-tool-loops:4}") int maxToolLoops
     ) {
         this.llmProvider = llmProvider;
@@ -57,7 +54,6 @@ public class ConversationOrchestrator {
         this.agentVariableService = agentVariableService;
         this.knowledgeBaseService = knowledgeBaseService;
         this.knowledgeRetrievalService = knowledgeRetrievalService;
-        this.intakeNotes = intakeNotes;
         this.maxToolLoops = maxToolLoops;
     }
 
@@ -77,26 +73,27 @@ public class ConversationOrchestrator {
         var systemPrompt = systemPrompt(call, language, tools, callerTranscript);
         callSessionStore.upsertSystemMessage(call.getTwilioCallSid(), systemPrompt);
         callSessionStore.appendUserMessage(call.getTwilioCallSid(), callerTranscript);
-        if (BookingConversationPolicy.pausesBooking(callerTranscript)) {
-            var response = BookingConversationPolicy.pausedResponse(language);
-            textDeltaConsumer.accept(response);
-            callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), response, List.of());
-            return new ConversationTurnResult(response, "");
-        }
         var messages = messages(call, callerTranscript);
         var responseText = "";
         // Tool choice starts with the multilingual model. A successful tool may
         // return one server-authorized next tool when a workflow transition must
         // happen silently and atomically, such as availability -> booking review.
-        String requiredNextTool = null;
+        String requiredNextTool = llmProvider.supportsSemanticTurnTool()
+                && tools.stream().anyMatch(tool -> ConversationStateTool.NAME.equals(tool.name()))
+                ? ConversationStateTool.NAME
+                : null;
+        var semanticTurnCompleted = false;
 
         try {
             for (int loop = 0; loop < maxToolLoops; loop++) {
                 var requiredToolName = requiredNextTool;
                 requiredNextTool = null;
+                var availableTools = semanticTurnCompleted
+                        ? tools.stream().filter(tool -> !ConversationStateTool.NAME.equals(tool.name())).toList()
+                        : tools;
                 var loopTools = requiredToolName == null
-                        ? tools
-                        : tools.stream().filter(tool -> requiredToolName.equals(tool.name())).toList();
+                        ? availableTools
+                        : availableTools.stream().filter(tool -> requiredToolName.equals(tool.name())).toList();
                 var loopSystemPrompt = requiredToolName != null
                         ? systemPrompt + "\nMANDATORY NEXT ACTION: Call `" + requiredToolName + "` now before speaking. "
                                 + "Do not add a preamble, ask permission, or ask the caller to wait."
@@ -126,9 +123,11 @@ public class ConversationOrchestrator {
                 responseText = voiceReadyText(response.responseText());
                 if (responseToolCalls.isEmpty()) {
                     if (requiredToolName != null) {
-                        responseText = "book_slot".equals(requiredToolName)
-                                ? VoiceOutputGuard.safeBookingFailure(language)
-                                : VoiceOutputGuard.safeAvailabilityClarification(language);
+                        responseText = switch (requiredToolName) {
+                            case "book_slot" -> VoiceOutputGuard.safeBookingFailure(language);
+                            case ConversationStateTool.NAME -> VoiceOutputGuard.safeResponseFailure(language);
+                            default -> VoiceOutputGuard.safeAvailabilityClarification(language);
+                        };
                     } else if (protocolPayload) {
                         LOGGER.warn("Suppressed provider protocol output from caller-facing response callId={}", call.getId());
                         responseText = recoverWithoutTools(call, language, callerTranscript);
@@ -160,6 +159,9 @@ public class ConversationOrchestrator {
                     }
                 }
                 latestToolResults = List.copyOf(loopResults);
+                if (loopResults.stream().anyMatch(result -> ConversationStateTool.NAME.equals(result.name()))) {
+                    semanticTurnCompleted = true;
+                }
                 requiredNextTool = loopResults.stream()
                         .map(this::serverAuthorizedNextTool)
                         .filter(value -> !value.isBlank())
@@ -194,7 +196,12 @@ public class ConversationOrchestrator {
     private String serverAuthorizedNextTool(LlmToolResult result) {
         if (!result.success()) return "";
         var value = result.result().get("nextTool");
-        return "book_slot".equals(value) ? value.toString() : "";
+        if ("book_slot".equals(value)) return value.toString();
+        return Boolean.TRUE.equals(result.result().get("nextToolAuthorized"))
+                && value != null
+                && value.toString().matches("[A-Za-z][A-Za-z0-9_]{1,63}")
+                ? value.toString()
+                : "";
     }
 
     public String generateOpeningGreeting(Call call, String language, String channel) {
@@ -380,7 +387,9 @@ public class ConversationOrchestrator {
                 - Only start collecting name/contact details once the caller clearly wants to book, be called back, be transferred, or leave a message.
                 - Follow the configured required-field order. Ask one missing field per turn and retain confirmed answers.
                 - Keep the person speaking separate from the person receiving the service. `caller_name` in authoritative call state identifies the speaker; `appointment_name` identifies who the appointment is for. If the caller books for a wife, husband, child, patient, guest, or anyone else, keep addressing the caller naturally and pass only the service recipient as the booking tool's `appointment_name`. Never overwrite the appointment subject with the speaker's name.
-                - If `booking_for_relation` is present but `appointment_name` is not, the recipient's name is still missing. Ask for that person's name once at the configured point in the intake and never infer it from the caller's identity.
+                - Interpret each caller turn by meaning, in its language and conversational context, through `update_conversation_state`; never classify intent or identity by matching a fixed phrase. Apply the returned semantic state as authoritative.
+                - A caller-name correction updates the speaker. When `booking_subject` is `self`, the deterministic state reducer also updates the appointment recipient. A correction never turns the old mistaken name into another person. When `booking_subject` is `other`, preserve that explicitly different recipient while updating the speaker.
+                - If `booking_subject` is `other` but `appointment_name` is absent, the recipient's name is still missing. Ask for that person's name once at the configured point in the intake and never infer it from the caller's identity.
                 - A request to book, schedule, reserve, or arrange an appointment is a NEW booking unless the caller explicitly says they want to change, reschedule, or cancel an existing booking.
                 - For a new booking, never ask for a booking ID. Booking IDs are only for an explicitly requested reschedule or cancellation of an existing booking.
                 - For a reschedule or cancellation, ask for the customer-facing booking number. Check availability for a proposed replacement time, confirm the requested change, then use the matching booking tool. Never claim the change succeeded before its tool result.
@@ -440,7 +449,9 @@ public class ConversationOrchestrator {
                 businessIdentityInstruction(call),
                 today(call),
                 OperatingHoursSchedule.describe(effectiveHours),
-                intakeNotes.promptBlock(call, callerTranscript),
+                callSessionStore.conversationState(call.getTwilioCallSid())
+                        .orElse(com.sauti.session.ConversationState.empty())
+                        .promptBlock(),
                 bookingPromptFields(call),
                 toolBlock,
                 knowledgeBaseBlock(call) + safetyGuardrailsBlock(call),

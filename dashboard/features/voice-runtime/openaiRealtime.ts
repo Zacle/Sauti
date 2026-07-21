@@ -1,5 +1,7 @@
 import { RealtimeTurnGate } from "./realtimeTurnGate";
 
+const SEMANTIC_TURN_TOOL = "update_conversation_state";
+
 export type OpenAiRealtimeCallbacks = {
   onConnected: () => void;
   onCallerTranscript: (text: string, generation: number) => void;
@@ -46,6 +48,7 @@ export async function connectOpenAiRealtime(options: {
   prepareCallerResponse?: (text: string) => Promise<{
     instructions?: string | null;
     directResponse?: string | null;
+    requiredTool?: string | null;
   } | string | null>;
   responseLanguage?: string;
 }): Promise<OpenAiRealtimeConnection> {
@@ -315,6 +318,10 @@ export async function connectOpenAiRealtime(options: {
           }
           return;
         }
+        if (toolRequiresBusinessAction(result)) {
+          enqueueResponse(() => requestCallerResponse(channel), generation);
+          return;
+        }
         if (!toolFollowupGenerations.has(generation)) {
           toolFollowupGenerations.add(generation);
           enqueueResponse(() => requestToolResultResponse(channel), generation);
@@ -397,10 +404,14 @@ export async function connectOpenAiRealtime(options: {
           }
           return;
         }
+        const requiredTool = prepared.value?.requiredTool?.trim();
+        if (requiredTool) {
+          enqueueResponse(() => requestRequiredToolResponse(channel, requiredTool), generation);
+          return;
+        }
       } else {
-        // Per-turn state enrichment must never block the conversation. Apply a
-        // late instruction update for the next response, but answer this turn
-        // from the safe session prompt and the Realtime conversation history.
+        // A slow preparation request may still enrich the next turn, but it must
+        // never let this turn bypass the semantic state boundary.
         void preparation.then((late) => {
           const instructions = late?.instructions?.trim();
           if (generation === outputGeneration && instructions) {
@@ -409,7 +420,7 @@ export async function connectOpenAiRealtime(options: {
         });
       }
       if (generation === outputGeneration) {
-        enqueueResponse(() => requestCallerResponse(channel), generation);
+        enqueueResponse(() => requestRequiredToolResponse(channel, SEMANTIC_TURN_TOOL), generation);
       }
     });
   };
@@ -700,12 +711,14 @@ export async function connectOpenAiRealtime(options: {
 function normalizeCallerPreparation(value: {
   instructions?: string | null;
   directResponse?: string | null;
+  requiredTool?: string | null;
 } | string | null | undefined) {
-  if (typeof value === "string") return { instructions: value, directResponse: "" };
+  if (typeof value === "string") return { instructions: value, directResponse: "", requiredTool: "" };
   if (!value) return null;
   return {
     instructions: value.instructions ?? "",
     directResponse: value.directResponse ?? "",
+    requiredTool: value.requiredTool ?? "",
   };
 }
 
@@ -783,7 +796,17 @@ function toolNextTool(result: Record<string, unknown>) {
   const payload = result.result;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
   const nextTool = (payload as Record<string, unknown>).nextTool;
-  return nextTool === "book_slot" ? nextTool : "";
+  if (nextTool === "book_slot") return nextTool;
+  const authorized = (payload as Record<string, unknown>).nextToolAuthorized === true;
+  return authorized && typeof nextTool === "string" && /^[A-Za-z][A-Za-z0-9_]{1,63}$/.test(nextTool)
+    ? nextTool
+    : "";
+}
+
+function toolRequiresBusinessAction(result: Record<string, unknown>) {
+  const payload = result.result;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  return (payload as Record<string, unknown>).nextAction === "use_business_tool";
 }
 
 function canonicalJson(value: string) {

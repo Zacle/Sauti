@@ -7,9 +7,13 @@ public final class RealtimeDtos {
     public record RealtimeTranscriptRequest(String role, String text, boolean interrupted) {
     }
 
-    public record RealtimeTranscriptResponse(String instructions, String directResponse) {
+    public record RealtimeTranscriptResponse(String instructions, String directResponse, String requiredTool) {
         public RealtimeTranscriptResponse(String instructions) {
-            this(instructions, "");
+            this(instructions, "", "");
+        }
+
+        public RealtimeTranscriptResponse(String instructions, String directResponse) {
+            this(instructions, directResponse, "");
         }
     }
 

@@ -106,6 +106,9 @@ public class AgentToolService {
     }
 
     private void validate(AgentToolRequest request) {
+        if (ConversationStateTool.NAME.equals(request.toolName())) {
+            throw new IllegalArgumentException("Reserved platform tool name: " + request.toolName());
+        }
         if (!FULFILLMENT_TYPES.contains(request.fulfillmentType())) {
             throw new IllegalArgumentException("Unsupported fulfillment type: " + request.fulfillmentType());
         }

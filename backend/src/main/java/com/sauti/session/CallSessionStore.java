@@ -25,6 +25,10 @@ public interface CallSessionStore {
 
     List<ConversationMessage> conversationHistory(String callSid);
 
+    Optional<ConversationState> conversationState(String callSid);
+
+    void updateConversationState(String callSid, ConversationState state);
+
     Optional<BookingDraft> pendingBooking(String callSid);
 
     void updatePendingBooking(String callSid, BookingDraft draft);

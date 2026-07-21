@@ -12,6 +12,31 @@ import org.junit.jupiter.api.Test;
 
 class AgentToolLoaderTest {
     @Test
+    void exposesTheInternalSemanticStateToolForEveryAgentWithoutDatabaseConfiguration() {
+        var repository = mock(AgentToolRepository.class);
+        var agentId = java.util.UUID.randomUUID();
+        when(repository.findByAgent_IdAndIsActiveTrueOrderByDisplayOrderAsc(agentId)).thenReturn(List.of());
+
+        assertThat(new AgentToolLoader(repository).loadForAgent(agentId))
+                .extracting(com.sauti.llm.LlmToolDefinition::name)
+                .containsExactly(ConversationStateTool.NAME);
+    }
+
+    @Test
+    void legacyDatabaseCollisionCannotDuplicateTheReservedPlatformTool() {
+        var repository = mock(AgentToolRepository.class);
+        var agentId = java.util.UUID.randomUUID();
+        var collision = mock(AgentTool.class);
+        when(collision.getToolName()).thenReturn(ConversationStateTool.NAME);
+        when(repository.findByAgent_IdAndIsActiveTrueOrderByDisplayOrderAsc(agentId))
+                .thenReturn(List.of(collision));
+
+        assertThat(new AgentToolLoader(repository).loadForAgent(agentId))
+                .extracting(com.sauti.llm.LlmToolDefinition::name)
+                .containsExactly(ConversationStateTool.NAME);
+    }
+
+    @Test
     @SuppressWarnings("unchecked")
     void exposesEveryConfiguredBookingFieldToTheModelSchema() {
         var agent = new Agent(new Tenant("Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");

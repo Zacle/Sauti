@@ -430,6 +430,81 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
+    void semanticPausedIntentBlocksBookingRegardlessOfCallerLanguageOrToolArguments() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Daha sonra tekrar arayacagim.")));
+        when(fixture.intakeNotes.notes(fixture.call, "Daha sonra tekrar arayacagim."))
+                .thenReturn(Map.of(
+                        "conversation_state_revision", "5",
+                        "booking_subject", "self",
+                        "booking_intent", "paused",
+                        "caller_name", "Zachary",
+                        "appointment_name", "Zachary"
+                ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "stale-booking-call", "book_slot", Map.of(
+                        "appointment_at", "2026-07-23T13:00:00Z",
+                        "appointment_name", "Zachary",
+                        "caller_phone", "0105753441",
+                        "service_type", "Men hairstyle",
+                        "review_token", "stale-model-token"
+                )
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_paused_by_caller")
+                .containsEntry("bookingCreated", false);
+        verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
+    void semanticReviewDecisionAuthorizesBookingWithoutMatchingAnApprovalPhrase() {
+        var fixture = fixture(HOURS, List.of());
+        var stateBeforeReview = Map.of(
+                "conversation_state_revision", "8",
+                "booking_subject", "self",
+                "booking_intent", "active",
+                "caller_name", "Zachary",
+                "appointment_name", "Zachary"
+        );
+        var approvedState = new java.util.LinkedHashMap<>(stateBeforeReview);
+        approvedState.put("conversation_state_revision", "9");
+        approvedState.put("review_decision", "approved");
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "\u540c\u610f\u4e86\u3002")));
+        when(fixture.intakeNotes.notes(fixture.call, "\u540c\u610f\u4e86\u3002"))
+                .thenReturn(stateBeforeReview, Map.copyOf(approvedState));
+
+        var arguments = new java.util.LinkedHashMap<String, Object>();
+        arguments.put("appointment_at", "2026-07-23T13:00:00Z");
+        arguments.put("appointment_name", "Zachary");
+        arguments.put("caller_phone", "0105753441");
+        arguments.put("service_type", "Men hairstyle");
+        var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "semantic-review", "book_slot", Map.copyOf(arguments)
+        ));
+
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(booking.getBookingReference()).thenReturn("SAT-SEMANTIC");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T13:00:00Z"));
+        when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
+        when(fixture.bookingService.create(any(), any(), any())).thenReturn(booking);
+        var approved = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "semantic-approved", "book_slot", Map.of("review_token", review.result().get("reviewToken"))
+        ));
+
+        assertThat(approved.result())
+                .containsEntry("bookingCreated", true)
+                .containsEntry("bookingNumber", "SAT-SEMANTIC");
+        verify(fixture.bookingService).create(any(), argThat(request ->
+                "Zachary".equals(request.callerName())
+        ), any());
+    }
+
+    @Test
     void requiresTemplateSpecificCustomerDetailsBeforeCreatingBooking() {
         var fixture = fixture(HOURS, List.of());
         when(fixture.agent.getBookingRequiredFields()).thenReturn(List.of(

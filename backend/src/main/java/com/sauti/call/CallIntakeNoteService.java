@@ -5,6 +5,9 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
+import com.sauti.session.CallSessionStore;
+import com.sauti.session.ConversationState;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -38,12 +41,21 @@ public class CallIntakeNoteService {
     );
 
     private final CallTurnRepository turns;
+    private final CallSessionStore sessions;
+
+    @Autowired
+    public CallIntakeNoteService(CallTurnRepository turns, CallSessionStore sessions) {
+        this.turns = turns;
+        this.sessions = sessions;
+    }
 
     public CallIntakeNoteService(CallTurnRepository turns) {
-        this.turns = turns;
+        this(turns, null);
     }
 
     public Map<String, String> notes(Call call, String currentCallerTranscript) {
+        var semantic = semanticState(call);
+        if (semantic != null && semantic.revision() > 0) return semantic.asNotes();
         return snapshot(call, currentCallerTranscript).notes();
     }
 
@@ -61,6 +73,8 @@ public class CallIntakeNoteService {
     }
 
     public String promptBlock(Call call, String currentCallerTranscript) {
+        var semantic = semanticState(call);
+        if (semantic != null && semantic.revision() > 0) return semantic.promptBlock();
         var snapshot = snapshot(call, currentCallerTranscript);
         var notes = snapshot.notes();
         var phoneStillPending = asksForPhone(snapshot.previousAgent()) && !notes.containsKey("caller_phone");
@@ -89,6 +103,15 @@ public class CallIntakeNoteService {
                     + "otherwise ask them to repeat or continue the phone number naturally.\n");
         }
         return result.toString().trim();
+    }
+
+    private ConversationState semanticState(Call call) {
+        if (sessions == null || call == null || call.getTwilioCallSid() == null) return null;
+        try {
+            return sessions.conversationState(call.getTwilioCallSid()).orElse(null);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private void collect(Map<String, String> notes, StringBuilder phoneCandidate, String callerText, String previousAgent) {

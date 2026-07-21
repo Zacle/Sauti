@@ -18,10 +18,16 @@ public class AgentToolLoader {
 
     @Transactional(readOnly = true)
     public List<LlmToolDefinition> loadForAgent(UUID agentId) {
-        return agentToolRepository.findByAgent_IdAndIsActiveTrueOrderByDisplayOrderAsc(agentId)
+        var tools = new java.util.ArrayList<>(agentToolRepository.findByAgent_IdAndIsActiveTrueOrderByDisplayOrderAsc(agentId)
                 .stream()
+                // The semantic boundary is platform-owned. Ignore any legacy
+                // database row with the reserved name so Realtime never receives
+                // duplicate function definitions.
+                .filter(tool -> !ConversationStateTool.NAME.equals(tool.getToolName()))
                 .map(this::definition)
-                .toList();
+                .toList());
+        tools.add(ConversationStateTool.definition());
+        return List.copyOf(tools);
     }
 
     @SuppressWarnings("unchecked")

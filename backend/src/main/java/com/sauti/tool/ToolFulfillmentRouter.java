@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 public class ToolFulfillmentRouter {
     private final AgentToolRepository agentToolRepository;
     private final Map<String, ToolFulfillment> fulfillments;
+    private final ConversationStateTool conversationStateTool;
 
     public ToolFulfillmentRouter(
             AgentToolRepository agentToolRepository,
@@ -19,9 +20,11 @@ public class ToolFulfillmentRouter {
             SautiSmsFulfillment smsFulfillment,
             TwilioTransferFulfillment transferFulfillment,
             DuringCallIntegrationFulfillment integrationFulfillment,
-            NoopFulfillment noopFulfillment
+            NoopFulfillment noopFulfillment,
+            ConversationStateTool conversationStateTool
     ) {
         this.agentToolRepository = agentToolRepository;
+        this.conversationStateTool = conversationStateTool;
         this.fulfillments = Map.of(
                 "sauti_calendar", calendarFulfillment,
                 "webhook", webhookFulfillment,
@@ -33,6 +36,9 @@ public class ToolFulfillmentRouter {
     }
 
     public LlmToolResult route(Call call, LlmToolCall toolCall) {
+        if (ConversationStateTool.NAME.equals(toolCall.name())) {
+            return conversationStateTool.execute(call, toolCall);
+        }
         var toolConfig = agentToolRepository
                 .findByAgent_IdAndToolNameAndIsActiveTrue(call.getAgent().getId(), toolCall.name())
                 .orElse(null);

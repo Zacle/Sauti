@@ -1,0 +1,248 @@
+package com.sauti.tool;
+
+import com.sauti.call.Call;
+import com.sauti.call.VoiceOutputGuard;
+import com.sauti.llm.LlmToolCall;
+import com.sauti.llm.LlmToolDefinition;
+import com.sauti.llm.LlmToolResult;
+import com.sauti.session.CallSessionStore;
+import com.sauti.session.ConversationState;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+/**
+ * Internal semantic boundary between multilingual model understanding and
+ * deterministic conversation state. This tool never performs a business side effect.
+ */
+@Service
+public class ConversationStateTool {
+    public static final String NAME = "update_conversation_state";
+    private static final Set<String> COMMON_FIELDS = Set.of(
+            "caller_name", "appointment_name", "recipient_relation", "service_type",
+            "caller_phone", "caller_email", "preferred_day", "preferred_time", "review_decision"
+    );
+    private static final Set<String> SUBJECTS = Set.of(
+            "unchanged", ConversationState.SUBJECT_UNKNOWN,
+            ConversationState.SUBJECT_SELF, ConversationState.SUBJECT_OTHER
+    );
+    private static final Set<String> INTENTS = Set.of(
+            "unchanged", ConversationState.INTENT_UNKNOWN, ConversationState.INTENT_INFORMATION,
+            ConversationState.INTENT_ACTIVE, ConversationState.INTENT_PAUSED
+    );
+    private static final Set<String> NEXT_ACTIONS = Set.of("reply", "use_business_tool");
+
+    private final CallSessionStore sessions;
+    private final AgentToolRepository agentTools;
+
+    @Autowired
+    public ConversationStateTool(CallSessionStore sessions, AgentToolRepository agentTools) {
+        this.sessions = sessions;
+        this.agentTools = agentTools;
+    }
+
+    public ConversationStateTool(CallSessionStore sessions) {
+        this(sessions, null);
+    }
+
+    public static LlmToolDefinition definition() {
+        var valueProperties = new LinkedHashMap<String, Object>();
+        COMMON_FIELDS.forEach(field -> valueProperties.put(field, Map.of(
+                "type", "string",
+                "description", switch (field) {
+                    case "caller_name" -> "Name of the person speaking, only when explicitly stated or corrected.";
+                    case "appointment_name" -> "Name of the person receiving the service, only when explicitly stated or corrected.";
+                    case "recipient_relation" -> "Relationship of an explicitly different recipient to the caller, expressed compactly.";
+                    case "service_type" -> "Requested configured service, only when the meaning is clear.";
+                    case "caller_phone" -> "Complete caller-provided phone number.";
+                    case "caller_email" -> "Complete caller-provided email address.";
+                    case "preferred_day" -> "Caller-provided appointment day or date, preserving its meaning.";
+                    case "preferred_time" -> "Caller-provided appointment time, preserving its meaning.";
+                    case "review_decision" -> "Meaning of the caller's latest response to a booking review: approved, corrected, rejected, or unclear. This is turn-scoped and never inferred from politeness alone.";
+                    default -> "Explicitly provided conversation value.";
+                }
+        )));
+        var updates = new LinkedHashMap<String, Object>();
+        updates.put("type", "object");
+        updates.put("description", "Only values explicitly stated or corrected in the latest caller turn. Omit unchanged values. Never infer a person or service from a similar-sounding word.");
+        updates.put("properties", Map.copyOf(valueProperties));
+        updates.put("additionalProperties", false);
+
+        var details = new LinkedHashMap<String, Object>();
+        details.put("type", "object");
+        details.put("description", "Additional configured booking fields explicitly supplied in this turn, keyed by their configured field name.");
+        details.put("additionalProperties", Map.of("type", "string"));
+
+        var properties = new LinkedHashMap<String, Object>();
+        properties.put("updates", Map.copyOf(updates));
+        properties.put("additional_details", Map.copyOf(details));
+        properties.put("clear_fields", Map.of(
+                "type", "array",
+                "description", "Previously collected common or configured booking fields the caller explicitly rejected or withdrew in this turn. Meaning, not wording, determines this list.",
+                "items", Map.of("type", "string")
+        ));
+        properties.put("booking_subject", Map.of(
+                "type", "string",
+                "enum", List.of("unchanged", "unknown", "self", "other"),
+                "description", "Whether the appointment is for the caller, explicitly for another person, still unknown, or unchanged. A corrected caller name alone never creates another person."
+        ));
+        properties.put("booking_intent", Map.of(
+                "type", "string",
+                "enum", List.of("unchanged", "unknown", "information_only", "active", "paused"),
+                "description", "The caller's current booking intent based on meaning in context. paused means no booking action is authorized."
+        ));
+        properties.put("spoken_response", Map.of(
+                "type", "string",
+                "description", "A concise, polite, natural reply in the caller's current language. Answer direct questions first. Leave empty only when a separate business tool must run before any reply. Never include tool syntax, JSON, headings, or private reasoning."
+        ));
+        properties.put("next_action", Map.of(
+                "type", "string",
+                "enum", List.of("reply", "use_business_tool"),
+                "description", "reply when spoken_response fully answers this turn without a side effect or live lookup; use_business_tool when a configured tool must run before speaking, such as live availability or saving/changing a booking."
+        ));
+        properties.put("business_tool", Map.of(
+                "type", "string",
+                "description", "When next_action is use_business_tool, the exact name of the one available configured tool that must run next. Otherwise an empty string. Never use update_conversation_state here."
+        ));
+        return new LlmToolDefinition(
+                NAME,
+                "Required internal turn interpreter. Understand the latest caller turn semantically in any language or phrasing, compare it with authoritative state, emit only explicit state changes, and provide the natural caller-facing reply. Do not map by keywords. Corrections replace the affected value. Keep the speaker separate from a genuinely explicit third-party recipient. This tool records state only and never books, changes, or cancels anything.",
+                Map.of(
+                        "type", "object",
+                        "properties", Map.copyOf(properties),
+                        "required", List.of(
+                                "updates", "additional_details", "clear_fields",
+                                "booking_subject", "booking_intent", "spoken_response", "next_action", "business_tool"
+                        ),
+                        "additionalProperties", false
+                )
+        );
+    }
+
+    public LlmToolResult execute(Call call, LlmToolCall toolCall) {
+        try {
+            var existing = sessions.conversationState(call.getTwilioCallSid())
+                    .orElse(ConversationState.empty());
+            var next = reduce(call, existing, toolCall.arguments());
+            sessions.updateConversationState(call.getTwilioCallSid(), next);
+
+            var result = new LinkedHashMap<String, Object>();
+            result.put("status", "conversation_state_updated");
+            result.put("state", next.asNotes());
+            result.put("bookingAllowed", !ConversationState.INTENT_PAUSED.equals(next.bookingIntent()));
+            var nextAction = choice(toolCall.arguments().get("next_action"), NEXT_ACTIONS, "reply");
+            var spoken = "reply".equals(nextAction)
+                    ? VoiceOutputGuard.speechText(stringArgument(toolCall.arguments(), "spoken_response"))
+                    : "";
+            if (!spoken.isBlank()) result.put("spokenResponse", spoken);
+            result.put("nextAction", nextAction);
+            var businessTool = stringArgument(toolCall.arguments(), "business_tool");
+            if ("use_business_tool".equals(nextAction)
+                    && businessTool.matches("[A-Za-z][A-Za-z0-9_]{1,63}")
+                    && !NAME.equals(businessTool)
+                    && !(ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
+                        && "book_slot".equals(businessTool))
+                    && configuredFor(call, businessTool)) {
+                result.put("nextTool", businessTool);
+                result.put("nextToolAuthorized", true);
+            }
+            result.put("instruction", spoken.isBlank()
+                    ? "State is updated. Continue with the appropriate configured business tool before speaking, or answer naturally if no business tool is needed."
+                    : "The caller-facing reply has already been supplied exactly once. Do not generate another reply for this turn.");
+            return LlmToolResult.success(toolCall, Map.copyOf(result));
+        } catch (RuntimeException exception) {
+            return LlmToolResult.error(toolCall, "Conversation state could not be updated");
+        }
+    }
+
+    private ConversationState reduce(Call call, ConversationState current, Map<String, Object> arguments) {
+        var values = new LinkedHashMap<>(current.values());
+        var allowedDetails = call.getAgent().getBookingRequiredFields() == null
+                ? Set.<String>of()
+                : Set.copyOf(call.getAgent().getBookingRequiredFields());
+        var turnUpdates = updates(arguments.get("updates"));
+        var detailUpdates = updates(arguments.get("additional_details"));
+        // Review decisions authorize at most the current caller turn. They must
+        // never leak into a later turn as stale approval.
+        values.remove("review_decision");
+        clearFields(arguments.get("clear_fields"), allowedDetails).forEach(values::remove);
+
+        var subject = choice(arguments.get("booking_subject"), SUBJECTS, "unchanged");
+        if ("unchanged".equals(subject)) subject = current.bookingSubject();
+        var intent = choice(arguments.get("booking_intent"), INTENTS, "unchanged");
+        if ("unchanged".equals(intent)) intent = current.bookingIntent();
+
+        turnUpdates.forEach((key, value) -> {
+            if (COMMON_FIELDS.contains(key) && !value.isBlank()) values.put(key, value);
+        });
+        detailUpdates.forEach((key, value) -> {
+            if (allowedDetails.contains(key) && !value.isBlank()) values.put(key, value);
+        });
+
+        if (ConversationState.SUBJECT_SELF.equals(subject)) {
+            values.remove("recipient_relation");
+            var caller = values.get("caller_name");
+            if (caller == null || caller.isBlank()) values.remove("appointment_name");
+            else values.put("appointment_name", caller);
+        } else if (ConversationState.SUBJECT_OTHER.equals(subject)) {
+            var changedFromSelfOrUnknown = !ConversationState.SUBJECT_OTHER.equals(current.bookingSubject());
+            var changedRecipientRelation = turnUpdates.containsKey("recipient_relation");
+            if ((changedFromSelfOrUnknown || changedRecipientRelation)
+                    && !turnUpdates.containsKey("appointment_name")) {
+                // A previous self/name cannot silently become the name of a newly
+                // introduced third-party recipient. Ask for that person's name.
+                values.remove("appointment_name");
+            }
+        } else if (ConversationState.SUBJECT_UNKNOWN.equals(subject)) {
+            values.remove("appointment_name");
+            values.remove("recipient_relation");
+        }
+        return new ConversationState(values, subject, intent, current.revision() + 1);
+    }
+
+    private Map<String, String> updates(Object value) {
+        if (!(value instanceof Map<?, ?> map)) return Map.of();
+        var result = new LinkedHashMap<String, String>();
+        map.forEach((key, raw) -> {
+            if (key == null || raw == null) return;
+            var normalizedKey = key.toString().trim().toLowerCase(Locale.ROOT);
+            var normalizedValue = raw.toString().trim();
+            if (!normalizedKey.isBlank() && !normalizedValue.isBlank()) {
+                result.put(normalizedKey, normalizedValue);
+            }
+        });
+        return Map.copyOf(result);
+    }
+
+    private List<String> clearFields(Object value, Set<String> allowedDetails) {
+        if (!(value instanceof List<?> list)) return List.of();
+        var result = new ArrayList<String>();
+        list.forEach(item -> {
+            if (item == null) return;
+            var field = item.toString().trim().toLowerCase(Locale.ROOT);
+            if (COMMON_FIELDS.contains(field) || allowedDetails.contains(field)) result.add(field);
+        });
+        return List.copyOf(result);
+    }
+
+    private String choice(Object raw, Set<String> allowed, String fallback) {
+        var value = raw == null ? "" : raw.toString().trim().toLowerCase(Locale.ROOT);
+        return allowed.contains(value) ? value : fallback;
+    }
+
+    private String stringArgument(Map<String, Object> arguments, String key) {
+        var value = arguments.get(key);
+        return value == null ? "" : value.toString().trim();
+    }
+
+    private boolean configuredFor(Call call, String toolName) {
+        return agentTools == null || agentTools
+                .findByAgent_IdAndToolNameAndIsActiveTrue(call.getAgent().getId(), toolName)
+                .isPresent();
+    }
+}

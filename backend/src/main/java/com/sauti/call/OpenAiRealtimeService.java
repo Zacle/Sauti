@@ -2,13 +2,13 @@ package com.sauti.call;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sauti.agent.OperatingHoursSchedule;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptResponse;
 import com.sauti.llm.ConversationOrchestrator;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
 import com.sauti.tool.AgentToolLoader;
 import com.sauti.tool.ToolFulfillmentRouter;
+import com.sauti.tool.ConversationStateTool;
 import com.sauti.session.CallSessionStore;
 import com.sauti.nlp.LanguageDetector;
 import java.net.URI;
@@ -16,14 +16,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.text.Normalizer;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,26 +30,6 @@ import org.springframework.stereotype.Service;
 public class OpenAiRealtimeService {
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenAiRealtimeService.class);
     public static final String VOICE_PREFIX = "openai:";
-    private static final Pattern GENERAL_HOURS_QUESTION = Pattern.compile(
-            "(?:\\bwhen\\b.{0,40}\\b(?:open|available)\\b"
-                    + "|\\b(?:what|which)\\s+(?:days?|dates?|hours?|times?)\\b.{0,40}\\b(?:open|available)\\b"
-                    + "|\\b(?:opening|business)\\s+hours\\b"
-                    + "|\\bwhat\\s+(?:are\\s+)?(?:your\\s+)?hours\\b"
-                    + "|\\b(?:tell|show|give)\\b.{0,30}\\b(?:date|days?|hours?|times?)\\b.{0,30}\\bavailable\\b"
-                    + "|\\bquand\\b.{0,40}\\b(?:ouvert|ouverte|ouverts|ouvertes|disponible|disponibles)\\b"
-                    + "|\\b(?:quel|quels|quelle|quelles)\\s+(?:jours?|dates?|horaires?|heures?)\\b.{0,40}"
-                    + "\\b(?:ouvert|ouverte|ouverts|ouvertes|disponible|disponibles)\\b"
-                    + "|\\bhoraires?\\s+d.?ouverture\\b)",
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
-    );
-    private static final Pattern SPECIFIC_AVAILABILITY = Pattern.compile(
-            "(?:\\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|tonight"
-                    + "|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|aujourd.hui|demain)\\b"
-                    + "|\\b\\d{1,2}(?::\\d{2})?\\s*(?:a\\.?m\\.?|p\\.?m\\.?)\\b"
-                    + "|\\b\\d{4}-\\d{2}-\\d{2}\\b|\\b\\d{1,2}[/-]\\d{1,2}(?:[/-]\\d{2,4})?\\b)",
-            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE
-    );
-
     private final ObjectMapper objectMapper;
     private final ConversationOrchestrator conversationOrchestrator;
     private final AgentToolLoader agentToolLoader;
@@ -127,29 +104,14 @@ public class OpenAiRealtimeService {
                 ? detectedLanguage
                 : currentLanguage;
         var instructions = conversationOrchestrator.realtimeInstructions(call, language, callerTranscript);
-        var directResponse = BookingConversationPolicy.pausesBooking(callerTranscript)
-                ? BookingConversationPolicy.pausedResponse(language)
-                : directBusinessHoursResponse(call, callerTranscript, language);
+        var requiredTool = hasTool(call, ConversationStateTool.NAME)
+                ? ConversationStateTool.NAME
+                : "";
         return new RealtimeTranscriptResponse(
                 instructions,
-                directResponse
+                "",
+                requiredTool
         );
-    }
-
-    private String directBusinessHoursResponse(Call call, String transcript, String language) {
-        if (transcript == null || transcript.isBlank()) return "";
-        var normalizedLanguage = language == null ? "en" : language.toLowerCase(Locale.ROOT);
-        if (!normalizedLanguage.startsWith("en") && !normalizedLanguage.startsWith("fr")) return "";
-        var normalized = Normalizer.normalize(transcript, Normalizer.Form.NFKC)
-                .toLowerCase(Locale.ROOT)
-                .replace('’', '\'');
-        if (!GENERAL_HOURS_QUESTION.matcher(normalized).find()
-                || SPECIFIC_AVAILABILITY.matcher(normalized).find()) return "";
-        var schedule = OperatingHoursSchedule.effective(call.getAgent());
-        if (schedule == null || schedule.isBlank()
-                || "always".equalsIgnoreCase(schedule)
-                || "workspace".equalsIgnoreCase(schedule)) return "";
-        return OperatingHoursSchedule.describeForSpeech(schedule, normalizedLanguage);
     }
 
     private boolean shouldFollowDetectedLanguage(String transcript, String currentLanguage, String detectedLanguage) {

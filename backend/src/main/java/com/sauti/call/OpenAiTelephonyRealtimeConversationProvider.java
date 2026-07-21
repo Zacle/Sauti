@@ -2,6 +2,7 @@ package com.sauti.call;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sauti.tool.ConversationStateTool;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -318,18 +319,30 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             listener.onCallerTranscript(transcript);
                             var activeSession = session;
                             if (activeSession != null) {
-                                var preparation = realtimeService.prepareCallerResponse(call, transcript);
-                                if (preparation == null) {
-                                    activeSession.updateInstructions(realtimeService.realtimeInstructions(call, transcript));
-                                    activeSession.requestResponse();
-                                } else {
-                                    activeSession.updateInstructions(preparation.instructions());
-                                    if (preparation.directResponse() == null || preparation.directResponse().isBlank()) {
-                                        activeSession.requestResponse();
+                                try {
+                                    var preparation = realtimeService.prepareCallerResponse(call, transcript);
+                                    if (preparation == null) {
+                                        activeSession.requestResponseWithRequiredTool(ConversationStateTool.NAME);
                                     } else {
-                                        activeSession.seedAssistantText(preparation.directResponse());
-                                        deliverDirectResponse(preparation.directResponse());
+                                        activeSession.updateInstructions(preparation.instructions());
+                                        if (preparation.directResponse() == null || preparation.directResponse().isBlank()) {
+                                            if (preparation.requiredTool() == null || preparation.requiredTool().isBlank()) {
+                                                activeSession.requestResponseWithRequiredTool(ConversationStateTool.NAME);
+                                            } else {
+                                                activeSession.requestResponseWithRequiredTool(preparation.requiredTool());
+                                            }
+                                        } else {
+                                            activeSession.seedAssistantText(preparation.directResponse());
+                                            deliverDirectResponse(preparation.directResponse());
+                                        }
                                     }
+                                } catch (RuntimeException exception) {
+                                    // Session setup always includes the internal semantic tool.
+                                    // A transient transcript-preparation failure must not leave the
+                                    // call stuck or permit an unclassified response.
+                                    LOGGER.warn("Realtime caller preparation failed callId={}: {}",
+                                            call.getId(), exception.getMessage());
+                                    activeSession.requestResponseWithRequiredTool(ConversationStateTool.NAME);
                                 }
                             }
                         }
@@ -713,8 +726,19 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 if (!deterministicResponse.isBlank()) {
                     var activeSession = session;
                     if (activeSession != null && claimToolSpeech(generation)) {
-                        activeSession.requestExactResponse(deterministicResponse, generation);
+                        // The semantic/tool response is already the final guarded
+                        // caller-facing text. Seed it into Realtime history and
+                        // send it straight to external TTS instead of paying for
+                        // a second model response that can add latency or duplicate
+                        // speech.
+                        activeSession.seedAssistantText(deterministicResponse);
+                        deliverDirectResponse(deterministicResponse);
                     }
+                    return;
+                }
+                if (toolRequiresBusinessAction(result)) {
+                    var activeSession = session;
+                    if (activeSession != null) activeSession.requestResponse();
                     return;
                 }
                 var activeSession = session;
@@ -735,7 +759,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         private String toolNextTool(com.sauti.llm.LlmToolResult result) {
             var value = result.result().get("nextTool");
-            return "book_slot".equals(value) ? value.toString() : "";
+            if ("book_slot".equals(value)) return value.toString();
+            return Boolean.TRUE.equals(result.result().get("nextToolAuthorized"))
+                    && value != null
+                    && value.toString().matches("[A-Za-z][A-Za-z0-9_]{1,63}")
+                    ? value.toString()
+                    : "";
+        }
+
+        private boolean toolRequiresBusinessAction(com.sauti.llm.LlmToolResult result) {
+            return "use_business_tool".equals(result.result().get("nextAction"));
         }
 
         private String write(Object value) {

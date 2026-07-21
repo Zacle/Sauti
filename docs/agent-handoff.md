@@ -3864,3 +3864,31 @@ Expected:
   - `git diff --check` - passed before the handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat this exact call in Agent Studio and on one carrier call. Confirm that the hours are grouped, Friday at 3 p.m. moves directly into one booking review, and `don't book yet; I will call back later` produces an explicit no-booking reassurance. Automated tests cover the server transition and all three runtime paths, but live Realtime model argument quality and external provider event ordering still need an end-to-end call.
+
+### 2026-07-21 - Replace phrase matching with a multilingual semantic turn boundary
+
+- Superseded the narrow phrase-matching portions of the preceding booking revision. Production model-backed agents now must call the internal `update_conversation_state` function before any caller-facing reply on every accepted turn. The model interprets meaning from the complete multilingual conversation; it no longer depends on an English/French regex list for broad hours, withdrawal, identity, or corrections.
+- Kept model understanding separate from application authority. The internal function emits typed field changes, `booking_subject`, `booking_intent`, the caller-facing response, and at most one requested configured business tool. A server reducer validates and persists those changes in the Redis-backed call session. Calendar, webhook, transfer, payment, and other configured tools remain separate side-effect boundaries.
+- Added deterministic participant invariants. A corrected speaker name updates a self-booking recipient, never invents the old misheard name as another person, and never overwrites an explicitly different recipient. Moving from self to an unnamed third party clears the stale self name. The same reducer supports configured vertical fields and explicit field withdrawal without adding language-specific sentences.
+- Made review authorization turn-scoped. Semantic approval is cleared automatically on the next turn, and `book_slot` reads the typed review decision instead of matching an approval phrase. A paused intent blocks booking in both the semantic router and calendar fulfillment, even if a stale model call still reaches the calendar boundary.
+- Applied the boundary platform-wide through `AgentToolLoader`, so it is present for every agent rather than one salon configuration. Browser/public Web Voice, phone Realtime, and the turn-based orchestrator force the semantic tool before speech. Text accompanying a function call remains silent; an authorized business lookup chains without a spoken preamble.
+- Removed the redundant second model response from the Cartesia phone path. A validated semantic/tool reply is seeded into Realtime history once and sent directly to external TTS, reducing reply latency and eliminating another opportunity for duplicated or changed speech. Browser preparation failures/timeouts and phone preparation failures now fall back to the required semantic tool instead of an unclassified response.
+- Retained the old transcript parser only as a compatibility fallback for the explicitly non-semantic local heuristic provider and historical sessions with no semantic-state revision. It is not on the production Spring AI/Realtime turn path.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{BookingConversationPolicy,CallIntakeNoteService,OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider,RealtimeDtos}.java`
+  - `backend/src/main/java/com/sauti/llm/{ConversationOrchestrator,LlmToolCallingProvider,LocalToolCallingLlmProvider}.java`
+  - `backend/src/main/java/com/sauti/session/{CallSession,CallSessionStore,ConversationState,RedisCallSessionStore}.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,AgentToolService,ConversationStateTool,SautiCalendarFulfillment,ToolFulfillmentRouter}.java`
+  - corresponding focused backend tests, including removal of `BookingConversationPolicyTest`
+  - `dashboard/features/voice-runtime/openaiRealtime.ts`
+  - `dashboard/lib/api/{calls,public-web-voice}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused semantic-state, agent-tool loading, intake, Realtime, orchestrator, and calendar suite - passed; 90 tests.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed from a forced full rerun.
+  - `npm.cmd run test:voice` - passed; 3 turn-gate regressions.
+  - `npm.cmd run lint` and `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: model semantic quality still needs live evaluation across the supported languages, accents, interruptions, ambiguous references, corrections, and each agent's custom fields. After CI/CD, run a multilingual transcript matrix plus one browser and one carrier call, and measure transcript-final-to-first-audio latency. Do not respond to a failure by adding another sentence matcher; improve the semantic schema/prompt, model evaluation set, or deterministic reducer invariant instead.

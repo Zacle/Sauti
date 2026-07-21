@@ -161,7 +161,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         var latestCaller = latestCallerTranscript(call);
         var notes = intakeNotes.notes(call, latestCaller);
         var recipientKnown = notes.containsKey("appointment_name")
-                || (!notes.containsKey("booking_for_relation") && notes.containsKey("caller_name"));
+                || (!"other".equals(notes.get("booking_subject")) && notes.containsKey("caller_name"));
         return "active".equals(notes.get("booking_intent"))
                 && recipientKnown
                 && notes.containsKey("caller_phone")
@@ -231,7 +231,18 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, AgentTool toolConfig) {
         var suppliedReviewToken = stringArg(toolCall.arguments(), "review_token", "");
         var latestCaller = latestCallerTranscript(call);
-        var callerApprovedReview = callerApprovedLatestReview(latestCaller);
+        var currentState = intakeNotes.notes(call, latestCaller);
+        if ("paused".equals(currentState.get("booking_intent"))) {
+            return Map.of(
+                    "status", "booking_paused_by_caller",
+                    "bookingCreated", false,
+                    "instruction", "Do not save anything. Briefly confirm in the caller's current language that no booking was made, then close warmly."
+            );
+        }
+        var semanticState = currentState.containsKey("conversation_state_revision");
+        var callerApprovedReview = semanticState
+                ? "approved".equals(currentState.get("review_decision"))
+                : callerApprovedLatestReview(latestCaller);
         var arguments = new LinkedHashMap<>(normalizeBookingArgumentsFromConversation(
                 call, toolCall.arguments(), suppliedReviewToken, latestCaller
         ));
@@ -347,7 +358,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         try {
             var notes = intakeNotes.notes(call, latest);
             var appointmentName = notes.get("appointment_name");
-            var otherPerson = notes.get("booking_for_relation");
+            var otherPerson = "other".equals(notes.get("booking_subject"))
+                    ? notes.getOrDefault("recipient_relation", "other person")
+                    : notes.get("booking_for_relation");
             if (appointmentName != null && !appointmentName.isBlank()) {
                 normalized.put("caller_name", appointmentName);
             } else if (otherPerson != null && !otherPerson.isBlank()) {

@@ -41,7 +41,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         when(callSessionStore.conversationHistory(call.getTwilioCallSid()))
@@ -132,6 +132,48 @@ class ConversationOrchestratorTest {
     }
 
     @Test
+    void requiresSemanticStateBeforeSpeakingWithoutMatchingTheCallerWording() {
+        var provider = new SemanticTurnProvider();
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(
+                provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService,
+                new com.sauti.agent.KnowledgeBaseService(), retrieval, 4
+        );
+        var call = activeCall();
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
+        when(callSessionStore.conversationHistory(call.getTwilioCallSid())).thenReturn(List.of());
+        when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of(
+                com.sauti.tool.ConversationStateTool.definition()
+        ));
+        when(router.route(any(Call.class), any(LlmToolCall.class))).thenAnswer(invocation -> {
+            LlmToolCall toolCall = invocation.getArgument(1);
+            return LlmToolResult.success(toolCall, Map.of(
+                    "status", "conversation_state_updated",
+                    "spokenResponse", "Merci pour la correction. Quel service souhaitez-vous ?"
+            ));
+        });
+
+        var result = orchestrator.handleUserUtterance(
+                call, "fr", "Le nom entendu auparavant n'était pas le mien."
+        );
+
+        assertThat(result.responseText())
+                .isEqualTo("Merci pour la correction. Quel service souhaitez-vous ?");
+        assertThat(provider.contexts).hasSize(1);
+        assertThat(provider.contexts.get(0).requiredToolName())
+                .isEqualTo(com.sauti.tool.ConversationStateTool.NAME);
+        assertThat(provider.contexts.get(0).tools())
+                .extracting(LlmToolDefinition::name)
+                .containsExactly(com.sauti.tool.ConversationStateTool.NAME);
+    }
+
+    @Test
     void followsTheServerAuthorizedAvailabilityToReviewTransitionWithoutAPreamble() {
         var provider = new ChainedBookingProvider();
         var router = mock(ToolFulfillmentRouter.class);
@@ -143,8 +185,7 @@ class ConversationOrchestratorTest {
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
         var orchestrator = new ConversationOrchestrator(
                 provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService,
-                new com.sauti.agent.KnowledgeBaseService(), retrieval,
-                new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4
+                new com.sauti.agent.KnowledgeBaseService(), retrieval, 4
         );
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
@@ -188,8 +229,7 @@ class ConversationOrchestratorTest {
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
         var orchestrator = new ConversationOrchestrator(
                 provider, router, toolLoader, callTurnRepository, callSessionStore,
-                agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval,
-                new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4
+                agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4
         );
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
@@ -223,8 +263,7 @@ class ConversationOrchestratorTest {
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
         var orchestrator = new ConversationOrchestrator(
                 provider, router, toolLoader, callTurnRepository, callSessionStore,
-                agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval,
-                new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4
+                agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4
         );
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
@@ -262,7 +301,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         when(callSessionStore.conversationHistory(call.getTwilioCallSid())).thenReturn(List.of());
@@ -294,7 +333,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         var toolCall = new LlmToolCall("availability-1", "check_availability", Map.of("date", "2030-01-15"));
@@ -324,7 +363,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         var toolCall = new LlmToolCall("availability-1", "check_availability", Map.of("date", "2030-01-15"));
@@ -362,7 +401,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
         var call = activeCall();
         when(agentVariableService.businessName(call.getAgent())).thenReturn("X-Fit");
 
@@ -381,7 +420,7 @@ class ConversationOrchestratorTest {
         var agentVariableService = mock(AgentVariableService.class);
         var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
-        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4);
+        var orchestrator = new ConversationOrchestrator(provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4);
         var call = activeCall();
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt())).thenReturn("Prompt");
         when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getGreetingMessage())).thenReturn("Open warmly.");
@@ -415,8 +454,7 @@ class ConversationOrchestratorTest {
         when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
         var orchestrator = new ConversationOrchestrator(
                 provider, router, toolLoader, callTurnRepository, callSessionStore,
-                agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval,
-                new com.sauti.call.CallIntakeNoteService(callTurnRepository), 4
+                agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4
         );
         var call = activeCall();
         var prompt = "You are Alec, the virtual assistant for X-Fit.\n"
@@ -450,6 +488,8 @@ class ConversationOrchestratorTest {
                 .contains("section heading such as ANSWER, FINAL ANSWER, or RESPONSE")
                 .contains("Use tools only through native function calls")
                 .contains("Keep the person speaking separate from the person receiving the service")
+                .contains("never classify intent or identity by matching a fixed phrase")
+                .contains("deterministic state reducer also updates the appointment recipient")
                 .contains("Do not invent your own review preamble")
                 .contains("Never emit JSON");
     }
@@ -507,6 +547,28 @@ class ConversationOrchestratorTest {
                             "caller_name", "Zachary",
                             "caller_phone", "0820110502",
                             "service_type", "Men's hairstyle"
+                    )
+            )));
+        }
+    }
+
+    private static final class SemanticTurnProvider implements LlmToolCallingProvider {
+        private final List<LlmToolTurnContext> contexts = new ArrayList<>();
+
+        @Override
+        public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
+            contexts.add(context);
+            return new LlmToolTurnResponse("", List.of(new LlmToolCall(
+                    "semantic-turn", com.sauti.tool.ConversationStateTool.NAME,
+                    Map.of(
+                            "updates", Map.of("caller_name", "Zachary"),
+                            "additional_details", Map.of(),
+                            "clear_fields", List.of(),
+                            "booking_subject", "self",
+                            "booking_intent", "active",
+                            "next_action", "reply",
+                            "business_tool", "",
+                            "spoken_response", "Merci pour la correction. Quel service souhaitez-vous ?"
                     )
             )));
         }

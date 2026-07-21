@@ -122,6 +122,22 @@ public class RedisCallSessionStore implements CallSessionStore {
     }
 
     @Override
+    public Optional<ConversationState> conversationState(String callSid) {
+        return get(callSid).map(CallSession::getConversationState);
+    }
+
+    @Override
+    public void updateConversationState(String callSid, ConversationState state) {
+        mutate(callSid, session -> {
+            if (session != null) {
+                session.setConversationState(state);
+                session.touch();
+            }
+            return session;
+        });
+    }
+
+    @Override
     public Optional<BookingDraft> pendingBooking(String callSid) {
         return get(callSid).map(CallSession::getPendingBookingDraft);
     }
