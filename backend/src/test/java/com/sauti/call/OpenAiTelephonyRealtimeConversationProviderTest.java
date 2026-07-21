@@ -793,11 +793,50 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 new RecordingListener(new ArrayList<>()), Map.of()
         );
         var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        when(session.consumeExpectedResponse()).thenReturn(false, true);
+        when(session.dispatchedGeneration()).thenReturn(0L);
         socketListener.attach(session);
 
-        socketListener.onText(mock(WebSocket.class), "{\"type\":\"response.created\"}", true);
+        var webSocket = mock(WebSocket.class);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"response-unsolicited\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\",\"response\":{\"id\":\"response-unsolicited\"}}", true);
 
-        verify(session).cancelProviderResponse();
+        verify(session).cancelProviderResponse("response-unsolicited");
+        verify(session, never()).responseFinished();
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"response-expected\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\",\"response\":{\"id\":\"response-expected\"}}", true);
+
+        verify(session).responseFinished();
+    }
+
+    @Test
+    void defersCancellationUntilTheOutstandingResponseIsCreated() {
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(new ArrayList<>()), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        when(session.hasResponseOutstanding()).thenReturn(true);
+        when(session.currentGeneration()).thenReturn(1L);
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        when(session.dispatchedGeneration()).thenReturn(0L);
+        socketListener.attach(session);
+
+        socketListener.markCurrentResponseCancelled();
+
+        verify(session, never()).cancelProviderResponse(anyString());
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"response-old\"}}", true);
+
+        verify(session).cancelProviderResponse("response-old");
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.cancelled\",\"response\":{\"id\":\"response-old\"}}", true);
     }
 
     @Test
@@ -965,13 +1004,14 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         session.requestExactResponse("Fresh response.");
         session.responseFinished();
 
-        verify(webSocket, timeout(1_000).times(3)).sendText(anyString(), eq(true));
+        verify(webSocket, timeout(1_000).times(2)).sendText(anyString(), eq(true));
         var payloads = ArgumentCaptor.forClass(String.class);
-        verify(webSocket, times(3)).sendText(payloads.capture(), eq(true));
+        verify(webSocket, times(2)).sendText(payloads.capture(), eq(true));
         assertThat(payloads.getAllValues()).anyMatch(payload -> payload.contains("Old response already in flight."));
-        assertThat(payloads.getAllValues()).anyMatch(payload -> payload.contains("response.cancel"));
         assertThat(payloads.getAllValues()).anyMatch(payload -> payload.contains("Fresh response."));
         assertThat(payloads.getAllValues()).noneMatch(payload -> payload.contains("Old queued duplicate."));
+        assertThat(payloads.getAllValues()).noneMatch(payload -> payload.contains("response.cancel"));
+        assertThat(payloads.getAllValues()).allMatch(payload -> payload.contains("sauti_request_id"));
     }
 
     @Test

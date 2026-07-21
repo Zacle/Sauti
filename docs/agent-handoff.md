@@ -3940,3 +3940,25 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat the exact first turn from the screenshot (`My name is Zachary. I'm calling to check an appointment.`). It should receive one natural clarification without an internal tool delay. Then test a broad information question, a specific live-availability request, a multilingual booking correction, final approval, one browser interruption, and one carrier call. Confirm that ordinary turns create message output, live/action turns create only the appropriate tool call, and transcript-to-first-audio latency remains within the new response bounds.
+
+### 2026-07-21 - Prevent cancellation-before-creation response deadlocks
+
+- Fixed the Agent Studio hang shown after two adjacent caller transcript fragments. A recognized new caller turn could invalidate the prior generation while its `response.create` was sent but before OpenAI emitted `response.created`. Sauti immediately sent `response.cancel`; the provider correctly reported that there was no active response yet, while the stale-generation watchdog returned without clearing the request. The latest turn then remained queued behind a permanently in-flight response and the UI stayed on `Agent is thinking`.
+- Split provider response state into the two transitions required by the Realtime contract. A dispatched but uncreated response is now marked for cancellation without sending `response.cancel`. When `response.created` arrives, Sauti cancels that exact response by `response_id`; an already created response is still cancelled immediately. Browser and phone runtimes use the same rule.
+- Added a two-second cancellation watchdog so a missing creation or terminal event cannot retain the queue indefinitely. Every Sauti `response.create` now includes a unique request ID in response metadata. If an abandoned response appears late, its metadata identifies it as stale and Sauti cancels that response by ID without consuming or corrupting the newer request.
+- Changed ordinary response timeouts to follow the same rule: a request that has not reached `response.created` is abandoned and correlated by metadata instead of sending a premature unscoped cancellation. Unsolicited phone responses are also cancelled by ID without leaving the global discard flag set for later valid turns.
+- This matches OpenAI's documented lifecycle: `response.create` is acknowledged by `response.created`; `response.cancel` applies to an in-progress response, supports a specific `response_id`, and returns an error when there is no response to cancel. Request metadata is the documented correlation mechanism for disambiguating responses.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `dashboard/features/voice-runtime/{openaiRealtime,openaiRealtime.test,realtimeProtocol}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused phone Realtime lifecycle suite - passed.
+  - `npm.cmd run test:voice` - passed; 9 regressions, including cancellation-before-creation and request-metadata correlation.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run lint` and `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, reproduce the screenshot's split caller turn (for example, `Thursday at...` followed quickly by another recognized fragment) in Agent Studio and one carrier call. Confirm that the first pending response is cancelled only after creation, the latest turn receives exactly one answer, and the UI returns to listening. Provider metadata and targeted cancellation make late events safe, but real WebRTC/carrier ordering still requires one live validation after deployment.

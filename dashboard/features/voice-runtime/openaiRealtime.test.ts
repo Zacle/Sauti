@@ -1,6 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { completedRealtimeToolCalls } from "./realtimeProtocol.ts";
+import {
+  completedRealtimeToolCalls,
+  realtimeCancellationDecision,
+  realtimeResponseRequestId,
+} from "./realtimeProtocol.ts";
+
+test("defers cancellation until an in-flight response has been created", () => {
+  assert.deepEqual(realtimeCancellationDecision(false, true), {
+    pending: true,
+    cancelProviderNow: false,
+  });
+  assert.deepEqual(realtimeCancellationDecision(true, false), {
+    pending: true,
+    cancelProviderNow: true,
+  });
+  assert.deepEqual(realtimeCancellationDecision(false, false), {
+    pending: false,
+    cancelProviderNow: false,
+  });
+});
+
+test("correlates created responses with Sauti request metadata", () => {
+  assert.equal(realtimeResponseRequestId({
+    type: "response.created",
+    response: { metadata: { sauti_request_id: "browser-4-12" } },
+  }), "browser-4-12");
+  assert.equal(realtimeResponseRequestId({ type: "response.created", response: {} }), "");
+});
 
 test("recovers a complete function call from response.done", () => {
   const calls = completedRealtimeToolCalls({

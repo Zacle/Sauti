@@ -1,10 +1,16 @@
 import { RealtimeTurnGate } from "./realtimeTurnGate";
-import { completedRealtimeToolCalls } from "./realtimeProtocol";
+import {
+  completedRealtimeToolCalls,
+  realtimeCancellationDecision,
+  realtimeResponseRequestId,
+  SAUTI_REALTIME_REQUEST_ID,
+} from "./realtimeProtocol";
 
 const SEMANTIC_TURN_TOOL = "update_conversation_state";
 const PRIMARY_RESPONSE_WATCHDOG_MS = 8_000;
 const RECOVERY_RESPONSE_WATCHDOG_MS = 6_000;
 const TOOL_EXECUTION_TIMEOUT_MS = 12_000;
+const RESPONSE_CANCELLATION_WATCHDOG_MS = 2_000;
 
 export type OpenAiRealtimeCallbacks = {
   onConnected: () => void;
@@ -36,8 +42,9 @@ type AgentSpeech = {
 };
 
 type PendingResponseRequest = {
+  requestId: string;
   generation: number;
-  send: () => void;
+  send: (requestId: string) => void;
   retryWithoutTools: boolean;
 };
 
@@ -99,6 +106,7 @@ export async function connectOpenAiRealtime(options: {
   let localSpeechSequence = 0;
   let discardCurrentResponseOutput = false;
   const ignoredResponseIds = new Set<string>();
+  const abandonedResponseRequestIds = new Set<string>();
   const processedCallerItemIds = new Set<string>();
   const processedToolCallIds = new Set<string>();
   let lastCallerTranscript = "";
@@ -111,6 +119,7 @@ export async function connectOpenAiRealtime(options: {
   const noToolRecoveryGenerations = new Set<number>();
   const pendingResponseRequests: PendingResponseRequest[] = [];
   let dispatchedResponseRequest: PendingResponseRequest | null = null;
+  let responseRequestSequence = 0;
   let callerPreparationChain = Promise.resolve();
   const callerSpeechGate = new RealtimeTurnGate();
 
@@ -131,7 +140,7 @@ export async function connectOpenAiRealtime(options: {
     expectedResponses += 1;
     responseHasToolCall = false;
     responsePhase = "awaiting_response";
-    request.send();
+    request.send(request.requestId);
     armResponseWatchdog(
       request.generation,
       noToolRecoveryGenerations.has(request.generation)
@@ -141,12 +150,17 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const enqueueResponse = (
-    request: () => void,
+    request: (requestId: string) => void,
     generation = outputGeneration,
     retryWithoutTools = false,
   ) => {
     if (generation !== outputGeneration) return;
-    pendingResponseRequests.push({ generation, send: request, retryWithoutTools });
+    pendingResponseRequests.push({
+      requestId: `browser-${generation}-${++responseRequestSequence}`,
+      generation,
+      send: request,
+      retryWithoutTools,
+    });
     drainResponseQueue();
   };
 
@@ -169,25 +183,45 @@ export async function connectOpenAiRealtime(options: {
   const armResponseWatchdog = (generation: number, timeoutMs: number) => {
     window.clearTimeout(responseWatchdog);
     responseWatchdog = window.setTimeout(() => {
-      if (generation !== outputGeneration
-        || (!responseActive && !responseRequestInFlight && !responseCancellationPending)) return;
+      if (responseCancellationPending) {
+        if (currentResponseId) ignoredResponseIds.add(currentResponseId);
+        if (responseRequestInFlight && dispatchedResponseRequest) {
+          abandonedResponseRequestIds.add(dispatchedResponseRequest.requestId);
+          expectedResponses = Math.max(0, expectedResponses - 1);
+        }
+        discardCurrentResponseOutput = false;
+        agentTranscript = "";
+        finishResponse();
+        return;
+      }
+      if (generation !== outputGeneration || (!responseActive && !responseRequestInFlight)) return;
       const failedPhase = responsePhase;
       const canRetryWithoutTools = !responseHasToolCall
         && !noToolRecoveryGenerations.has(generation)
         && (currentResponseCanRetryWithoutTools
           || dispatchedResponseRequest?.retryWithoutTools === true);
+      const providerResponseActive = responseActive;
       if (currentResponseId) ignoredResponseIds.add(currentResponseId);
-      if (responseRequestInFlight) expectedResponses = Math.max(0, expectedResponses - 1);
+      if (responseRequestInFlight) {
+        if (dispatchedResponseRequest) {
+          abandonedResponseRequestIds.add(dispatchedResponseRequest.requestId);
+        }
+        expectedResponses = Math.max(0, expectedResponses - 1);
+      }
       for (let index = pendingResponseRequests.length - 1; index >= 0; index -= 1) {
         if (pendingResponseRequests[index]?.generation === generation) {
           pendingResponseRequests.splice(index, 1);
         }
       }
-      send(channel, { type: "response.cancel" });
+      if (providerResponseActive) {
+        send(channel, currentResponseId
+          ? { type: "response.cancel", response_id: currentResponseId }
+          : { type: "response.cancel" });
+      }
       finishResponse();
       if (canRetryWithoutTools && generation === outputGeneration) {
         noToolRecoveryGenerations.add(generation);
-        enqueueResponse(() => requestToolResultResponse(channel), generation);
+        enqueueResponse((requestId) => requestToolResultResponse(channel, requestId), generation);
         return;
       }
       deliverAgentSpeech({
@@ -200,10 +234,20 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const cancelActiveResponse = () => {
+    const decision = realtimeCancellationDecision(responseActive, responseRequestInFlight);
+    if (!decision.pending) return;
     if (currentResponseId) ignoredResponseIds.add(currentResponseId);
     discardCurrentResponseOutput = true;
-    responseCancellationPending = responseActive || responseRequestInFlight;
-    send(channel, { type: "response.cancel" });
+    responseCancellationPending = true;
+    const cancelledGeneration = responseRequestInFlight
+      ? (dispatchedResponseRequest?.generation ?? currentResponseGeneration)
+      : currentResponseGeneration;
+    armResponseWatchdog(cancelledGeneration, RESPONSE_CANCELLATION_WATCHDOG_MS);
+    if (decision.cancelProviderNow) {
+      send(channel, currentResponseId
+        ? { type: "response.cancel", response_id: currentResponseId }
+        : { type: "response.cancel" });
+    }
   };
 
   const invalidateOutputForCallerTurn = () => {
@@ -373,7 +417,10 @@ export async function connectOpenAiRealtime(options: {
         }
         const nextTool = toolNextTool(result);
         if (nextTool) {
-          enqueueResponse(() => requestRequiredToolResponse(channel, nextTool), generation);
+          enqueueResponse(
+            (requestId) => requestRequiredToolResponse(channel, nextTool, requestId),
+            generation,
+          );
           return;
         }
         const deterministicResponse = toolSpokenResponse(name, result);
@@ -395,17 +442,20 @@ export async function connectOpenAiRealtime(options: {
               });
             }
           } else {
-            enqueueResponse(() => requestExactToolResponse(channel, deterministicResponse), generation);
+            enqueueResponse(
+              (requestId) => requestExactToolResponse(channel, deterministicResponse, requestId),
+              generation,
+            );
           }
           return;
         }
         if (toolRequiresBusinessAction(result)) {
-          enqueueResponse(() => requestCallerResponse(channel), generation);
+          enqueueResponse((requestId) => requestCallerResponse(channel, requestId), generation);
           return;
         }
         if (!toolFollowupGenerations.has(generation)) {
           toolFollowupGenerations.add(generation);
-          enqueueResponse(() => requestToolResultResponse(channel), generation);
+          enqueueResponse((requestId) => requestToolResultResponse(channel, requestId), generation);
         }
       })
       .catch(() => {
@@ -434,13 +484,14 @@ export async function connectOpenAiRealtime(options: {
     if (protocolRecoveryAttempts++ === 0) {
       // Keep the complete session prompt and business facts, but prevent the
       // malformed retry from attempting another tool call.
-      enqueueResponse(() => requestToolResultResponse(channel));
+      enqueueResponse((requestId) => requestToolResultResponse(channel, requestId));
       return;
     }
     if (protocolRecoveryAttempts === 2) {
-      enqueueResponse(() => requestExactToolResponse(
+      enqueueResponse((requestId) => requestExactToolResponse(
         channel,
         localizedResponseFailure(options.responseLanguage),
+        requestId,
       ));
       return;
     }
@@ -489,7 +540,10 @@ export async function connectOpenAiRealtime(options: {
         }
         const requiredTool = prepared.value?.requiredTool?.trim();
         if (requiredTool) {
-          enqueueResponse(() => requestRequiredToolResponse(channel, requiredTool), generation);
+          enqueueResponse(
+            (requestId) => requestRequiredToolResponse(channel, requiredTool, requestId),
+            generation,
+          );
           return;
         }
       } else {
@@ -504,7 +558,7 @@ export async function connectOpenAiRealtime(options: {
         });
       }
       if (generation === outputGeneration) {
-        enqueueResponse(() => requestCallerResponse(channel), generation, true);
+        enqueueResponse((requestId) => requestCallerResponse(channel, requestId), generation, true);
       }
     });
   };
@@ -537,11 +591,27 @@ export async function connectOpenAiRealtime(options: {
     const type = String(event.type ?? "");
     const eventResponseId = responseId(event);
     if (type === "response.created") {
+      const createdRequestId = realtimeResponseRequestId(event);
+      if (createdRequestId && abandonedResponseRequestIds.delete(createdRequestId)) {
+        if (eventResponseId) ignoredResponseIds.add(eventResponseId);
+        send(channel, eventResponseId
+          ? { type: "response.cancel", response_id: eventResponseId }
+          : { type: "response.cancel" });
+        return;
+      }
+      if (createdRequestId && dispatchedResponseRequest
+        && createdRequestId !== dispatchedResponseRequest.requestId) {
+        if (eventResponseId) ignoredResponseIds.add(eventResponseId);
+        send(channel, eventResponseId
+          ? { type: "response.cancel", response_id: eventResponseId }
+          : { type: "response.cancel" });
+        return;
+      }
       if (expectedResponses <= 0) {
         if (eventResponseId) ignoredResponseIds.add(eventResponseId);
-        discardCurrentResponseOutput = true;
-        send(channel, { type: "response.cancel" });
-        responseActive = false;
+        send(channel, eventResponseId
+          ? { type: "response.cancel", response_id: eventResponseId }
+          : { type: "response.cancel" });
         return;
       }
       const requestedGeneration = dispatchedResponseRequest?.generation ?? outputGeneration;
@@ -551,20 +621,24 @@ export async function connectOpenAiRealtime(options: {
       dispatchedResponseRequest = null;
       responseActive = true;
       responsePhase = "generating_message";
+      currentResponseId = eventResponseId;
+      currentResponseGeneration = requestedGeneration;
+      if (responseCancellationPending || requestedGeneration !== outputGeneration) {
+        if (eventResponseId) ignoredResponseIds.add(eventResponseId);
+        discardCurrentResponseOutput = true;
+        responseCancellationPending = true;
+        armResponseWatchdog(requestedGeneration, RESPONSE_CANCELLATION_WATCHDOG_MS);
+        send(channel, eventResponseId
+          ? { type: "response.cancel", response_id: eventResponseId }
+          : { type: "response.cancel" });
+        return;
+      }
       armResponseWatchdog(
         requestedGeneration,
         noToolRecoveryGenerations.has(requestedGeneration)
           ? RECOVERY_RESPONSE_WATCHDOG_MS
           : PRIMARY_RESPONSE_WATCHDOG_MS,
       );
-      currentResponseId = eventResponseId;
-      currentResponseGeneration = requestedGeneration;
-      if (responseCancellationPending || requestedGeneration !== outputGeneration) {
-        if (eventResponseId) ignoredResponseIds.add(eventResponseId);
-        discardCurrentResponseOutput = true;
-        send(channel, { type: "response.cancel" });
-        return;
-      }
       discardCurrentResponseOutput = false;
       currentOutputItemId = "";
       outputItemTypes.clear();
@@ -802,6 +876,8 @@ export async function connectOpenAiRealtime(options: {
         responseRequestInFlight = false;
         expectedResponses = Math.max(0, expectedResponses - 1);
         responseCancellationPending = true;
+        armResponseWatchdog(currentResponseGeneration, RESPONSE_CANCELLATION_WATCHDOG_MS);
+        send(channel, { type: "response.cancel" });
       } else if (/no active response|response.*not active/i.test(message)) {
         if (responseCancellationPending && !responseRequestInFlight) finishResponse();
       } else {
@@ -824,7 +900,14 @@ export async function connectOpenAiRealtime(options: {
       window.clearTimeout(timeout);
       options.callbacks.onConnected();
       if (options.greeting.trim()) {
-        enqueueResponse(() => requestGreeting(channel, options.greeting, options.outputMode ?? "text"));
+        enqueueResponse(
+          (requestId) => requestGreeting(
+            channel,
+            options.greeting,
+            options.outputMode ?? "text",
+            requestId,
+          ),
+        );
       }
       resolve();
     };
@@ -853,7 +936,9 @@ export async function connectOpenAiRealtime(options: {
       prepareAndRequestCallerResponse(text, generation);
     },
     speakGreeting: (text) => {
-      enqueueResponse(() => requestGreeting(channel, text, options.outputMode ?? "text"));
+      enqueueResponse(
+        (requestId) => requestGreeting(channel, text, options.outputMode ?? "text", requestId),
+      );
     },
     cancelResponse: cancelActiveResponse,
     close: () => {
@@ -897,7 +982,12 @@ function isMeaningfulCallerTranscript(transcript: string) {
   ]).has(caption);
 }
 
-function requestGreeting(channel: RTCDataChannel, greeting: string, outputMode: "audio" | "text") {
+function requestGreeting(
+  channel: RTCDataChannel,
+  greeting: string,
+  outputMode: "audio" | "text",
+  requestId: string,
+) {
   const text = greeting.trim();
   if (!text) return;
   send(channel, {
@@ -905,44 +995,55 @@ function requestGreeting(channel: RTCDataChannel, greeting: string, outputMode: 
     response: {
       instructions: `Say exactly this greeting, with no additions: ${text}`,
       output_modalities: [outputMode],
+      metadata: responseRequestMetadata(requestId),
     },
   });
 }
 
-function requestCallerResponse(channel: RTCDataChannel) {
+function requestCallerResponse(channel: RTCDataChannel, requestId: string) {
   // The full, transcript-aware agent prompt was applied with session.update
   // immediately before this request. Response-level instructions override that
   // session prompt in the Realtime API, which would discard personalized facts
   // such as service prices and the one-field-at-a-time intake rules.
-  send(channel, { type: "response.create" });
+  send(channel, {
+    type: "response.create",
+    response: { metadata: responseRequestMetadata(requestId) },
+  });
 }
 
-function requestToolResultResponse(channel: RTCDataChannel) {
+function requestToolResultResponse(channel: RTCDataChannel, requestId: string) {
   send(channel, {
     type: "response.create",
     response: {
       tool_choice: "none",
+      metadata: responseRequestMetadata(requestId),
     },
   });
 }
 
-function requestRequiredToolResponse(channel: RTCDataChannel, toolName: string) {
+function requestRequiredToolResponse(channel: RTCDataChannel, toolName: string, requestId: string) {
   send(channel, {
     type: "response.create",
     response: {
       tool_choice: { type: "function", name: toolName },
+      metadata: responseRequestMetadata(requestId),
     },
   });
 }
 
-function requestExactToolResponse(channel: RTCDataChannel, response: string) {
+function requestExactToolResponse(channel: RTCDataChannel, response: string, requestId: string) {
   send(channel, {
     type: "response.create",
     response: {
       instructions: `Say exactly this sentence with no additions or omissions: ${response}`,
       tool_choice: "none",
+      metadata: responseRequestMetadata(requestId),
     },
   });
+}
+
+function responseRequestMetadata(requestId: string) {
+  return { [SAUTI_REALTIME_REQUEST_ID]: requestId };
 }
 
 function toolSpokenResponse(name: string, result: Record<string, unknown>) {

@@ -4,6 +4,27 @@ export type CompletedRealtimeToolCall = {
   argumentsJson: string;
 };
 
+export const SAUTI_REALTIME_REQUEST_ID = "sauti_request_id";
+
+export function realtimeResponseRequestId(event: Record<string, unknown>): string {
+  const response = event.response as {
+    metadata?: Record<string, unknown> | null;
+  } | undefined;
+  return String(response?.metadata?.[SAUTI_REALTIME_REQUEST_ID] ?? "").trim();
+}
+
+export function realtimeCancellationDecision(
+  responseActive: boolean,
+  responseRequestInFlight: boolean,
+): { pending: boolean; cancelProviderNow: boolean } {
+  return {
+    pending: responseActive || responseRequestInFlight,
+    // response.cancel applies only to an in-progress response. A dispatched
+    // response.create is not cancellable until response.created arrives.
+    cancelProviderNow: responseActive,
+  };
+}
+
 /**
  * Realtime can provide complete function arguments in the dedicated
  * arguments.done event, output_item.done, or response.done. Keep this parser
