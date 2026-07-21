@@ -181,9 +181,9 @@ public class PublicWebVoiceController {
         var call = verifiedPublicCall(sessionId, request);
         callPipelineService.recordRealtimeTranscript(
                 call.getTenant().getId(), call.getId(), transcript.role(), transcript.text(), transcript.interrupted());
-        return "caller".equalsIgnoreCase(transcript.role())
-                ? openAiRealtimeService.prepareCallerResponse(call, transcript.text())
-                : new RealtimeTranscriptResponse("");
+        // The live Realtime session already owns conversation context. Keep
+        // transcript persistence off the latency-critical response path.
+        return new RealtimeTranscriptResponse("");
     }
 
     @PostMapping("/sessions/{sessionId}/realtime/tool")

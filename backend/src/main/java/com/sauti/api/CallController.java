@@ -162,8 +162,10 @@ public class CallController {
     ) {
         callPipelineService.recordRealtimeTranscript(user.tenantId(), id, request.role(), request.text(), request.interrupted());
         if (!"caller".equalsIgnoreCase(request.role())) return new RealtimeTranscriptResponse("");
-        var call = callQueryService.get(user.tenantId(), id);
-        return openAiRealtimeService.prepareCallerResponse(call, request.text());
+        // Realtime already has the stable agent prompt and conversation. This
+        // endpoint is the durable transcript/analytics write, not a synchronous
+        // prompt-rebuild gate in front of the next spoken response.
+        return new RealtimeTranscriptResponse("");
     }
 
     @PostMapping("/{id}/realtime/tool")

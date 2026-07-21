@@ -36,7 +36,7 @@ class CallIntakeNoteServiceTest {
                 .containsEntry("conversation_state_revision", "3");
         assertThat(service.promptBlock(call, "different wording"))
                 .contains("AUTHORITATIVE SEMANTIC CALL STATE")
-                .contains("latest explicit caller correction wins");
+                .contains("authoritative until the latest caller turn explicitly corrects a value");
     }
 
     @Test

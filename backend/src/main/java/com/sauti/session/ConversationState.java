@@ -39,7 +39,7 @@ public record ConversationState(
 
     public String promptBlock() {
         var result = new StringBuilder(
-                "AUTHORITATIVE SEMANTIC CALL STATE (language-independent; latest explicit caller correction wins):\n"
+                "AUTHORITATIVE SEMANTIC CALL STATE (language-independent; authoritative until the latest caller turn explicitly corrects a value):\n"
         );
         result.append("- revision: ").append(revision).append('\n');
         result.append("- booking_subject: ").append(bookingSubject).append('\n');

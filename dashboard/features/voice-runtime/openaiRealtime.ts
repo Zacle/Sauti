@@ -3,6 +3,7 @@ import {
   completedRealtimeToolCalls,
   realtimeCancellationDecision,
   realtimeResponseRequestId,
+  realtimeTranscriptMirrorItem,
   SAUTI_REALTIME_REQUEST_ID,
 } from "./realtimeProtocol";
 
@@ -59,11 +60,7 @@ export async function connectOpenAiRealtime(options: {
   recordingDestination?: MediaStreamAudioDestinationNode | null;
   outputMode?: "audio" | "text";
   bargeInDebounceMs?: number;
-  prepareCallerResponse?: (text: string) => Promise<{
-    instructions?: string | null;
-    directResponse?: string | null;
-    requiredTool?: string | null;
-  } | string | null>;
+  recordCallerTranscript?: (text: string) => Promise<unknown>;
   responseLanguage?: string;
 }): Promise<OpenAiRealtimeConnection> {
   if ((options.outputMode ?? "text") === "audio") {
@@ -120,7 +117,7 @@ export async function connectOpenAiRealtime(options: {
   const pendingResponseRequests: PendingResponseRequest[] = [];
   let dispatchedResponseRequest: PendingResponseRequest | null = null;
   let responseRequestSequence = 0;
-  let callerPreparationChain = Promise.resolve();
+  let callerTranscriptWriteChain = Promise.resolve();
   const callerSpeechGate = new RealtimeTurnGate();
 
   const responseId = (event: Record<string, unknown>) => {
@@ -498,69 +495,27 @@ export async function connectOpenAiRealtime(options: {
     options.callbacks.onError("The voice provider returned an invalid internal protocol response.");
   };
 
-  const prepareAndRequestCallerResponse = (transcript: string, generation: number) => {
-    callerPreparationChain = callerPreparationChain.catch(() => undefined).then(async () => {
-      if (generation !== outputGeneration) return;
-      const preparation = Promise.resolve()
-        .then(() => options.prepareCallerResponse?.(transcript))
-        .then(normalizeCallerPreparation, () => null);
-      let timeout = 0;
-      const prepared = await Promise.race([
-        preparation.then((value) => ({ ready: true as const, value })),
-        new Promise<{ ready: false }>((resolve) => {
-          timeout = window.setTimeout(() => resolve({ ready: false }), 1_200);
-        }),
-      ]);
-      window.clearTimeout(timeout);
-      if (generation !== outputGeneration) return;
-
-      if (prepared.ready) {
-        const instructions = prepared.value?.instructions?.trim();
-        if (instructions) {
-          send(channel, { type: "session.update", session: { type: "realtime", instructions } });
-        }
-        const directResponse = prepared.value?.directResponse?.trim();
-        if (directResponse) {
-          const accepted = deliverAgentSpeech({
-            id: `direct:${generation}`,
-            generation,
-            text: directResponse,
-          });
-          if (accepted) {
-            send(channel, {
-              type: "conversation.item.create",
-              item: {
-                type: "message",
-                role: "assistant",
-                content: [{ type: "output_text", text: directResponse }],
-              },
-            });
-          }
-          return;
-        }
-        const requiredTool = prepared.value?.requiredTool?.trim();
-        if (requiredTool) {
-          enqueueResponse(
-            (requestId) => requestRequiredToolResponse(channel, requiredTool, requestId),
-            generation,
-          );
-          return;
-        }
-      } else {
-        // A slow preparation request may still enrich the next turn, but the
-        // current Realtime conversation is already sufficient for a natural
-        // answer and must not wait behind an internal state tool.
-        void preparation.then((late) => {
-          const instructions = late?.instructions?.trim();
-          if (generation === outputGeneration && instructions) {
-            send(channel, { type: "session.update", session: { type: "realtime", instructions } });
-          }
-        });
-      }
-      if (generation === outputGeneration) {
-        enqueueResponse((requestId) => requestCallerResponse(channel, requestId), generation, true);
-      }
-    });
+  const recordAndRequestCallerResponse = (
+    transcript: string,
+    generation: number,
+    mirrorAcceptedAudio: boolean,
+  ) => {
+    // Persist transcript/analytics in order, but never put that HTTP round trip,
+    // prompt reconstruction, retrieval, or a session rewrite in front of speech.
+    if (options.recordCallerTranscript) {
+      callerTranscriptWriteChain = callerTranscriptWriteChain
+        .catch(() => undefined)
+        .then(() => options.recordCallerTranscript?.(transcript))
+        .then(() => undefined, () => undefined);
+    }
+    if (generation !== outputGeneration) return;
+    if (mirrorAcceptedAudio) {
+      send(channel, {
+        type: "conversation.item.create",
+        item: realtimeTranscriptMirrorItem(transcript),
+      });
+    }
+    enqueueResponse((requestId) => requestCallerResponse(channel, requestId), generation, true);
   };
 
   const confirmRecognizedCallerSpeech = () => {
@@ -683,7 +638,7 @@ export async function connectOpenAiRealtime(options: {
         options.callbacks.onCallerTranscript(transcript, generation);
         // The session disables provider-managed response creation. Only a
         // usable final transcript is allowed to advance the conversation.
-        prepareAndRequestCallerResponse(transcript, generation);
+        recordAndRequestCallerResponse(transcript, generation, true);
       }
       if (!meaningfulTranscript) options.callbacks.onCallerAudioAbandoned?.();
       callerTurnGeneration = null;
@@ -933,7 +888,7 @@ export async function connectOpenAiRealtime(options: {
         type: "conversation.item.create",
         item: { type: "message", role: "user", content: [{ type: "input_text", text }] },
       });
-      prepareAndRequestCallerResponse(text, generation);
+      recordAndRequestCallerResponse(text, generation, false);
     },
     speakGreeting: (text) => {
       enqueueResponse(
@@ -951,20 +906,6 @@ export async function connectOpenAiRealtime(options: {
       channel.close();
       peer.close();
     },
-  };
-}
-
-function normalizeCallerPreparation(value: {
-  instructions?: string | null;
-  directResponse?: string | null;
-  requiredTool?: string | null;
-} | string | null | undefined) {
-  if (typeof value === "string") return { instructions: value, directResponse: "", requiredTool: "" };
-  if (!value) return null;
-  return {
-    instructions: value.instructions ?? "",
-    directResponse: value.directResponse ?? "",
-    requiredTool: value.requiredTool ?? "",
   };
 }
 

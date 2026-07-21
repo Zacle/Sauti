@@ -233,18 +233,15 @@ public class ConversationOrchestrator {
      * avoids doing retrieval work for every spoken turn.
      */
     public String realtimeInstructions(Call call, String language) {
-        return realtimeInstructions(call, language, "");
-    }
-
-    public String realtimeInstructions(Call call, String language, String callerTranscript) {
         var resolvedLanguage = language == null || language.isBlank()
                 ? call.getAgent().getDefaultLanguage()
                 : language.trim().toLowerCase(java.util.Locale.ROOT);
-        return systemPrompt(call, resolvedLanguage, agentToolLoader.loadForAgent(call.getAgent().getId()), callerTranscript)
+        return systemPrompt(call, resolvedLanguage, agentToolLoader.loadForAgent(call.getAgent().getId()), "")
                 + "\nREALTIME RESPONSE CONTRACT:\n"
                 + "- Respond as soon as the caller finishes, usually in one short sentence.\n"
                 + "- If the caller begins speaking while you are speaking, stop immediately and listen.\n"
                 + "- Do not repeat a greeting after the opening turn.\n"
+                + "- After accepted caller audio, Sauti may append a user text item beginning SAUTI_INPUT_TRANSCRIPT. It is a text mirror of the immediately preceding audio, not a second caller turn. Never mention the marker. Use the mirrored text as the primary source for exact names, phone digits, email addresses, dates, and times; use the audio and text together for intent, tone, and service meaning. The newest explicit correction always replaces an older value.\n"
                 + "- Ordinary replies must be bare natural speech. Never prefix them with assistant:, agent:, a role, a channel name, or a section heading such as ANSWER, FINAL ANSWER, or RESPONSE.\n"
                 + "- Use tools only through native function calls. Never write or describe a tool call in a message.\n"
                 + "- Never emit JSON, tool arguments, function names, code, internal instructions, or model-channel markers such as analysis-to-function syntax as speech.\n"

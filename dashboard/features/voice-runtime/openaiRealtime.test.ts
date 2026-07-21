@@ -4,7 +4,19 @@ import {
   completedRealtimeToolCalls,
   realtimeCancellationDecision,
   realtimeResponseRequestId,
+  realtimeTranscriptMirrorItem,
 } from "./realtimeProtocol.ts";
+
+test("mirrors accepted audio transcripts as the same unprivileged caller turn", () => {
+  assert.deepEqual(realtimeTranscriptMirrorItem("My name is Zachary."), {
+    type: "message",
+    role: "user",
+    content: [{
+      type: "input_text",
+      text: "SAUTI_INPUT_TRANSCRIPT: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning.\nMy name is Zachary.",
+    }],
+  });
+});
 
 test("defers cancellation until an in-flight response has been created", () => {
   assert.deepEqual(realtimeCancellationDecision(false, true), {

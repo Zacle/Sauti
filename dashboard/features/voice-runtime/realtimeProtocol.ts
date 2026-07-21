@@ -5,6 +5,18 @@ export type CompletedRealtimeToolCall = {
 };
 
 export const SAUTI_REALTIME_REQUEST_ID = "sauti_request_id";
+export const AUTHORITATIVE_TRANSCRIPT_PREFIX = "SAUTI_INPUT_TRANSCRIPT";
+
+export function realtimeTranscriptMirrorItem(transcript: string) {
+  return {
+    type: "message",
+    role: "user",
+    content: [{
+      type: "input_text",
+      text: `${AUTHORITATIVE_TRANSCRIPT_PREFIX}: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning.\n${transcript.trim()}`,
+    }],
+  };
+}
 
 export function realtimeResponseRequestId(event: Record<string, unknown>): string {
   const response = event.response as {

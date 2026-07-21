@@ -469,12 +469,15 @@ class ConversationOrchestratorTest {
                 """);
         when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of());
 
-        var instructions = orchestrator.realtimeInstructions(call, "en", "When are you open?");
+        var instructions = orchestrator.realtimeInstructions(call, "en");
 
         assertThat(instructions)
                 .contains("You are working for X-Fit")
                 .contains("not a general-purpose adviser")
                 .contains("Never deny a capability explicitly granted")
+                .contains("SAUTI_INPUT_TRANSCRIPT")
+                .contains("not a second caller turn")
+                .contains("primary source for exact names, phone digits, email addresses, dates, and times")
                 .contains("Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00")
                 .contains("men hairstyle: $5", "women hairstyle: $8", "nails: $4")
                 .contains("cancellation_policy", "Give 24 hours notice")

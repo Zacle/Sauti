@@ -151,7 +151,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
           outputMode: hybrid ? "text" : "audio",
           bargeInDebounceMs: hybrid ? 180 : 0,
           responseLanguage: session.language,
-          prepareCallerResponse: (text) => recordPublicRealtimeTranscript(
+          recordCallerTranscript: (text) => recordPublicRealtimeTranscript(
             session.sessionId, session.token, "caller", text,
           ),
           connectSdp: (offer) => connectPublicRealtime(session.sessionId, session.token, offer),

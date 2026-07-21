@@ -223,7 +223,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       outputMode: hybrid ? "text" : "audio",
       bargeInDebounceMs: hybrid ? 180 : 0,
       responseLanguage: started.call.languageDetected ?? undefined,
-      prepareCallerResponse: (text) => recordTestRealtimeTranscript(started.call.id, "caller", text),
+      recordCallerTranscript: (text) => recordTestRealtimeTranscript(started.call.id, "caller", text),
       connectSdp: (offer) => connectTestRealtime(started.call.id, offer),
       playbackContext: audioContextRef.current,
       recordingDestination: recordingDestinationRef.current,

@@ -201,6 +201,77 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void multilingualReviewApprovalCannotBeTurnedIntoAnotherConfirmationQuestion() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("approved-review-call");
+        when(sessions.conversationState("approved-review-call")).thenReturn(Optional.of(new ConversationState(
+                Map.of(
+                        "caller_name", "Zachary",
+                        "appointment_name", "Zachary",
+                        "caller_phone", "0105753221",
+                        "service_type", "Men hairstyle",
+                        "preferred_day", "Thursday 23 July",
+                        "preferred_time", "15:00"
+                ),
+                ConversationState.SUBJECT_SELF,
+                ConversationState.INTENT_ACTIVE,
+                8
+        )));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("review_decision", "approved"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Oui, tout est correct ?"
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "book_slot")
+                .containsEntry("nextToolAuthorized", true)
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void correctedReviewForcesOneFocusedBookingReviewInsteadOfDefendingTheOldValue() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("corrected-review-call");
+        when(sessions.conversationState("corrected-review-call")).thenReturn(Optional.of(new ConversationState(
+                Map.of("caller_name", "Akari", "appointment_name", "Akari"),
+                ConversationState.SUBJECT_SELF,
+                ConversationState.INTENT_ACTIVE,
+                3
+        )));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_name", "Zachary", "review_decision", "corrected"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "I heard Akari. Is that right?"
+        )));
+
+        assertThat(captureState(sessions, "corrected-review-call").values())
+                .containsEntry("caller_name", "Zachary")
+                .containsEntry("appointment_name", "Zachary")
+                .doesNotContainValue("Akari");
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "book_slot")
+                .containsEntry("nextToolAuthorized", true)
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
     void configuredVerticalFieldsCanBeRetractedWithoutLanguageSpecificRules() {
         var sessions = mock(CallSessionStore.class);
         var call = call("vertical-field-call");

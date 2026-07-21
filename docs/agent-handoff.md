@@ -3962,3 +3962,31 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: after CI/CD, reproduce the screenshot's split caller turn (for example, `Thursday at...` followed quickly by another recognized fragment) in Agent Studio and one carrier call. Confirm that the first pending response is cancelled only after creation, the latest turn receives exactly one answer, and the UI returns to listening. Provider metadata and targeted cancellation make late events safe, but real WebRTC/carrier ordering still requires one live validation after deployment.
+
+### 2026-07-21 - Remove per-turn Realtime preparation and make accepted transcripts exact-field context
+
+- Fixed the returned 5–6 second reply delay by removing the transcript HTTP request, language detection, retrieval-backed prompt reconstruction, and `session.update` from the response-critical path. Browser/public Web Voice and phone Realtime now request the next model response immediately after accepting the final transcript. Transcript persistence remains ordered and asynchronous for history and analytics, while each Realtime session keeps one stable personalized prompt.
+- Fixed the split-brain transcript behavior where the UI showed `Gary`, `Zachary`, or the full phone number but the native audio model replied with `Akari`, `Zakari`, or asked for the number again. After accepted audio, both browser and phone runtimes append an unprivileged user text mirror marked `SAUTI_INPUT_TRANSCRIPT` before `response.create`. The stable Realtime contract tells the model that this is the same caller turn and makes the transcript primary only for exact names, digits, email addresses, dates, and times; audio and text remain combined for intent, tone, and service meaning.
+- Removed the obsolete caller-turn preparation API from `OpenAiRealtimeService`, including its unused call-session and language-detector dependencies. This prevents future code from accidentally restoring per-turn full-prompt replacement and keeps natural conversation separate from transcript recording and business-tool execution.
+- Made booking-review approvals and corrections deterministic without phrase matching. The multilingual semantic tool still determines whether the latest review response means `approved` or `corrected`; once it does, the server forces exactly one configured `book_slot` transition and suppresses any model-authored confirmation question. This prevents repeated `is everything correct?` loops and prevents the agent from defending an older misheard name.
+- Clarified semantic-state precedence: stored state is authoritative until the newest caller turn explicitly corrects a value. Added regressions for exact transcript mirroring, phone event behavior, multilingual approval, name correction during review, and prompt guidance.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/{CallController,PublicWebVoiceController}.java`
+  - `backend/src/main/java/com/sauti/call/{OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/session/ConversationState.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - focused backend tests for Realtime configuration/transport, semantic intake, review transitions, and prompt behavior
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/{openaiRealtime,openaiRealtime.test,realtimeProtocol}.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Realtime service, phone transport, semantic state, intake-note, and orchestrator tests - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 10 protocol/turn-gate regressions.
+  - `npm.cmd run lint` and `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat the supplied Gary/Zachary call in Agent Studio and on one carrier call. Confirm transcript-final-to-first-audio latency, that `Gary` and `0105753221` are used exactly, that `Thursday at 3 p.m.` reaches availability without a generic failure, and that a corrected review followed by a natural approval saves once. The automated suite verifies ordering and deterministic transitions; live provider transcription timing, network latency, microphone acoustics, and external TTS timing still require end-to-end measurement.

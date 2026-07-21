@@ -313,15 +313,10 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
-    void speaksPreparedBusinessHoursWithoutStartingASecondModelResponse() {
+    void acceptedTranscriptIsMirroredBeforeANaturalResponseWithoutSynchronousPreparation() {
         var events = new ArrayList<String>();
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
-        when(realtimeService.prepareCallerResponse(call, "When are you available?"))
-                .thenReturn(new RealtimeDtos.RealtimeTranscriptResponse(
-                        "updated instructions",
-                        "We are open Monday through Friday from 9 in the morning to 5 in the evening."
-                ));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
                 new ObjectMapper(), realtimeService, call, new RecordingListener(events), Map.of()
         );
@@ -332,24 +327,15 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 "{\"type\":\"conversation.item.input_audio_transcription.completed\","
                         + "\"item_id\":\"caller-hours\",\"transcript\":\"When are you available?\"}", true);
 
-        assertThat(events).containsExactly(
-                "speech",
-                "caller:When are you available?",
-                "agent:We are open Monday through Friday from 9 in the morning to 5 in the evening.:false"
-        );
-        verify(session).updateInstructions("updated instructions");
-        verify(session).seedAssistantText("We are open Monday through Friday from 9 in the morning to 5 in the evening.");
-        verify(session, never()).requestResponse();
+        assertThat(events).containsExactly("speech", "caller:When are you available?");
+        verify(session).mirrorCallerTranscript("When are you available?");
+        verify(session).requestResponse();
     }
 
     @Test
-    void requiresSemanticTurnUnderstandingBeforeAnyPhoneReply() {
+    void multilingualCorrectionUsesTheSameTranscriptMirrorAndNaturalToolChoicePath() {
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
-        when(realtimeService.prepareCallerResponse(call, "El nombre anterior era incorrecto."))
-                .thenReturn(new RealtimeDtos.RealtimeTranscriptResponse(
-                        "updated semantic instructions", "", com.sauti.tool.ConversationStateTool.NAME
-                ));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
                 new ObjectMapper(), realtimeService, call,
                 new RecordingListener(new ArrayList<>()), Map.of()
@@ -362,9 +348,9 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                         + "\"item_id\":\"semantic-caller\",\"transcript\":\"El nombre anterior era incorrecto.\"}",
                 true);
 
-        verify(session).updateInstructions("updated semantic instructions");
-        verify(session).requestResponseWithRequiredTool(com.sauti.tool.ConversationStateTool.NAME);
-        verify(session, never()).requestResponse();
+        verify(session).mirrorCallerTranscript("El nombre anterior era incorrecto.");
+        verify(session).requestResponse();
+        verify(session, never()).requestResponseWithRequiredTool(com.sauti.tool.ConversationStateTool.NAME);
     }
 
     @Test
@@ -1035,6 +1021,32 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         assertThat(event.path("type").asText()).isEqualTo("session.update");
         assertThat(event.path("session").path("type").asText()).isEqualTo("realtime");
         assertThat(event.path("session").path("instructions").asText()).isEqualTo("Stay concise.");
+    }
+
+    @Test
+    void transcriptMirrorKeepsExactFieldsInAnUnprivilegedUserItem() throws Exception {
+        var webSocket = mock(WebSocket.class);
+        when(webSocket.sendText(anyString(), eq(true)))
+                .thenReturn(CompletableFuture.completedFuture(webSocket));
+        var executor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> keepAlive = mock(ScheduledFuture.class);
+        when(executor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenAnswer(ignored -> keepAlive);
+        var session = new OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession(
+                webSocket, new ObjectMapper(), executor
+        );
+
+        session.mirrorCallerTranscript("My name is Zachary and my number is 0105753221.");
+
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(webSocket, timeout(1_000)).sendText(payload.capture(), eq(true));
+        var event = new ObjectMapper().readTree(payload.getValue());
+        assertThat(event.path("type").asText()).isEqualTo("conversation.item.create");
+        assertThat(event.path("item").path("role").asText()).isEqualTo("user");
+        assertThat(event.path("item").path("content").path(0).path("type").asText()).isEqualTo("input_text");
+        assertThat(event.path("item").path("content").path(0).path("text").asText())
+                .startsWith("SAUTI_INPUT_TRANSCRIPT:")
+                .endsWith("My name is Zachary and my number is 0105753221.");
     }
 
     @Test

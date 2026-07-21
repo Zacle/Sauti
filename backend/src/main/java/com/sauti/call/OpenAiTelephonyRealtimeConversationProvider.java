@@ -344,31 +344,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             listener.onCallerTranscript(transcript);
                             var activeSession = session;
                             if (activeSession != null) {
-                                try {
-                                    var preparation = realtimeService.prepareCallerResponse(call, transcript);
-                                    if (preparation == null) {
-                                        activeSession.requestResponse();
-                                    } else {
-                                        activeSession.updateInstructions(preparation.instructions());
-                                        if (preparation.directResponse() == null || preparation.directResponse().isBlank()) {
-                                            if (preparation.requiredTool() == null || preparation.requiredTool().isBlank()) {
-                                                activeSession.requestResponse();
-                                            } else {
-                                                activeSession.requestResponseWithRequiredTool(preparation.requiredTool());
-                                            }
-                                        } else {
-                                            activeSession.seedAssistantText(preparation.directResponse());
-                                            deliverDirectResponse(preparation.directResponse());
-                                        }
-                                    }
-                                } catch (RuntimeException exception) {
-                                    // The active Realtime session already has the full prompt and
-                                    // conversation. Preparation enriches that context, but it must
-                                    // never put an internal state tool in front of ordinary speech.
-                                    LOGGER.warn("Realtime caller preparation failed callId={}: {}",
-                                            call.getId(), exception.getMessage());
-                                    activeSession.requestResponse();
-                                }
+                                activeSession.mirrorCallerTranscript(transcript);
+                                activeSession.requestResponse();
                             }
                         }
                         finishCallerTurn();
@@ -1016,6 +993,22 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             "type", "message",
                             "role", "assistant",
                             "content", java.util.List.of(Map.of("type", "output_text", "text", text.trim()))
+                    )
+            ));
+        }
+
+        void mirrorCallerTranscript(String transcript) {
+            if (transcript == null || transcript.isBlank()) return;
+            send(Map.of(
+                    "type", "conversation.item.create",
+                    "item", Map.of(
+                            "type", "message",
+                            "role", "user",
+                            "content", java.util.List.of(Map.of(
+                                    "type", "input_text",
+                                    "text", "SAUTI_INPUT_TRANSCRIPT: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning.\n"
+                                            + transcript.trim()
+                            ))
                     )
             ));
         }

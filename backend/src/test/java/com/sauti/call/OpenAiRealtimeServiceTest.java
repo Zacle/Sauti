@@ -2,14 +2,11 @@ package com.sauti.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.Agent;
 import com.sauti.llm.ConversationOrchestrator;
-import com.sauti.nlp.SimpleLanguageDetector;
-import com.sauti.nlp.LanguageDetector;
 import com.sauti.tool.AgentToolLoader;
 import com.sauti.tool.ToolFulfillmentRouter;
 import com.sun.net.httpserver.HttpServer;
@@ -22,67 +19,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class OpenAiRealtimeServiceTest {
-    @Test
-    void letsOrdinaryMultilingualCallerTurnsUseTheNaturalResponsePath() {
-        var orchestrator = mock(ConversationOrchestrator.class);
-        var loader = mock(AgentToolLoader.class);
-        var call = mock(Call.class);
-        var agent = mock(Agent.class);
-        when(call.getAgent()).thenReturn(agent);
-        when(call.getLanguageDetected()).thenReturn("en");
-        when(agent.getId()).thenReturn(UUID.randomUUID());
-        when(agent.getDefaultLanguage()).thenReturn("en");
-        when(agent.getSupportedLanguages()).thenReturn(List.of("en", "fr", "ar", "sw"));
-        when(loader.loadForAgent(agent.getId())).thenReturn(List.of(
-                com.sauti.tool.ConversationStateTool.definition()
-        ));
-        var service = new OpenAiRealtimeService(
-                new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
-                mock(com.sauti.session.CallSessionStore.class), new SimpleLanguageDetector(),
-                "server-secret", "http://localhost/unused", "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
-        );
-
-        for (var callerTurn : List.of(
-                "When are you available?",
-                "À quels moments votre salon accueille-t-il les clients ?",
-                "متى يمكنني الحضور؟",
-                "Ningependa kurudi baadaye bila kuweka nafasi sasa.",
-                "My name was recognized incorrectly."
-        )) {
-            var preparation = service.prepareCallerResponse(call, callerTurn);
-            assertThat(preparation.directResponse()).as(callerTurn).isBlank();
-            assertThat(preparation.requiredTool()).as(callerTurn).isBlank();
-        }
-    }
-
-    @Test
-    void followsASubstantialEnglishCallerTurnInsteadOfAStaleLanguage() {
-        var orchestrator = mock(ConversationOrchestrator.class);
-        var detector = mock(LanguageDetector.class);
-        var call = mock(Call.class);
-        var agent = mock(Agent.class);
-        when(call.getAgent()).thenReturn(agent);
-        when(call.getLanguageDetected()).thenReturn("es");
-        when(agent.getSupportedLanguages()).thenReturn(List.of("en", "es"));
-        when(detector.detect(
-                "Hello, I would like to book an appointment.", "es", List.of("en", "es")
-        )).thenReturn("en");
-        when(orchestrator.realtimeInstructions(
-                call, "en", "Hello, I would like to book an appointment."
-        )).thenReturn("English instructions");
-        var service = new OpenAiRealtimeService(
-                new ObjectMapper(), orchestrator, mock(AgentToolLoader.class), mock(ToolFulfillmentRouter.class),
-                mock(com.sauti.session.CallSessionStore.class), detector,
-                "server-secret", "http://localhost/unused", "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
-        );
-
-        assertThat(service.realtimeInstructions(call, "Hello, I would like to book an appointment."))
-                .isEqualTo("English instructions");
-        verify(orchestrator).realtimeInstructions(
-                call, "en", "Hello, I would like to book an appointment."
-        );
-    }
-
     @Test
     void configuresTelephonyPcmAndAgentSpecificTurnDetectionForCartesia() throws Exception {
         var orchestrator = mock(ConversationOrchestrator.class);
@@ -105,8 +41,6 @@ class OpenAiRealtimeServiceTest {
         var mapper = new ObjectMapper();
         var service = new OpenAiRealtimeService(
                 mapper, orchestrator, loader, mock(ToolFulfillmentRouter.class),
-                mock(com.sauti.session.CallSessionStore.class),
-                new SimpleLanguageDetector(),
                 "server-secret", "http://localhost/unused", "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
         );
 
@@ -152,8 +86,6 @@ class OpenAiRealtimeServiceTest {
             when(orchestrator.realtimeInstructions(call, "fr")).thenReturn("Speak French concisely.");
             var service = new OpenAiRealtimeService(
                     new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
-                    mock(com.sauti.session.CallSessionStore.class),
-                    new SimpleLanguageDetector(),
                     "server-secret", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/realtime/calls",
                     "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
             );
@@ -205,8 +137,6 @@ class OpenAiRealtimeServiceTest {
             when(orchestrator.realtimeInstructions(call, "fr")).thenReturn("Speak French concisely.");
             var service = new OpenAiRealtimeService(
                     new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
-                    mock(com.sauti.session.CallSessionStore.class),
-                    new SimpleLanguageDetector(),
                     "server-secret", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/realtime/calls",
                     "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
             );
