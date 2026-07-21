@@ -181,10 +181,9 @@ public class PublicWebVoiceController {
         var call = verifiedPublicCall(sessionId, request);
         callPipelineService.recordRealtimeTranscript(
                 call.getTenant().getId(), call.getId(), transcript.role(), transcript.text(), transcript.interrupted());
-        var instructions = "caller".equalsIgnoreCase(transcript.role())
-                ? openAiRealtimeService.realtimeInstructions(call, transcript.text())
-                : "";
-        return new RealtimeTranscriptResponse(instructions);
+        return "caller".equalsIgnoreCase(transcript.role())
+                ? openAiRealtimeService.prepareCallerResponse(call, transcript.text())
+                : new RealtimeTranscriptResponse("");
     }
 
     @PostMapping("/sessions/{sessionId}/realtime/tool")

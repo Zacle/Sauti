@@ -3802,3 +3802,37 @@ Expected:
   - `node --check public/pcm-stream-player.js` in `dashboard/` - passed.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat a long booking review and several short replies in Agent Studio and public Web Voice. Inspect `sauti.voice.latency` by stage and `sauti.voice.playback.underruns`: a high `transcript_to_speech_ready` isolates prompt/model/tool latency, a high `speech_ready_to_first_audio` isolates Cartesia, and underruns isolate provider/network delivery. Live audio-device and network behavior cannot be proven by mocked streams alone.
+
+### 2026-07-21 - Gate interruptions on recognized speech and answer business hours deterministically
+
+- Fixed the Agent Studio state where a caller transcript was accepted but the UI remained on `Hearing you` and no answer followed. Raw server VAD and a second local microphone-energy monitor could treat echo, background noise, or an empty audio turn as a real interruption, invalidate the valid response generation, and then leave no recognized transcript from which to request a replacement response.
+- Raw audio start/stop events now update only the listening/processing UI and pending-transcription guard. Only meaningful streaming or final transcription can cancel a response or interrupt Cartesia. Empty, failed, and watchdog-expired turns restore the idle listening state. The duplicate local raw-energy interruption path is disabled for Realtime calls.
+- Applied the same recognition gate to phone Realtime. `speech_started` no longer marks a valid phone response interrupted; the interruption becomes authoritative only after transcript content is accepted. Empty VAD turns therefore preserve and release the valid deferred answer instead of silently discarding it.
+- Made caller-response preparation fail open after 1.2 seconds. A slow or hung transcript/instruction request can no longer prevent `response.create` or poison the serialized preparation chain for later turns; the current safe session prompt is used and a late instruction update is retained only for a still-current generation.
+- Added a deterministic, server-owned answer for broad opening-hours questions in browser, public Web Voice, and phone Realtime. Configured hours are spoken once without asking the caller to choose a day or morning/afternoon first; date- or time-specific availability remains owned by the live calendar tool. The default weekday answer is shortened to one natural sentence to reduce latency and TTS exposure.
+- Strengthened the shared conversation policy for every agent/channel: direct customer questions must receive the known answer first, published business hours are distinct from live slots, and broad `when are you available` questions must include both days and opening/closing times.
+- Added browser turn-gate tests to CI plus backend regressions for the reported availability phrasings, specific-slot exclusion, exact direct phone speech, and a valid response completing during an empty/noise VAD turn.
+- This design intentionally goes beyond raw VAD semantics. OpenAI documents `speech_started` as the normal interruption signal, but Sauti's external Cartesia path and open microphone can produce false acoustic starts; with provider auto-interruption disabled, Sauti requires recognized speech before destructive cancellation.
+- Files touched:
+  - `.github/workflows/ci.yml`
+  - `backend/src/main/java/com/sauti/agent/OperatingHoursSchedule.java`
+  - `backend/src/main/java/com/sauti/api/{CallController,PublicWebVoiceController}.java`
+  - `backend/src/main/java/com/sauti/call/{OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider,RealtimeDtos}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/agent/OperatingHoursScheduleTest.java`
+  - `backend/src/test/java/com/sauti/call/{OpenAiRealtimeServiceTest,OpenAiTelephonyRealtimeConversationProviderTest}.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/{openaiRealtime,realtimeTurnGate,realtimeTurnGate.test}.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/lib/api/{calls,public-web-voice}.ts`
+  - `dashboard/{package.json,tsconfig.json}`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Realtime service, telephony lifecycle, operating-hours, and conversation-policy tests - passed.
+  - `.\gradlew.bat :backend:test :backend:build` - passed.
+  - `npm.cmd run test:voice` in `dashboard/` - passed; 3 turn-gate regressions.
+  - `npm.cmd run lint` and `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat the exact Agent Studio call from the screenshot, one broad-hours question, one date-specific availability question, and one carrier call. Test silence/echo during a pending answer and a deliberate spoken interruption. Automated tests cover event ordering and deterministic replies, but real microphone acoustic echo, browser scheduling, carrier buffering, and provider latency still require live validation. If these remain unstable after the lifecycle fix, migrate the media/turn-taking layer to a dedicated voice runtime rather than adding more local VAD heuristics.

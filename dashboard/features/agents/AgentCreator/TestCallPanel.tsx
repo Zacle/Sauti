@@ -223,8 +223,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       outputMode: hybrid ? "text" : "audio",
       bargeInDebounceMs: hybrid ? 180 : 0,
       responseLanguage: started.call.languageDetected ?? undefined,
-      prepareCallerResponse: (text) => recordTestRealtimeTranscript(started.call.id, "caller", text)
-        .then((response) => response.instructions),
+      prepareCallerResponse: (text) => recordTestRealtimeTranscript(started.call.id, "caller", text),
       connectSdp: (offer) => connectTestRealtime(started.call.id, offer),
       playbackContext: audioContextRef.current,
       recordingDestination: recordingDestinationRef.current,
@@ -256,8 +255,16 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             window.setTimeout(() => void endCall("completed"), 220);
           }
         },
+        onCallerAudioStarted: () => updateStatus("capturing"),
+        onCallerAudioStopped: () => {
+          if (statusRef.current === "capturing") updateStatus("thinking");
+        },
+        onCallerAudioAbandoned: () => {
+          if (statusRef.current === "capturing" || statusRef.current === "thinking") {
+            updateStatus("listening");
+          }
+        },
         onCallerSpeechStarted: (_agentWasResponding, generation) => {
-          updateStatus("capturing");
           if (hybrid) {
             // Always advance the external TTS generation. A Cartesia context
             // may still be generating even before its first audio frame arrives.
@@ -560,7 +567,11 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           startUtteranceCapture(false, "auto", voiceDuration);
         } else if (!realtimeConnected && currentStatus === "thinking" && voiceDuration >= 100) {
           startUtteranceCapture(true, "auto", voiceDuration);
-        } else if (currentStatus === "speaking" && bargeInDetected && voiceDuration >= Math.max(180, Math.min(250, settings.bargeInGraceMs))) {
+        } else if (!realtimeConnected && currentStatus === "speaking" && bargeInDetected
+          && voiceDuration >= Math.max(180, Math.min(250, settings.bargeInGraceMs))) {
+          // Realtime interruption is owned by the transcript-aware gate. A
+          // second raw microphone-energy path caused echo/noise to stop valid
+          // speech even when no caller words were recognized.
           interruptAgentAndCapture(voiceDuration);
         }
       } else {

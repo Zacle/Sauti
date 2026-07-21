@@ -118,6 +118,12 @@ class OperatingHoursScheduleTest {
     }
 
     @Test
+    void describesTheDefaultWeekdayScheduleConciselyForSpeech() {
+        assertThat(OperatingHoursSchedule.describeForSpeech("weekdays", "en"))
+                .isEqualTo("We are open Monday through Friday from 9 in the morning to 5 in the evening, and closed Saturday and Sunday.");
+    }
+
+    @Test
     void recoversHoursAndExceptionsFromGeneratedPrompts() {
         var agent = org.mockito.Mockito.mock(Agent.class);
         org.mockito.Mockito.when(agent.getOperatingHours()).thenReturn("always");

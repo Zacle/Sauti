@@ -33,5 +33,6 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm run test:voice
       - run: npm run typecheck
       - run: npm run build

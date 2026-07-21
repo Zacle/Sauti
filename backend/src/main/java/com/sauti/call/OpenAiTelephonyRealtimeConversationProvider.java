@@ -137,6 +137,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private boolean responseHasToolCall;
         private boolean callerSpeechActive;
         private boolean callerSpeechNotified;
+        private boolean callerTurnAgentWasResponding;
         private String activeCallerTurnKey = "";
         private long callerTurnSequence;
         private final java.util.LinkedHashMap<String, ScheduledFuture<?>> pendingCallerTurns =
@@ -289,11 +290,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         if ("function_call".equals(itemType)) responseHasToolCall = true;
                     }
                     case "input_audio_buffer.speech_started" -> {
-                        if (responseActive) responseInterrupted = true;
                         synchronized (this) {
                             var pendingTurnKey = beginPendingCallerTurn(event.path("item_id").asText(""));
                             callerSpeechActive = true;
                             callerSpeechNotified = false;
+                            callerTurnAgentWasResponding = responseActive;
                             armCallerTranscriptionWatchdog(pendingTurnKey, 15);
                         }
                     }
@@ -317,8 +318,19 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             listener.onCallerTranscript(transcript);
                             var activeSession = session;
                             if (activeSession != null) {
-                                activeSession.updateInstructions(realtimeService.realtimeInstructions(call, transcript));
-                                activeSession.requestResponse();
+                                var preparation = realtimeService.prepareCallerResponse(call, transcript);
+                                if (preparation == null) {
+                                    activeSession.updateInstructions(realtimeService.realtimeInstructions(call, transcript));
+                                    activeSession.requestResponse();
+                                } else {
+                                    activeSession.updateInstructions(preparation.instructions());
+                                    if (preparation.directResponse() == null || preparation.directResponse().isBlank()) {
+                                        activeSession.requestResponse();
+                                    } else {
+                                        activeSession.seedAssistantText(preparation.directResponse());
+                                        deliverDirectResponse(preparation.directResponse());
+                                    }
+                                }
                             }
                         }
                         finishCallerTurn();
@@ -503,12 +515,27 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private synchronized void notifyCallerSpeechStarted() {
             if (callerSpeechNotified) return;
             callerSpeechNotified = true;
+            responseInterrupted = callerTurnAgentWasResponding || responseActive;
             listener.onCallerSpeechStarted();
         }
 
         private synchronized void finishCallerTurn() {
             callerSpeechActive = false;
             callerSpeechNotified = false;
+            callerTurnAgentWasResponding = false;
+        }
+
+        private synchronized void deliverDirectResponse(String text) {
+            var speech = VoiceOutputGuard.speechText(text);
+            if (speech.isBlank()) return;
+            var completion = new AgentCompletion(
+                    speech, false, turnGeneration, "direct:" + turnGeneration + ":" + speechFingerprint(speech)
+            );
+            if (hasPendingCallerTranscriptions()) {
+                deferredAgentCompletions.addLast(completion);
+            } else {
+                deliverAgentCompletion(completion);
+            }
         }
 
         private synchronized String beginPendingCallerTurn(String itemId) {

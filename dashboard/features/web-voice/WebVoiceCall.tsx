@@ -153,7 +153,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
           responseLanguage: session.language,
           prepareCallerResponse: (text) => recordPublicRealtimeTranscript(
             session.sessionId, session.token, "caller", text,
-          ).then((response) => response.instructions),
+          ),
           connectSdp: (offer) => connectPublicRealtime(session.sessionId, session.token, offer),
           playbackContext: context,
           callbacks: {
@@ -179,9 +179,13 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
                 window.setTimeout(end, 220);
               }
             },
+            onCallerAudioStarted: () => setPartial("Listening..."),
+            onCallerAudioStopped: () => {
+              setPartial((current) => current === "Listening..." ? "Processing..." : current);
+            },
+            onCallerAudioAbandoned: () => setPartial(""),
             onCallerSpeechStarted: (_agentWasResponding, generation) => {
               updateSpeaking(false);
-              setPartial("Listening...");
               if (hybrid) {
                 // Always advance the external TTS generation. A Cartesia context
                 // may still be generating before its first audio frame arrives.

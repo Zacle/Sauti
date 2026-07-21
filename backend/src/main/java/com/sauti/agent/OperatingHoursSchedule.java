@@ -182,7 +182,12 @@ public final class OperatingHoursSchedule {
                     ? "Les heures d’ouverture exactes ne sont pas configurées."
                     : "The exact opening hours are not configured.";
         }
-        var schedule = "weekdays".equals(value) ? weekdaySchedule() : parse(value);
+        if ("weekdays".equals(value)) {
+            return normalizedLanguage.startsWith("fr")
+                    ? "Nous sommes ouverts du lundi au vendredi de 9 heures a 17 heures, et fermes le samedi et le dimanche."
+                    : "We are open Monday through Friday from 9 in the morning to 5 in the evening, and closed Saturday and Sunday.";
+        }
+        var schedule = parse(value);
         var openings = new java.util.ArrayList<String>();
         var closed = new java.util.ArrayList<String>();
         for (var day : DayOfWeek.values()) {

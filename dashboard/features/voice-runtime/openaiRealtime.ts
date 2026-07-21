@@ -1,8 +1,13 @@
+import { RealtimeTurnGate } from "./realtimeTurnGate";
+
 export type OpenAiRealtimeCallbacks = {
   onConnected: () => void;
   onCallerTranscript: (text: string, generation: number) => void;
   onAgentTranscript: (text: string, interrupted: boolean) => void;
   onSpeaking: (speaking: boolean) => void;
+  onCallerAudioStarted?: () => void;
+  onCallerAudioStopped?: () => void;
+  onCallerAudioAbandoned?: () => void;
   onCallerSpeechStarted: (agentWasResponding: boolean, generation: number) => void;
   onAgentSpeech?: (speech: { id: string; generation: number; text: string }) => void;
   onError: (message: string) => void;
@@ -38,7 +43,10 @@ export async function connectOpenAiRealtime(options: {
   recordingDestination?: MediaStreamAudioDestinationNode | null;
   outputMode?: "audio" | "text";
   bargeInDebounceMs?: number;
-  prepareCallerResponse?: (text: string) => Promise<string | null>;
+  prepareCallerResponse?: (text: string) => Promise<{
+    instructions?: string | null;
+    directResponse?: string | null;
+  } | string | null>;
   responseLanguage?: string;
 }): Promise<OpenAiRealtimeConnection> {
   if ((options.outputMode ?? "text") === "audio") {
@@ -73,6 +81,7 @@ export async function connectOpenAiRealtime(options: {
   let currentResponseGeneration = 0;
   let outputGeneration = 0;
   let callerTurnGeneration: number | null = null;
+  let callerTurnAgentWasResponding = false;
   let localSpeechSequence = 0;
   let discardCurrentResponseOutput = false;
   const ignoredResponseIds = new Set<string>();
@@ -88,6 +97,7 @@ export async function connectOpenAiRealtime(options: {
   const pendingResponseRequests: PendingResponseRequest[] = [];
   let dispatchedResponseRequest: PendingResponseRequest | null = null;
   let callerPreparationChain = Promise.resolve();
+  const callerSpeechGate = new RealtimeTurnGate();
 
   const responseId = (event: Record<string, unknown>) => {
     const response = event.response as { id?: string } | undefined;
@@ -237,6 +247,8 @@ export async function connectOpenAiRealtime(options: {
         activeCallerTurnKey = "";
         callerSpeechActive = false;
         callerTurnGeneration = null;
+        callerSpeechGate.reset();
+        options.callbacks.onCallerAudioAbandoned?.();
       }
       flushDeferredAgentSpeech();
     }, timeoutMs);
@@ -341,21 +353,69 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const prepareAndRequestCallerResponse = (transcript: string, generation: number) => {
-    callerPreparationChain = callerPreparationChain.then(async () => {
+    callerPreparationChain = callerPreparationChain.catch(() => undefined).then(async () => {
       if (generation !== outputGeneration) return;
-      try {
-        const instructions = await options.prepareCallerResponse?.(transcript);
-        if (generation !== outputGeneration) return;
-        if (instructions?.trim()) {
+      const preparation = Promise.resolve()
+        .then(() => options.prepareCallerResponse?.(transcript))
+        .then(normalizeCallerPreparation, () => null);
+      let timeout = 0;
+      const prepared = await Promise.race([
+        preparation.then((value) => ({ ready: true as const, value })),
+        new Promise<{ ready: false }>((resolve) => {
+          timeout = window.setTimeout(() => resolve({ ready: false }), 1_200);
+        }),
+      ]);
+      window.clearTimeout(timeout);
+      if (generation !== outputGeneration) return;
+
+      if (prepared.ready) {
+        const instructions = prepared.value?.instructions?.trim();
+        if (instructions) {
           send(channel, { type: "session.update", session: { type: "realtime", instructions } });
         }
-      } catch {
-        // The active Realtime session still has its original safe instructions.
+        const directResponse = prepared.value?.directResponse?.trim();
+        if (directResponse) {
+          const accepted = deliverAgentSpeech({
+            id: `direct:${generation}`,
+            generation,
+            text: directResponse,
+          });
+          if (accepted) {
+            send(channel, {
+              type: "conversation.item.create",
+              item: {
+                type: "message",
+                role: "assistant",
+                content: [{ type: "output_text", text: directResponse }],
+              },
+            });
+          }
+          return;
+        }
+      } else {
+        // Per-turn state enrichment must never block the conversation. Apply a
+        // late instruction update for the next response, but answer this turn
+        // from the safe session prompt and the Realtime conversation history.
+        void preparation.then((late) => {
+          const instructions = late?.instructions?.trim();
+          if (generation === outputGeneration && instructions) {
+            send(channel, { type: "session.update", session: { type: "realtime", instructions } });
+          }
+        });
       }
       if (generation === outputGeneration) {
         enqueueResponse(() => requestCallerResponse(channel), generation);
       }
     });
+  };
+
+  const confirmRecognizedCallerSpeech = () => {
+    if (callerTurnGeneration !== null) return callerTurnGeneration;
+    const agentWasResponding = callerTurnAgentWasResponding || responseActive || responseRequestInFlight;
+    const generation = invalidateOutputForCallerTurn();
+    agentInterrupted = agentWasResponding;
+    options.callbacks.onCallerSpeechStarted(agentWasResponding, generation);
+    return generation;
   };
 
   const isOutputItem = (event: Record<string, unknown>, expectedType: string) => {
@@ -426,28 +486,35 @@ export async function connectOpenAiRealtime(options: {
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
-      if (isMeaningfulCallerTranscript(transcript) && shouldProcessCallerTranscript(event, transcript)) {
+      const meaningfulTranscript = isMeaningfulCallerTranscript(transcript);
+      if (meaningfulTranscript && shouldProcessCallerTranscript(event, transcript)) {
         const speechStartGeneration = callerTurnGeneration;
-        const generation = speechStartGeneration ?? invalidateOutputForCallerTurn();
-        if (speechStartGeneration === null) {
-          // Short utterances can finish before the barge-in debounce fires.
-          // A usable final transcript is still a real caller turn, so external
-          // Cartesia playback must stop before this response is prepared.
-          agentInterrupted = responseActive;
-          options.callbacks.onCallerSpeechStarted(responseActive, generation);
-        }
+        callerSpeechGate.confirmFinal(transcript);
+        const generation = speechStartGeneration ?? confirmRecognizedCallerSpeech();
         protocolRecoveryAttempts = 0;
         options.callbacks.onCallerTranscript(transcript, generation);
         // The session disables provider-managed response creation. Only a
         // usable final transcript is allowed to advance the conversation.
         prepareAndRequestCallerResponse(transcript, generation);
       }
+      if (!meaningfulTranscript) options.callbacks.onCallerAudioAbandoned?.();
       callerTurnGeneration = null;
+      callerSpeechActive = false;
+      callerTurnAgentWasResponding = false;
+      callerSpeechGate.reset();
       finishPendingCallerTranscription(event);
     }
     if (type === "conversation.item.input_audio_transcription.failed") {
       callerTurnGeneration = null;
+      callerSpeechActive = false;
+      callerTurnAgentWasResponding = false;
+      callerSpeechGate.reset();
+      options.callbacks.onCallerAudioAbandoned?.();
       finishPendingCallerTranscription(event);
+    }
+    if (type === "conversation.item.input_audio_transcription.delta") {
+      const delta = String(event.delta ?? "");
+      if (callerSpeechGate.addTranscriptDelta(delta)) confirmRecognizedCallerSpeech();
     }
     if (type === "response.output_audio_transcript.delta"
       || type === "response.output_audio_transcript.done") {
@@ -515,26 +582,25 @@ export async function connectOpenAiRealtime(options: {
     if (type === "input_audio_buffer.speech_started") {
       const pendingTurnKey = beginPendingCallerTurn(event);
       callerSpeechActive = true;
+      callerTurnAgentWasResponding = responseActive || responseRequestInFlight;
+      callerSpeechGate.begin();
+      options.callbacks.onCallerAudioStarted?.();
       armCallerTranscriptionWatchdog(pendingTurnKey, 15_000);
-      const agentWasResponding = responseActive;
       const debounceMs = Math.max(180, options.bargeInDebounceMs ?? 0);
       window.clearTimeout(bargeInTimer);
       if (debounceMs > 0) {
         bargeInTimer = window.setTimeout(() => {
-          if (callerSpeechActive) {
-            const generation = callerTurnGeneration ?? invalidateOutputForCallerTurn();
-            agentInterrupted = agentWasResponding;
-            options.callbacks.onCallerSpeechStarted(agentWasResponding, generation);
+          if (callerSpeechActive && callerSpeechGate.markDebounceElapsed()) {
+            confirmRecognizedCallerSpeech();
           }
         }, debounceMs);
-      } else {
-        const generation = callerTurnGeneration ?? invalidateOutputForCallerTurn();
-        agentInterrupted = agentWasResponding;
-        options.callbacks.onCallerSpeechStarted(agentWasResponding, generation);
+      } else if (callerSpeechGate.markDebounceElapsed()) {
+        confirmRecognizedCallerSpeech();
       }
     }
     if (type === "input_audio_buffer.speech_stopped") {
       callerSpeechActive = false;
+      options.callbacks.onCallerAudioStopped?.();
       window.clearTimeout(bargeInTimer);
       const pendingTurnKey = callerTurnKey(event) || activeCallerTurnKey;
       armCallerTranscriptionWatchdog(pendingTurnKey, 4_000);
@@ -623,6 +689,18 @@ export async function connectOpenAiRealtime(options: {
       channel.close();
       peer.close();
     },
+  };
+}
+
+function normalizeCallerPreparation(value: {
+  instructions?: string | null;
+  directResponse?: string | null;
+} | string | null | undefined) {
+  if (typeof value === "string") return { instructions: value, directResponse: "" };
+  if (!value) return null;
+  return {
+    instructions: value.instructions ?? "",
+    directResponse: value.directResponse ?? "",
   };
 }
 

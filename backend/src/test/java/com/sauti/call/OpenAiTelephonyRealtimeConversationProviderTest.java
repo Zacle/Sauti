@@ -277,6 +277,70 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void emptyVadNoiseDoesNotDiscardAValidAgentResponse() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        when(session.dispatchedGeneration()).thenReturn(0L);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket, "{\"type\":\"response.created\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"input_audio_buffer.speech_started\",\"item_id\":\"noise\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"input_audio_buffer.speech_stopped\",\"item_id\":\"noise\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.created\",\"item\":{\"type\":\"message\",\"id\":\"message-1\"}}",
+                true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"item_id\":\"message-1\",\"text\":\"How can I help?\"}",
+                true);
+        socketListener.onText(webSocket, "{\"type\":\"response.done\"}", true);
+        assertThat(events).isEmpty();
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                        + "\"item_id\":\"noise\",\"transcript\":\"[silence]\"}", true);
+
+        assertThat(events).containsExactly("agent:How can I help?:false");
+    }
+
+    @Test
+    void speaksPreparedBusinessHoursWithoutStartingASecondModelResponse() {
+        var events = new ArrayList<String>();
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        when(realtimeService.prepareCallerResponse(call, "When are you available?"))
+                .thenReturn(new RealtimeDtos.RealtimeTranscriptResponse(
+                        "updated instructions",
+                        "We are open Monday through Friday from 9 in the morning to 5 in the evening."
+                ));
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call, new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                        + "\"item_id\":\"caller-hours\",\"transcript\":\"When are you available?\"}", true);
+
+        assertThat(events).containsExactly(
+                "speech",
+                "caller:When are you available?",
+                "agent:We are open Monday through Friday from 9 in the morning to 5 in the evening.:false"
+        );
+        verify(session).updateInstructions("updated instructions");
+        verify(session).seedAssistantText("We are open Monday through Friday from 9 in the morning to 5 in the evening.");
+        verify(session, never()).requestResponse();
+    }
+
+    @Test
     void overlappingVadTurnsKeepAgentSpeechDeferredUntilEveryTranscriptionTerminates() {
         var events = new ArrayList<String>();
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(

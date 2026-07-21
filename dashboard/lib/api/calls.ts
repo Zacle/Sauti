@@ -82,7 +82,7 @@ export function connectTestRealtime(callId: string, sdp: string) {
 }
 
 export function recordTestRealtimeTranscript(callId: string, role: "caller" | "agent", text: string, interrupted = false) {
-  return apiRequest<{ instructions: string }>(`/calls/${callId}/realtime/transcript`, {
+  return apiRequest<{ instructions: string; directResponse: string }>(`/calls/${callId}/realtime/transcript`, {
     method: "POST",
     body: JSON.stringify({ role, text, interrupted }),
   });

@@ -163,7 +163,7 @@ public class CallController {
         callPipelineService.recordRealtimeTranscript(user.tenantId(), id, request.role(), request.text(), request.interrupted());
         if (!"caller".equalsIgnoreCase(request.role())) return new RealtimeTranscriptResponse("");
         var call = callQueryService.get(user.tenantId(), id);
-        return new RealtimeTranscriptResponse(openAiRealtimeService.realtimeInstructions(call, request.text()));
+        return openAiRealtimeService.prepareCallerResponse(call, request.text());
     }
 
     @PostMapping("/{id}/realtime/tool")

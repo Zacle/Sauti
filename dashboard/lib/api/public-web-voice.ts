@@ -95,7 +95,7 @@ export async function recordPublicRealtimeTranscript(sessionId: string, token: s
     body: JSON.stringify({ role, text, interrupted }),
   });
   if (!response.ok) throw new Error("Unable to prepare the next voice response.");
-  return response.json() as Promise<{ instructions: string }>;
+  return response.json() as Promise<{ instructions: string; directResponse: string }>;
 }
 
 export async function executePublicRealtimeTool(sessionId: string, token: string, callId: string, name: string, argumentsJson: string) {

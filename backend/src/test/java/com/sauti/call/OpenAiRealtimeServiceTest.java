@@ -23,6 +23,41 @@ import org.junit.jupiter.api.Test;
 
 class OpenAiRealtimeServiceTest {
     @Test
+    void answersGeneralHoursQuestionsDirectlyButLeavesSpecificSlotsToTheCalendar() {
+        var orchestrator = mock(ConversationOrchestrator.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        when(call.getAgent()).thenReturn(agent);
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(agent.getDefaultLanguage()).thenReturn("en");
+        when(agent.getSupportedLanguages()).thenReturn(List.of("en"));
+        when(agent.getOperatingHours()).thenReturn("weekdays");
+        var service = new OpenAiRealtimeService(
+                new ObjectMapper(), orchestrator, mock(AgentToolLoader.class), mock(ToolFulfillmentRouter.class),
+                mock(com.sauti.session.CallSessionStore.class), new SimpleLanguageDetector(),
+                "server-secret", "http://localhost/unused", "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
+        );
+
+        for (var question : List.of(
+                "When are you available?",
+                "Which days and times are you available?",
+                "Could you tell me the date you are available?",
+                "What are your business hours?"
+        )) {
+            assertThat(service.prepareCallerResponse(call, question).directResponse())
+                    .as(question)
+                    .contains("Monday", "Friday", "9 in the morning", "5 in the evening");
+        }
+
+        assertThat(service.prepareCallerResponse(
+                call, "Is Thursday at 1 p.m. available?"
+        ).directResponse()).isBlank();
+        assertThat(service.prepareCallerResponse(
+                call, "Is a women's hairstyle available?"
+        ).directResponse()).isBlank();
+    }
+
+    @Test
     void followsASubstantialEnglishCallerTurnInsteadOfAStaleLanguage() {
         var orchestrator = mock(ConversationOrchestrator.class);
         var detector = mock(LanguageDetector.class);
