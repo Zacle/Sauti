@@ -106,6 +106,7 @@ class ConversationOrchestratorTest {
                 .contains("Treat every caller name as an opaque literal value")
                 .contains("Never merge, insert, reorder, or duplicate digits")
                 .contains("never deliver the same sentence or full summary twice in a row")
+                .contains("Never prepend an untranslated, imitated, or invented foreign filler word")
                 .doesNotContain("men airpods")
                 .contains("requested time is already occupied or unavailable")
                 .contains("Never ask the caller to spell a name or email at all")
@@ -174,6 +175,61 @@ class ConversationOrchestratorTest {
         assertThat(provider.contexts.get(0).tools())
                 .extracting(LlmToolDefinition::name)
                 .containsExactly(com.sauti.tool.ConversationStateTool.NAME);
+    }
+
+    @Test
+    void executesServerAuthorizedAvailabilityWithoutASecondProviderTurn() {
+        var provider = new SemanticAvailabilityProvider();
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(
+                provider, router, toolLoader, callTurnRepository, callSessionStore, agentVariableService,
+                new com.sauti.agent.KnowledgeBaseService(), retrieval, 4
+        );
+        var call = activeCall();
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt()))
+                .thenReturn("Prompt");
+        when(callSessionStore.conversationHistory(call.getTwilioCallSid())).thenReturn(List.of());
+        when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of(
+                com.sauti.tool.ConversationStateTool.definition(),
+                new LlmToolDefinition("check_availability", "Check slots", Map.of("type", "object"))
+        ));
+        var executed = new ArrayList<LlmToolCall>();
+        when(router.route(any(Call.class), any(LlmToolCall.class))).thenAnswer(invocation -> {
+            LlmToolCall toolCall = invocation.getArgument(1);
+            executed.add(toolCall);
+            if (com.sauti.tool.ConversationStateTool.NAME.equals(toolCall.name())) {
+                return LlmToolResult.success(toolCall, Map.of(
+                        "status", "conversation_state_updated",
+                        "nextAction", "use_business_tool",
+                        "nextTool", "check_availability",
+                        "nextToolAuthorized", true,
+                        "nextToolArguments", Map.of(
+                                "date", "2026-07-22", "time_preference", "16:00"
+                        )
+                ));
+            }
+            return LlmToolResult.success(toolCall, Map.of(
+                    "status", "requested_time_available",
+                    "spokenResponse", "Four in the afternoon is available. Would you like to continue?"
+            ));
+        });
+
+        var result = orchestrator.handleUserUtterance(call, "en", "Four in the afternoon.");
+
+        assertThat(result.responseText())
+                .isEqualTo("Four in the afternoon is available. Would you like to continue?");
+        assertThat(provider.contexts).hasSize(1);
+        assertThat(executed).extracting(LlmToolCall::name)
+                .containsExactly(com.sauti.tool.ConversationStateTool.NAME, "check_availability");
+        assertThat(executed.get(1).arguments()).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "date", "2026-07-22", "time_preference", "16:00"
+        ));
     }
 
     @Test
@@ -482,6 +538,8 @@ class ConversationOrchestratorTest {
                 .contains("SAUTI_INPUT_TRANSCRIPT")
                 .contains("not a second caller turn")
                 .contains("primary source for exact names, phone digits, email addresses, dates, and times")
+                .contains("an incoherent or contextually doubtful transcript cannot update state")
+                .contains("reuse a stored date/time")
                 .contains("Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00")
                 .contains("men hairstyle: $5", "women hairstyle: $8", "nails: $4")
                 .contains("cancellation_policy", "Give 24 hours notice")
@@ -496,6 +554,10 @@ class ConversationOrchestratorTest {
                 .contains("Keep the person speaking separate from the person receiving the service")
                 .contains("Ordinary conversation is direct speech, not a tool call")
                 .contains("never classify it by matching a fixed phrase")
+                .contains("Set `turn_understanding` to clear only when")
+                .contains("An unclear latest turn never authorizes a calendar lookup")
+                .contains("Never treat stored state as fresh confirmation")
+                .contains("normalize `preferred_day` to yyyy-MM-dd")
                 .contains("deterministic state reducer also updates the appointment recipient")
                 .contains("Do not invent your own review preamble")
                 .contains("Never emit JSON");
@@ -576,6 +638,31 @@ class ConversationOrchestratorTest {
                             "next_action", "reply",
                             "business_tool", "",
                             "spoken_response", "Merci pour la correction. Quel service souhaitez-vous ?"
+                    )
+            )));
+        }
+    }
+
+    private static final class SemanticAvailabilityProvider implements LlmToolCallingProvider {
+        private final List<LlmToolTurnContext> contexts = new ArrayList<>();
+
+        @Override
+        public LlmToolTurnResponse completeTurn(LlmToolTurnContext context) {
+            contexts.add(context);
+            return new LlmToolTurnResponse("", List.of(new LlmToolCall(
+                    "semantic-slot", com.sauti.tool.ConversationStateTool.NAME,
+                    Map.of(
+                            "updates", Map.of(
+                                    "preferred_day", "2026-07-22", "preferred_time", "16:00"
+                            ),
+                            "additional_details", Map.of(),
+                            "clear_fields", List.of(),
+                            "booking_subject", "unchanged",
+                            "booking_intent", "active",
+                            "turn_understanding", "clear",
+                            "next_action", "use_business_tool",
+                            "business_tool", "check_availability",
+                            "spoken_response", ""
                     )
             )));
         }

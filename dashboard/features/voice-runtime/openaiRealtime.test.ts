@@ -24,7 +24,19 @@ test("executes a server-authorized booking approval without another model respon
   });
 });
 
-test("keeps model argument preparation for tool transitions without server arguments", () => {
+test("executes server-authorized availability arguments without another model response", () => {
+  assert.deepEqual(authorizedNextToolRequest({
+    success: true,
+    result: {
+      nextTool: "check_availability",
+      nextToolAuthorized: true,
+      nextToolArguments: { date: "2026-07-22", time_preference: "16:00" },
+    },
+  }), {
+    name: "check_availability",
+    argumentsJson: "{\"date\":\"2026-07-22\",\"time_preference\":\"16:00\"}",
+  });
+
   assert.deepEqual(authorizedNextToolRequest({
     success: true,
     result: { nextTool: "check_availability", nextToolAuthorized: true },
@@ -33,9 +45,19 @@ test("keeps model argument preparation for tool transitions without server argum
     argumentsJson: "",
   });
   assert.equal(authorizedNextToolRequest({
+    success: true,
     result: { nextTool: "untrusted_tool", nextToolAuthorized: false },
   }), null);
+  assert.equal(authorizedNextToolRequest({
+    success: false,
+    result: {
+      nextTool: "check_availability",
+      nextToolAuthorized: true,
+      nextToolArguments: { date: "2026-07-22" },
+    },
+  }), null);
   assert.deepEqual(authorizedNextToolRequest({
+    success: true,
     result: {
       nextTool: "book_slot",
       nextToolAuthorized: false,
@@ -85,7 +107,7 @@ test("mirrors accepted audio transcripts as the same unprivileged caller turn", 
     role: "user",
     content: [{
       type: "input_text",
-      text: "SAUTI_INPUT_TRANSCRIPT: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning. If the audio and text disagree about which configured service was requested, treat the service as unclear and ask one short clarification instead of selecting one.\nMy name is Zachary.",
+      text: "SAUTI_INPUT_TRANSCRIPT: Text mirror of the immediately preceding caller audio, not a new turn. Prefer it for exact names, digits, emails, dates, and times; combine it with audio for meaning. If it is incoherent or not a clear answer or choice, do not update state, reuse a stored choice, or call a business tool; ask for repetition.\nMy name is Zachary.",
     }],
   });
 });

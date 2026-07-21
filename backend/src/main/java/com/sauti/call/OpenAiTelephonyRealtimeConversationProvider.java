@@ -1174,7 +1174,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             "role", "user",
                             "content", java.util.List.of(Map.of(
                                     "type", "input_text",
-                                    "text", "SAUTI_INPUT_TRANSCRIPT: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning. If the audio and text disagree about which configured service was requested, treat the service as unclear and ask one short clarification instead of selecting one.\n"
+                                    "text", "SAUTI_INPUT_TRANSCRIPT: Text mirror of the immediately preceding caller audio, not a new turn. Prefer it for exact names, digits, emails, dates, and times; combine it with audio for meaning. If it is incoherent or not a clear answer or choice, do not update state, reuse a stored choice, or call a business tool; ask for repetition.\n"
                                             + transcript.trim()
                             ))
                     )

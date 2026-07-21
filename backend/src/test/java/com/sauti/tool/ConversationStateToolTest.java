@@ -159,7 +159,7 @@ class ConversationStateToolTest {
         var tool = new ConversationStateTool(sessions);
 
         var result = tool.execute(call, toolCall(Map.of(
-                "updates", Map.of("preferred_day", "next Thursday", "preferred_time", "13:00"),
+                "updates", Map.of("preferred_day", "2026-07-30", "preferred_time", "13:00"),
                 "additional_details", Map.of(),
                 "clear_fields", List.of(),
                 "booking_subject", "unchanged",
@@ -173,6 +173,9 @@ class ConversationStateToolTest {
                 .containsEntry("nextAction", "use_business_tool")
                 .containsEntry("nextTool", "check_availability")
                 .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "date", "2026-07-30", "time_preference", "13:00"
+                ))
                 .doesNotContainKey("spokenResponse");
     }
 
@@ -191,7 +194,7 @@ class ConversationStateToolTest {
         var tool = new ConversationStateTool(sessions);
 
         var result = tool.execute(call, toolCall(Map.of(
-                "updates", Map.of("preferred_day", "Thursday", "preferred_time", "15:00"),
+                "updates", Map.of("preferred_day", "2026-07-23", "preferred_time", "15:00"),
                 "additional_details", Map.of(),
                 "clear_fields", List.of(),
                 "booking_subject", "unchanged",
@@ -205,6 +208,9 @@ class ConversationStateToolTest {
                 .containsEntry("nextAction", "use_business_tool")
                 .containsEntry("nextTool", "check_availability")
                 .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "date", "2026-07-23", "time_preference", "15:00"
+                ))
                 .doesNotContainKey("spokenResponse");
     }
 
@@ -230,7 +236,7 @@ class ConversationStateToolTest {
         var tool = new ConversationStateTool(sessions);
 
         var result = tool.execute(call, toolCall(Map.of(
-                "updates", Map.of("preferred_day", "Thursday", "review_decision", "corrected"),
+                "updates", Map.of("preferred_day", "2026-07-23", "review_decision", "corrected"),
                 "additional_details", Map.of(),
                 "clear_fields", List.of(),
                 "booking_subject", "unchanged",
@@ -244,7 +250,61 @@ class ConversationStateToolTest {
                 .containsEntry("nextAction", "use_business_tool")
                 .containsEntry("nextTool", "check_availability")
                 .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "date", "2026-07-23", "time_preference", "15:00"
+                ))
                 .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void unclearWorkflowReplyPreservesStateAndCannotReuseAProposedTime() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("unclear-slot-call");
+        when(sessions.conversationState("unclear-slot-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "service_type", "Men hairstyle",
+                                "preferred_day", "2026-07-22",
+                                "preferred_time", "16:00",
+                                "review_decision", "approved"
+                        ),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        5
+                )
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("preferred_time", "15:00"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of("service_type"),
+                "booking_subject", "other",
+                "booking_intent", "active",
+                "turn_understanding", "unclear",
+                "next_action", "use_business_tool",
+                "business_tool", "check_availability",
+                "spoken_response", "Sorry, I didn't catch which time you chose. Could you say it again?"
+        )));
+
+        assertThat(captureState(sessions, "unclear-slot-call"))
+                .satisfies(state -> {
+                    assertThat(state.bookingSubject()).isEqualTo(ConversationState.SUBJECT_SELF);
+                    assertThat(state.bookingIntent()).isEqualTo(ConversationState.INTENT_ACTIVE);
+                    assertThat(state.values())
+                            .containsEntry("service_type", "Men hairstyle")
+                            .containsEntry("preferred_day", "2026-07-22")
+                            .containsEntry("preferred_time", "16:00")
+                            .doesNotContainKey("review_decision");
+                });
+        assertThat(result.result())
+                .containsEntry("status", "conversation_turn_unclear")
+                .containsEntry("nextAction", "reply")
+                .containsEntry(
+                        "spokenResponse",
+                        "Sorry, I didn't catch which time you chose. Could you say it again?"
+                )
+                .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments");
     }
 
     @Test
@@ -411,6 +471,7 @@ class ConversationStateToolTest {
                 .contains("Do not map by keywords")
                 .contains("Corrections replace");
         assertThat(definition.inputSchema().toString())
+                .contains("turn_understanding", "gibberish", "yyyy-MM-dd", "HH:mm")
                 .doesNotContain("my name is Zachary", "don't book", "call back later");
     }
 

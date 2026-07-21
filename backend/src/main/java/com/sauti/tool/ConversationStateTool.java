@@ -36,6 +36,7 @@ public class ConversationStateTool {
             ConversationState.INTENT_ACTIVE, ConversationState.INTENT_PAUSED
     );
     private static final Set<String> NEXT_ACTIONS = Set.of("reply", "use_business_tool");
+    private static final Set<String> TURN_UNDERSTANDING = Set.of("clear", "unclear");
 
     private final CallSessionStore sessions;
     private final AgentToolRepository agentTools;
@@ -61,15 +62,15 @@ public class ConversationStateTool {
                     case "service_type" -> "Requested configured service, only when the meaning is clear.";
                     case "caller_phone" -> "Complete caller-provided phone number.";
                     case "caller_email" -> "Complete caller-provided email address.";
-                    case "preferred_day" -> "Caller-provided appointment day or date, preserving its meaning.";
-                    case "preferred_time" -> "Caller-provided appointment time, preserving its meaning.";
+                    case "preferred_day" -> "Clearly understood appointment date normalized to yyyy-MM-dd using TODAY IN THE BUSINESS TIMEZONE. Omit when the date is unclear.";
+                    case "preferred_time" -> "Clearly understood exact appointment time normalized to HH:mm, or a clear broad period such as morning or afternoon. Omit when the time is unclear.";
                     case "review_decision" -> "Meaning of the caller's latest response to a booking review: approved, corrected, rejected, or unclear. This is turn-scoped and never inferred from politeness alone.";
                     default -> "Explicitly provided conversation value.";
                 }
         )));
         var updates = new LinkedHashMap<String, Object>();
         updates.put("type", "object");
-        updates.put("description", "Only values explicitly stated or corrected in the latest caller turn. Omit unchanged values. Never infer a person or service from a similar-sounding word.");
+        updates.put("description", "Only values explicitly and clearly stated or corrected in the latest caller turn. Omit unchanged or doubtful values. Never infer a person, service, date, time, or selection from a similar-sounding or incoherent fragment.");
         updates.put("properties", Map.copyOf(valueProperties));
         updates.put("additionalProperties", false);
 
@@ -96,6 +97,11 @@ public class ConversationStateTool {
                 "enum", List.of("unchanged", "unknown", "information_only", "active", "paused"),
                 "description", "The caller's current booking intent based on meaning in context. paused means no booking action is authorized."
         ));
+        properties.put("turn_understanding", Map.of(
+                "type", "string",
+                "enum", List.of("clear", "unclear"),
+                "description", "Whether the latest accepted transcript is semantically coherent enough in context to support the proposed updates and action. Use unclear for gibberish, a noisy or unrelated fragment, or a reply that cannot distinguish one offered choice. Accents, imperfect grammar, and short answers remain clear when their meaning is evident. When unclear, provide one short repetition request in spoken_response and emit no updates, clears, subject/intent changes, or business tool."
+        ));
         properties.put("spoken_response", Map.of(
                 "type", "string",
                 "description", "A concise, polite, natural reply in the caller's current language. Answer direct questions first. Leave empty only when a separate business tool must run before any reply. Never include tool syntax, JSON, headings, or private reasoning."
@@ -117,7 +123,8 @@ public class ConversationStateTool {
                         "properties", Map.copyOf(properties),
                         "required", List.of(
                                 "updates", "additional_details", "clear_fields",
-                                "booking_subject", "booking_intent", "spoken_response", "next_action", "business_tool"
+                                "booking_subject", "booking_intent", "turn_understanding",
+                                "spoken_response", "next_action", "business_tool"
                         ),
                         "additionalProperties", false
                 )
@@ -128,6 +135,31 @@ public class ConversationStateTool {
         try {
             var existing = sessions.conversationState(call.getTwilioCallSid())
                     .orElse(ConversationState.empty());
+            var turnUnderstanding = choice(
+                    toolCall.arguments().get("turn_understanding"), TURN_UNDERSTANDING, "clear"
+            );
+            if ("unclear".equals(turnUnderstanding)) {
+                var preservedValues = new LinkedHashMap<>(existing.values());
+                preservedValues.remove("review_decision");
+                var preserved = new ConversationState(
+                        preservedValues,
+                        existing.bookingSubject(),
+                        existing.bookingIntent(),
+                        existing.revision() + 1
+                );
+                sessions.updateConversationState(call.getTwilioCallSid(), preserved);
+                var result = new LinkedHashMap<String, Object>();
+                result.put("status", "conversation_turn_unclear");
+                result.put("state", preserved.asNotes());
+                result.put("bookingAllowed", !ConversationState.INTENT_PAUSED.equals(preserved.bookingIntent()));
+                result.put("nextAction", "reply");
+                var spoken = VoiceOutputGuard.speechText(
+                        stringArgument(toolCall.arguments(), "spoken_response")
+                );
+                if (!spoken.isBlank()) result.put("spokenResponse", spoken);
+                result.put("instruction", "The unclear turn did not change booking state or authorize a business tool. Speak spokenResponse once and wait for a clearer caller reply.");
+                return LlmToolResult.success(toolCall, Map.copyOf(result));
+            }
             var next = reduce(call, existing, toolCall.arguments());
             sessions.updateConversationState(call.getTwilioCallSid(), next);
 
@@ -171,7 +203,12 @@ public class ConversationStateTool {
                     && configuredFor(call, businessTool)) {
                 result.put("nextTool", businessTool);
                 result.put("nextToolAuthorized", true);
-                if ("book_slot".equals(businessTool) && "approved".equals(reviewDecision)) {
+                if ("check_availability".equals(businessTool)) {
+                    var availabilityArguments = availabilityArguments(next);
+                    if (!availabilityArguments.isEmpty()) {
+                        result.put("nextToolArguments", availabilityArguments);
+                    }
+                } else if ("book_slot".equals(businessTool) && "approved".equals(reviewDecision)) {
                     sessions.pendingBooking(call.getTwilioCallSid())
                             .map(com.sauti.session.BookingDraft::reviewToken)
                             .filter(token -> token != null && !token.isBlank())
@@ -187,6 +224,20 @@ public class ConversationStateTool {
         } catch (RuntimeException exception) {
             return LlmToolResult.error(toolCall, "Conversation state could not be updated");
         }
+    }
+
+    private Map<String, Object> availabilityArguments(ConversationState state) {
+        var preferredDay = state.values().getOrDefault("preferred_day", "").trim();
+        try {
+            java.time.LocalDate.parse(preferredDay);
+        } catch (java.time.format.DateTimeParseException exception) {
+            return Map.of();
+        }
+        var result = new LinkedHashMap<String, Object>();
+        result.put("date", preferredDay);
+        var preferredTime = state.values().getOrDefault("preferred_time", "").trim();
+        if (!preferredTime.isBlank()) result.put("time_preference", preferredTime);
+        return Map.copyOf(result);
     }
 
     private ConversationState reduce(Call call, ConversationState current, Map<String, Object> arguments) {

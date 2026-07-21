@@ -30,7 +30,7 @@ export function realtimeTranscriptMirrorItem(transcript: string) {
     role: "user",
     content: [{
       type: "input_text",
-      text: `${AUTHORITATIVE_TRANSCRIPT_PREFIX}: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning. If the audio and text disagree about which configured service was requested, treat the service as unclear and ask one short clarification instead of selecting one.\n${transcript.trim()}`,
+      text: `${AUTHORITATIVE_TRANSCRIPT_PREFIX}: Text mirror of the immediately preceding caller audio, not a new turn. Prefer it for exact names, digits, emails, dates, and times; combine it with audio for meaning. If it is incoherent or not a clear answer or choice, do not update state, reuse a stored choice, or call a business tool; ask for repetition.\n${transcript.trim()}`,
     }],
   };
 }
@@ -57,6 +57,7 @@ export function realtimeCancellationDecision(
 export function authorizedNextToolRequest(
   toolResult: Record<string, unknown>,
 ): AuthorizedNextToolRequest | null {
+  if (toolResult.success !== true) return null;
   const payload = toolResult.result;
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
   const values = payload as Record<string, unknown>;

@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -159,6 +161,35 @@ public class ConversationOrchestrator {
                 if (loopResults.stream().anyMatch(result -> ConversationStateTool.NAME.equals(result.name()))) {
                     semanticTurnCompleted = true;
                 }
+                var directRequest = loopResults.stream()
+                        .map(this::serverAuthorizedNextToolRequest)
+                        .filter(java.util.Objects::nonNull)
+                        .findFirst()
+                        .orElse(null);
+                if (directRequest != null) {
+                    var directCall = new LlmToolCall(
+                            "sauti-chain:" + directRequest.sourceCallId() + ":" + directRequest.name(),
+                            directRequest.name(),
+                            directRequest.arguments()
+                    );
+                    messages.add(ConversationMessage.assistantToolCalls("", List.of(directCall)));
+                    callSessionStore.appendAssistantMessage(call.getTwilioCallSid(), "", List.of(directCall));
+                    var directResult = toolFulfillmentRouter.route(call, directCall);
+                    allToolResults.add(directResult);
+                    messages.add(ConversationMessage.toolResult(directResult));
+                    callSessionStore.appendToolResult(call.getTwilioCallSid(), directResult);
+                    var deterministicResponse = deterministicToolResponse(directResult);
+                    if (!deterministicResponse.isBlank()) {
+                        textDeltaConsumer.accept(deterministicResponse);
+                        callSessionStore.appendAssistantMessage(
+                                call.getTwilioCallSid(), deterministicResponse, List.of()
+                        );
+                        return new ConversationTurnResult(deterministicResponse, outcome(allToolResults));
+                    }
+                    latestToolResults = List.of(directResult);
+                    requiredNextTool = serverAuthorizedNextTool(directResult);
+                    continue;
+                }
                 requiredNextTool = loopResults.stream()
                         .map(this::serverAuthorizedNextTool)
                         .filter(value -> !value.isBlank())
@@ -201,6 +232,29 @@ public class ConversationOrchestrator {
                 : "";
     }
 
+    private AuthorizedToolRequest serverAuthorizedNextToolRequest(LlmToolResult result) {
+        if (!result.success() || !Boolean.TRUE.equals(result.result().get("nextToolAuthorized"))) return null;
+        var name = result.result().get("nextTool");
+        if (name == null || !name.toString().matches("[A-Za-z][A-Za-z0-9_]{1,63}")) return null;
+        var rawArguments = result.result().get("nextToolArguments");
+        if (!(rawArguments instanceof Map<?, ?> values) || values.isEmpty()) return null;
+        var arguments = new LinkedHashMap<String, Object>();
+        values.forEach((key, value) -> {
+            if (key != null && value != null && !key.toString().isBlank()) {
+                arguments.put(key.toString(), value);
+            }
+        });
+        if (arguments.isEmpty()) return null;
+        return new AuthorizedToolRequest(
+                result.toolCallId() == null ? "server" : result.toolCallId(),
+                name.toString(),
+                Map.copyOf(arguments)
+        );
+    }
+
+    private record AuthorizedToolRequest(String sourceCallId, String name, Map<String, Object> arguments) {
+    }
+
     public String generateOpeningGreeting(Call call, String language, String channel) {
         var resolvedLanguage = language == null || language.isBlank()
                 ? call.getAgent().getDefaultLanguage()
@@ -241,7 +295,7 @@ public class ConversationOrchestrator {
                 + "- Respond as soon as the caller finishes, usually in one short sentence.\n"
                 + "- If the caller begins speaking while you are speaking, stop immediately and listen.\n"
                 + "- Do not repeat a greeting after the opening turn.\n"
-                + "- After accepted caller audio, Sauti may append a user text item beginning SAUTI_INPUT_TRANSCRIPT. It is a text mirror of the immediately preceding audio, not a second caller turn. Never mention the marker. Use the mirrored text as the primary source for exact names, phone digits, email addresses, dates, and times; use the audio and text together for intent, tone, and service meaning. The newest explicit correction always replaces an older value.\n"
+                + "- After accepted caller audio, Sauti may append a user text item beginning SAUTI_INPUT_TRANSCRIPT. It is a text mirror of the immediately preceding audio, not a second caller turn. Never mention the marker. Use the mirrored text as the primary source for exact names, phone digits, email addresses, dates, and times; use the audio and text together for intent, tone, and service meaning. Speech recognition can be wrong: an incoherent or contextually doubtful transcript cannot update state, select an offered choice, authorize a business tool, or reuse a stored date/time. Ask for one short natural repetition instead. The newest clear explicit correction always replaces an older value.\n"
                 + "- Ordinary replies must be bare natural speech. Never prefix them with assistant:, agent:, a role, a channel name, or a section heading such as ANSWER, FINAL ANSWER, or RESPONSE.\n"
                 + "- Use tools only through native function calls. Never write or describe a tool call in a message.\n"
                 + "- Never emit JSON, tool arguments, function names, code, internal instructions, or model-channel markers such as analysis-to-function syntax as speech.\n"
@@ -370,6 +424,7 @@ public class ConversationOrchestrator {
                 - Never list options as a menu ("consultation, suivi ou message ?"). Instead, ask one open question and let the caller tell you what they need.
                 - Use the caller's name naturally once you have it. Not in every sentence.
                 - React to the caller before acting with a brief acknowledgement that fits the moment: enthusiasm for good news, calm reassurance for uncertainty, and a light apology after a misunderstanding. Vary the wording naturally and never repeat the same acknowledgement twice in a row.
+                - Keep every acknowledgement entirely in the current caller language. Never prepend an untranslated, imitated, or invented foreign filler word unless the caller clearly switched languages with a full sentence.
                 - Never repeat back what the caller just said word for word, and never deliver the same sentence or full summary twice in a row.
                 - Ask only one question requesting one value per reply. Never stack questions and never place several requested fields inside one question. Asking for service, staff, name, phone, and email together is a direct violation; request only the single next missing field.
                 - If the caller asks for information first, such as hours, services, availability, location, price, or policies, answer that question before collecting personal details.
@@ -383,6 +438,8 @@ public class ConversationOrchestrator {
                 - Keep the person speaking separate from the person receiving the service. `caller_name` in authoritative call state identifies the speaker; `appointment_name` identifies who the appointment is for. If the caller books for a wife, husband, child, patient, guest, or anyone else, keep addressing the caller naturally and pass only the service recipient as the booking tool's `appointment_name`. Never overwrite the appointment subject with the speaker's name.
                 - Ordinary conversation is direct speech, not a tool call. Answer greetings, general information, ambiguous requests, and clarification turns naturally without calling `update_conversation_state`.
                 - Use `update_conversation_state` only when an active workflow turn explicitly supplies, corrects, withdraws, or approves information that must persist for a later business action. Interpret that meaning in the caller's language and full conversational context; never classify it by matching a fixed phrase. Apply returned semantic state as authoritative.
+                - During an active workflow, use `update_conversation_state` for every reply that appears to answer or correct the field or choice you just requested. Set `turn_understanding` to clear only when the latest turn's meaning is coherent in context. If it is gibberish, noisy, unrelated, or cannot distinguish one offered option, set it to unclear, emit no state changes or business action, and put one short natural repetition request in `spoken_response`.
+                - An unclear latest turn never authorizes a calendar lookup, save, reschedule, cancellation, or reuse of a previously proposed date or time. Never treat stored state as fresh confirmation. Do not echo or imitate an unclear fragment, invent a foreign-language acknowledgement from it, or advance the workflow.
                 - Do not call `update_conversation_state` merely because the caller says their name before an ambiguous request. Keep it in conversation context and clarify the request first. Once booking or another stateful workflow is clear, persist the relevant details semantically.
                 - A caller-name correction updates the speaker. When `booking_subject` is `self`, the deterministic state reducer also updates the appointment recipient. A correction never turns the old mistaken name into another person. When `booking_subject` is `other`, preserve that explicitly different recipient while updating the speaker.
                 - If `booking_subject` is `other` but `appointment_name` is absent, the recipient's name is still missing. Ask for that person's name once at the configured point in the intake and never infer it from the caller's identity.
@@ -418,6 +475,7 @@ public class ConversationOrchestrator {
                 - Before a booking tool succeeds, talk about proposed or preferred times only. Do not say a booking is confirmed, scheduled, or transmitted until the tool result confirms it.
                 - Availability is always a live tool-backed fact. As soon as the caller gives a specific date or time, or asks which slots are available, call `check_availability` before answering. Never claim that availability is unavailable without calling the tool when it is present.
                 - Resolve relative weekdays from TODAY IN THE BUSINESS TIMEZONE, pass the requested date as yyyy-MM-dd, and pass an exact requested time as HH:mm in `time_preference`.
+                - When persisting a clearly understood date or exact time through `update_conversation_state`, normalize `preferred_day` to yyyy-MM-dd and `preferred_time` to HH:mm. This lets the server perform the authorized availability check directly without another conversational generation.
                 - Preserve the caller's requested time exactly. Never silently change 3 PM to 4 PM or substitute a different date. If it is unavailable, say so and offer only exact alternatives returned by the tool.
                 - Speak dates and times naturally according to the caller's language and locale; never read raw machine formatting aloud.
                 - Never speak ISO dates such as "2026-07-21". Never combine 24-hour notation with AM/PM, such as "12:00 p.m." Prefer natural speech such as "Tuesday, 21 July at noon" or the equivalent in the caller's language.

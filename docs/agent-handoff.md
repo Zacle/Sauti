@@ -4086,3 +4086,30 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: after CI/CD, complete one booking in at least two caller languages in Agent Studio and one carrier call. Confirm the exact booking number is spoken first, the keep-and-call-back reminder follows once in the same language, interruption cancels the reminder cleanly, and a forced reminder-generation failure leaves the confirmed booking intact.
+
+### 2026-07-22 - Eliminate slot-selection follow-up timeouts and reject unclear workflow turns
+
+- Fixed the timeout observed after the caller selected one of the offered alternative times. The semantic state tool could understand and persist the selection, but Sauti then requested a second Realtime generation solely to reconstruct `check_availability` arguments. That redundant response could remain in `generating_message` and produce the visible “voice provider did not finish its conversational response in time” error.
+- Clearly understood dates and times are now normalized inside semantic state (`preferred_day` as `yyyy-MM-dd`, exact `preferred_time` as `HH:mm`). The server returns those values as trusted `nextToolArguments`, so browser Realtime, phone Realtime, and the turn-based fallback execute the calendar lookup directly and deliver its deterministic result without a second model turn.
+- Added a language-independent `turn_understanding` decision to active workflow interpretation. When the model marks a transcript as incoherent, noisy, unrelated, or insufficient to distinguish an offered choice, the server ignores proposed updates, clears, subject/intent changes, and business-tool requests; it preserves the established booking state, removes any stale turn-scoped review decision, and speaks only the model-provided repetition request.
+- Strengthened the session and per-turn transcript contract so an unclear latest fragment cannot reuse a stored/proposed date or time as fresh authorization for availability, creation, rescheduling, or cancellation. Acknowledgements must also remain entirely in the established caller language, preventing stray invented fillers such as the mixed-language “Ntak, take your time” response. This remains semantic rather than phrase-based and does not add language-specific intent lists. The per-turn transcript mirror was shortened while adding the safety rule so conversation context does not grow unnecessarily and increase latency.
+- Tightened the browser trust boundary: only an explicitly successful tool result may authorize a direct next-tool transition.
+- This follows OpenAI's Realtime function-calling model: application code executes custom functions after a structured function decision, and another `response.create` is needed only when a further model response is actually required. Reference: https://developers.openai.com/api/docs/guides/realtime-conversations#function-calling
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/ConversationStateToolTest.java`
+  - `dashboard/features/voice-runtime/{openaiRealtime.test,realtimeProtocol}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused semantic-state, phone Realtime, and turn-based orchestrator suites - passed.
+  - `npm.cmd run test:voice` - passed; 14 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: speech recognition may still transcribe poor audio as nonsense; this change makes that case safe by asking for repetition instead of acting on stale state. After CI/CD, repeat the supplied path in Agent Studio and one carrier call: request 3 p.m., select the offered 4 p.m. alternative, then intentionally say an unintelligible fragment. Confirm the clear selection receives one calendar answer without the timeout banner and the unclear fragment triggers one short clarification with no additional calendar call or state change.

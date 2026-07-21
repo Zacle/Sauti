@@ -507,9 +507,11 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
-    void chainsTheSemanticDecisionToItsAuthorizedBusinessToolWithoutSpeaking() {
+    void executesASemanticallySelectedSlotWithoutASecondModelGeneration() throws Exception {
+        var events = new ArrayList<String>();
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
+        var spoken = "Four in the afternoon is available. Would you like to continue?";
         when(realtimeService.executeTool(
                 eq(call), eq("semantic-action"), eq(com.sauti.tool.ConversationStateTool.NAME), anyString()
         )).thenReturn(new com.sauti.llm.LlmToolResult(
@@ -518,12 +520,23 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                         "status", "conversation_state_updated",
                         "nextAction", "use_business_tool",
                         "nextTool", "check_availability",
-                        "nextToolAuthorized", true
+                        "nextToolAuthorized", true,
+                        "nextToolArguments", Map.of(
+                                "date", "2026-07-22", "time_preference", "16:00"
+                        )
                 ), ""
+        ));
+        when(realtimeService.executeTool(
+                eq(call), eq("sauti-chain:semantic-action:check_availability"),
+                eq("check_availability"),
+                anyString()
+        )).thenReturn(new com.sauti.llm.LlmToolResult(
+                "sauti-chain:semantic-action:check_availability", "check_availability", true,
+                Map.of("status", "requested_time_available", "spokenResponse", spoken), ""
         ));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
                 new ObjectMapper(), realtimeService, call,
-                new RecordingListener(new ArrayList<>()), Map.of()
+                new RecordingListener(events), Map.of()
         );
         var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
         socketListener.attach(session);
@@ -534,10 +547,22 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                         + "\"arguments\":\"{\\\"next_action\\\":\\\"use_business_tool\\\"}\"}",
                 true);
 
-        verify(session, timeout(1_000)).requestResponseWithRequiredTool("check_availability");
+        var arguments = ArgumentCaptor.forClass(String.class);
+        verify(realtimeService, timeout(1_000)).executeTool(
+                eq(call), eq("sauti-chain:semantic-action:check_availability"),
+                eq("check_availability"),
+                arguments.capture()
+        );
+        assertThat(new ObjectMapper().readTree(arguments.getValue()))
+                .isEqualTo(new ObjectMapper().readTree(
+                        "{\"date\":\"2026-07-22\",\"time_preference\":\"16:00\"}"
+                ));
+        verify(session, never()).requestResponseWithRequiredTool("check_availability");
         verify(session, never()).requestResponse();
         verify(session, never()).requestToolResultResponse();
         verify(session, never()).requestExactResponse(anyString(), anyLong());
+        verify(session, timeout(1_000)).seedAssistantText(spoken);
+        assertThat(events).containsExactly("agent:" + spoken + ":false");
     }
 
     @Test
@@ -1273,7 +1298,8 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         assertThat(event.path("item").path("content").path(0).path("type").asText()).isEqualTo("input_text");
         assertThat(event.path("item").path("content").path(0).path("text").asText())
                 .startsWith("SAUTI_INPUT_TRANSCRIPT:")
-                .contains("If the audio and text disagree about which configured service was requested")
+                .contains("If it is incoherent or not a clear answer or choice")
+                .contains("do not update state, reuse a stored choice, or call a business tool")
                 .endsWith("My name is Zachary and my number is 0105753221.");
     }
 
