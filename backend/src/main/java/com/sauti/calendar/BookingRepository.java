@@ -17,6 +17,14 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     Optional<Booking> findFirstByCall_Id(UUID callId);
 
+    Optional<Booking> findFirstByTenantIdAndCall_IdAndAgent_IdAndStatusNotAndAppointmentAt(
+            UUID tenantId,
+            UUID callId,
+            UUID agentId,
+            String excludedStatus,
+            OffsetDateTime appointmentAt
+    );
+
     List<Booking> findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
             UUID tenantId,
             UUID agentId,

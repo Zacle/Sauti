@@ -10,6 +10,7 @@ import com.sauti.agent.Agent;
 import com.sauti.call.Call;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.session.CallSessionStore;
+import com.sauti.session.BookingDraft;
 import com.sauti.session.ConversationState;
 import java.util.List;
 import java.util.Map;
@@ -313,6 +314,10 @@ class ConversationStateToolTest {
                 ConversationState.INTENT_ACTIVE,
                 8
         )));
+        when(sessions.pendingBooking("approved-review-call")).thenReturn(Optional.of(new BookingDraft(
+                "Zachary", "Men hairstyle", "", "2026-07-23T15:00:00Z", "0105753221", true,
+                "signed-review-token"
+        )));
         var tool = new ConversationStateTool(sessions);
 
         var result = tool.execute(call, toolCall(Map.of(
@@ -330,6 +335,8 @@ class ConversationStateToolTest {
                 .containsEntry("nextAction", "use_business_tool")
                 .containsEntry("nextTool", "book_slot")
                 .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of("review_token", "signed-review-token"))
+                .doesNotContainKey("progressResponse")
                 .doesNotContainKey("spokenResponse");
     }
 

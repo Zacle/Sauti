@@ -4,8 +4,25 @@ export type CompletedRealtimeToolCall = {
   argumentsJson: string;
 };
 
+export type AuthorizedNextToolRequest = {
+  name: string;
+  argumentsJson: string;
+};
+
 export const SAUTI_REALTIME_REQUEST_ID = "sauti_request_id";
 export const AUTHORITATIVE_TRANSCRIPT_PREFIX = "SAUTI_INPUT_TRANSCRIPT";
+
+export function businessActionProgressInstruction(toolName: string) {
+  const operation = toolName === "book_slot"
+    ? "saving the appointment"
+    : toolName === "check_availability"
+      ? "checking the live schedule"
+      : "completing the requested business action";
+  return `The system is still ${operation} and the caller has been waiting longer than expected. `
+    + "Give one brief, natural, professional progress update in the caller's current language. "
+    + "Include a short apology for the wait and make clear that you are still working on it. "
+    + "Do not claim success or failure, invent a result, repeat booking details, ask a question, or call a tool.";
+}
 
 export function realtimeTranscriptMirrorItem(transcript: string) {
   return {
@@ -13,7 +30,7 @@ export function realtimeTranscriptMirrorItem(transcript: string) {
     role: "user",
     content: [{
       type: "input_text",
-      text: `${AUTHORITATIVE_TRANSCRIPT_PREFIX}: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning.\n${transcript.trim()}`,
+      text: `${AUTHORITATIVE_TRANSCRIPT_PREFIX}: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning. If the audio and text disagree about which configured service was requested, treat the service as unclear and ask one short clarification instead of selecting one.\n${transcript.trim()}`,
     }],
   };
 }
@@ -35,6 +52,36 @@ export function realtimeCancellationDecision(
     // response.create is not cancellable until response.created arrives.
     cancelProviderNow: responseActive,
   };
+}
+
+export function authorizedNextToolRequest(
+  toolResult: Record<string, unknown>,
+): AuthorizedNextToolRequest | null {
+  const payload = toolResult.result;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const values = payload as Record<string, unknown>;
+  const name = typeof values.nextTool === "string" ? values.nextTool.trim() : "";
+  const authorized = name === "book_slot" || values.nextToolAuthorized === true;
+  if (!authorized || !/^[A-Za-z][A-Za-z0-9_]{1,63}$/.test(name)) return null;
+  const rawArguments = values.nextToolArguments;
+  const argumentsJson = values.nextToolAuthorized === true
+    && rawArguments && typeof rawArguments === "object" && !Array.isArray(rawArguments)
+    ? JSON.stringify(rawArguments)
+    : "";
+  return { name, argumentsJson };
+}
+
+export function callerGuidanceInstruction(
+  toolName: string,
+  toolResult: Record<string, unknown>,
+): string {
+  if (toolName !== "book_slot" || toolResult.success !== true) return "";
+  const payload = toolResult.result;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return "";
+  const instruction = (payload as Record<string, unknown>).callerGuidanceInstruction;
+  if (typeof instruction !== "string") return "";
+  const value = instruction.trim();
+  return value.length <= 1_200 ? value : "";
 }
 
 /**

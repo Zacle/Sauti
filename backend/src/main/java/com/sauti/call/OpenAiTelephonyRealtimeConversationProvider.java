@@ -31,6 +31,10 @@ import org.springframework.stereotype.Service;
 public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRealtimeConversationProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenAiTelephonyRealtimeConversationProvider.class);
     private static final String RESPONSE_REQUEST_ID_METADATA = "sauti_request_id";
+    private static final String RESPONSE_PURPOSE_CONVERSATION = "conversation";
+    private static final String RESPONSE_PURPOSE_BUSINESS_PROGRESS = "business_progress";
+    private static final String RESPONSE_PURPOSE_POST_BOOKING_GUIDANCE = "post_booking_guidance";
+    private static final long BUSINESS_ACTION_PROGRESS_DELAY_MILLIS = 1_500L;
 
     private final ObjectMapper objectMapper;
     private final OpenAiRealtimeService realtimeService;
@@ -74,6 +78,27 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         this.model = model;
         this.enabled = enabled;
         this.httpClient = httpClient;
+    }
+
+    static boolean supportsBusinessActionProgress(String toolName) {
+        return "check_availability".equals(toolName) || "book_slot".equals(toolName);
+    }
+
+    static boolean isAuxiliaryResponsePurpose(String purpose) {
+        return RESPONSE_PURPOSE_BUSINESS_PROGRESS.equals(purpose)
+                || RESPONSE_PURPOSE_POST_BOOKING_GUIDANCE.equals(purpose);
+    }
+
+    static String businessActionProgressInstruction(String toolName) {
+        var operation = switch (toolName == null ? "" : toolName) {
+            case "book_slot" -> "saving the appointment";
+            case "check_availability" -> "checking the live schedule";
+            default -> "completing the requested business action";
+        };
+        return "The system is still " + operation + " and the caller has been waiting longer than expected. "
+                + "Give one brief, natural, professional progress update in the caller's current language. "
+                + "Include a short apology for the wait and make clear that you are still working on it. "
+                + "Do not claim success or failure, invent a result, repeat booking details, ask a question, or call a tool.";
     }
 
     @Override
@@ -164,6 +189,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final java.util.Set<Long> toolSpeechGenerations = new java.util.HashSet<>();
         private final java.util.Map<String, CompletableFuture<com.sauti.llm.LlmToolResult>> toolExecutions =
                 new java.util.HashMap<>();
+        private final java.util.Map<String, ScheduledFuture<?>> businessActionProgressTimers =
+                new java.util.HashMap<>();
+        private final java.util.Set<String> activeBusinessActionProgress = new java.util.HashSet<>();
+        private String currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
+        private String currentBusinessActionProgressKey = "";
 
         RealtimeWebSocketListener(
                 ObjectMapper objectMapper,
@@ -198,6 +228,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             toolFollowupGenerations.clear();
             toolSpeechGenerations.clear();
             toolExecutions.clear();
+            businessActionProgressTimers.values().forEach(timer -> timer.cancel(false));
+            businessActionProgressTimers.clear();
+            activeBusinessActionProgress.clear();
             if (activeSession != null) {
                 activeSession.discardResponsesBefore(turnGeneration);
                 if (responseCancellationPending) armResponseCancellationWatchdog();
@@ -269,6 +302,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     currentResponseGeneration = activeSession == null
                             ? turnGeneration
                             : activeSession.dispatchedGeneration();
+                    currentResponsePurpose = activeSession == null
+                            ? RESPONSE_PURPOSE_CONVERSATION
+                            : activeSession.dispatchedPurpose();
+                    currentBusinessActionProgressKey = activeSession == null
+                            ? ""
+                            : activeSession.dispatchedProgressKey();
                     currentResponseId = eventResponseId;
                     if (responseCancellationPending || currentResponseGeneration != turnGeneration) {
                         if (!eventResponseId.isBlank()) ignoredResponseIds.add(eventResponseId);
@@ -385,6 +424,13 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     }
                     case "response.done" -> {
                         var completedGeneration = currentResponseGeneration;
+                        var businessProgressResponse = RESPONSE_PURPOSE_BUSINESS_PROGRESS.equals(
+                                currentResponsePurpose
+                        );
+                        var postBookingGuidanceResponse = RESPONSE_PURPOSE_POST_BOOKING_GUIDANCE.equals(
+                                currentResponsePurpose
+                        );
+                        var auxiliaryResponse = businessProgressResponse || postBookingGuidanceResponse;
                         if (responseContainsToolCall(event)) {
                             responseHasToolCall = true;
                             executeCompletedToolCalls(webSocket, event, completedGeneration);
@@ -409,13 +455,34 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         if (responseHasToolCall) {
                             agentText.setLength(0);
                             textCompleted = true;
+                        } else if (businessProgressResponse) {
+                            if (isBusinessActionProgressActive(currentBusinessActionProgressKey)
+                                    && agentText.length() > 0) {
+                                completeText("", completedGeneration, completedResponseId);
+                            } else {
+                                if (!currentOutputItemId.isBlank()) {
+                                    send(webSocket, Map.of(
+                                            "type", "conversation.item.delete",
+                                            "item_id", currentOutputItemId
+                                    ));
+                                }
+                                agentText.setLength(0);
+                                textCompleted = true;
+                            }
+                        } else if (postBookingGuidanceResponse) {
+                            if (agentText.length() > 0) {
+                                completeText("", completedGeneration, completedResponseId);
+                            } else {
+                                textCompleted = true;
+                            }
                         } else if (!textCompleted && agentText.length() > 0) {
                             if (VoiceOutputGuard.isProtocolPayload(agentText.toString())) {
                                 recoverProtocolOutput(webSocket, completedGeneration);
                             } else {
                                 completeText("", completedGeneration, completedResponseId);
                             }
-                        } else if (("failed".equals(completedStatus) || "incomplete".equals(completedStatus))
+                        } else if (!auxiliaryResponse
+                                && ("failed".equals(completedStatus) || "incomplete".equals(completedStatus))
                                 && completedGeneration == turnGeneration) {
                             deliverAgentCompletion(new AgentCompletion(
                                     VoiceOutputGuard.safeResponseFailure(responseLanguage()),
@@ -426,6 +493,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         }
                         var activeSession = session;
                         if (activeSession != null) activeSession.responseFinished();
+                        currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
+                        currentBusinessActionProgressKey = "";
                     }
                     case "response.cancelled" -> {
                         if (!eventResponseId.isBlank() && !eventResponseId.equals(currentResponseId)
@@ -440,6 +509,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         agentText.setLength(0);
                         var activeSession = session;
                         if (activeSession != null) activeSession.responseFinished();
+                        currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
+                        currentBusinessActionProgressKey = "";
                     }
                     case "error" -> {
                         var error = event.path("error");
@@ -465,7 +536,23 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                 if (activeSession != null) activeSession.responseFinished();
                             }
                         } else {
-                            listener.onError(new IllegalStateException(message));
+                            var activeSession = session;
+                            var activePurpose = activeSession == null
+                                    ? RESPONSE_PURPOSE_CONVERSATION
+                                    : activeSession.dispatchedPurpose();
+                            var auxiliaryError = isAuxiliaryResponsePurpose(currentResponsePurpose)
+                                    || isAuxiliaryResponsePurpose(activePurpose);
+                            if (auxiliaryError) {
+                                currentResponseId = "";
+                                responseActive = false;
+                                agentText.setLength(0);
+                                textCompleted = true;
+                                currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
+                                currentBusinessActionProgressKey = "";
+                                if (activeSession != null) activeSession.responseFinished();
+                            } else {
+                                listener.onError(new IllegalStateException(message));
+                            }
                         }
                     }
                     default -> { }
@@ -773,7 +860,19 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 String arguments,
                 long generation
         ) {
+            executeTool(webSocket, callId, name, arguments, generation, true);
+        }
+
+        private void executeTool(
+                WebSocket webSocket,
+                String callId,
+                String name,
+                String arguments,
+                long generation,
+                boolean publishFunctionOutput
+        ) {
             var executionKey = generation + ":" + name + ":" + canonicalJson(arguments);
+            armBusinessActionProgress(executionKey, name, generation);
             var execution = toolExecutions.computeIfAbsent(executionKey, ignored -> CompletableFuture.supplyAsync(() -> {
                 try {
                     return realtimeService.executeTool(call, callId, name, arguments);
@@ -784,14 +883,17 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 }
             }));
             execution.thenAccept(result -> {
-                send(webSocket, Map.of(
-                        "type", "conversation.item.create",
-                        "item", Map.of(
-                                "type", "function_call_output",
-                                "call_id", callId,
-                                "output", write(result)
-                        )
-                ));
+                clearBusinessActionProgress(executionKey);
+                if (publishFunctionOutput) {
+                    send(webSocket, Map.of(
+                            "type", "conversation.item.create",
+                            "item", Map.of(
+                                    "type", "function_call_output",
+                                    "call_id", callId,
+                                    "output", write(result)
+                            )
+                    ));
+                }
                 if (!isCurrentGeneration(generation)) return;
                 if (!result.success()) {
                     var safeText = switch (name) {
@@ -806,8 +908,20 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 }
                 var nextTool = toolNextTool(result);
                 if (!nextTool.isBlank()) {
-                    var activeSession = session;
-                    if (activeSession != null) activeSession.requestResponseWithRequiredTool(nextTool);
+                    var nextArguments = toolNextToolArguments(result);
+                    if (!nextArguments.isBlank()) {
+                        executeTool(
+                                webSocket,
+                                "sauti-chain:" + callId + ":" + nextTool,
+                                nextTool,
+                                nextArguments,
+                                generation,
+                                false
+                        );
+                    } else {
+                        var activeSession = session;
+                        if (activeSession != null) activeSession.requestResponseWithRequiredTool(nextTool);
+                    }
                     return;
                 }
                 var deterministicResponse = toolSpokenResponse(result);
@@ -821,6 +935,10 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         // speech.
                         activeSession.seedAssistantText(deterministicResponse);
                         deliverDirectResponse(deterministicResponse);
+                        var guidance = toolCallerGuidanceInstruction(name, result);
+                        if (!guidance.isBlank()) {
+                            activeSession.requestPostBookingGuidance(guidance, generation);
+                        }
                     }
                     return;
                 }
@@ -840,9 +958,53 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             });
         }
 
+        private synchronized void armBusinessActionProgress(
+                String executionKey,
+                String name,
+                long generation
+        ) {
+            if (!supportsBusinessActionProgress(name)
+                    || businessActionProgressTimers.containsKey(executionKey)) return;
+            var timer = CALLER_TURN_WATCHDOG.schedule(() -> {
+                synchronized (RealtimeWebSocketListener.this) {
+                    businessActionProgressTimers.remove(executionKey);
+                    if (generation != turnGeneration) return;
+                    activeBusinessActionProgress.add(executionKey);
+                    var activeSession = session;
+                    if (activeSession != null) {
+                        activeSession.requestBusinessActionProgress(name, executionKey, generation);
+                    }
+                }
+            }, BUSINESS_ACTION_PROGRESS_DELAY_MILLIS, TimeUnit.MILLISECONDS);
+            businessActionProgressTimers.put(executionKey, timer);
+        }
+
+        private synchronized void clearBusinessActionProgress(String executionKey) {
+            var timer = businessActionProgressTimers.remove(executionKey);
+            if (timer != null) timer.cancel(false);
+            activeBusinessActionProgress.remove(executionKey);
+            var activeSession = session;
+            if (activeSession != null) activeSession.cancelPendingBusinessActionProgress(executionKey);
+        }
+
+        private synchronized boolean isBusinessActionProgressActive(String executionKey) {
+            return executionKey != null && activeBusinessActionProgress.contains(executionKey);
+        }
+
         private String toolSpokenResponse(com.sauti.llm.LlmToolResult result) {
             var value = result.result().get("spokenResponse");
             return value == null ? "" : value.toString().trim();
+        }
+
+        private String toolCallerGuidanceInstruction(
+                String toolName,
+                com.sauti.llm.LlmToolResult result
+        ) {
+            if (!"book_slot".equals(toolName) || !result.success()) return "";
+            var value = result.result().get("callerGuidanceInstruction");
+            if (value == null) return "";
+            var instruction = value.toString().trim();
+            return instruction.length() <= 1_200 ? instruction : "";
         }
 
         private String toolNextTool(com.sauti.llm.LlmToolResult result) {
@@ -853,6 +1015,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     && value.toString().matches("[A-Za-z][A-Za-z0-9_]{1,63}")
                     ? value.toString()
                     : "";
+        }
+
+        private String toolNextToolArguments(com.sauti.llm.LlmToolResult result) {
+            if (!Boolean.TRUE.equals(result.result().get("nextToolAuthorized"))) return "";
+            var value = result.result().get("nextToolArguments");
+            return value instanceof Map<?, ?> ? write(value) : "";
         }
 
         private boolean toolRequiresBusinessAction(com.sauti.llm.LlmToolResult result) {
@@ -1006,7 +1174,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             "role", "user",
                             "content", java.util.List.of(Map.of(
                                     "type", "input_text",
-                                    "text", "SAUTI_INPUT_TRANSCRIPT: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning.\n"
+                                    "text", "SAUTI_INPUT_TRANSCRIPT: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning. If the audio and text disagree about which configured service was requested, treat the service as unclear and ask one short clarification instead of selecting one.\n"
                                             + transcript.trim()
                             ))
                     )
@@ -1089,16 +1257,51 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             ), expectedGeneration);
         }
 
+        void requestBusinessActionProgress(String toolName, String progressKey, long expectedGeneration) {
+            if (progressKey == null || progressKey.isBlank()) return;
+            enqueueResponse(Map.of(
+                    "type", "response.create",
+                    "response", Map.of(
+                            "instructions", businessActionProgressInstruction(toolName),
+                            "tool_choice", "none",
+                            "output_modalities", java.util.List.of("text")
+                    )
+            ), expectedGeneration, RESPONSE_PURPOSE_BUSINESS_PROGRESS, progressKey);
+        }
+
+        void requestPostBookingGuidance(String instruction, long expectedGeneration) {
+            if (instruction == null || instruction.isBlank()) return;
+            enqueueResponse(Map.of(
+                    "type", "response.create",
+                    "response", Map.of(
+                            "instructions", instruction.trim(),
+                            "tool_choice", "none",
+                            "output_modalities", java.util.List.of("text")
+                    )
+            ), expectedGeneration, RESPONSE_PURPOSE_POST_BOOKING_GUIDANCE, "");
+        }
+
         private void enqueueResponse(Map<String, ?> response) {
             enqueueResponse(response, currentGeneration());
         }
 
         private synchronized void enqueueResponse(Map<String, ?> response, long expectedGeneration) {
+            enqueueResponse(response, expectedGeneration, RESPONSE_PURPOSE_CONVERSATION, "");
+        }
+
+        private synchronized void enqueueResponse(
+                Map<String, ?> response,
+                long expectedGeneration,
+                String purpose,
+                String progressKey
+        ) {
             if (expectedGeneration != generation) return;
             var requestId = "phone-" + expectedGeneration + "-" + (++responseRequestSequence);
             pendingResponses.addLast(new QueuedResponse(
                     expectedGeneration,
                     requestId,
+                    purpose,
+                    progressKey,
                     withRequestMetadata(response, requestId)
             ));
             dispatchNextResponse();
@@ -1157,6 +1360,20 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             return inFlightResponse == null ? generation : inFlightResponse.generation();
         }
 
+        synchronized String dispatchedPurpose() {
+            return inFlightResponse == null ? RESPONSE_PURPOSE_CONVERSATION : inFlightResponse.purpose();
+        }
+
+        synchronized String dispatchedProgressKey() {
+            return inFlightResponse == null ? "" : inFlightResponse.progressKey();
+        }
+
+        synchronized void cancelPendingBusinessActionProgress(String progressKey) {
+            if (progressKey == null || progressKey.isBlank()) return;
+            pendingResponses.removeIf(response -> RESPONSE_PURPOSE_BUSINESS_PROGRESS.equals(response.purpose())
+                    && progressKey.equals(response.progressKey()));
+        }
+
         synchronized boolean isDispatchedRequest(String requestId) {
             return requestId == null || requestId.isBlank()
                     || (inFlightResponse != null && requestId.equals(inFlightResponse.requestId()));
@@ -1206,7 +1423,13 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             return taggedEvent;
         }
 
-        private record QueuedResponse(long generation, String requestId, Map<String, ?> payload) { }
+        private record QueuedResponse(
+                long generation,
+                String requestId,
+                String purpose,
+                String progressKey,
+                Map<String, ?> payload
+        ) { }
 
         private synchronized void send(Map<String, ?> event) {
             try {

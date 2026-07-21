@@ -14,6 +14,7 @@ import com.sauti.agent.Agent;
 import com.sauti.agent.AgentRepository;
 import com.sauti.calendar.BookingDtos.CreateBookingRequest;
 import com.sauti.call.CallRepository;
+import com.sauti.call.Call;
 import com.sauti.outbound.OutboundCallService;
 import com.sauti.tenant.Tenant;
 import com.sauti.tool.CalendarProviderFactory;
@@ -23,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -138,6 +140,41 @@ class BookingServiceTest {
         );
 
         assertThat(result).containsExactly(available);
+    }
+
+    @Test
+    void returnsTheExistingBookingWhenAReviewedCallRetriesTheSameSave() {
+        var fixture = fixture("Google Calendar");
+        var callId = UUID.randomUUID();
+        var call = mock(Call.class);
+        var request = new CreateBookingRequest(
+                fixture.request.agentId(), callId, fixture.request.callerName(), fixture.request.callerPhone(),
+                fixture.request.callerEmail(), fixture.request.serviceType(), fixture.request.appointmentAt(),
+                fixture.request.durationMinutes(), fixture.request.capturedData()
+        );
+        var existing = new Booking(
+                fixture.tenant,
+                fixture.requestAgent,
+                call,
+                request.callerName(),
+                request.callerPhone(),
+                request.callerEmail(),
+                request.serviceType(),
+                request.appointmentAt(),
+                request.durationMinutes(),
+                "{}"
+        );
+        when(fixture.bookingRepository
+                .findFirstByTenantIdAndCall_IdAndAgent_IdAndStatusNotAndAppointmentAt(
+                        fixture.tenant.getId(), callId, fixture.requestAgent.getId(), "cancelled",
+                        request.appointmentAt()
+                )).thenReturn(Optional.of(existing));
+
+        var result = fixture.service.create(fixture.tenant.getId(), request, fixture.provider);
+
+        assertThat(result).isSameAs(existing);
+        verify(fixture.bookingRepository, never()).saveAndFlush(any(Booking.class));
+        verify(fixture.provider, never()).createEvent(any());
     }
 
     private Fixture fixture(String calendarProvider) {

@@ -541,6 +541,233 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void confirmsAnApprovedBookingBeforeOptionalAiGeneratedReferenceGuidance() {
+        var events = new ArrayList<String>();
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        var confirmation = "Your appointment is booked. Your booking number is SAT-APPROVED123.";
+        var guidanceInstruction = "Tell the caller in their current language to keep the booking number and "
+                + "provide it when calling back to change, reschedule, or cancel the booking.";
+        var guidance = "Please keep that booking number and give it to us if you call back to change or cancel.";
+        when(realtimeService.executeTool(
+                eq(call), eq("semantic-approval"), eq(com.sauti.tool.ConversationStateTool.NAME), anyString()
+        )).thenReturn(new com.sauti.llm.LlmToolResult(
+                "semantic-approval", com.sauti.tool.ConversationStateTool.NAME, true,
+                Map.of(
+                        "nextAction", "use_business_tool",
+                        "nextTool", "book_slot",
+                        "nextToolAuthorized", true,
+                        "nextToolArguments", Map.of("review_token", "signed-review-token")
+                ), ""
+        ));
+        when(realtimeService.executeTool(
+                eq(call), eq("sauti-chain:semantic-approval:book_slot"), eq("book_slot"),
+                eq("{\"review_token\":\"signed-review-token\"}")
+        )).thenReturn(new com.sauti.llm.LlmToolResult(
+                "sauti-chain:semantic-approval:book_slot", "book_slot", true,
+                Map.of(
+                        "status", "booking_confirmed",
+                        "spokenResponse", confirmation,
+                        "callerGuidanceInstruction", guidanceInstruction
+                ), ""
+        ));
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call, new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        var webSocket = mock(WebSocket.class);
+        socketListener.attach(session);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.function_call_arguments.done\"," +
+                        "\"call_id\":\"semantic-approval\",\"name\":\"update_conversation_state\"," +
+                        "\"arguments\":\"{\\\"updates\\\":{\\\"review_decision\\\":\\\"approved\\\"}}\"}",
+                true);
+
+        verify(realtimeService, timeout(1_000)).executeTool(
+                eq(call), eq("sauti-chain:semantic-approval:book_slot"), eq("book_slot"),
+                eq("{\"review_token\":\"signed-review-token\"}")
+        );
+        verify(session, never()).requestResponseWithRequiredTool("book_slot");
+        verify(session, timeout(1_000)).seedAssistantText(confirmation);
+        verify(session, timeout(1_000)).requestPostBookingGuidance(guidanceInstruction, 0L);
+        assertThat(events).containsExactly("agent:" + confirmation + ":false");
+        var payloads = ArgumentCaptor.forClass(String.class);
+        verify(webSocket, timeout(1_000).atLeastOnce()).sendText(payloads.capture(), eq(true));
+        assertThat(payloads.getAllValues()).noneMatch(payload -> payload.contains("sauti-chain:semantic-approval"));
+
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        when(session.dispatchedGeneration()).thenReturn(0L);
+        when(session.dispatchedPurpose()).thenReturn("post_booking_guidance");
+        when(session.dispatchedProgressKey()).thenReturn("");
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"guidance-response\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.added\","
+                        + "\"item\":{\"type\":\"message\",\"id\":\"guidance-message\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"text\":\"" + guidance + "\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\","
+                        + "\"response\":{\"id\":\"guidance-response\",\"status\":\"completed\"}}", true);
+
+        assertThat(events).containsExactly(
+                "agent:" + confirmation + ":false",
+                "agent:" + guidance + ":false"
+        );
+    }
+
+    @Test
+    void keepsAConfirmedBookingSuccessfulWhenOptionalReferenceGuidanceFails() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        when(session.dispatchedGeneration()).thenReturn(0L);
+        when(session.dispatchedPurpose()).thenReturn("post_booking_guidance");
+        when(session.dispatchedProgressKey()).thenReturn("");
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"guidance-response\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"error\",\"error\":{\"message\":\"guidance generation timed out\"}}", true);
+
+        assertThat(events).isEmpty();
+        verify(session).responseFinished();
+    }
+
+    @Test
+    void tellsTheCallerWhenAnActualBookingSaveIsStillRunning() throws Exception {
+        var events = new ArrayList<String>();
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        var releaseSave = new CountDownLatch(1);
+        var progress = "I’m sorry for the wait; I’m still saving that appointment for you.";
+        var confirmation = "Your appointment is booked. Your booking number is SAT-SLOW123456.";
+        when(realtimeService.executeTool(eq(call), eq("slow-booking"), eq("book_slot"), anyString()))
+                .thenAnswer(ignored -> {
+                    releaseSave.await(5, TimeUnit.SECONDS);
+                    return new com.sauti.llm.LlmToolResult(
+                            "slow-booking", "book_slot", true,
+                            Map.of("status", "booking_confirmed", "spokenResponse", confirmation), ""
+                    );
+                });
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call, new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.function_call_arguments.done\"," +
+                        "\"call_id\":\"slow-booking\",\"name\":\"book_slot\"," +
+                        "\"arguments\":\"{\\\"review_token\\\":\\\"signed-review-token\\\"}\"}",
+                true);
+
+        var progressKey = ArgumentCaptor.forClass(String.class);
+        verify(session, timeout(2_500)).requestBusinessActionProgress(
+                eq("book_slot"), progressKey.capture(), eq(0L)
+        );
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        when(session.dispatchedGeneration()).thenReturn(0L);
+        when(session.dispatchedPurpose()).thenReturn("business_progress");
+        when(session.dispatchedProgressKey()).thenReturn(progressKey.getValue());
+        var webSocket = mock(WebSocket.class);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"progress-response\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.added\","
+                        + "\"item\":{\"type\":\"message\",\"id\":\"progress-message\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"text\":\"" + progress + "\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\","
+                        + "\"response\":{\"id\":\"progress-response\",\"status\":\"completed\"}}", true);
+
+        assertThat(events).contains("agent:" + progress + ":false");
+
+        releaseSave.countDown();
+        verify(session, timeout(1_000)).seedAssistantText(confirmation);
+        assertThat(events).containsSubsequence(
+                "agent:" + progress + ":false",
+                "agent:" + confirmation + ":false"
+        );
+    }
+
+    @Test
+    void suppressesAGeneratedDelayApologyWhenTheBusinessActionFinishesFirst() throws Exception {
+        var events = new ArrayList<String>();
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        var releaseSave = new CountDownLatch(1);
+        var confirmation = "Your appointment is booked. Your booking number is SAT-FASTENOUGH.";
+        when(realtimeService.executeTool(eq(call), eq("racing-booking"), eq("book_slot"), anyString()))
+                .thenAnswer(ignored -> {
+                    releaseSave.await(5, TimeUnit.SECONDS);
+                    return new com.sauti.llm.LlmToolResult(
+                            "racing-booking", "book_slot", true,
+                            Map.of("status", "booking_confirmed", "spokenResponse", confirmation), ""
+                    );
+                });
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call, new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.function_call_arguments.done\","
+                        + "\"call_id\":\"racing-booking\",\"name\":\"book_slot\","
+                        + "\"arguments\":\"{\\\"review_token\\\":\\\"signed-review-token\\\"}\"}", true);
+
+        var progressKey = ArgumentCaptor.forClass(String.class);
+        verify(session, timeout(2_500)).requestBusinessActionProgress(
+                eq("book_slot"), progressKey.capture(), eq(0L)
+        );
+        releaseSave.countDown();
+        verify(session, timeout(1_000)).seedAssistantText(confirmation);
+
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        when(session.dispatchedGeneration()).thenReturn(0L);
+        when(session.dispatchedPurpose()).thenReturn("business_progress");
+        when(session.dispatchedProgressKey()).thenReturn(progressKey.getValue());
+        var webSocket = mock(WebSocket.class);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"stale-progress\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.added\","
+                        + "\"item\":{\"type\":\"message\",\"id\":\"stale-message\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\","
+                        + "\"text\":\"Sorry for the wait; I’m still saving it.\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\","
+                        + "\"response\":{\"id\":\"stale-progress\",\"status\":\"completed\"}}", true);
+
+        assertThat(events).containsExactly("agent:" + confirmation + ":false");
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(webSocket, timeout(1_000).atLeastOnce()).sendText(payload.capture(), eq(true));
+        assertThat(payload.getAllValues()).anyMatch(value -> value.contains("conversation.item.delete")
+                && value.contains("stale-message"));
+    }
+
+    @Test
+    void progressInstructionsDelegateLanguageAndWordingToTheModel() {
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("book_slot")).isTrue();
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("check_availability")).isTrue();
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction("book_slot"))
+                .contains("caller's current language", "apology", "still saving the appointment")
+                .doesNotContain("I’m saving the appointment");
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction("check_availability"))
+                .contains("still checking the live schedule");
+    }
+
+    @Test
     void executesAFunctionCallRecoveredFromResponseDoneWhenTheDeltaEventIsMissing() {
         var events = new ArrayList<String>();
         var realtimeService = mock(OpenAiRealtimeService.class);
@@ -1046,6 +1273,7 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         assertThat(event.path("item").path("content").path(0).path("type").asText()).isEqualTo("input_text");
         assertThat(event.path("item").path("content").path(0).path("text").asText())
                 .startsWith("SAUTI_INPUT_TRANSCRIPT:")
+                .contains("If the audio and text disagree about which configured service was requested")
                 .endsWith("My name is Zachary and my number is 0105753221.");
     }
 

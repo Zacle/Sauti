@@ -104,13 +104,45 @@ public class BookingService {
     }
 
     public Booking create(UUID tenantId, CreateBookingRequest request) {
+        var existing = matchingBookingForCall(tenantId, request);
+        if (existing.isPresent()) return existing.get();
         var booking = persistLocalBooking(tenantId, request);
         return synchronizeCreatedBooking(booking, providerFor(booking.getAgent()));
     }
 
     public Booking create(UUID tenantId, CreateBookingRequest request, CalendarProvider provider) {
+        var existing = matchingBookingForCall(tenantId, request);
+        if (existing.isPresent()) return existing.get();
         var booking = persistLocalBooking(tenantId, request);
         return synchronizeCreatedBooking(booking, provider);
+    }
+
+    private java.util.Optional<Booking> matchingBookingForCall(UUID tenantId, CreateBookingRequest request) {
+        if (request.callId() == null || request.agentId() == null || request.appointmentAt() == null) {
+            return java.util.Optional.empty();
+        }
+        return bookingRepository
+                .findFirstByTenantIdAndCall_IdAndAgent_IdAndStatusNotAndAppointmentAt(
+                        tenantId,
+                        request.callId(),
+                        request.agentId(),
+                        "cancelled",
+                        request.appointmentAt()
+                )
+                .filter(existing -> sameBookingRequest(existing, request));
+    }
+
+    private boolean sameBookingRequest(Booking existing, CreateBookingRequest request) {
+        var requestedDuration = request.durationMinutes() == null ? 60 : request.durationMinutes();
+        return Objects.equals(normalized(existing.getCallerName()), normalized(request.callerName()))
+                && Objects.equals(normalized(existing.getCallerPhone()), normalized(request.callerPhone()))
+                && Objects.equals(normalized(existing.getCallerEmail()), normalized(request.callerEmail()))
+                && Objects.equals(normalized(existing.getServiceType()), normalized(request.serviceType()))
+                && existing.getDurationMinutes() == requestedDuration;
+    }
+
+    private String normalized(String value) {
+        return value == null ? "" : value.trim();
     }
 
     private Booking persistLocalBooking(UUID tenantId, CreateBookingRequest request) {

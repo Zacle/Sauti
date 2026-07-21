@@ -4011,3 +4011,78 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat the supplied “Tuesday at 3 p.m.” and “Thursday at 3 p.m.” availability turns in hybrid Agent Studio and one carrier call. Confirm the tool produces one direct answer, no generic repeat request, no second conversational-response timeout, and a return to listening. Also test an unclear service utterance and confirm the agent asks for clarification rather than selecting a catalog item. Live calendar/network and speech-provider behavior still require this end-to-end validation after deployment.
+
+### 2026-07-21 - Make reviewed booking saves conversational, direct, and retry-safe
+
+- Fixed the timeout after a caller approved the final booking review. The semantic tool already knew that the caller approved and the signed review token already contained the verified booking details, but browser and phone Realtime each requested another model response to reconstruct the `book_slot` arguments. After the save, another model response was needed to phrase the confirmation. Either redundant response could hit the conversational-response timeout even when the booking operation itself succeeded.
+- Stored the signed review token with the live pending-booking state. A semantically approved review now returns a server-authorized `book_slot` request containing that token, and both Realtime runtimes execute it directly without asking the model to reproduce booking arguments. Corrections and incomplete reviews retain the existing conversational path.
+- Added deterministic localized booking results. A successful save now speaks the real booking number and accurately distinguishes a confirmed calendar booking, a locally saved booking when no external calendar is configured, and a locally saved booking whose external calendar synchronization is still pending.
+- Added a delayed progress cue around the actual booking operation. If `book_slot` is still running after 1.5 seconds, the caller hears the localized equivalent of “I’m saving the appointment now. This may take a moment.” Fast saves produce no filler, the cue is emitted at most once, and it never claims that a booking has completed. The browser booking execution bound is 30 seconds while ordinary and read-only actions keep their tighter bounds.
+- Made an exact repeated approval retry-safe within the same call. If a prior attempt already saved the same tenant, call, agent, appointment time, customer, service, and duration, the booking service returns the existing booking and booking number instead of inserting a duplicate or repeating provider synchronization.
+- Tightened exact-field handling for service recognition. When the accepted transcript and caller audio disagree on the configured service, the agent must clarify the service instead of silently selecting one. This covers cases such as “men” versus “women” without hard-coded phrase matching or language-specific intent lists.
+- The direct function execution follows OpenAI's Realtime function-calling model: application code executes the selected function and only requests another model response when model generation is actually needed. Reference: https://developers.openai.com/api/docs/guides/realtime-conversations#function-calling
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/{BookingRepository,BookingService}.java`
+  - `backend/src/main/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProvider,VoiceOutputGuard}.java`
+  - `backend/src/main/java/com/sauti/tool/{BookingSpeechRenderer,ConversationStateTool,SautiCalendarFulfillment}.java`
+  - focused backend tests for booking rendering, fulfillment, semantic approval, retry idempotency, progress timing, and phone direct execution
+  - `dashboard/features/voice-runtime/{openaiRealtime,openaiRealtime.test,realtimeProtocol}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused backend booking and Realtime suites - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 12 regressions.
+  - `npm.cmd run lint` - passed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat the supplied final-review approval in hybrid Agent Studio and one carrier call. Test both a fast save and an intentionally delayed calendar provider. Confirm that a slow save produces one progress cue followed by the actual status and booking number, a fast save skips the cue, and repeating the approval returns the same booking rather than creating a duplicate. The application-level same-call retry check covers the observed sequential retry; simultaneous duplicate requests would require a persisted idempotency key or database constraint if that becomes a supported traffic pattern.
+
+### 2026-07-22 - Let Realtime phrase delayed business-operation updates naturally
+
+- Removed the caller-facing English, French, Arabic, and Swahili templates for “I’m saving the appointment.” A delay is now represented as runtime state, not as a prewritten utterance. The application still decides when an update is warranted and what claims are safe; the active Realtime model decides the natural wording from the conversation context and caller language.
+- Applied the behavior to both live availability retrieval and appointment saving in browser and phone Realtime. If either operation is still running after 1.5 seconds, Sauti requests one short text-only model response that must apologize briefly, say it is still working, remain professional, avoid questions and repeated details, and never claim success or failure.
+- Kept authoritative business outcomes outside the model. Availability decisions, booking status, and booking numbers still come from tool results, preventing the conversational model from inventing a calendar result. Only the non-authoritative progress wording is generated dynamically.
+- Added race handling for fast completions. If the operation completes before the progress response is spoken, pending progress generation is removed where possible and any already-generated stale assistant item is suppressed and deleted. This prevents an apology such as “I’m still saving it” from playing after the caller has already heard the confirmation.
+- Progress generation failures and timeouts are silent. They do not produce the generic “repeat your question” message or block the eventual tool result. Caller interruption still invalidates the entire generation and cancels old progress work through the existing barge-in lifecycle.
+- This follows the Realtime response contract: Sauti creates a response with response-level instructions and `tool_choice: none`, while custom availability and booking functions continue to execute in application code. Reference: https://developers.openai.com/api/docs/guides/realtime-conversations#function-calling
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProvider,VoiceOutputGuard}.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - focused backend tests for progress prompting, delayed speech, and stale-response suppression
+  - `dashboard/features/voice-runtime/{openaiRealtime,openaiRealtime.test,realtimeProtocol}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused backend Realtime, semantic-state, and voice-output suites - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 13 regressions.
+  - `npm.cmd run lint` - passed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, test an intentionally delayed availability lookup and booking save in at least two languages in Agent Studio and one carrier call. Confirm that the model produces one brief contextual apology before the result, that a fast operation produces no filler, and that a save completing during progress generation suppresses the stale update. The 1.5-second threshold is a product default and may need adjustment from production latency telemetry.
+
+### 2026-07-22 - Remind callers to retain the confirmed booking number
+
+- Added a post-save caller instruction to successful `book_slot` results. It asks the active Realtime model for one short, professional sentence in the caller's current language telling them to keep the booking number and provide it when calling back to change, reschedule, or cancel the appointment.
+- Kept factual outcomes server-owned. Sauti first delivers the deterministic saved-booking status and exact booking number; the model-generated reminder is queued only afterward and is explicitly forbidden from repeating, changing, or inventing the number or any booking fact.
+- Applied the behavior to both browser/hybrid and phone Realtime paths without adding caller-facing translated phrase tables. Review-only, failed, non-booking, and untrusted/oversized tool results cannot trigger the reminder.
+- Made the reminder optional and non-blocking. A provider error, incomplete response, or timeout during reminder generation is silent and cannot turn an already confirmed booking into a generic failure. Caller interruption invalidates queued or active reminder output through the existing generation lifecycle.
+- This uses a dedicated `response.create` with response-level instructions, text output, `tool_choice: none`, and Sauti request metadata, consistent with OpenAI's documented response-level generation controls: https://developers.openai.com/api/docs/guides/realtime-conversations#create-responses-outside-the-default-conversation
+- Files touched:
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `dashboard/features/voice-runtime/{openaiRealtime,openaiRealtime.test,realtimeProtocol}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused backend fulfillment and phone Realtime suites - passed.
+  - `npm.cmd run test:voice` - passed; 14 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, complete one booking in at least two caller languages in Agent Studio and one carrier call. Confirm the exact booking number is spoken first, the keep-and-call-back reminder follows once in the same language, interruption cancels the reminder cleanly, and a forced reminder-generation failure leaves the confirmed booking intact.

@@ -171,6 +171,14 @@ public class ConversationStateTool {
                     && configuredFor(call, businessTool)) {
                 result.put("nextTool", businessTool);
                 result.put("nextToolAuthorized", true);
+                if ("book_slot".equals(businessTool) && "approved".equals(reviewDecision)) {
+                    sessions.pendingBooking(call.getTwilioCallSid())
+                            .map(com.sauti.session.BookingDraft::reviewToken)
+                            .filter(token -> token != null && !token.isBlank())
+                            .ifPresent(token -> {
+                                result.put("nextToolArguments", Map.of("review_token", token));
+                            });
+                }
             }
             result.put("instruction", spoken.isBlank()
                     ? "State is updated. Continue with the appropriate configured business tool before speaking, or answer naturally if no business tool is needed."

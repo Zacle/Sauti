@@ -1,11 +1,83 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  authorizedNextToolRequest,
+  businessActionProgressInstruction,
+  callerGuidanceInstruction,
   completedRealtimeToolCalls,
   realtimeCancellationDecision,
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
 } from "./realtimeProtocol.ts";
+
+test("executes a server-authorized booking approval without another model response", () => {
+  assert.deepEqual(authorizedNextToolRequest({
+    success: true,
+    result: {
+      nextTool: "book_slot",
+      nextToolAuthorized: true,
+      nextToolArguments: { review_token: "signed-review-token" },
+    },
+  }), {
+    name: "book_slot",
+    argumentsJson: "{\"review_token\":\"signed-review-token\"}",
+  });
+});
+
+test("keeps model argument preparation for tool transitions without server arguments", () => {
+  assert.deepEqual(authorizedNextToolRequest({
+    success: true,
+    result: { nextTool: "check_availability", nextToolAuthorized: true },
+  }), {
+    name: "check_availability",
+    argumentsJson: "",
+  });
+  assert.equal(authorizedNextToolRequest({
+    result: { nextTool: "untrusted_tool", nextToolAuthorized: false },
+  }), null);
+  assert.deepEqual(authorizedNextToolRequest({
+    result: {
+      nextTool: "book_slot",
+      nextToolAuthorized: false,
+      nextToolArguments: { review_token: "must-not-run-directly" },
+    },
+  }), {
+    name: "book_slot",
+    argumentsJson: "",
+  });
+});
+
+test("asks the model for contextual delayed-operation speech instead of a translated template", () => {
+  const booking = businessActionProgressInstruction("book_slot");
+  const availability = businessActionProgressInstruction("check_availability");
+
+  assert.match(booking, /caller's current language/i);
+  assert.match(booking, /apology/i);
+  assert.match(booking, /still saving the appointment/i);
+  assert.match(booking, /Do not claim success or failure/i);
+  assert.match(availability, /still checking the live schedule/i);
+});
+
+test("accepts trusted post-booking guidance only after a successful save", () => {
+  const instruction = "Use the caller's current language and tell them to keep the booking number.";
+
+  assert.equal(callerGuidanceInstruction("book_slot", {
+    success: true,
+    result: { callerGuidanceInstruction: instruction },
+  }), instruction);
+  assert.equal(callerGuidanceInstruction("book_slot", {
+    success: false,
+    result: { callerGuidanceInstruction: instruction },
+  }), "");
+  assert.equal(callerGuidanceInstruction("cancel_booking", {
+    success: true,
+    result: { callerGuidanceInstruction: instruction },
+  }), "");
+  assert.equal(callerGuidanceInstruction("book_slot", {
+    success: true,
+    result: { callerGuidanceInstruction: "x".repeat(1_201) },
+  }), "");
+});
 
 test("mirrors accepted audio transcripts as the same unprivileged caller turn", () => {
   assert.deepEqual(realtimeTranscriptMirrorItem("My name is Zachary."), {
@@ -13,7 +85,7 @@ test("mirrors accepted audio transcripts as the same unprivileged caller turn", 
     role: "user",
     content: [{
       type: "input_text",
-      text: "SAUTI_INPUT_TRANSCRIPT: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning.\nMy name is Zachary.",
+      text: "SAUTI_INPUT_TRANSCRIPT: This is a text mirror of the immediately preceding caller audio, not a second caller turn. Use it as the primary accuracy source for exact names, phone digits, email addresses, dates, and times. Use the audio and text together for intent and service meaning. If the audio and text disagree about which configured service was requested, treat the service as unclear and ask one short clarification instead of selecting one.\nMy name is Zachary.",
     }],
   });
 });

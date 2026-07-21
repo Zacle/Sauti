@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 
 import com.sauti.agent.Agent;
@@ -289,13 +290,18 @@ class SautiCalendarFulfillmentTest {
         assertThat(review.success()).isTrue();
         assertThat(review.result())
                 .containsEntry("status", "booking_review_required")
-                .containsEntry("bookingCreated", false);
+                .containsEntry("bookingCreated", false)
+                .doesNotContainKey("callerGuidanceInstruction");
         assertThat(review.result().get("spokenResponse").toString())
                 .contains("Z for Zulu, A for Alfa, C for Charlie, H for Hotel, A for Alfa, R for Romeo, Y for Yankee")
                 .contains("0, 1, 1, 1, 5, 7, 5, 3, 4, 4, 1")
                 .contains("at sign", "dot", "G for Golf, M for Mike, A for Alfa, I for India, L for Lima")
                 .contains("75 minutes", "Preferred Staff: any available staff")
                 .doesNotContain(review.result().get("reviewToken").toString());
+        verify(fixture.callSessionStore).updatePendingBooking(
+                eq("call-sid"),
+                argThat(draft -> review.result().get("reviewToken").equals(draft.reviewToken()))
+        );
         verifyNoInteractions(fixture.bookingService);
 
         when(fixture.callSessionStore.conversationHistory("call-sid"))
@@ -309,7 +315,17 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.result())
                 .containsEntry("status", "booking_saved_pending_calendar")
                 .containsEntry("bookingNumber", "SAT-AB12CD34")
-                .containsEntry("calendarSynced", false);
+                .containsEntry("calendarSynced", false)
+                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
+                        .contains("saved in our system", "external calendar confirmation is still pending", "SAT-AB12CD34"))
+                .hasEntrySatisfying("callerGuidanceInstruction", instruction -> assertThat(instruction.toString())
+                        .containsIgnoringCase("caller's current language")
+                        .containsIgnoringCase("keep the booking number")
+                        .containsIgnoringCase("calling back")
+                        .containsIgnoringCase("change")
+                        .containsIgnoringCase("reschedule")
+                        .containsIgnoringCase("cancel")
+                        .containsIgnoringCase("do not repeat, alter, or invent the number"));
     }
 
     @Test
