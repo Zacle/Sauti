@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/calls";
 import type { StartTestCallResponse } from "@/types/api";
 import { connectOpenAiRealtime, type OpenAiRealtimeConnection } from "@/features/voice-runtime/openaiRealtime";
+import { PcmStreamPlayer } from "@/features/voice-runtime/pcmStreamPlayer";
 
 type TestCallPanelProps = {
   agentId?: string;
@@ -106,6 +107,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const playbackCompletionTimerRef = useRef(0);
   const pcmPrerollRef = useRef(REALTIME_PCM_INITIAL_PREROLL_SECONDS);
   const pcmPlaybackActiveRef = useRef(false);
+  const pcmPlayerRef = useRef<PcmStreamPlayer | null>(null);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
   const nativeRealtimeRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
@@ -308,6 +310,27 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     recordingDestinationRef.current = destination;
     analyserRef.current = analyser;
     recorderRef.current = recorder;
+    try {
+      pcmPlayerRef.current = await PcmStreamPlayer.create(context, {
+        recordingDestination: destination,
+        onPlaybackStarted: () => {
+          if (!endingRef.current) updateStatus("speaking");
+        },
+        onPlaybackDrained: () => {
+          if (endingRef.current) return;
+          updateStatus("listening");
+          if (hybridRealtimeRef.current && nativeEndPendingRef.current) {
+            nativeEndPendingRef.current = false;
+            window.setTimeout(() => void endCall("completed"), 180);
+          }
+        },
+        onPlaybackStalled: () => sendHybridEvent({ type: "playback_stalled" }),
+      });
+    } catch {
+      // Keep the existing scheduler as a compatibility fallback when a browser
+      // cannot load AudioWorklet modules.
+      pcmPlayerRef.current = null;
+    }
   }
 
   async function connectRealtimeVoice(started: StartTestCallResponse, stream: MediaStream) {
@@ -384,11 +407,12 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     if (event.type === "speaking") {
       if (event.value) {
         window.clearTimeout(playbackCompletionTimerRef.current);
+        pcmPlayerRef.current?.begin();
         updateStatus("speaking");
       } else {
-        scheduleRealtimePlaybackIdle();
+        finishRealtimePlayback();
       }
-      if (!event.value && hybridRealtimeRef.current && nativeEndPendingRef.current) {
+      if (!event.value && !pcmPlayerRef.current && hybridRealtimeRef.current && nativeEndPendingRef.current) {
         nativeEndPendingRef.current = false;
         const context = audioContextRef.current;
         const remainingMs = context ? Math.max(0, playbackTimeRef.current - context.currentTime) * 1000 : 0;
@@ -409,6 +433,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function playRealtimePcm(data: ArrayBuffer) {
+    if (pcmPlayerRef.current) {
+      pcmPlayerRef.current.pushPcm16(data);
+      return;
+    }
     const context = audioContextRef.current;
     if (!context) return;
     window.clearTimeout(playbackCompletionTimerRef.current);
@@ -439,6 +467,14 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     source.onended = () => playbackSourcesRef.current.delete(source);
   }
 
+  function finishRealtimePlayback() {
+    if (pcmPlayerRef.current) {
+      pcmPlayerRef.current.complete();
+      return;
+    }
+    scheduleRealtimePlaybackIdle();
+  }
+
   function scheduleRealtimePlaybackIdle() {
     window.clearTimeout(playbackCompletionTimerRef.current);
     const context = audioContextRef.current;
@@ -452,6 +488,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function clearRealtimePlayback() {
+    pcmPlayerRef.current?.clear();
     window.clearTimeout(playbackCompletionTimerRef.current);
     playbackSourcesRef.current.forEach((source) => {
       try { source.stop(); } catch { /* already stopped */ }
@@ -934,6 +971,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       // Audio may already have ended.
     }
     agentAudioSourceRef.current = null;
+    pcmPlayerRef.current?.close();
+    pcmPlayerRef.current = null;
     void audioContextRef.current?.close();
     audioContextRef.current = null;
     analyserRef.current = null;

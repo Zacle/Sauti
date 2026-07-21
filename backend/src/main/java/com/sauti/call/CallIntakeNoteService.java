@@ -14,7 +14,9 @@ public class CallIntakeNoteService {
     );
     private static final Pattern APPOINTMENT_NAME = Pattern.compile(
             "(?iu)(?:(?:her|his|their|the (?:patient|client|guest)(?:'s)?|my (?:wife|husband|partner|daughter|son|mother|father)(?:'s)?)"
-                    + " (?:full )?name (?:is|is going to be)|(?:the )?(?:appointment|booking|reservation) (?:is )?for)"
+                    + " (?:full )?name (?:is|is going to be)|(?:the )?(?:appointment|booking|reservation) (?:is )?for|"
+                    + "(?:book|schedule|reserve)(?:\\s+\\p{L}+){0,4}\\s+for\\s+my\\s+"
+                    + "(?:wife|husband|partner|daughter|son|mother|father)\\s*[,;:-]?)"
                     + "\\s+([\\p{L}'’ -]{2,60})"
     );
     private static final Pattern PHONE_CONTEXT = Pattern.compile(
@@ -42,6 +44,10 @@ public class CallIntakeNoteService {
     }
 
     public Map<String, String> notes(Call call, String currentCallerTranscript) {
+        return snapshot(call, currentCallerTranscript).notes();
+    }
+
+    private IntakeSnapshot snapshot(Call call, String currentCallerTranscript) {
         var notes = new LinkedHashMap<String, String>();
         var phoneCandidate = new StringBuilder();
         String previousAgent = "";
@@ -51,13 +57,16 @@ public class CallIntakeNoteService {
         }
         collect(notes, phoneCandidate, currentCallerTranscript, previousAgent);
         if (phoneCandidate.length() >= 7) notes.put("caller_phone", phoneCandidate.toString());
-        return Map.copyOf(notes);
+        return new IntakeSnapshot(Map.copyOf(notes), previousAgent);
     }
 
     public String promptBlock(Call call, String currentCallerTranscript) {
-        var notes = notes(call, currentCallerTranscript);
-        if (notes.isEmpty()) return "AUTHORITATIVE CALL NOTES: none collected yet.";
+        var snapshot = snapshot(call, currentCallerTranscript);
+        var notes = snapshot.notes();
+        var phoneStillPending = asksForPhone(snapshot.previousAgent()) && !notes.containsKey("caller_phone");
+        if (notes.isEmpty() && !phoneStillPending) return "AUTHORITATIVE CALL NOTES: none collected yet.";
         var result = new StringBuilder("AUTHORITATIVE CURRENT CALL STATE (derived from the complete call; retain these values and do not ask for filled fields again):\n");
+        if (notes.isEmpty()) result.append("- no booking values have been collected yet.\n");
         notes.forEach((key, value) -> result.append("- ")
                 .append(switch (key) {
                     case "caller_name" -> "caller_name (person speaking)";
@@ -69,6 +78,11 @@ public class CallIntakeNoteService {
                 .append(": ").append(value).append('\n'));
         if (notes.containsKey("booking_for_relation") && !notes.containsKey("appointment_name")) {
             result.append("- booking subject name is still missing; never substitute caller_name for it.\n");
+        }
+        if (phoneStillPending) {
+            result.append("- CURRENT PENDING FIELD: caller_phone. The latest caller turn did not provide a usable complete phone number. "
+                    + "Do not say it was captured and do not advance to another booking field. Answer a question if they asked one; "
+                    + "otherwise ask them to repeat or continue the phone number naturally.\n");
         }
         return result.toString().trim();
     }
@@ -100,7 +114,7 @@ public class CallIntakeNoteService {
         }
 
         if (asksForService(previous) && plausibleServiceAnswer(callerText)) {
-            notes.put("service_type", cleanAnswer(callerText));
+            notes.put("service_type", cleanServiceAnswer(callerText));
         }
 
         var email = EMAIL.matcher(callerText);
@@ -260,6 +274,12 @@ public class CallIntakeNoteService {
                 && previous.matches(".*\\b(what|which|would|want|like|quel|quelle|souhaite|voudrait)\\b.*");
     }
 
+    private boolean asksForPhone(String previous) {
+        var normalized = normalize(previous);
+        return PHONE_CONTEXT.matcher(normalized).find()
+                && normalized.matches(".*\\b(what|which|have|share|tell|give|could|may|use|quel|donner|dire|utiliser)\\b.*");
+    }
+
     private boolean plausibleNameOnly(String value) {
         var candidate = cleanAnswer(value);
         var normalized = normalize(candidate);
@@ -268,7 +288,7 @@ public class CallIntakeNoteService {
     }
 
     private boolean plausibleServiceAnswer(String value) {
-        var candidate = cleanAnswer(value);
+        var candidate = cleanServiceAnswer(value);
         var normalized = normalize(candidate);
         return candidate.matches("[\\p{L}0-9'’ &-]{2,80}")
                 && candidate.trim().split("\\s+").length <= 10
@@ -288,6 +308,13 @@ public class CallIntakeNoteService {
                 .replaceAll("\\s+", " ");
     }
 
+    private String cleanServiceAnswer(String value) {
+        return cleanAnswer(value)
+                .replaceFirst("(?iu)\\s*[,;]?\\s+(?:but|however|mais|cependant)\\b.*$", "")
+                .replaceAll("[\\s.!?,;:]+$", "")
+                .trim();
+    }
+
     private String cleanName(String value) {
         return value.trim()
                 .replaceFirst("(?iu)\\s+(?:and\\s+i\\b|et\\s+je\\b|et\\s+j['’]|na\\s+(?:nina|nataka)\\b|و\\s*أنا\\b).*$", "")
@@ -299,4 +326,5 @@ public class CallIntakeNoteService {
         return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFD)
                 .replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT).replace('’', '\'');
     }
+    private record IntakeSnapshot(Map<String, String> notes, String previousAgent) { }
 }

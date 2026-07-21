@@ -335,4 +335,49 @@ class HybridVoiceSessionServiceTest {
                         && payload.contains("\"value\":false"))
                 .anyMatch(payload -> payload.contains("\"type\":\"error\""));
     }
+
+    @Test
+    void browserPlaybackStallClearsSpeakingAndReopensCartesia() throws Exception {
+        var repository = mock(CallRepository.class);
+        var provider = mock(RealtimeTextToSpeechProvider.class);
+        var first = mock(RealtimeTtsSession.class);
+        var second = mock(RealtimeTtsSession.class);
+        var socket = mock(WebSocketSession.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.isActive()).thenReturn(true);
+        when(call.getDirection()).thenReturn("web");
+        when(call.getTwilioCallSid()).thenReturn("stalled-playback");
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getTtsVoiceId()).thenReturn("cartesia:english-voice");
+        when(repository.findByTwilioCallSid("stalled-playback")).thenReturn(Optional.of(call));
+        when(socket.isOpen()).thenReturn(true);
+        when(provider.open(eq("en"), eq("cartesia:english-voice"), any()))
+                .thenReturn(CompletableFuture.completedFuture(first), CompletableFuture.completedFuture(second));
+        var listener = ArgumentCaptor.forClass(TtsAudioListener.class);
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
+
+        service.start("stalled-playback", agentId.toString(), socket);
+        verify(provider).open(eq("en"), eq("cartesia:english-voice"), listener.capture());
+        service.accept("stalled-playback", "{\"type\":\"speak\",\"generation\":0,"
+                + "\"id\":\"active\",\"text\":\"This response started speaking.\"}");
+        listener.getValue().onPcmAudio(new byte[] {1, 2, 3, 4});
+
+        service.accept("stalled-playback", "{\"type\":\"playback_stalled\"}");
+
+        verify(first).close();
+        verify(provider, times(2)).open(eq("en"), eq("cartesia:english-voice"), any());
+        var events = ArgumentCaptor.forClass(TextMessage.class);
+        verify(socket, atLeastOnce()).sendMessage(events.capture());
+        assertThat(events.getAllValues()).extracting(TextMessage::getPayload)
+                .anyMatch(payload -> payload.contains("\"type\":\"clear_audio\""))
+                .anyMatch(payload -> payload.contains("\"type\":\"speaking\"")
+                        && payload.contains("\"value\":false"));
+    }
 }

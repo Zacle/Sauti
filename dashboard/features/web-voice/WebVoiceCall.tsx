@@ -13,6 +13,7 @@ import {
   type PublicWebVoiceAgent,
 } from "@/lib/api/public-web-voice";
 import { connectOpenAiRealtime, type OpenAiRealtimeConnection } from "@/features/voice-runtime/openaiRealtime";
+import { PcmStreamPlayer } from "@/features/voice-runtime/pcmStreamPlayer";
 import styles from "./WebVoiceCall.module.css";
 
 type Message = { role: "visitor" | "agent"; text: string };
@@ -56,6 +57,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const playbackCompletionTimerRef = useRef(0);
   const pcmPrerollRef = useRef(REALTIME_PCM_INITIAL_PREROLL_SECONDS);
   const pcmPlaybackActiveRef = useRef(false);
+  const pcmPlayerRef = useRef<PcmStreamPlayer | null>(null);
   const pcmQueueRef = useRef<number[]>([]);
   const speakingRef = useRef(false);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
@@ -101,10 +103,27 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       const origin = embedded && document.referrer ? new URL(document.referrer).origin : window.location.origin;
       const context = new AudioContext();
       contextRef.current = context;
-      const [session] = await Promise.all([
+      const [session, player] = await Promise.all([
         startPublicWebVoiceSession(publicId, consent, origin, language || agent.defaultLanguage),
-        context.resume().then(() => undefined),
+        context.resume().then(async () => {
+          try {
+            return await PcmStreamPlayer.create(context, {
+              onPlaybackStarted: () => updateSpeaking(true),
+              onPlaybackDrained: () => {
+                updateSpeaking(false);
+                if (hybridRealtimeRef.current && nativeEndPendingRef.current) {
+                  nativeEndPendingRef.current = false;
+                  window.setTimeout(end, 180);
+                }
+              },
+              onPlaybackStalled: () => sendHybridEvent({ type: "playback_stalled" }),
+            });
+          } catch {
+            return null;
+          }
+        }),
       ]);
+      pcmPlayerRef.current = player;
       sessionIdRef.current = session.sessionId;
       tokenRef.current = session.token;
       setMode(session.mode);
@@ -366,11 +385,12 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     if (event.type === "speaking") {
       if (event.value) {
         window.clearTimeout(playbackCompletionTimerRef.current);
+        pcmPlayerRef.current?.begin();
         updateSpeaking(true);
       } else {
-        schedulePlaybackIdle();
+        finishPlayback();
       }
-      if (!event.value && hybridRealtimeRef.current && nativeEndPendingRef.current) {
+      if (!event.value && !pcmPlayerRef.current && hybridRealtimeRef.current && nativeEndPendingRef.current) {
         nativeEndPendingRef.current = false;
         const context = contextRef.current;
         const remainingMs = context ? Math.max(0, playbackTimeRef.current - context.currentTime) * 1000 : 0;
@@ -386,6 +406,10 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   }
 
   function playPcm(buffer: ArrayBuffer) {
+    if (pcmPlayerRef.current) {
+      pcmPlayerRef.current.pushPcm16(buffer);
+      return;
+    }
     const context = contextRef.current;
     if (!context) return;
     window.clearTimeout(playbackCompletionTimerRef.current);
@@ -413,6 +437,14 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     playbackTimeRef.current = startAt + audioBuffer.duration;
     playbackSourcesRef.current.add(source);
     source.onended = () => playbackSourcesRef.current.delete(source);
+  }
+
+  function finishPlayback() {
+    if (pcmPlayerRef.current) {
+      pcmPlayerRef.current.complete();
+      return;
+    }
+    schedulePlaybackIdle();
   }
 
   function schedulePlaybackIdle() {
@@ -452,6 +484,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   }
 
   function clearPlayback() {
+    pcmPlayerRef.current?.clear();
     window.clearTimeout(playbackCompletionTimerRef.current);
     playbackSourcesRef.current.forEach((source) => {
       try { source.stop(); } catch { /* already stopped */ }
@@ -490,6 +523,8 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     const socket = socketRef.current;
     socketRef.current = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+    pcmPlayerRef.current?.close();
+    pcmPlayerRef.current = null;
     void contextRef.current?.close();
     contextRef.current = null;
     pcmQueueRef.current = [];

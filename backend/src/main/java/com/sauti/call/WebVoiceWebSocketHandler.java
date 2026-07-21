@@ -48,7 +48,10 @@ public class WebVoiceWebSocketHandler extends AbstractWebSocketHandler {
     protected void handleTextMessage(WebSocketSession session, TextMessage message) {
         var callSid = (String) session.getAttributes().get(CALL_SID);
         if (callSid == null) return;
-        if (message.getPayload().contains("\"type\":\"interrupt\"")) sessionService.interrupt(callSid);
+        var payload = message.getPayload();
+        if (payload.contains("\"type\":\"interrupt\"") || payload.contains("\"type\":\"playback_stalled\"")) {
+            sessionService.interrupt(callSid);
+        }
     }
 
     @Override

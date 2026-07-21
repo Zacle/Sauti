@@ -57,9 +57,11 @@ export async function connectOpenAiRealtime(options: {
   let agentInterrupted = false;
   let textCompletionSent = false;
   let responseActive = false;
-  let pendingCallerTranscriptions = 0;
   let callerSpeechActive = false;
   let bargeInTimer = 0;
+  let activeCallerTurnKey = "";
+  let callerTurnSequence = 0;
+  const pendingCallerTurns = new Map<string, number>();
   let currentOutputItemId = "";
   const outputItemTypes = new Map<string, string>();
   let responseHasToolCall = false;
@@ -185,7 +187,7 @@ export async function connectOpenAiRealtime(options: {
     if (deliveredSpeechIds.has(idKey) || deliveredSpeechFingerprints.has(fingerprintKey)) return false;
     deliveredSpeechIds.add(idKey);
     deliveredSpeechFingerprints.add(fingerprintKey);
-    if (pendingCallerTranscriptions > 0) {
+    if (pendingCallerTurns.size > 0) {
       deferredAgentSpeech.push({ ...candidate, text: speech });
       return true;
     }
@@ -194,11 +196,51 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const flushDeferredAgentSpeech = () => {
-    if (pendingCallerTranscriptions > 0) return;
+    if (pendingCallerTurns.size > 0) return;
     while (deferredAgentSpeech.length > 0) {
       const speech = deferredAgentSpeech.shift();
       if (speech) emitAgentSpeech(speech);
     }
+  };
+
+  const callerTurnKey = (event: Record<string, unknown>) =>
+    String(event.item_id ?? "").trim();
+
+  const beginPendingCallerTurn = (event: Record<string, unknown>) => {
+    const key = callerTurnKey(event) || "caller-turn-" + (++callerTurnSequence);
+    activeCallerTurnKey = key;
+    if (!pendingCallerTurns.has(key)) pendingCallerTurns.set(key, 0);
+    return key;
+  };
+
+  const finishPendingCallerTranscription = (event: Record<string, unknown>) => {
+    let key = callerTurnKey(event);
+    if (!key || !pendingCallerTurns.has(key)) {
+      key = activeCallerTurnKey && pendingCallerTurns.has(activeCallerTurnKey)
+        ? activeCallerTurnKey
+        : pendingCallerTurns.keys().next().value ?? "";
+    }
+    if (key) {
+      window.clearTimeout(pendingCallerTurns.get(key) ?? 0);
+      pendingCallerTurns.delete(key);
+      if (activeCallerTurnKey === key) activeCallerTurnKey = "";
+    }
+    flushDeferredAgentSpeech();
+  };
+
+  const armCallerTranscriptionWatchdog = (key: string, timeoutMs: number) => {
+    if (!key || !pendingCallerTurns.has(key)) return;
+    window.clearTimeout(pendingCallerTurns.get(key) ?? 0);
+    const watchdog = window.setTimeout(() => {
+      pendingCallerTurns.delete(key);
+      if (activeCallerTurnKey === key) {
+        activeCallerTurnKey = "";
+        callerSpeechActive = false;
+        callerTurnGeneration = null;
+      }
+      flushDeferredAgentSpeech();
+    }, timeoutMs);
+    pendingCallerTurns.set(key, watchdog);
   };
 
   const deliverToolFailure = (name: string, generation: number, speechId: string) => {
@@ -362,15 +404,15 @@ export async function connectOpenAiRealtime(options: {
       agentTranscript = "";
       textCompletionSent = false;
     }
+    const responseTerminal = type === "response.done" || type === "response.cancelled";
     const ignoredResponse = Boolean(eventResponseId && ignoredResponseIds.has(eventResponseId));
-    if (ignoredResponse && type === "response.done") {
-      ignoredResponseIds.delete(eventResponseId);
-      if (currentResponseId === eventResponseId) {
+    if (ignoredResponse && responseTerminal) {
+      if (!eventResponseId || currentResponseId === eventResponseId) {
         currentResponseId = "";
         discardCurrentResponseOutput = false;
         agentTranscript = "";
+        finishResponse();
       }
-      finishResponse();
       return;
     }
     if (ignoredResponse || (discardCurrentResponseOutput && type.startsWith("response."))) return;
@@ -385,7 +427,15 @@ export async function connectOpenAiRealtime(options: {
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
       if (isMeaningfulCallerTranscript(transcript) && shouldProcessCallerTranscript(event, transcript)) {
-        const generation = callerTurnGeneration ?? invalidateOutputForCallerTurn();
+        const speechStartGeneration = callerTurnGeneration;
+        const generation = speechStartGeneration ?? invalidateOutputForCallerTurn();
+        if (speechStartGeneration === null) {
+          // Short utterances can finish before the barge-in debounce fires.
+          // A usable final transcript is still a real caller turn, so external
+          // Cartesia playback must stop before this response is prepared.
+          agentInterrupted = responseActive;
+          options.callbacks.onCallerSpeechStarted(responseActive, generation);
+        }
         protocolRecoveryAttempts = 0;
         options.callbacks.onCallerTranscript(transcript);
         // The session disables provider-managed response creation. Only a
@@ -393,13 +443,11 @@ export async function connectOpenAiRealtime(options: {
         prepareAndRequestCallerResponse(transcript, generation);
       }
       callerTurnGeneration = null;
-      pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
-      flushDeferredAgentSpeech();
+      finishPendingCallerTranscription(event);
     }
     if (type === "conversation.item.input_audio_transcription.failed") {
       callerTurnGeneration = null;
-      pendingCallerTranscriptions = Math.max(0, pendingCallerTranscriptions - 1);
-      flushDeferredAgentSpeech();
+      finishPendingCallerTranscription(event);
     }
     if (type === "response.output_audio_transcript.delta"
       || type === "response.output_audio_transcript.done") {
@@ -465,8 +513,9 @@ export async function connectOpenAiRealtime(options: {
       textCompletionSent = true;
     }
     if (type === "input_audio_buffer.speech_started") {
-      pendingCallerTranscriptions += 1;
+      const pendingTurnKey = beginPendingCallerTurn(event);
       callerSpeechActive = true;
+      armCallerTranscriptionWatchdog(pendingTurnKey, 15_000);
       const agentWasResponding = responseActive;
       const debounceMs = Math.max(180, options.bargeInDebounceMs ?? 0);
       window.clearTimeout(bargeInTimer);
@@ -487,6 +536,17 @@ export async function connectOpenAiRealtime(options: {
     if (type === "input_audio_buffer.speech_stopped") {
       callerSpeechActive = false;
       window.clearTimeout(bargeInTimer);
+      const pendingTurnKey = callerTurnKey(event) || activeCallerTurnKey;
+      armCallerTranscriptionWatchdog(pendingTurnKey, 4_000);
+    }
+    if (type === "response.cancelled") {
+      if (!eventResponseId || currentResponseId === eventResponseId || responseCancellationPending) {
+        agentTranscript = "";
+        agentInterrupted = false;
+        textCompletionSent = true;
+        finishResponse();
+      }
+      return;
     }
     if (type === "response.done") {
       if (!eventResponseId || currentResponseId === eventResponseId) finishResponse();
@@ -509,7 +569,9 @@ export async function connectOpenAiRealtime(options: {
         responseRequestInFlight = false;
         expectedResponses = Math.max(0, expectedResponses - 1);
         responseCancellationPending = true;
-      } else if (!/no active response|response.*not active/i.test(message)) {
+      } else if (/no active response|response.*not active/i.test(message)) {
+        if (responseCancellationPending && !responseRequestInFlight) finishResponse();
+      } else {
         options.callbacks.onError(message);
       }
     }
@@ -555,6 +617,8 @@ export async function connectOpenAiRealtime(options: {
     cancelResponse: cancelActiveResponse,
     close: () => {
       window.clearTimeout(bargeInTimer);
+      pendingCallerTurns.forEach((watchdog) => window.clearTimeout(watchdog));
+      pendingCallerTurns.clear();
       pendingResponseRequests.length = 0;
       channel.close();
       peer.close();

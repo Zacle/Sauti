@@ -3753,3 +3753,27 @@ Expected:
   - `git diff --check` - passed before the handoff update.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat the Zachary/Alexandra browser call and one carrier call, including `yes, all of those details are correct`, a correction after the review, and a confused question before approval. For audio, test on both a stable and deliberately throttled connection; the adaptive jitter target is bounded at 320 ms, but only real browser scheduling, microphone echo, and carrier buffering can validate the final perceived smoothness.
+
+### 2026-07-21 - Make Realtime turns self-healing and browser PCM continuous
+
+- Fixed the browser call failure where an interruption could leave the UI on Agent is speaking, require another utterance to recover, or fail to recognize a short caller reply. The Realtime lifecycle now treats both response.done and response.cancelled as terminal, does not let a late terminal event from an old response finish a newer response, and clears a cancellation rejected with no active response instead of leaving the response queue blocked.
+- Replaced the scalar pending-transcription counter with item-scoped caller-turn tracking in both browser WebRTC and phone WebSocket Realtime paths. Every VAD turn has its own terminal watchdog, overlapping or noisy turns cannot leak the pending count, and missing speech_stopped or transcription terminal events self-release. A usable short transcript that finishes before the barge-in debounce now still advances the generation and interrupts external Cartesia playback before the next response is prepared.
+- Replaced per-WebSocket-frame AudioBufferSourceNode scheduling with a continuous AudioWorklet PCM renderer for Agent Studio test calls, public Web Voice, and the cascaded browser fallback. It resamples Cartesia 16 kHz PCM to the actual browser audio rate, starts with a 280 ms jitter buffer, raises the rebuffer target by 120 ms after a real underrun up to 800 ms, and keeps all samples on one audio clock instead of creating audible seams between provider frames.
+- Added an audible-drain watchdog at the playback boundary. If audio runs dry for 1.2 seconds without a provider completion, the browser finishes the local state and sends playback_stalled; hybrid and cascaded servers close the stale TTS context, clear queued audio, emit speaking=false, and open a clean Cartesia context for the next turn.
+- Corrected the supplied Zachary and Alexandra intake sequence. Book for my wife, Alexandra is now captured as a named third-party recipient, a service answer followed by a price question retains only the service, and unclear speech after a phone-number request cannot be acknowledged as a phone or advance to date and time. The authoritative prompt requires the agent to answer any caller question or request the phone again.
+- This follows the current OpenAI Realtime VAD and interruption contract: caller turns are driven by input_audio_buffer.speech_started and speech_stopped, and cancellation is a distinct terminal lifecycle that clients must handle.
+- Files touched:
+  - backend/src/main/java/com/sauti/call/{CallIntakeNoteService,HybridVoiceSessionService,OpenAiTelephonyRealtimeConversationProvider,WebVoiceWebSocketHandler}.java
+  - backend/src/test/java/com/sauti/call/{CallIntakeNoteServiceTest,HybridVoiceSessionServiceTest,OpenAiTelephonyRealtimeConversationProviderTest,WebVoiceWebSocketHandlerTest}.java
+  - dashboard/features/agents/AgentCreator/TestCallPanel.tsx
+  - dashboard/features/voice-runtime/{openaiRealtime,pcmStreamPlayer}.ts
+  - dashboard/features/web-voice/WebVoiceCall.tsx
+  - dashboard/public/pcm-stream-player.js
+  - docs/agent-handoff.md
+- Verification:
+  - focused intake-state, hybrid playback recovery, and telephony Realtime lifecycle tests - passed.
+  - gradlew :backend:test - passed.
+  - npm.cmd run typecheck in dashboard - passed.
+  - npm.cmd run build in dashboard - passed; 50 routes generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat this exact browser transcript and interrupt both a short and a long agent response. Test once on a stable connection and once with throttling. The worklet removes main-thread scheduling gaps and can rebuffer up to 800 ms, but the final perceived latency and quality still needs a real microphone, browser audio device, and network path.

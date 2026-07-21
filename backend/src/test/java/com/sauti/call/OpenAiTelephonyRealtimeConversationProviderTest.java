@@ -277,6 +277,44 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void overlappingVadTurnsKeepAgentSpeechDeferredUntilEveryTranscriptionTerminates() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"input_audio_buffer.speech_started\",\"item_id\":\"caller-a\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"input_audio_buffer.speech_stopped\",\"item_id\":\"caller-a\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"input_audio_buffer.speech_started\",\"item_id\":\"caller-b\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"input_audio_buffer.speech_stopped\",\"item_id\":\"caller-b\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.created\",\"item\":{\"type\":\"message\",\"id\":\"message-1\"}}",
+                true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"item_id\":\"message-1\",\"text\":\"Old reply.\"}",
+                true);
+        socketListener.onText(webSocket, "{\"type\":\"response.done\"}", true);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"conversation.item.input_audio_transcription.completed\","
+                        + "\"item_id\":\"caller-a\",\"transcript\":\"[silence]\"}", true);
+        assertThat(events).isEmpty();
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"conversation.item.input_audio_transcription.failed\","
+                        + "\"item_id\":\"caller-b\"}", true);
+        assertThat(events).containsExactly("agent:Old reply.:false");
+    }
+
+    @Test
     void letsTheMultilingualModelChooseTheAvailabilityToolFromMeaning() {
         var tools = List.of(Map.of("type", "function", "name", "check_availability"));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
@@ -592,6 +630,38 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         assertThat(events).containsExactly(
                 "agent:Fresh answer.:false"
         );
+    }
+
+    @Test
+    void cancellationTerminalUnblocksTheQueueWithoutLettingLateOldEventsFinishTheNewResponse() {
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(new ArrayList<>()), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        when(session.dispatchedGeneration()).thenReturn(0L, 1L);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"response-old\"}}", true);
+        socketListener.markCurrentResponseCancelled();
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.cancelled\",\"response\":{\"id\":\"response-old\"}}", true);
+
+        verify(session, times(1)).responseFinished();
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"response-new\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\",\"response\":{\"id\":\"response-old\"}}", true);
+
+        verify(session, times(1)).responseFinished();
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\",\"response\":{\"id\":\"response-new\"}}", true);
+        verify(session, times(2)).responseFinished();
     }
 
     @Test

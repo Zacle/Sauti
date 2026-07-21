@@ -171,6 +171,36 @@ class CallIntakeNoteServiceTest {
                 .contains("never substitute caller_name for it");
     }
 
+    @Test
+    void retainsTheNamedRecipientAndDoesNotAcceptUnclearSpeechAsAPhoneNumber() {
+        var repository = mock(CallTurnRepository.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        var history = List.of(
+                turn("Hello, my name is Zachary. I'm calling to book some appointments.",
+                        "What service would you like to book?"),
+                turn("I would like to book for my wife, Alexandra.",
+                        "Which service would she like?"),
+                turn("Women hairstyle, but I would like to know how much it costs.",
+                        "It costs eight dollars. Could you share Alexandra's phone number?")
+        );
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId)).thenReturn(history);
+
+        var service = new CallIntakeNoteService(repository);
+        var notes = service.notes(call, "Ba\u015fka?");
+
+        assertThat(notes)
+                .containsEntry("caller_name", "Zachary")
+                .containsEntry("booking_for_relation", "wife")
+                .containsEntry("appointment_name", "Alexandra")
+                .containsEntry("service_type", "Women hairstyle")
+                .doesNotContainKey("caller_phone");
+        assertThat(service.promptBlock(call, "Ba\u015fka?"))
+                .contains("CURRENT PENDING FIELD: caller_phone")
+                .contains("do not advance to another booking field");
+    }
+
     private CallTurn turn(String caller, String agent) {
         var turn = mock(CallTurn.class);
         when(turn.getCallerTranscript()).thenReturn(caller);

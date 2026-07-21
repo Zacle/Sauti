@@ -89,6 +89,7 @@ public class HybridVoiceSessionService {
                                     ? message.path("generation").asLong(state.clientGeneration + 1L)
                                     : state.clientGeneration + 1L
                     );
+                    case "playback_stalled" -> recoverPlaybackStall(state);
                     default -> { }
                 }
             }
@@ -168,6 +169,16 @@ public class HybridVoiceSessionService {
             metrics.interruption("hybrid", state.call.getDirection());
             resetTts(state, true);
         }
+    }
+
+    private void recoverPlaybackStall(HybridSession state) {
+        if (state.currentSpeech == null && !state.speaking) return;
+        LOGGER.warn("Hybrid browser playback drained before Cartesia completed for call={}",
+                state.call.getTwilioCallSid());
+        metrics.failure("hybrid", state.call.getDirection(), "playback_stalled");
+        state.currentSpeech = null;
+        state.pendingSpeech.clear();
+        resetTts(state, true);
     }
 
     private void resetTts(HybridSession state, boolean clearAudio) {
