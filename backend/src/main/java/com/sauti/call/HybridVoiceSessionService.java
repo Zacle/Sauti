@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.text.Normalizer;
 import java.util.ArrayDeque;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -90,6 +91,13 @@ public class HybridVoiceSessionService {
                                     : state.clientGeneration + 1L
                     );
                     case "playback_stalled" -> recoverPlaybackStall(state);
+                    case "playback_underrun" -> metrics.playbackUnderrun("hybrid", state.call.getDirection());
+                    case "turn_started" -> rememberTurnStart(state, message.path("generation").asLong(-1L));
+                    case "playback_started" -> recordPlaybackStart(
+                            state,
+                            message.path("generation").asLong(-1L),
+                            message.path("id").asText("")
+                    );
                     default -> { }
                 }
             }
@@ -131,6 +139,8 @@ public class HybridVoiceSessionService {
             state.currentSpeech = null;
             state.acceptedSpeechIds.clear();
             state.acceptedSpeechFingerprints.clear();
+            state.speechTimings.clear();
+            state.turnStartedNanos.entrySet().removeIf(entry -> entry.getKey() != generation);
             state.rawResponseText.setLength(0);
             if (hadOldOutput) resetTts(state, true);
         }
@@ -139,7 +149,18 @@ public class HybridVoiceSessionService {
         var idKey = generation + ":" + speechId.trim();
         var fingerprint = generation + ":" + speechFingerprint(safeText);
         if (!state.acceptedSpeechIds.add(idKey) || !state.acceptedSpeechFingerprints.add(fingerprint)) return;
-        state.pendingSpeech.addLast(new Speech(generation, speechId.trim(), safeText));
+        var acceptedNanos = System.nanoTime();
+        var turnStartedNanos = state.turnStartedNanos.remove(generation);
+        var timingKey = speechKey(generation, speechId);
+        state.speechTimings.put(timingKey, new SpeechTiming(generation, acceptedNanos, turnStartedNanos));
+        trimTimings(state);
+        if (turnStartedNanos != null) {
+            metrics.recordLatency(
+                    "transcript_to_speech_ready", "hybrid", state.call.getDirection(),
+                    acceptedNanos - turnStartedNanos
+            );
+        }
+        state.pendingSpeech.addLast(new Speech(generation, speechId.trim(), safeText, timingKey));
         startNextSpeech(state);
     }
 
@@ -152,6 +173,7 @@ public class HybridVoiceSessionService {
         }
         if (state.ttsUnavailable) resetTts(state, false);
         state.currentSpeech = next;
+        state.currentSpeechFirstAudioRecorded = false;
         armSpeechWatchdog(state, next, state.ttsGeneration);
         synthesize(state, next.text());
     }
@@ -164,6 +186,8 @@ public class HybridVoiceSessionService {
         state.currentSpeech = null;
         state.acceptedSpeechIds.clear();
         state.acceptedSpeechFingerprints.clear();
+        state.turnStartedNanos.entrySet().removeIf(entry -> entry.getKey() < generation);
+        state.speechTimings.entrySet().removeIf(entry -> entry.getValue().generation() < generation);
         state.rawResponseText.setLength(0);
         if (hadOldOutput) {
             metrics.interruption("hybrid", state.call.getDirection());
@@ -206,6 +230,10 @@ public class HybridVoiceSessionService {
                     if (!state.current(generation)) return;
                     if (state.currentSpeech != null) {
                         armSpeechWatchdog(state, state.currentSpeech, generation);
+                        if (!state.currentSpeechFirstAudioRecorded) {
+                            state.currentSpeechFirstAudioRecorded = true;
+                            recordFirstAudio(state, state.currentSpeech);
+                        }
                     }
                     if (!state.speaking) {
                         state.speaking = true;
@@ -229,6 +257,7 @@ public class HybridVoiceSessionService {
                     cancelSpeechWatchdog(state);
                     state.speaking = false;
                     state.currentSpeech = null;
+                    state.currentSpeechFirstAudioRecorded = false;
                     sendJson(state, Map.of("type", "speaking", "value", false));
                     startNextSpeech(state);
                 }
@@ -345,6 +374,59 @@ public class HybridVoiceSessionService {
         }
     }
 
+    private void rememberTurnStart(HybridSession state, long generation) {
+        if (generation < state.clientGeneration || generation < 0L) return;
+        state.turnStartedNanos.put(generation, System.nanoTime());
+        while (state.turnStartedNanos.size() > 32) {
+            var oldest = state.turnStartedNanos.keySet().iterator().next();
+            state.turnStartedNanos.remove(oldest);
+        }
+    }
+
+    private void recordFirstAudio(HybridSession state, Speech speech) {
+        var timing = state.speechTimings.get(speech.timingKey());
+        if (timing == null) return;
+        var now = System.nanoTime();
+        metrics.recordLatency(
+                "speech_ready_to_first_audio", "hybrid", state.call.getDirection(),
+                now - timing.acceptedNanos()
+        );
+        if (timing.turnStartedNanos() != null) {
+            metrics.recordLatency(
+                    "transcript_to_first_audio", "hybrid", state.call.getDirection(),
+                    now - timing.turnStartedNanos()
+            );
+        }
+    }
+
+    private void recordPlaybackStart(HybridSession state, long generation, String speechId) {
+        if (generation < 0L || speechId == null || speechId.isBlank()) return;
+        var timing = state.speechTimings.remove(speechKey(generation, speechId));
+        if (timing == null) return;
+        var now = System.nanoTime();
+        metrics.recordLatency(
+                "speech_ready_to_playback", "hybrid", state.call.getDirection(),
+                now - timing.acceptedNanos()
+        );
+        if (timing.turnStartedNanos() != null) {
+            metrics.recordLatency(
+                    "transcript_to_playback", "hybrid", state.call.getDirection(),
+                    now - timing.turnStartedNanos()
+            );
+        }
+    }
+
+    private void trimTimings(HybridSession state) {
+        while (state.speechTimings.size() > 32) {
+            var oldest = state.speechTimings.keySet().iterator().next();
+            state.speechTimings.remove(oldest);
+        }
+    }
+
+    private static String speechKey(long generation, String speechId) {
+        return generation + ":" + speechId.trim();
+    }
+
     private static final class HybridSession {
         private final Call call;
         private final WebSocketSession socket;
@@ -352,6 +434,8 @@ public class HybridVoiceSessionService {
         private final ArrayDeque<Speech> pendingSpeech = new ArrayDeque<>();
         private final Set<String> acceptedSpeechIds = new HashSet<>();
         private final Set<String> acceptedSpeechFingerprints = new HashSet<>();
+        private final Map<Long, Long> turnStartedNanos = new LinkedHashMap<>();
+        private final Map<String, SpeechTiming> speechTimings = new LinkedHashMap<>();
         private final Runnable onClose;
         private final long startedNanos = System.nanoTime();
         private CompletableFuture<RealtimeTtsSession> tts = CompletableFuture.completedFuture(null);
@@ -362,6 +446,7 @@ public class HybridVoiceSessionService {
         private Speech currentSpeech;
         private boolean speaking;
         private boolean firstAudioRecorded;
+        private boolean currentSpeechFirstAudioRecorded;
         private ScheduledFuture<?> speechWatchdog;
         private boolean ttsUnavailable;
         private boolean closed;
@@ -384,6 +469,8 @@ public class HybridVoiceSessionService {
             ttsGeneration++;
             pendingSpeech.clear();
             currentSpeech = null;
+            turnStartedNanos.clear();
+            speechTimings.clear();
             onClose.run();
             tts.thenAccept(session -> { if (session != null) session.close(); });
             tts = CompletableFuture.completedFuture(null);
@@ -398,5 +485,7 @@ public class HybridVoiceSessionService {
                 .toLowerCase(Locale.ROOT);
     }
 
-    private record Speech(long generation, String id, String text) { }
+    private record Speech(long generation, String id, String text, String timingKey) { }
+
+    private record SpeechTiming(long generation, long acceptedNanos, Long turnStartedNanos) { }
 }

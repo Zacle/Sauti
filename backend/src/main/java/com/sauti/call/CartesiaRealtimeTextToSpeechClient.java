@@ -1,6 +1,7 @@
 package com.sauti.call;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -208,6 +209,8 @@ public class CartesiaRealtimeTextToSpeechClient {
         private final ObjectMapper objectMapper;
         private final TtsAudioListener listener;
         private final StringBuilder textBuffer = new StringBuilder();
+        private final ByteArrayOutputStream binaryMessageBuffer = new ByteArrayOutputStream();
+        private int pendingPcmByte = -1;
 
         CartesiaWebSocketListener(ObjectMapper objectMapper, TtsAudioListener listener) {
             this.objectMapper = objectMapper;
@@ -223,7 +226,11 @@ public class CartesiaRealtimeTextToSpeechClient {
         public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
             var bytes = new byte[data.remaining()];
             data.get(bytes);
-            listener.onPcmAudio(bytes);
+            binaryMessageBuffer.writeBytes(bytes);
+            if (last) {
+                forwardAlignedPcm(binaryMessageBuffer.toByteArray());
+                binaryMessageBuffer.reset();
+            }
             webSocket.request(1);
             return null;
         }
@@ -268,16 +275,44 @@ public class CartesiaRealtimeTextToSpeechClient {
                 if ("chunk".equals(type)) {
                     var data = node.path("data").asText("");
                     if (!data.isBlank()) {
-                        listener.onPcmAudio(Base64.getDecoder().decode(data));
+                        forwardAlignedPcm(Base64.getDecoder().decode(data));
                     }
                     return;
                 }
                 if ("done".equals(type) || node.path("done").asBoolean(false)) {
+                    if (pendingPcmByte >= 0 || binaryMessageBuffer.size() > 0) {
+                        listener.onError(new IllegalStateException("Cartesia returned an incomplete PCM sample"));
+                        pendingPcmByte = -1;
+                        binaryMessageBuffer.reset();
+                        return;
+                    }
                     listener.onComplete();
                 }
             } catch (Exception exception) {
                 listener.onError(exception);
             }
+        }
+
+        private void forwardAlignedPcm(byte[] bytes) {
+            if (bytes.length == 0) return;
+            var prefix = pendingPcmByte >= 0 ? 1 : 0;
+            var combined = new byte[prefix + bytes.length];
+            if (prefix == 1) combined[0] = (byte) pendingPcmByte;
+            System.arraycopy(bytes, 0, combined, prefix, bytes.length);
+            pendingPcmByte = -1;
+
+            var alignedLength = combined.length - (combined.length % 2);
+            if (alignedLength < combined.length) {
+                pendingPcmByte = Byte.toUnsignedInt(combined[combined.length - 1]);
+            }
+            if (alignedLength == 0) return;
+            if (alignedLength == combined.length) {
+                listener.onPcmAudio(combined);
+                return;
+            }
+            var aligned = new byte[alignedLength];
+            System.arraycopy(combined, 0, aligned, 0, alignedLength);
+            listener.onPcmAudio(aligned);
         }
     }
 }

@@ -3,6 +3,7 @@ type PcmStreamPlayerOptions = {
   onPlaybackStarted: () => void;
   onPlaybackDrained: () => void;
   onPlaybackStalled: () => void;
+  onPlaybackUnderrun?: () => void;
 };
 
 type PlaybackEvent = {
@@ -24,6 +25,7 @@ export class PcmStreamPlayer {
   private closed = false;
   private inputComplete = false;
   private previousInputSample: number | null = null;
+  private pendingInputByte: number | null = null;
   private inputSampleIndex = 0;
   private nextOutputPosition = 0;
 
@@ -42,6 +44,7 @@ export class PcmStreamPlayer {
         if (this.inputComplete) this.resetResampler();
         this.options.onPlaybackDrained();
       } else if (message.data.type === "underrun") {
+        this.options.onPlaybackUnderrun?.();
         this.armStallRecovery();
       }
     };
@@ -51,15 +54,15 @@ export class PcmStreamPlayer {
     context: AudioContext,
     options: PcmStreamPlayerOptions,
   ): Promise<PcmStreamPlayer> {
-    await context.audioWorklet.addModule("/pcm-stream-player.js");
+    await context.audioWorklet.addModule("/pcm-stream-player.js?v=20260721-2");
     const node = new AudioWorkletNode(context, "sauti-pcm-stream-player", {
       numberOfInputs: 0,
       numberOfOutputs: 1,
       outputChannelCount: [1],
       processorOptions: {
-        initialBufferFrames: Math.round(0.28 * context.sampleRate),
-        maxBufferFrames: Math.round(0.8 * context.sampleRate),
-        underrunStepFrames: Math.round(0.12 * context.sampleRate),
+        initialBufferFrames: Math.round(0.16 * context.sampleRate),
+        maxBufferFrames: Math.round(0.32 * context.sampleRate),
+        underrunStepFrames: Math.round(0.04 * context.sampleRate),
       },
     });
     node.connect(context.destination);
@@ -78,7 +81,28 @@ export class PcmStreamPlayer {
   pushPcm16(data: ArrayBuffer) {
     if (this.closed || data.byteLength === 0) return;
     this.clearStallTimer();
-    const pcm = new Int16Array(data);
+    const pcmBytes = new Uint8Array(data);
+    const prefixLength = this.pendingInputByte === null ? 0 : 1;
+    const combinedLength = prefixLength + pcmBytes.byteLength;
+    const alignedLength = combinedLength - (combinedLength % 2);
+    if (alignedLength === 0) {
+      this.pendingInputByte = pcmBytes[0] ?? this.pendingInputByte;
+      return;
+    }
+    let alignedBytes: Uint8Array;
+    if (prefixLength === 0 && alignedLength === pcmBytes.byteLength) {
+      alignedBytes = pcmBytes;
+    } else {
+      const combined = new Uint8Array(combinedLength);
+      if (this.pendingInputByte !== null) combined[0] = this.pendingInputByte;
+      combined.set(pcmBytes, prefixLength);
+      alignedBytes = combined.subarray(0, alignedLength);
+      this.pendingInputByte = alignedLength < combinedLength ? combined[combinedLength - 1]! : null;
+    }
+    if (prefixLength === 0) {
+      this.pendingInputByte = alignedLength < pcmBytes.byteLength ? pcmBytes[pcmBytes.byteLength - 1]! : null;
+    }
+    const pcm = new Int16Array(alignedBytes.buffer, alignedBytes.byteOffset, alignedBytes.byteLength / 2);
     const output = new Float32Array(Math.ceil(pcm.length * this.outputSampleRate / 16_000) + 4);
     const outputStep = 16_000 / this.outputSampleRate;
     let outputIndex = 0;
@@ -151,6 +175,7 @@ export class PcmStreamPlayer {
 
   private resetResampler() {
     this.previousInputSample = null;
+    this.pendingInputByte = null;
     this.inputSampleIndex = 0;
     this.nextOutputPosition = 0;
   }

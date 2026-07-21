@@ -49,6 +49,13 @@ public class VoiceRuntimeMetrics {
         counter("sauti.voice.interruptions", runtime, channel, "reason", "caller_speech").increment();
     }
 
+    public void playbackUnderrun(String runtime, String channel) {
+        Counter.builder("sauti.voice.playback.underruns")
+                .description("Audible playback buffers that ran dry before provider completion")
+                .tag("runtime", runtime).tag("channel", channel)
+                .register(registry).increment();
+    }
+
     public void fallback(String runtime, String channel, String reason) {
         counter("sauti.voice.fallbacks", runtime, channel, "reason", reason).increment();
     }

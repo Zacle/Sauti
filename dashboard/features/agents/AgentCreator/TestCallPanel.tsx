@@ -108,6 +108,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const pcmPrerollRef = useRef(REALTIME_PCM_INITIAL_PREROLL_SECONDS);
   const pcmPlaybackActiveRef = useRef(false);
   const pcmPlayerRef = useRef<PcmStreamPlayer | null>(null);
+  const activeHybridSpeechRef = useRef<{ id: string; generation: number } | null>(null);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
   const nativeRealtimeRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
@@ -231,11 +232,12 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         onConnected: () => {
           if (!agentAudioSourceRef.current) updateStatus("listening");
         },
-        onCallerTranscript: (text) => {
+        onCallerTranscript: (text, generation) => {
           acceptedCallerTurnsRef.current += 1;
           lastActivityAtRef.current = Date.now();
           setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text }]);
           updateStatus("thinking");
+          if (hybrid) sendHybridEvent({ type: "turn_started", generation });
         },
         onAgentTranscript: (text, interrupted) => {
           rememberAgentPrompt(text);
@@ -243,7 +245,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted));
           if (isFarewell(text)) nativeEndPendingRef.current = true;
         },
-        onAgentSpeech: hybrid ? (speech) => sendHybridEvent({ type: "speak", ...speech }) : undefined,
+        onAgentSpeech: hybrid ? (speech) => {
+          activeHybridSpeechRef.current = { id: speech.id, generation: speech.generation };
+          sendHybridEvent({ type: "speak", ...speech });
+        } : undefined,
         onSpeaking: (value) => {
           updateStatus(value ? "speaking" : "listening");
           if (!value && nativeEndPendingRef.current) {
@@ -315,6 +320,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         recordingDestination: destination,
         onPlaybackStarted: () => {
           if (!endingRef.current) updateStatus("speaking");
+          const speech = activeHybridSpeechRef.current;
+          if (hybridRealtimeRef.current && speech) {
+            sendHybridEvent({ type: "playback_started", ...speech });
+          }
         },
         onPlaybackDrained: () => {
           if (endingRef.current) return;
@@ -325,6 +334,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           }
         },
         onPlaybackStalled: () => sendHybridEvent({ type: "playback_stalled" }),
+        onPlaybackUnderrun: () => sendHybridEvent({ type: "playback_underrun" }),
       });
     } catch {
       // Keep the existing scheduler as a compatibility fallback when a browser
@@ -488,6 +498,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function clearRealtimePlayback() {
+    activeHybridSpeechRef.current = null;
     pcmPlayerRef.current?.clear();
     window.clearTimeout(playbackCompletionTimerRef.current);
     playbackSourcesRef.current.forEach((source) => {

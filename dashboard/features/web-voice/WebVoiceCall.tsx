@@ -58,6 +58,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const pcmPrerollRef = useRef(REALTIME_PCM_INITIAL_PREROLL_SECONDS);
   const pcmPlaybackActiveRef = useRef(false);
   const pcmPlayerRef = useRef<PcmStreamPlayer | null>(null);
+  const activeHybridSpeechRef = useRef<{ id: string; generation: number } | null>(null);
   const pcmQueueRef = useRef<number[]>([]);
   const speakingRef = useRef(false);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
@@ -108,7 +109,13 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
         context.resume().then(async () => {
           try {
             return await PcmStreamPlayer.create(context, {
-              onPlaybackStarted: () => updateSpeaking(true),
+              onPlaybackStarted: () => {
+                updateSpeaking(true);
+                const speech = activeHybridSpeechRef.current;
+                if (hybridRealtimeRef.current && speech) {
+                  sendHybridEvent({ type: "playback_started", ...speech });
+                }
+              },
               onPlaybackDrained: () => {
                 updateSpeaking(false);
                 if (hybridRealtimeRef.current && nativeEndPendingRef.current) {
@@ -117,6 +124,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
                 }
               },
               onPlaybackStalled: () => sendHybridEvent({ type: "playback_stalled" }),
+              onPlaybackUnderrun: () => sendHybridEvent({ type: "playback_underrun" }),
             });
           } catch {
             return null;
@@ -150,16 +158,20 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
           playbackContext: context,
           callbacks: {
             onConnected: () => setStatus("live"),
-            onCallerTranscript: (text) => {
+            onCallerTranscript: (text, generation) => {
               setMessages((current) => [...current, { role: "visitor", text }]);
               setPartial("");
+              if (hybrid) sendHybridEvent({ type: "turn_started", generation });
             },
             onAgentTranscript: (text, interrupted) => {
               setMessages((current) => [...current, { role: "agent", text }]);
               queueTranscriptWrite(() => recordPublicRealtimeTranscript(session.sessionId, session.token, "agent", text, interrupted));
               if (isFarewell(text)) nativeEndPendingRef.current = true;
             },
-            onAgentSpeech: hybrid ? (speech) => sendHybridEvent({ type: "speak", ...speech }) : undefined,
+            onAgentSpeech: hybrid ? (speech) => {
+              activeHybridSpeechRef.current = { id: speech.id, generation: speech.generation };
+              sendHybridEvent({ type: "speak", ...speech });
+            } : undefined,
             onSpeaking: (value) => {
               updateSpeaking(value);
               if (!value && nativeEndPendingRef.current) {
@@ -484,6 +496,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   }
 
   function clearPlayback() {
+    activeHybridSpeechRef.current = null;
     pcmPlayerRef.current?.clear();
     window.clearTimeout(playbackCompletionTimerRef.current);
     playbackSourcesRef.current.forEach((source) => {

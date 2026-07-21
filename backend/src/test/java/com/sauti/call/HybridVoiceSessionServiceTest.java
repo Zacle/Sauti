@@ -47,18 +47,22 @@ class HybridVoiceSessionServiceTest {
         var delayedTts = new CompletableFuture<RealtimeTtsSession>();
         when(provider.open(eq("fr"), eq("cartesia:french-voice"), any())).thenReturn(delayedTts);
         var listener = ArgumentCaptor.forClass(TtsAudioListener.class);
+        var registry = new SimpleMeterRegistry();
         var service = new HybridVoiceSessionService(
                 repository, provider, new ObjectMapper(),
-                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+                new VoiceRuntimeMetrics(registry)
         );
 
         service.start("test-hybrid", agentId.toString(), socket);
         verify(provider).open(eq("fr"), eq("cartesia:french-voice"), listener.capture());
+        service.accept("test-hybrid", "{\"type\":\"turn_started\",\"generation\":0}");
         service.accept("test-hybrid", "{\"type\":\"tts_delta\",\"text\":\"Bonjour, je peux vous aider avec votre rendez-vous. \"}");
         service.accept("test-hybrid", "{\"type\":\"tts_complete\"}");
         delayedTts.complete(tts);
         listener.getValue().onPcmAudio(new byte[] {1, 2, 3, 4});
         listener.getValue().onComplete();
+        service.accept("test-hybrid", "{\"type\":\"playback_started\",\"generation\":0,\"id\":\"legacy-1\"}");
+        service.accept("test-hybrid", "{\"type\":\"playback_underrun\"}");
 
         var writes = inOrder(tts);
         writes.verify(tts).speak("Bonjour, je peux vous aider avec votre rendez-vous.", true);
@@ -66,6 +70,13 @@ class HybridVoiceSessionServiceTest {
         verify(socket).sendMessage(binary.capture());
         assertThat(binary.getValue().getPayloadLength()).isEqualTo(4);
         verify(socket, atLeastOnce()).sendMessage(any(TextMessage.class));
+        assertThat(registry.find("sauti.voice.latency")
+                .tag("stage", "transcript_to_speech_ready").timer().count()).isEqualTo(1);
+        assertThat(registry.find("sauti.voice.latency")
+                .tag("stage", "speech_ready_to_first_audio").timer().count()).isEqualTo(1);
+        assertThat(registry.find("sauti.voice.latency")
+                .tag("stage", "transcript_to_playback").timer().count()).isEqualTo(1);
+        assertThat(registry.find("sauti.voice.playback.underruns").counter().count()).isEqualTo(1);
     }
 
     @Test

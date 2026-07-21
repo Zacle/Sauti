@@ -2,9 +2,9 @@ class SautiPcmStreamPlayer extends AudioWorkletProcessor {
   constructor(options) {
     super();
     const configured = options.processorOptions || {};
-    this.initialBufferFrames = Math.max(128, configured.initialBufferFrames || Math.round(sampleRate * 0.28));
-    this.maxBufferFrames = Math.max(this.initialBufferFrames, configured.maxBufferFrames || Math.round(sampleRate * 0.8));
-    this.underrunStepFrames = Math.max(128, configured.underrunStepFrames || Math.round(sampleRate * 0.12));
+    this.initialBufferFrames = Math.max(128, configured.initialBufferFrames || Math.round(sampleRate * 0.16));
+    this.maxBufferFrames = Math.max(this.initialBufferFrames, configured.maxBufferFrames || Math.round(sampleRate * 0.32));
+    this.underrunStepFrames = Math.max(128, configured.underrunStepFrames || Math.round(sampleRate * 0.04));
     this.targetBufferFrames = this.initialBufferFrames;
     this.chunks = [];
     this.chunkOffset = 0;

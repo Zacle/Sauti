@@ -3777,3 +3777,28 @@ Expected:
   - npm.cmd run build in dashboard - passed; 50 routes generated.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat this exact browser transcript and interrupt both a short and a long agent response. Test once on a stable connection and once with throttling. The worklet removes main-thread scheduling gaps and can rebuffer up to 800 ms, but the final perceived latency and quality still needs a real microphone, browser audio device, and network path.
+
+### 2026-07-21 - Preserve PCM sample boundaries and measure audible turn latency
+
+- Traced the remaining symptom after conversational state and booking behavior were corrected. The Cartesia Java WebSocket listener reassembled fragmented text messages but forwarded every binary fragment immediately. A WebSocket fragment can split a little-endian 16-bit PCM sample between callbacks, so an odd fragment could be rejected by the browser or shift sample decoding and produce intermittent breakup or a stalled speaking state.
+- Reassembled complete binary WebSocket messages before forwarding audio and carried an unmatched PCM byte across both binary messages and base64 JSON chunk events. A provider `done` event with an incomplete sample now follows the existing TTS error/recovery path instead of silently corrupting playback. The browser also aligns odd PCM buffers defensively before decoding them.
+- Removed the oversized buffer that had been compensating for corruption. Continuous worklet playback now starts at 160 ms, increases by 40 ms only after a real underrun, and is capped at 320 ms. The worklet module URL is versioned so browsers cannot keep using an older cached processor after deployment.
+- Added end-to-end hybrid timing and underrun telemetry. Each caller generation now measures transcript-to-validated-speech, speech-ready-to-first-Cartesia-audio, transcript-to-first-audio, speech-ready-to-audible-playback, and transcript-to-audible-playback. `sauti.voice.playback.underruns` counts actual browser buffer starvation by channel.
+- Kept the complete-message speech/tool safety boundary. OpenAI's voice-agent guidance identifies direct speech-to-speech as the lowest-latency architecture, while Sauti intentionally uses a chained text/Cartesia path for explicit control. The new stage metrics make that architectural cost visible without weakening the guard that prevents tool protocol or commentary from becoming speech.
+- Added regressions for fragmented binary PCM, odd sample bytes across provider messages, odd base64 PCM chunks, and hybrid latency/underrun metrics.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{CartesiaRealtimeTextToSpeechClient,HybridVoiceSessionService,VoiceRuntimeMetrics}.java`
+  - `backend/src/test/java/com/sauti/call/{CartesiaRealtimeTextToSpeechClientTest,HybridVoiceSessionServiceTest}.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/{openaiRealtime,pcmStreamPlayer}.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/public/pcm-stream-player.js`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Cartesia framing and hybrid session tests - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+  - `node --check public/pcm-stream-player.js` in `dashboard/` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat a long booking review and several short replies in Agent Studio and public Web Voice. Inspect `sauti.voice.latency` by stage and `sauti.voice.playback.underruns`: a high `transcript_to_speech_ready` isolates prompt/model/tool latency, a high `speech_ready_to_first_audio` isolates Cartesia, and underruns isolate provider/network delivery. Live audio-device and network behavior cannot be proven by mocked streams alone.

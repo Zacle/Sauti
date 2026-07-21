@@ -1,6 +1,6 @@
 export type OpenAiRealtimeCallbacks = {
   onConnected: () => void;
-  onCallerTranscript: (text: string) => void;
+  onCallerTranscript: (text: string, generation: number) => void;
   onAgentTranscript: (text: string, interrupted: boolean) => void;
   onSpeaking: (speaking: boolean) => void;
   onCallerSpeechStarted: (agentWasResponding: boolean, generation: number) => void;
@@ -437,7 +437,7 @@ export async function connectOpenAiRealtime(options: {
           options.callbacks.onCallerSpeechStarted(responseActive, generation);
         }
         protocolRecoveryAttempts = 0;
-        options.callbacks.onCallerTranscript(transcript);
+        options.callbacks.onCallerTranscript(transcript, generation);
         // The session disables provider-managed response creation. Only a
         // usable final transcript is allowed to advance the conversation.
         prepareAndRequestCallerResponse(transcript, generation);
