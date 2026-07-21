@@ -78,10 +78,7 @@ public class ConversationOrchestrator {
         // Tool choice starts with the multilingual model. A successful tool may
         // return one server-authorized next tool when a workflow transition must
         // happen silently and atomically, such as availability -> booking review.
-        String requiredNextTool = llmProvider.supportsSemanticTurnTool()
-                && tools.stream().anyMatch(tool -> ConversationStateTool.NAME.equals(tool.name()))
-                ? ConversationStateTool.NAME
-                : null;
+        String requiredNextTool = null;
         var semanticTurnCompleted = false;
 
         try {
@@ -387,7 +384,9 @@ public class ConversationOrchestrator {
                 - Only start collecting name/contact details once the caller clearly wants to book, be called back, be transferred, or leave a message.
                 - Follow the configured required-field order. Ask one missing field per turn and retain confirmed answers.
                 - Keep the person speaking separate from the person receiving the service. `caller_name` in authoritative call state identifies the speaker; `appointment_name` identifies who the appointment is for. If the caller books for a wife, husband, child, patient, guest, or anyone else, keep addressing the caller naturally and pass only the service recipient as the booking tool's `appointment_name`. Never overwrite the appointment subject with the speaker's name.
-                - Interpret each caller turn by meaning, in its language and conversational context, through `update_conversation_state`; never classify intent or identity by matching a fixed phrase. Apply the returned semantic state as authoritative.
+                - Ordinary conversation is direct speech, not a tool call. Answer greetings, general information, ambiguous requests, and clarification turns naturally without calling `update_conversation_state`.
+                - Use `update_conversation_state` only when an active workflow turn explicitly supplies, corrects, withdraws, or approves information that must persist for a later business action. Interpret that meaning in the caller's language and full conversational context; never classify it by matching a fixed phrase. Apply returned semantic state as authoritative.
+                - Do not call `update_conversation_state` merely because the caller says their name before an ambiguous request. Keep it in conversation context and clarify the request first. Once booking or another stateful workflow is clear, persist the relevant details semantically.
                 - A caller-name correction updates the speaker. When `booking_subject` is `self`, the deterministic state reducer also updates the appointment recipient. A correction never turns the old mistaken name into another person. When `booking_subject` is `other`, preserve that explicitly different recipient while updating the speaker.
                 - If `booking_subject` is `other` but `appointment_name` is absent, the recipient's name is still missing. Ask for that person's name once at the configured point in the intake and never infer it from the caller's identity.
                 - A request to book, schedule, reserve, or arrange an appointment is a NEW booking unless the caller explicitly says they want to change, reschedule, or cancel an existing booking.

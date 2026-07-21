@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 
 class OpenAiRealtimeServiceTest {
     @Test
-    void routesEveryCallerMeaningThroughTheLanguageIndependentSemanticTool() {
+    void letsOrdinaryMultilingualCallerTurnsUseTheNaturalResponsePath() {
         var orchestrator = mock(ConversationOrchestrator.class);
         var loader = mock(AgentToolLoader.class);
         var call = mock(Call.class);
@@ -51,8 +51,7 @@ class OpenAiRealtimeServiceTest {
         )) {
             var preparation = service.prepareCallerResponse(call, callerTurn);
             assertThat(preparation.directResponse()).as(callerTurn).isBlank();
-            assertThat(preparation.requiredTool()).as(callerTurn)
-                    .isEqualTo(com.sauti.tool.ConversationStateTool.NAME);
+            assertThat(preparation.requiredTool()).as(callerTurn).isBlank();
         }
     }
 

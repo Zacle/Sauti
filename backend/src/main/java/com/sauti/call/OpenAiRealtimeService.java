@@ -8,7 +8,6 @@ import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
 import com.sauti.tool.AgentToolLoader;
 import com.sauti.tool.ToolFulfillmentRouter;
-import com.sauti.tool.ConversationStateTool;
 import com.sauti.session.CallSessionStore;
 import com.sauti.nlp.LanguageDetector;
 import java.net.URI;
@@ -104,13 +103,10 @@ public class OpenAiRealtimeService {
                 ? detectedLanguage
                 : currentLanguage;
         var instructions = conversationOrchestrator.realtimeInstructions(call, language, callerTranscript);
-        var requiredTool = hasTool(call, ConversationStateTool.NAME)
-                ? ConversationStateTool.NAME
-                : "";
         return new RealtimeTranscriptResponse(
                 instructions,
                 "",
-                requiredTool
+                ""
         );
     }
 

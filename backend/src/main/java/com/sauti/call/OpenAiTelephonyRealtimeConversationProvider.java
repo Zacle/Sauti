@@ -2,7 +2,6 @@ package com.sauti.call;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sauti.tool.ConversationStateTool;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -322,12 +321,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                 try {
                                     var preparation = realtimeService.prepareCallerResponse(call, transcript);
                                     if (preparation == null) {
-                                        activeSession.requestResponseWithRequiredTool(ConversationStateTool.NAME);
+                                        activeSession.requestResponse();
                                     } else {
                                         activeSession.updateInstructions(preparation.instructions());
                                         if (preparation.directResponse() == null || preparation.directResponse().isBlank()) {
                                             if (preparation.requiredTool() == null || preparation.requiredTool().isBlank()) {
-                                                activeSession.requestResponseWithRequiredTool(ConversationStateTool.NAME);
+                                                activeSession.requestResponse();
                                             } else {
                                                 activeSession.requestResponseWithRequiredTool(preparation.requiredTool());
                                             }
@@ -337,12 +336,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                         }
                                     }
                                 } catch (RuntimeException exception) {
-                                    // Session setup always includes the internal semantic tool.
-                                    // A transient transcript-preparation failure must not leave the
-                                    // call stuck or permit an unclassified response.
+                                    // The active Realtime session already has the full prompt and
+                                    // conversation. Preparation enriches that context, but it must
+                                    // never put an internal state tool in front of ordinary speech.
                                     LOGGER.warn("Realtime caller preparation failed callId={}: {}",
                                             call.getId(), exception.getMessage());
-                                    activeSession.requestResponseWithRequiredTool(ConversationStateTool.NAME);
+                                    activeSession.requestResponse();
                                 }
                             }
                         }
@@ -372,10 +371,13 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         agentText.append(finalText);
                     }
                     case "response.function_call_arguments.done" -> {
-                        responseHasToolCall = true;
-                        var callId = event.path("call_id").asText("");
-                        if (acceptToolCall(callId)) {
-                            executeTool(webSocket, event, currentResponseGeneration);
+                        if (executeCompletedToolCallItem(webSocket, completedToolCallItem(event), currentResponseGeneration)) {
+                            responseHasToolCall = true;
+                        }
+                    }
+                    case "response.output_item.done" -> {
+                        if (executeCompletedToolCallItem(webSocket, event.path("item"), currentResponseGeneration)) {
+                            responseHasToolCall = true;
                         }
                     }
                     case "response.done" -> {
@@ -673,14 +675,22 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             listener.onAgentTextComplete(completion.text(), completion.interrupted());
         }
 
-        private void executeTool(WebSocket webSocket, JsonNode event, long generation) {
-            executeTool(
-                    webSocket,
-                    event.path("call_id").asText(""),
-                    event.path("name").asText(""),
-                    event.path("arguments").asText("{}"),
-                    generation
-            );
+        private JsonNode completedToolCallItem(JsonNode event) {
+            var item = event.path("item");
+            return item.isObject() ? item : event;
+        }
+
+        private boolean executeCompletedToolCallItem(WebSocket webSocket, JsonNode item, long generation) {
+            if (item == null || !item.isObject()) return false;
+            var itemType = item.path("type").asText("");
+            if (!itemType.isBlank()
+                    && !"function_call".equals(itemType)
+                    && !"response.function_call_arguments.done".equals(itemType)) return false;
+            var callId = item.path("call_id").asText("");
+            var name = item.path("name").asText("");
+            if (callId.isBlank() || name.isBlank() || !acceptToolCall(callId)) return false;
+            executeTool(webSocket, callId, name, item.path("arguments").asText("{}"), generation);
+            return true;
         }
 
         private void recoverProtocolOutput(WebSocket webSocket, long generation) {

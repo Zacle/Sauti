@@ -132,7 +132,7 @@ class ConversationOrchestratorTest {
     }
 
     @Test
-    void requiresSemanticStateBeforeSpeakingWithoutMatchingTheCallerWording() {
+    void allowsSemanticStateWhenTheModelDeterminesThatTheTurnNeedsPersistence() {
         var provider = new SemanticTurnProvider();
         var router = mock(ToolFulfillmentRouter.class);
         var toolLoader = mock(AgentToolLoader.class);
@@ -166,8 +166,7 @@ class ConversationOrchestratorTest {
         assertThat(result.responseText())
                 .isEqualTo("Merci pour la correction. Quel service souhaitez-vous ?");
         assertThat(provider.contexts).hasSize(1);
-        assertThat(provider.contexts.get(0).requiredToolName())
-                .isEqualTo(com.sauti.tool.ConversationStateTool.NAME);
+        assertThat(provider.contexts.get(0).requiredToolName()).isNull();
         assertThat(provider.contexts.get(0).tools())
                 .extracting(LlmToolDefinition::name)
                 .containsExactly(com.sauti.tool.ConversationStateTool.NAME);
@@ -488,7 +487,8 @@ class ConversationOrchestratorTest {
                 .contains("section heading such as ANSWER, FINAL ANSWER, or RESPONSE")
                 .contains("Use tools only through native function calls")
                 .contains("Keep the person speaking separate from the person receiving the service")
-                .contains("never classify intent or identity by matching a fixed phrase")
+                .contains("Ordinary conversation is direct speech, not a tool call")
+                .contains("never classify it by matching a fixed phrase")
                 .contains("deterministic state reducer also updates the appointment recipient")
                 .contains("Do not invent your own review preamble")
                 .contains("Never emit JSON");

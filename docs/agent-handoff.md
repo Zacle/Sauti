@@ -3915,3 +3915,28 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat the screenshot's exact first caller turn in hybrid Agent Studio and one carrier call. Confirm one semantic tool execution, one response, and a return to listening. Also force a rejected response/tool endpoint in a non-production environment and confirm the watchdog clears the spinner within its bound.
+
+### 2026-07-21 - Separate natural conversation from tool execution
+
+- Corrected the architecture exposed by the latest Agent Studio timeout. Sauti no longer forces `update_conversation_state` before every caller-facing response. Browser Realtime, phone Realtime, and the turn-based orchestrator now start ordinary turns with the model's natural response path and `tool_choice: auto`; explicit server-authorized workflow transitions can still require a named business tool.
+- Kept multilingual semantic state without returning to phrase-specific routing. The internal state tool remains available to the model only when an active workflow turn explicitly supplies, corrects, withdraws, or approves information that must persist. Greetings, general questions, ambiguous requests, and clarification turns are instructed to answer directly. A name attached to an ambiguous request stays in conversation context until the caller's intent is clear.
+- Removed the failure fallback that put the semantic tool back in front of speech whenever caller-response preparation was slow, absent, or failed. The existing Realtime conversation and last valid personalized prompt are now allowed to answer naturally in those cases.
+- Reworked the browser response watchdog around conversation phases. An ordinary response has an 8-second primary bound and receives one 6-second recovery attempt with tools disabled, preserving the known transcript and prompt so the retry can answer contextually instead of immediately asking the caller to repeat. A final failure now identifies whether Realtime failed to start, finish conversational text, or finish preparing a tool action.
+- A completed function call now ends the response-generation wait. Tool execution retains its independent 12-second bound, and a missing late `response.done` is settled after the completed tool result so the queue cannot remain stuck. Browser cancellation recovery also releases a retry that was rejected while the provider was still closing the prior response.
+- Accepted all complete Realtime function-call event forms used by the current contract in both browser and phone runtimes: top-level `response.function_call_arguments.done`, the item-bearing form of that event, `response.output_item.done`, and the final `response.done` output. Existing call-ID and canonical-argument guards keep execution idempotent when more than one form arrives.
+- This follows OpenAI's Realtime function-calling contract: function output is a distinct response path, while ordinary conversational responses do not need to pass through a function first. Reference: https://developers.openai.com/api/docs/guides/realtime-conversations#detect-when-the-model-wants-to-call-a-function
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - focused backend tests for Realtime preparation, phone event compatibility, and orchestrator routing
+  - `dashboard/features/voice-runtime/{openaiRealtime,openaiRealtime.test,realtimeProtocol}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test` - passed; 273 tests.
+  - `npm.cmd run test:voice` - passed; 7 regressions.
+  - `npm.cmd run lint` - passed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` reached the Next.js banner but produced no compilation output and hit the five-minute command limit, matching the previously documented local orphaned-worker/stalled-build behavior. No build, lint, or type error was reported; a full dashboard build passed earlier on the same baseline before these Realtime-only TypeScript changes.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat the exact first turn from the screenshot (`My name is Zachary. I'm calling to check an appointment.`). It should receive one natural clarification without an internal tool delay. Then test a broad information question, a specific live-availability request, a multilingual booking correction, final approval, one browser interruption, and one carrier call. Confirm that ordinary turns create message output, live/action turns create only the appropriate tool call, and transcript-to-first-audio latency remains within the new response bounds.

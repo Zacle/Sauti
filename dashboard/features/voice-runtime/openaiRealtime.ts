@@ -2,7 +2,8 @@ import { RealtimeTurnGate } from "./realtimeTurnGate";
 import { completedRealtimeToolCalls } from "./realtimeProtocol";
 
 const SEMANTIC_TURN_TOOL = "update_conversation_state";
-const RESPONSE_WATCHDOG_MS = 15_000;
+const PRIMARY_RESPONSE_WATCHDOG_MS = 8_000;
+const RECOVERY_RESPONSE_WATCHDOG_MS = 6_000;
 const TOOL_EXECUTION_TIMEOUT_MS = 12_000;
 
 export type OpenAiRealtimeCallbacks = {
@@ -37,7 +38,10 @@ type AgentSpeech = {
 type PendingResponseRequest = {
   generation: number;
   send: () => void;
+  retryWithoutTools: boolean;
 };
+
+type ResponsePhase = "idle" | "awaiting_response" | "generating_message" | "generating_tool";
 
 export async function connectOpenAiRealtime(options: {
   microphone: MediaStream;
@@ -83,6 +87,9 @@ export async function connectOpenAiRealtime(options: {
   let expectedResponses = 0;
   let responseRequestInFlight = false;
   let responseWatchdog = 0;
+  let toolResponseSettleTimer = 0;
+  let responsePhase: ResponsePhase = "idle";
+  let currentResponseCanRetryWithoutTools = false;
   let responseCancellationPending = false;
   let currentResponseId = "";
   let currentResponseGeneration = 0;
@@ -101,6 +108,7 @@ export async function connectOpenAiRealtime(options: {
   const deliveredSpeechFingerprints = new Set<string>();
   const toolExecutions = new Map<string, Promise<Record<string, unknown>>>();
   const toolFollowupGenerations = new Set<number>();
+  const noToolRecoveryGenerations = new Set<number>();
   const pendingResponseRequests: PendingResponseRequest[] = [];
   let dispatchedResponseRequest: PendingResponseRequest | null = null;
   let callerPreparationChain = Promise.resolve();
@@ -121,21 +129,36 @@ export async function connectOpenAiRealtime(options: {
     responseRequestInFlight = true;
     dispatchedResponseRequest = request;
     expectedResponses += 1;
+    responseHasToolCall = false;
+    responsePhase = "awaiting_response";
     request.send();
-    armResponseWatchdog(request.generation);
+    armResponseWatchdog(
+      request.generation,
+      noToolRecoveryGenerations.has(request.generation)
+        ? RECOVERY_RESPONSE_WATCHDOG_MS
+        : PRIMARY_RESPONSE_WATCHDOG_MS,
+    );
   };
 
-  const enqueueResponse = (request: () => void, generation = outputGeneration) => {
+  const enqueueResponse = (
+    request: () => void,
+    generation = outputGeneration,
+    retryWithoutTools = false,
+  ) => {
     if (generation !== outputGeneration) return;
-    pendingResponseRequests.push({ generation, send: request });
+    pendingResponseRequests.push({ generation, send: request, retryWithoutTools });
     drainResponseQueue();
   };
 
   const finishResponse = () => {
     window.clearTimeout(responseWatchdog);
     responseWatchdog = 0;
+    window.clearTimeout(toolResponseSettleTimer);
+    toolResponseSettleTimer = 0;
     responseActive = false;
     responseRequestInFlight = false;
+    responsePhase = "idle";
+    currentResponseCanRetryWithoutTools = false;
     dispatchedResponseRequest = null;
     responseCancellationPending = false;
     currentResponseId = "";
@@ -143,11 +166,16 @@ export async function connectOpenAiRealtime(options: {
     window.setTimeout(drainResponseQueue, 0);
   };
 
-  const armResponseWatchdog = (generation: number) => {
+  const armResponseWatchdog = (generation: number, timeoutMs: number) => {
     window.clearTimeout(responseWatchdog);
     responseWatchdog = window.setTimeout(() => {
       if (generation !== outputGeneration
         || (!responseActive && !responseRequestInFlight && !responseCancellationPending)) return;
+      const failedPhase = responsePhase;
+      const canRetryWithoutTools = !responseHasToolCall
+        && !noToolRecoveryGenerations.has(generation)
+        && (currentResponseCanRetryWithoutTools
+          || dispatchedResponseRequest?.retryWithoutTools === true);
       if (currentResponseId) ignoredResponseIds.add(currentResponseId);
       if (responseRequestInFlight) expectedResponses = Math.max(0, expectedResponses - 1);
       for (let index = pendingResponseRequests.length - 1; index >= 0; index -= 1) {
@@ -157,13 +185,18 @@ export async function connectOpenAiRealtime(options: {
       }
       send(channel, { type: "response.cancel" });
       finishResponse();
+      if (canRetryWithoutTools && generation === outputGeneration) {
+        noToolRecoveryGenerations.add(generation);
+        enqueueResponse(() => requestToolResultResponse(channel), generation);
+        return;
+      }
       deliverAgentSpeech({
         id: `response-timeout:${generation}`,
         generation,
         text: localizedResponseFailure(options.responseLanguage),
       });
-      options.callbacks.onError("The voice provider did not complete its response in time.");
-    }, RESPONSE_WATCHDOG_MS);
+      options.callbacks.onError(responseTimeoutMessage(failedPhase));
+    }, timeoutMs);
   };
 
   const cancelActiveResponse = () => {
@@ -187,6 +220,7 @@ export async function connectOpenAiRealtime(options: {
       }
     }
     toolFollowupGenerations.clear();
+    noToolRecoveryGenerations.clear();
     toolExecutions.clear();
     deliveredSpeechIds.clear();
     deliveredSpeechFingerprints.clear();
@@ -300,6 +334,16 @@ export async function connectOpenAiRealtime(options: {
     deliverAgentSpeech({ id: speechId, generation, text: failure });
   };
 
+  const settleCompletedToolResponse = (generation: number) => {
+    window.clearTimeout(toolResponseSettleTimer);
+    toolResponseSettleTimer = window.setTimeout(() => {
+      if (generation !== outputGeneration || !responseActive || !responseHasToolCall) return;
+      if (currentResponseId) ignoredResponseIds.add(currentResponseId);
+      send(channel, { type: "response.cancel" });
+      finishResponse();
+    }, 500);
+  };
+
   const executeToolCall = (
     callId: string,
     name: string,
@@ -373,7 +417,8 @@ export async function connectOpenAiRealtime(options: {
           deliverToolFailure(name, generation, `tool-failure:${callId}`);
           options.callbacks.onError("The requested voice action could not be completed.");
         }
-      });
+      })
+      .finally(() => settleCompletedToolResponse(generation));
   };
 
   const recoverProtocolOutput = (cancelResponse: boolean) => {
@@ -448,8 +493,9 @@ export async function connectOpenAiRealtime(options: {
           return;
         }
       } else {
-        // A slow preparation request may still enrich the next turn, but it must
-        // never let this turn bypass the semantic state boundary.
+        // A slow preparation request may still enrich the next turn, but the
+        // current Realtime conversation is already sufficient for a natural
+        // answer and must not wait behind an internal state tool.
         void preparation.then((late) => {
           const instructions = late?.instructions?.trim();
           if (generation === outputGeneration && instructions) {
@@ -458,7 +504,7 @@ export async function connectOpenAiRealtime(options: {
         });
       }
       if (generation === outputGeneration) {
-        enqueueResponse(() => requestRequiredToolResponse(channel, SEMANTIC_TURN_TOOL), generation);
+        enqueueResponse(() => requestCallerResponse(channel), generation, true);
       }
     });
   };
@@ -499,11 +545,18 @@ export async function connectOpenAiRealtime(options: {
         return;
       }
       const requestedGeneration = dispatchedResponseRequest?.generation ?? outputGeneration;
+      currentResponseCanRetryWithoutTools = dispatchedResponseRequest?.retryWithoutTools === true;
       expectedResponses -= 1;
       responseRequestInFlight = false;
       dispatchedResponseRequest = null;
       responseActive = true;
-      armResponseWatchdog(requestedGeneration);
+      responsePhase = "generating_message";
+      armResponseWatchdog(
+        requestedGeneration,
+        noToolRecoveryGenerations.has(requestedGeneration)
+          ? RECOVERY_RESPONSE_WATCHDOG_MS
+          : PRIMARY_RESPONSE_WATCHDOG_MS,
+      );
       currentResponseId = eventResponseId;
       currentResponseGeneration = requestedGeneration;
       if (responseCancellationPending || requestedGeneration !== outputGeneration) {
@@ -522,7 +575,8 @@ export async function connectOpenAiRealtime(options: {
     const responseTerminal = type === "response.done" || type === "response.cancelled";
     const ignoredResponse = Boolean(eventResponseId && ignoredResponseIds.has(eventResponseId));
     if (ignoredResponse && responseTerminal) {
-      if (!eventResponseId || currentResponseId === eventResponseId) {
+      if (!eventResponseId || currentResponseId === eventResponseId
+        || (responseCancellationPending && !responseActive)) {
         currentResponseId = "";
         discardCurrentResponseOutput = false;
         agentTranscript = "";
@@ -537,7 +591,12 @@ export async function connectOpenAiRealtime(options: {
       const itemType = String(item?.type ?? "").trim();
       if (itemId) outputItemTypes.set(itemId, itemType);
       if (itemType === "message") currentOutputItemId = itemId;
-      if (itemType === "function_call") responseHasToolCall = true;
+      if (itemType === "function_call") {
+        responseHasToolCall = true;
+        currentResponseCanRetryWithoutTools = false;
+        responsePhase = "generating_tool";
+        armResponseWatchdog(currentResponseGeneration, TOOL_EXECUTION_TIMEOUT_MS);
+      }
     }
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
@@ -627,6 +686,9 @@ export async function connectOpenAiRealtime(options: {
         options.callbacks.onError("The voice provider could not complete its response.");
         textCompletionSent = true;
       }
+      if (completed.status === "completed") {
+        noToolRecoveryGenerations.delete(currentResponseGeneration);
+      }
     }
     // A completed response is a defensive flush for transports that omit the
     // more specific output_text.done event.
@@ -694,12 +756,41 @@ export async function connectOpenAiRealtime(options: {
       if (!eventResponseId || currentResponseId === eventResponseId) finishResponse();
     }
     if (type === "response.function_call_arguments.done") {
-      const callId = String(event.call_id ?? "");
-      const name = String(event.name ?? "");
-      const argumentsJson = String(event.arguments ?? "{}");
-      responseHasToolCall = true;
-      if (acceptToolCall(callId)) {
-        executeToolCall(callId, name, argumentsJson, currentResponseGeneration);
+      const completedToolCalls = completedRealtimeToolCalls(event);
+      if (completedToolCalls.length > 0) {
+        responseHasToolCall = true;
+        currentResponseCanRetryWithoutTools = false;
+        window.clearTimeout(responseWatchdog);
+        responseWatchdog = 0;
+      }
+      for (const toolCall of completedToolCalls) {
+        if (acceptToolCall(toolCall.callId)) {
+          executeToolCall(
+            toolCall.callId,
+            toolCall.name,
+            toolCall.argumentsJson,
+            currentResponseGeneration,
+          );
+        }
+      }
+    }
+    if (type === "response.output_item.done") {
+      const completedToolCalls = completedRealtimeToolCalls(event);
+      if (completedToolCalls.length > 0) {
+        responseHasToolCall = true;
+        currentResponseCanRetryWithoutTools = false;
+        window.clearTimeout(responseWatchdog);
+        responseWatchdog = 0;
+      }
+      for (const toolCall of completedToolCalls) {
+        if (acceptToolCall(toolCall.callId)) {
+          executeToolCall(
+            toolCall.callId,
+            toolCall.name,
+            toolCall.argumentsJson,
+            currentResponseGeneration,
+          );
+        }
       }
     }
     if (type === "error") {
@@ -768,6 +859,7 @@ export async function connectOpenAiRealtime(options: {
     close: () => {
       window.clearTimeout(bargeInTimer);
       window.clearTimeout(responseWatchdog);
+      window.clearTimeout(toolResponseSettleTimer);
       pendingCallerTurns.forEach((watchdog) => window.clearTimeout(watchdog));
       pendingCallerTurns.clear();
       pendingResponseRequests.length = 0;
@@ -909,6 +1001,19 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
       },
     );
   });
+}
+
+function responseTimeoutMessage(phase: ResponsePhase) {
+  switch (phase) {
+    case "awaiting_response":
+      return "The voice provider did not start its response in time.";
+    case "generating_tool":
+      return "The voice provider did not finish preparing the requested action in time.";
+    case "generating_message":
+      return "The voice provider did not finish its conversational response in time.";
+    default:
+      return "The voice provider did not complete its response in time.";
+  }
 }
 
 function speechFingerprint(value: string) {

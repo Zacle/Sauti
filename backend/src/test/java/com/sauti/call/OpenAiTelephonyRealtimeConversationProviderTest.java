@@ -148,10 +148,8 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         socketListener.onText(mock(WebSocket.class), payload, true);
 
         assertThat(events).containsExactly("speech", "caller:When are you open?");
-        verify(session, times(1)).requestResponseWithRequiredTool(
-                com.sauti.tool.ConversationStateTool.NAME
-        );
-        verify(session, never()).requestResponse();
+        verify(session, times(1)).requestResponse();
+        verify(session, never()).requestResponseWithRequiredTool(anyString());
     }
 
     @Test
@@ -185,8 +183,8 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 true);
 
         assertThat(events).containsExactly("speech", "caller:Please book Monday");
-        verify(session).requestResponseWithRequiredTool(com.sauti.tool.ConversationStateTool.NAME);
-        verify(session, never()).requestResponse();
+        verify(session).requestResponse();
+        verify(session, never()).requestResponseWithRequiredTool(anyString());
 
         socketListener.onText(webSocket, "{\"type\":\"response.created\"}", true);
         socketListener.onText(webSocket,
@@ -408,7 +406,7 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
-    void alwaysRoutesAnUnpreparedTurnThroughSemanticUnderstandingFirst() {
+    void unpreparedTurnStillUsesTheNaturalSessionResponsePath() {
         var tools = List.of(Map.of("type", "function", "name", "check_availability"));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
                 new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
@@ -423,9 +421,8 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                         + "\"transcript\":\"Wednesday at 3 P.M.\"}",
                 true);
 
-        verify(session).requestResponseWithRequiredTool(com.sauti.tool.ConversationStateTool.NAME);
+        verify(session).requestResponse();
         verify(session, never()).requestResponseWithRequiredTool("check_availability");
-        verify(session, never()).requestResponse();
     }
 
     @Test
@@ -613,6 +610,32 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
 
         verify(realtimeService, timeout(1_000).times(1))
                 .executeTool(eq(call), eq("tool-1"), eq("check_availability"), anyString());
+    }
+
+    @Test
+    void acceptsCompletedFunctionItemsFromBothCurrentRealtimeEventShapes() {
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        when(realtimeService.executeTool(eq(call), eq("tool-item-1"), eq("check_availability"), anyString()))
+                .thenReturn(new com.sauti.llm.LlmToolResult(
+                        "tool-item-1", "check_availability", true, Map.of(), ""
+                ));
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call,
+                new RecordingListener(new ArrayList<>()), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+        var item = "{\"type\":\"function_call\",\"call_id\":\"tool-item-1\"," +
+                "\"name\":\"check_availability\",\"arguments\":\"{}\"}";
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.function_call_arguments.done\",\"item\":" + item + "}", true);
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.output_item.done\",\"item\":" + item + "}", true);
+
+        verify(realtimeService, timeout(1_000).times(1))
+                .executeTool(eq(call), eq("tool-item-1"), eq("check_availability"), anyString());
     }
 
     @Test
