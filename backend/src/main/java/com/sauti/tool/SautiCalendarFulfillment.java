@@ -153,6 +153,11 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             result.put("instruction", "The requested time is available and the caller has an active booking intake. "
                     + "Call book_slot immediately without speaking, asking permission, or asking the caller to wait. "
                     + "The booking tool will validate missing fields and produce the exact review.");
+        } else {
+            // Availability is already an authoritative calendar decision. Return
+            // caller-ready speech with the tool result so Realtime does not need
+            // a second model response merely to paraphrase that decision.
+            result.put("spokenResponse", AvailabilitySpeechRenderer.render(call, result));
         }
         return Map.copyOf(result);
     }
@@ -174,6 +179,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("timezone", timezone.toString());
         result.put("calendarLive", true);
         result.put("instruction", "Ask the caller for a specific preferred date in their current language.");
+        result.put("spokenResponse", AvailabilitySpeechRenderer.render(call, result));
         return Map.copyOf(result);
     }
 

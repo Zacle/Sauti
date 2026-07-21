@@ -135,20 +135,29 @@ public class ConversationStateTool {
             result.put("status", "conversation_state_updated");
             result.put("state", next.asNotes());
             result.put("bookingAllowed", !ConversationState.INTENT_PAUSED.equals(next.bookingIntent()));
+            var turnUpdates = updates(toolCall.arguments().get("updates"));
             var reviewDecision = next.values().getOrDefault("review_decision", "");
             var reviewMustContinue = !ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
                     && ("approved".equals(reviewDecision) || "corrected".equals(reviewDecision))
                     && configuredFor(call, "book_slot");
+            var availabilityMustContinue = ConversationState.INTENT_ACTIVE.equals(next.bookingIntent())
+                    && (turnUpdates.containsKey("preferred_day") || turnUpdates.containsKey("preferred_time"))
+                    && configuredFor(call, "check_availability");
             // Approval and correction of a server-generated booking review are
             // workflow transitions, not another conversational confirmation.
             // The model supplies the multilingual meaning; the server owns the
             // deterministic next action so "yes" cannot loop indefinitely.
-            var nextAction = reviewMustContinue
+            // A newly supplied or corrected booking date/time is likewise a
+            // workflow transition: live availability must be checked before any
+            // caller-facing claim, regardless of the caller's wording.
+            var nextAction = reviewMustContinue || availabilityMustContinue
                     ? "use_business_tool"
                     : choice(toolCall.arguments().get("next_action"), NEXT_ACTIONS, "reply");
-            var businessTool = reviewMustContinue
-                    ? "book_slot"
-                    : stringArgument(toolCall.arguments(), "business_tool");
+            var businessTool = availabilityMustContinue
+                    ? "check_availability"
+                    : reviewMustContinue
+                        ? "book_slot"
+                        : stringArgument(toolCall.arguments(), "business_tool");
             var spoken = "reply".equals(nextAction)
                     ? VoiceOutputGuard.speechText(stringArgument(toolCall.arguments(), "spoken_response"))
                     : "";

@@ -45,7 +45,9 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "closed_by_business_hours")
                 .containsEntry("businessOpenOnRequestedDate", false)
                 .containsEntry("requestedTime", "15:00")
-                .containsEntry("requestedTimeAvailable", false);
+                .containsEntry("requestedTimeAvailable", false)
+                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
+                        .contains("closed that day", "next opening"));
         @SuppressWarnings("unchecked")
         var nextWindows = (List<Map<String, String>>) result.result().get("nextOpenBusinessWindows");
         assertThat(nextWindows).first().satisfies(window -> assertThat(window)
@@ -79,7 +81,9 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "requested_time_available")
                 .containsEntry("requestedTime", "15:00")
                 .containsEntry("requestedTimeWithinOperatingHours", true)
-                .containsEntry("requestedTimeAvailable", true);
+                .containsEntry("requestedTimeAvailable", true)
+                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
+                        .startsWith("That time is available."));
         @SuppressWarnings("unchecked")
         var matching = (Map<String, String>) result.result().get("matchingSlot");
         assertThat(matching.get("start")).startsWith("2026-07-22T15:00");
@@ -113,7 +117,8 @@ class SautiCalendarFulfillmentTest {
 
         assertThat(result.result())
                 .containsEntry("status", "requested_time_available")
-                .containsEntry("nextTool", "book_slot");
+                .containsEntry("nextTool", "book_slot")
+                .doesNotContainKey("spokenResponse");
         assertThat(result.result().get("instruction").toString())
                 .contains("Call book_slot immediately without speaking")
                 .contains("without", "asking permission", "wait");
@@ -142,7 +147,9 @@ class SautiCalendarFulfillmentTest {
 
         assertThat(result.result())
                 .containsEntry("status", "requested_time_available")
-                .doesNotContainKey("nextTool");
+                .doesNotContainKey("nextTool")
+                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
+                        .startsWith("That time is available."));
     }
 
     @Test
@@ -173,7 +180,9 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.result())
                 .containsEntry("status", "requested_time_unavailable")
                 .containsEntry("requestedTimeAvailable", false)
-                .containsEntry("totalAvailableSlots", 1);
+                .containsEntry("totalAvailableSlots", 1)
+                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
+                        .contains("not available", "closest available times"));
         @SuppressWarnings("unchecked")
         var slots = (List<Map<String, String>>) result.result().get("slots");
         assertThat(slots).singleElement().satisfies(slot ->
@@ -667,7 +676,25 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.result())
                 .containsEntry("status", "calendar_temporarily_unavailable")
                 .containsEntry("calendarLive", false)
-                .containsEntry("requestedTime", "12:00");
+                .containsEntry("requestedTime", "12:00")
+                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
+                        .contains("cannot confirm live availability", "has not been booked"));
+    }
+
+    @Test
+    void asksForAMissingDateWithoutNeedingAnotherModelResponse() {
+        var fixture = fixture(HOURS, List.of());
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "availability-missing-date", "check_availability",
+                Map.of("time_preference", "15:00", "duration_minutes", 60)
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "needs_date")
+                .containsEntry("spokenResponse", "Which day would you like me to check?");
+        verifyNoInteractions(fixture.provider);
     }
 
     private Fixture fixture(String hours, List<CalendarAvailabilitySlot> slots) {

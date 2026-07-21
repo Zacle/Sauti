@@ -3990,3 +3990,24 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat the supplied Gary/Zachary call in Agent Studio and on one carrier call. Confirm transcript-final-to-first-audio latency, that `Gary` and `0105753221` are used exactly, that `Thursday at 3 p.m.` reaches availability without a generic failure, and that a corrected review followed by a natural approval saves once. The automated suite verifies ordering and deterministic transitions; live provider transcription timing, network latency, microphone acoustics, and external TTS timing still require end-to-end measurement.
+
+### 2026-07-21 - Complete live-availability turns without a second Realtime generation
+
+- Fixed the specific timeout shown after “Is Tuesday/Thursday at 3 p.m. available?” The calendar tool already returned an authoritative status, but an earlier regression had removed its caller-ready `spokenResponse`. Browser and phone Realtime therefore had to request a second model response solely to paraphrase the tool result; that extra `response.create` was the stage reported as “did not finish its conversational response in time.”
+- Restored deterministic, localized caller speech for every non-chained availability result: requested time available or unavailable, nearby slots, outside opening hours, closed day, fully booked day, missing date, and temporary calendar outage. Hybrid Agent Studio can now send that text directly to its configured voice provider. A complete active intake remains silent and chains directly from `check_availability` to `book_slot`, so the booking review is still spoken exactly once.
+- Made active booking date/time updates a server-owned workflow transition. Once the multilingual semantic tool identifies a newly supplied or corrected preferred day/time, it must continue to live `check_availability` even if the model proposed a conversational reply. A date/time correction during final review also rechecks the calendar before regenerating the booking review; non-booking informational mentions are not forced into a booking workflow.
+- Replaced the example-specific unclear-service prompt with a general semantic rule. A service may not be inferred from recipient gender, phonetic similarity, or the most likely catalog item. Ambiguous or out-of-catalog speech must receive one short clarification in the current language before service state or recipient details are collected.
+- The function-result flow follows OpenAI's documented Realtime contract: the client executes a function call, appends `function_call_output` with the same `call_id`, and requests another `response.create` only when model generation is actually needed. Reference: https://developers.openai.com/api/docs/guides/realtime-conversations#function-calling
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/{ConversationStateTool,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/{ConversationStateTool,SautiCalendarFulfillmentTest}.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused calendar fulfillment, semantic-state, and conversation-orchestrator tests - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 10 Realtime protocol/turn-gate regressions.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat the supplied “Tuesday at 3 p.m.” and “Thursday at 3 p.m.” availability turns in hybrid Agent Studio and one carrier call. Confirm the tool produces one direct answer, no generic repeat request, no second conversational-response timeout, and a return to listening. Also test an unclear service utterance and confirm the agent asks for clarification rather than selecting a catalog item. Live calendar/network and speech-provider behavior still require this end-to-end validation after deployment.

@@ -176,6 +176,102 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void activeBookingDateOrTimeAlwaysContinuesToLiveAvailability() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("availability-transition-call");
+        when(sessions.conversationState("availability-transition-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of("service_type", "Nails", "appointment_name", "Sandria"),
+                        ConversationState.SUBJECT_OTHER,
+                        ConversationState.INTENT_ACTIVE,
+                        3
+                )
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("preferred_day", "Thursday", "preferred_time", "15:00"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Thursday at 3 p.m. should be fine."
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "check_availability")
+                .containsEntry("nextToolAuthorized", true)
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void correctedReviewDateChecksAvailabilityBeforeRegeneratingTheReview() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("review-date-correction-call");
+        when(sessions.conversationState("review-date-correction-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_name", "Zachary",
+                                "appointment_name", "Zachary",
+                                "caller_phone", "0105753221",
+                                "service_type", "Men hairstyle",
+                                "preferred_day", "Tuesday",
+                                "preferred_time", "15:00"
+                        ),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        7
+                )
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("preferred_day", "Thursday", "review_decision", "corrected"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "reply",
+                "business_tool", "book_slot",
+                "spoken_response", "I updated the review to Thursday."
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "check_availability")
+                .containsEntry("nextToolAuthorized", true)
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void informationOnlyDateMentionDoesNotForceABookingWorkflow() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("information-date-call");
+        when(sessions.conversationState("information-date-call"))
+                .thenReturn(Optional.of(ConversationState.empty()));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("preferred_day", "Thursday"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "information_only",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "What would you like to know about Thursday?"
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "reply")
+                .containsEntry("spokenResponse", "What would you like to know about Thursday?")
+                .doesNotContainKeys("nextTool", "nextToolAuthorized");
+    }
+
+    @Test
     void pausedBookingIntentCannotAuthorizeTheBookingSideEffect() {
         var sessions = mock(CallSessionStore.class);
         var call = call("paused-business-call");
