@@ -204,12 +204,12 @@ public class CartesiaRealtimeTextToSpeechClient {
         return value == null || value.isBlank() ? "default" : value.trim();
     }
 
-    private static final class CartesiaWebSocketListener implements WebSocket.Listener {
+    static final class CartesiaWebSocketListener implements WebSocket.Listener {
         private final ObjectMapper objectMapper;
         private final TtsAudioListener listener;
         private final StringBuilder textBuffer = new StringBuilder();
 
-        private CartesiaWebSocketListener(ObjectMapper objectMapper, TtsAudioListener listener) {
+        CartesiaWebSocketListener(ObjectMapper objectMapper, TtsAudioListener listener) {
             this.objectMapper = objectMapper;
             this.listener = listener;
         }
@@ -247,10 +247,24 @@ public class CartesiaRealtimeTextToSpeechClient {
             listener.onError(error);
         }
 
+        @Override
+        public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+            if (statusCode != WebSocket.NORMAL_CLOSURE) {
+                listener.onError(new IllegalStateException(
+                        "Cartesia TTS connection closed with status " + statusCode
+                ));
+            }
+            return null;
+        }
+
         private void handle(String payload) {
             try {
                 var node = objectMapper.readTree(payload);
                 var type = node.path("type").asText("");
+                if ("error".equals(type)) {
+                    listener.onError(new IllegalStateException(node.path("message").asText("Cartesia TTS failed")));
+                    return;
+                }
                 if ("chunk".equals(type)) {
                     var data = node.path("data").asText("");
                     if (!data.isBlank()) {
@@ -260,10 +274,6 @@ public class CartesiaRealtimeTextToSpeechClient {
                 }
                 if ("done".equals(type) || node.path("done").asBoolean(false)) {
                     listener.onComplete();
-                    return;
-                }
-                if ("error".equals(type)) {
-                    listener.onError(new IllegalStateException(node.path("message").asText("Cartesia TTS failed")));
                 }
             } catch (Exception exception) {
                 listener.onError(exception);

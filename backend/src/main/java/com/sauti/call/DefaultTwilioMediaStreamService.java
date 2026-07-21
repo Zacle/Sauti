@@ -34,7 +34,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
     private final TelephonyRealtimeConversationProvider realtimeConversationProvider;
     private final TwilioMediaFrameFactory frameFactory;
     private final TelnyxMediaFrameFactory telnyxFrameFactory;
-    private final SentenceChunker sentenceChunker;
     private final CallSessionStore callSessionStore;
     private final DashboardEventPublisher dashboardEventPublisher;
     private final CallTransferService callTransferService;
@@ -57,7 +56,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             TelephonyRealtimeConversationProvider realtimeConversationProvider,
             TwilioMediaFrameFactory frameFactory,
             TelnyxMediaFrameFactory telnyxFrameFactory,
-            SentenceChunker sentenceChunker,
             CallSessionStore callSessionStore,
             DashboardEventPublisher dashboardEventPublisher,
             CallTransferService callTransferService,
@@ -74,7 +72,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         this.realtimeConversationProvider = realtimeConversationProvider;
         this.frameFactory = frameFactory;
         this.telnyxFrameFactory = telnyxFrameFactory;
-        this.sentenceChunker = sentenceChunker;
         this.callSessionStore = callSessionStore;
         this.dashboardEventPublisher = dashboardEventPublisher;
         this.callTransferService = callTransferService;
@@ -274,7 +271,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         if (session == null || !session.beginCascadeFallback()) return;
         LOGGER.warn("Telephony Realtime disconnected for callSid={}; activating cascade fallback", callSid, error);
         metrics.fallback("telephony", metricChannel(session), "realtime_disconnect");
-        session.cancelRealtimeResponse();
         if (session.interruptCurrentTurn()) {
             callSessionStore.markInterrupted(callSid);
             callSessionStore.setSpeaking(callSid, false, "");
@@ -487,7 +483,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         // before the provider requests the next response.
         session.cancelRealtimeModelResponse();
         if (session.interruptCurrentTurn()) {
-            session.cancelRealtimeResponse();
             callSessionStore.markInterrupted(callSid);
             callSessionStore.setSpeaking(callSid, false, "");
             callRepository.findByTwilioCallSid(callSid)
@@ -527,7 +522,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 .filter(Call::isActive)
                 .ifPresent(call -> {
                     if (interrupted) {
-                        session.cancelRealtimeResponse();
                         callPipelineService.recordRealtimeTranscript(
                                 call.getTenant().getId(), call.getId(), "agent", text, true
                         );
@@ -557,10 +551,12 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 .ifPresent(call -> {
                     var turnStartedNanos = System.nanoTime();
                     dashboardEventPublisher.transcriptFinal(call, transcript);
-                    var streamed = new AtomicBoolean(false);
+                    var receivedText = new AtomicBoolean(false);
+                    var validatedText = new StringBuilder();
                     var turn = callPipelineService.processLiveTranscriptTurn(call, transcript, delta -> {
                         if (delta == null || delta.isEmpty()) return;
-                        if (streamed.compareAndSet(false, true)) {
+                        validatedText.append(delta);
+                        if (receivedText.compareAndSet(false, true)) {
                             metrics.recordLatency(
                                     "llm_first_text", "telephony", metricChannel(session),
                                     System.nanoTime() - turnStartedNanos
@@ -570,9 +566,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                                     callSid,
                                     TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - turnStartedNanos)
                             );
-                            beginTtsResponse(session, false);
                         }
-                        session.speak(delta, false);
                     });
                     if (turn == null) {
                         // Compatibility fallback for alternate implementations and older test doubles.
@@ -580,10 +574,10 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                     }
                     var terminalTurn = turn.outcome() != null && !turn.outcome().isBlank();
                     LOGGER.info(
-                            "Voice latency callSid={} stage=turn_complete elapsedMs={} streamed={}",
+                            "Voice latency callSid={} stage=turn_complete elapsedMs={} validatedText={}",
                             callSid,
                             TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - turnStartedNanos),
-                            streamed.get()
+                            receivedText.get()
                     );
                     metrics.recordLatency(
                             "turn_complete", "telephony", metricChannel(session),
@@ -592,11 +586,10 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                     if (callTransferService.isPending(call.getId())) {
                         session.setPendingTransfer(call.getId());
                     }
-                    if (streamed.get()) {
-                        session.setCloseAfterCurrentMark(terminalTurn);
-                        session.speak("", true);
-                    } else if (!turn.text().isBlank()) {
-                        streamTtsResponse(session, turn.text(), terminalTurn);
+                    var responseText = validatedText.toString().trim();
+                    if (responseText.isBlank()) responseText = turn.text();
+                    if (!responseText.isBlank()) {
+                        streamTtsResponse(session, responseText, terminalTurn);
                     } else if (session.hasPendingTransfer()) {
                         var pendingTransfer = session.takePendingTransfer();
                         if (pendingTransfer != null) initiateTransfer(session, pendingTransfer);
@@ -624,11 +617,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
     private void streamTtsResponse(TwilioMediaSession session, String responseText, boolean closeAfterPlayback) {
         session.queueTtsResponse(() -> {
             beginTtsResponse(session, closeAfterPlayback);
-            var chunks = sentenceChunker.chunks(responseText);
-            for (var chunk : chunks) {
-                session.speak(chunk, false);
-            }
-            session.speak("", true);
+            session.speak(responseText, true);
         });
     }
 
@@ -706,13 +695,10 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         private ScheduledFuture<?> maintenanceTask;
         private UUID pendingTransferCallId;
         private final StringBuilder dtmfBuffer = new StringBuilder();
-        private final StringBuilder realtimeTextBuffer = new StringBuilder();
         private final ArrayDeque<QueuedTtsResponse> pendingTtsResponses = new ArrayDeque<>();
         private long dtmfVersion;
-        private boolean realtimeResponseOpen;
         private boolean ttsResponseActive;
         private int speechQueueGeneration;
-        private boolean realtimeReceivedDelta;
         private boolean realtimeCallerEnding;
         private boolean cascadeFallbackActive;
 
@@ -796,7 +782,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         }
 
         private synchronized boolean isAgentBusy() {
-            return speaking || realtimeResponseOpen || ttsResponseActive;
+            return speaking || ttsResponseActive;
         }
 
         private synchronized boolean canSendReminder(int afterSeconds, int maximum) {
@@ -924,43 +910,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             if (sttSession instanceof TelephonyRealtimeConversationProvider.Session realtime) {
                 realtime.cancelResponse();
             }
-        }
-
-        private synchronized boolean beginRealtimeResponse() {
-            if (realtimeResponseOpen) return false;
-            realtimeResponseOpen = true;
-            realtimeReceivedDelta = false;
-            realtimeTextBuffer.setLength(0);
-            return true;
-        }
-
-        private void appendRealtimeText(String delta) {
-            realtimeReceivedDelta = true;
-            realtimeTextBuffer.append(delta);
-            String phrase;
-            while (!(phrase = WebVoiceSessionService.takeSpeakablePhrase(realtimeTextBuffer, false)).isBlank()) {
-                speak(phrase, false);
-            }
-        }
-
-        private void completeRealtimeText(String completeText) {
-            if (!realtimeReceivedDelta && realtimeTextBuffer.isEmpty() && completeText != null) {
-                realtimeTextBuffer.append(completeText);
-            }
-            var remaining = WebVoiceSessionService.takeSpeakablePhrase(realtimeTextBuffer, true);
-            if (!remaining.isBlank()) speak(remaining, false);
-            speak("", true);
-            synchronized (this) {
-                realtimeResponseOpen = false;
-                realtimeReceivedDelta = false;
-                realtimeTextBuffer.setLength(0);
-            }
-        }
-
-        private synchronized void cancelRealtimeResponse() {
-            realtimeResponseOpen = false;
-            realtimeReceivedDelta = false;
-            realtimeTextBuffer.setLength(0);
         }
 
         private synchronized void rememberRealtimeCallerEnding(String transcript) {
@@ -1101,9 +1050,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 closeAfterCurrentMark = false;
                 ttsGeneration++;
                 ttsSessionOpen = false;
-                realtimeResponseOpen = false;
-                realtimeReceivedDelta = false;
-                realtimeTextBuffer.setLength(0);
                 ttsResponseActive = false;
                 speechQueueGeneration++;
                 pendingTtsResponses.clear();

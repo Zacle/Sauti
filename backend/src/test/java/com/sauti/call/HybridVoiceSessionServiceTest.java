@@ -61,8 +61,7 @@ class HybridVoiceSessionServiceTest {
         listener.getValue().onComplete();
 
         var writes = inOrder(tts);
-        writes.verify(tts).speak(anyString(), eq(false));
-        writes.verify(tts).speak("", true);
+        writes.verify(tts).speak("Bonjour, je peux vous aider avec votre rendez-vous.", true);
         var binary = ArgumentCaptor.forClass(BinaryMessage.class);
         verify(socket).sendMessage(binary.capture());
         assertThat(binary.getValue().getPayloadLength()).isEqualTo(4);
@@ -104,10 +103,9 @@ class HybridVoiceSessionServiceTest {
         service.accept("guarded-hybrid", "{\"type\":\"tts_complete\"}");
 
         var spoken = ArgumentCaptor.forClass(String.class);
-        verify(tts, times(2)).speak(spoken.capture(), anyBoolean());
+        verify(tts).speak(spoken.capture(), eq(true));
         assertThat(spoken.getAllValues().get(0).trim())
                 .isEqualTo("Hi Walker, a haircut costs 5 dollars.");
-        assertThat(spoken.getAllValues().get(1)).isEmpty();
     }
 
     @Test
@@ -209,7 +207,7 @@ class HybridVoiceSessionServiceTest {
         service.accept("dedupe-hybrid", "{\"type\":\"speak\",\"generation\":2,"
                 + "\"id\":\"response-b\",\"text\":\"  Please confirm the booking details.  \"}");
 
-        verify(tts, times(2)).speak(anyString(), anyBoolean());
+        verify(tts).speak(anyString(), eq(true));
     }
 
     @Test
@@ -245,9 +243,9 @@ class HybridVoiceSessionServiceTest {
         service.accept("serial-hybrid", "{\"type\":\"speak\",\"generation\":3,"
                 + "\"id\":\"second\",\"text\":\"Second response.\"}");
 
-        verify(tts, times(2)).speak(anyString(), anyBoolean());
+        verify(tts).speak("First response.", true);
         listener.getValue().onComplete();
-        verify(tts, times(4)).speak(anyString(), anyBoolean());
+        verify(tts).speak("Second response.", true);
     }
 
     @Test
@@ -287,6 +285,54 @@ class HybridVoiceSessionServiceTest {
 
         service.accept("stale-hybrid", "{\"type\":\"speak\",\"generation\":1,"
                 + "\"id\":\"new\",\"text\":\"New response.\"}");
-        verify(second, times(2)).speak(anyString(), anyBoolean());
+        verify(second).speak("New response.", true);
+    }
+
+    @Test
+    void providerErrorEndsSpeakingAndTheNextTurnReopensTheConnection() throws Exception {
+        var repository = mock(CallRepository.class);
+        var provider = mock(RealtimeTextToSpeechProvider.class);
+        var first = mock(RealtimeTtsSession.class);
+        var second = mock(RealtimeTtsSession.class);
+        var socket = mock(WebSocketSession.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.isActive()).thenReturn(true);
+        when(call.getDirection()).thenReturn("test");
+        when(call.getTwilioCallSid()).thenReturn("failed-hybrid");
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getTtsVoiceId()).thenReturn("cartesia:english-voice");
+        when(repository.findByTwilioCallSid("failed-hybrid")).thenReturn(Optional.of(call));
+        when(socket.isOpen()).thenReturn(true);
+        when(provider.open(eq("en"), eq("cartesia:english-voice"), any()))
+                .thenReturn(CompletableFuture.completedFuture(first), CompletableFuture.completedFuture(second));
+        var listener = ArgumentCaptor.forClass(TtsAudioListener.class);
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
+
+        service.start("failed-hybrid", agentId.toString(), socket);
+        verify(provider).open(eq("en"), eq("cartesia:english-voice"), listener.capture());
+        service.accept("failed-hybrid", "{\"type\":\"speak\",\"generation\":0,"
+                + "\"id\":\"failed\",\"text\":\"This response starts and then fails.\"}");
+        listener.getValue().onPcmAudio(new byte[] {1, 2, 3, 4});
+        listener.getValue().onError(new IllegalStateException("provider disconnected"));
+        service.accept("failed-hybrid", "{\"type\":\"speak\",\"generation\":1,"
+                + "\"id\":\"retry\",\"text\":\"This is the next caller turn.\"}");
+
+        verify(first).speak("This response starts and then fails.", true);
+        verify(first).close();
+        verify(provider, times(2)).open(eq("en"), eq("cartesia:english-voice"), any());
+        verify(second).speak("This is the next caller turn.", true);
+        var events = ArgumentCaptor.forClass(TextMessage.class);
+        verify(socket, atLeastOnce()).sendMessage(events.capture());
+        assertThat(events.getAllValues()).extracting(TextMessage::getPayload)
+                .anyMatch(payload -> payload.contains("\"type\":\"speaking\"")
+                        && payload.contains("\"value\":false"))
+                .anyMatch(payload -> payload.contains("\"type\":\"error\""));
     }
 }

@@ -9,6 +9,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -20,6 +24,12 @@ import org.springframework.web.socket.WebSocketSession;
 @Service
 public class HybridVoiceSessionService {
     private static final Logger LOGGER = LoggerFactory.getLogger(HybridVoiceSessionService.class);
+    private static final int TTS_IDLE_TIMEOUT_SECONDS = 8;
+    private static final ScheduledExecutorService TTS_WATCHDOG = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        var thread = new Thread(runnable, "hybrid-tts-watchdog");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     private final CallRepository callRepository;
     private final RealtimeTextToSpeechProvider ttsProvider;
@@ -98,14 +108,10 @@ public class HybridVoiceSessionService {
     }
 
     private void synthesize(HybridSession state, String text) {
-        var textBuffer = new StringBuilder(text);
-        String phrase;
-        while (!(phrase = WebVoiceSessionService.takeSpeakablePhrase(textBuffer, false)).isBlank()) {
-            writeTts(state, phrase, false);
-        }
-        var remaining = WebVoiceSessionService.takeSpeakablePhrase(textBuffer, true);
-        if (!remaining.isBlank()) writeTts(state, remaining, false);
-        writeTts(state, "", true);
+        // The message has already been held and validated in full. Sending one
+        // final Cartesia generation preserves prosody and avoids audible seams
+        // from needlessly re-splitting a complete utterance into continuations.
+        writeTts(state, text, true);
     }
 
     private void completeLegacy(HybridSession state) {
@@ -143,7 +149,9 @@ public class HybridVoiceSessionService {
             startNextSpeech(state);
             return;
         }
+        if (state.ttsUnavailable) resetTts(state, false);
         state.currentSpeech = next;
+        armSpeechWatchdog(state, next, state.ttsGeneration);
         synthesize(state, next.text());
     }
 
@@ -163,6 +171,7 @@ public class HybridVoiceSessionService {
     }
 
     private void resetTts(HybridSession state, boolean clearAudio) {
+        cancelSpeechWatchdog(state);
         state.ttsGeneration++;
         closeTts(state);
         if (clearAudio) sendJson(state, Map.of("type", "clear_audio"));
@@ -175,6 +184,7 @@ public class HybridVoiceSessionService {
 
     private void openTts(HybridSession state) {
         var generation = state.ttsGeneration;
+        state.ttsUnavailable = false;
         var language = state.call.getLanguageDetected() == null
                 ? state.call.getAgent().getDefaultLanguage()
                 : state.call.getLanguageDetected();
@@ -183,6 +193,9 @@ public class HybridVoiceSessionService {
             public void onPcmAudio(byte[] audio) {
                 synchronized (state) {
                     if (!state.current(generation)) return;
+                    if (state.currentSpeech != null) {
+                        armSpeechWatchdog(state, state.currentSpeech, generation);
+                    }
                     if (!state.speaking) {
                         state.speaking = true;
                         if (!state.firstAudioRecorded) {
@@ -202,6 +215,7 @@ public class HybridVoiceSessionService {
             public void onComplete() {
                 synchronized (state) {
                     if (!state.current(generation)) return;
+                    cancelSpeechWatchdog(state);
                     state.speaking = false;
                     state.currentSpeech = null;
                     sendJson(state, Map.of("type", "speaking", "value", false));
@@ -214,19 +228,64 @@ public class HybridVoiceSessionService {
                 synchronized (state) {
                     if (!state.current(generation)) return;
                     LOGGER.warn("Hybrid Cartesia stream failed for call={}", state.call.getTwilioCallSid(), error);
-                    metrics.failure("hybrid", state.call.getDirection(), "tts_stream");
-                    sendJson(state, Map.of("type", "error", "message", "The selected voice could not speak. Please try again."));
+                    failCurrentSpeech(
+                            state,
+                            generation,
+                            "tts_stream",
+                            "The selected voice stopped unexpectedly. Please try again."
+                    );
                 }
             }
         }).whenComplete((tts, error) -> {
             synchronized (state) {
                 if (!state.current(generation) && tts != null) tts.close();
                 if (error != null && state.current(generation)) {
-                    metrics.failure("hybrid", state.call.getDirection(), "tts_connect");
-                    sendJson(state, Map.of("type", "error", "message", "The selected voice could not be connected."));
+                    failCurrentSpeech(
+                            state,
+                            generation,
+                            "tts_connect",
+                            "The selected voice could not be connected. Please try again."
+                    );
                 }
             }
         });
+    }
+
+    private void armSpeechWatchdog(HybridSession state, Speech speech, int generation) {
+        cancelSpeechWatchdog(state);
+        state.speechWatchdog = TTS_WATCHDOG.schedule(() -> {
+            synchronized (state) {
+                if (!state.current(generation) || state.currentSpeech != speech) return;
+                LOGGER.warn("Hybrid Cartesia completion timed out for call={}", state.call.getTwilioCallSid());
+                failCurrentSpeech(
+                        state,
+                        generation,
+                        "tts_timeout",
+                        "Voice playback stopped before the response completed. Please try again."
+                );
+            }
+        }, TTS_IDLE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private void cancelSpeechWatchdog(HybridSession state) {
+        if (state.speechWatchdog != null) {
+            state.speechWatchdog.cancel(false);
+            state.speechWatchdog = null;
+        }
+    }
+
+    private void failCurrentSpeech(HybridSession state, int generation, String stage, String message) {
+        if (!state.current(generation) || state.ttsUnavailable) return;
+        cancelSpeechWatchdog(state);
+        state.currentSpeech = null;
+        state.pendingSpeech.clear();
+        state.speaking = false;
+        metrics.failure("hybrid", state.call.getDirection(), stage);
+        sendJson(state, Map.of("type", "speaking", "value", false));
+        sendJson(state, Map.of("type", "error", "message", message));
+        state.ttsGeneration++;
+        state.ttsUnavailable = true;
+        closeTts(state);
     }
 
     private void writeTts(HybridSession state, String text, boolean flush) {
@@ -292,6 +351,8 @@ public class HybridVoiceSessionService {
         private Speech currentSpeech;
         private boolean speaking;
         private boolean firstAudioRecorded;
+        private ScheduledFuture<?> speechWatchdog;
+        private boolean ttsUnavailable;
         private boolean closed;
 
         private HybridSession(Call call, WebSocketSession socket, Runnable onClose) {
@@ -307,6 +368,8 @@ public class HybridVoiceSessionService {
         private synchronized void close() {
             if (closed) return;
             closed = true;
+            if (speechWatchdog != null) speechWatchdog.cancel(false);
+            speechWatchdog = null;
             ttsGeneration++;
             pendingSpeech.clear();
             currentSpeech = null;

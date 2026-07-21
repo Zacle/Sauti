@@ -29,7 +29,6 @@ public class WebVoiceSessionService {
     private final RealtimeSpeechToTextProvider sttProvider;
     private final OpenAiRealtimeTranscriptionService openAiRealtimeTranscriptionService;
     private final RealtimeTextToSpeechProvider ttsProvider;
-    private final SentenceChunker sentenceChunker;
     private final ObjectMapper objectMapper;
     private final CallRecordingService recordingService;
     private final ScheduledExecutorService maintenanceExecutor = Executors.newScheduledThreadPool(2, runnable -> {
@@ -44,7 +43,6 @@ public class WebVoiceSessionService {
             RealtimeSpeechToTextProvider sttProvider,
             OpenAiRealtimeTranscriptionService openAiRealtimeTranscriptionService,
             RealtimeTextToSpeechProvider ttsProvider,
-            SentenceChunker sentenceChunker,
             ObjectMapper objectMapper,
             CallRecordingService recordingService
     ) {
@@ -53,7 +51,6 @@ public class WebVoiceSessionService {
         this.sttProvider = sttProvider;
         this.openAiRealtimeTranscriptionService = openAiRealtimeTranscriptionService;
         this.ttsProvider = ttsProvider;
-        this.sentenceChunker = sentenceChunker;
         this.objectMapper = objectMapper;
         this.recordingService = recordingService;
     }
@@ -179,46 +176,23 @@ public class WebVoiceSessionService {
         state.finishCallerSpeech();
         sendJson(state, Map.of("type", "transcript_final", "text", transcript));
         try {
-            var streamed = new AtomicBoolean(false);
             var spokenText = new StringBuilder();
-            var speechBuffer = new StringBuilder();
             var turn = callPipelineService.processLiveTranscriptTurn(
                     state.call.getTwilioCallSid(),
                     transcript,
                     delta -> {
                         if (delta == null || delta.isEmpty()) return;
                         spokenText.append(delta);
-                        speechBuffer.append(delta);
-                        var speakable = takeSpeakablePhrase(speechBuffer, false);
-                        if (speakable.isBlank()) return;
-                        if (streamed.compareAndSet(false, true)) beginSpeech(state, state.language, false);
-                        state.ttsSession.thenAccept(tts -> {
-                            if (tts != null) tts.speak(speakable, false);
-                        });
                     }
             );
             state.language = turn.language();
             if (!turn.text().isBlank()) {
-                var remainingSpeech = takeSpeakablePhrase(speechBuffer, true);
-                if (!remainingSpeech.isBlank()) {
-                    if (streamed.compareAndSet(false, true)) beginSpeech(state, turn.language(), false);
-                    state.ttsSession.thenAccept(tts -> {
-                        if (tts != null) tts.speak(remainingSpeech, false);
-                    });
-                }
                 var displayedText = spokenText.toString().trim();
                 if (displayedText.isBlank()) displayedText = turn.text();
                 state.awaitingDictatedDetail = requestsDictatedDetails(displayedText);
                 sendJson(state, Map.of("type", "agent_response", "text", displayedText, "language", turn.language()));
                 state.closeOutcome = turn.outcome();
-                if (streamed.get()) {
-                    state.closeAfterSpeech = !turn.outcome().isBlank();
-                    state.ttsSession.thenAccept(tts -> {
-                        if (tts != null) tts.speak("", true);
-                    });
-                } else {
-                    speak(state, turn.text(), turn.language(), !turn.outcome().isBlank());
-                }
+                speak(state, displayedText, turn.language(), !turn.outcome().isBlank());
             } else if (!turn.outcome().isBlank()) {
                 sendJson(state, Map.of("type", "ended", "outcome", turn.outcome()));
                 closeSocket(state);
@@ -263,8 +237,7 @@ public class WebVoiceSessionService {
         beginSpeech(state, language, closeAfterSpeech);
         state.ttsSession.thenAccept(tts -> {
             if (tts == null) return;
-            for (var chunk : sentenceChunker.chunks(text)) tts.speak(chunk, false);
-            tts.speak("", true);
+            tts.speak(text, true);
         });
     }
 

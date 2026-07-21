@@ -23,6 +23,8 @@ type VoiceEvent = {
   message?: string;
   outcome?: string;
 };
+const REALTIME_PCM_PREROLL_SECONDS = 0.08;
+const PLAYBACK_DRAIN_GRACE_MS = 80;
 
 export function WebVoiceCall({ publicId }: { publicId: string }) {
   const [agent, setAgent] = useState<PublicWebVoiceAgent | null>(null);
@@ -48,6 +50,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const tokenRef = useRef("");
   const playbackTimeRef = useRef(0);
   const playbackSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const playbackCompletionTimerRef = useRef(0);
   const pcmQueueRef = useRef<number[]>([]);
   const speakingRef = useRef(false);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
@@ -356,7 +359,12 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       setMessages((current) => [...current, { role: "agent", text: event.text! }]);
     }
     if (event.type === "speaking") {
-      updateSpeaking(Boolean(event.value));
+      if (event.value) {
+        window.clearTimeout(playbackCompletionTimerRef.current);
+        updateSpeaking(true);
+      } else {
+        schedulePlaybackIdle();
+      }
       if (!event.value && hybridRealtimeRef.current && nativeEndPendingRef.current) {
         nativeEndPendingRef.current = false;
         const context = contextRef.current;
@@ -375,6 +383,8 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   function playPcm(buffer: ArrayBuffer) {
     const context = contextRef.current;
     if (!context) return;
+    window.clearTimeout(playbackCompletionTimerRef.current);
+    if (!speakingRef.current) updateSpeaking(true);
     const pcm = new Int16Array(buffer);
     const audioBuffer = context.createBuffer(1, pcm.length, 16000);
     const channel = audioBuffer.getChannelData(0);
@@ -382,11 +392,21 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     const source = context.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(context.destination);
-    const startAt = Math.max(context.currentTime + 0.02, playbackTimeRef.current);
+    const queuedUntil = playbackTimeRef.current;
+    const startAt = queuedUntil > context.currentTime + 0.01
+      ? queuedUntil
+      : context.currentTime + REALTIME_PCM_PREROLL_SECONDS;
     source.start(startAt);
     playbackTimeRef.current = startAt + audioBuffer.duration;
     playbackSourcesRef.current.add(source);
     source.onended = () => playbackSourcesRef.current.delete(source);
+  }
+
+  function schedulePlaybackIdle() {
+    window.clearTimeout(playbackCompletionTimerRef.current);
+    const context = contextRef.current;
+    const remainingMs = context ? Math.max(0, playbackTimeRef.current - context.currentTime) * 1000 : 0;
+    playbackCompletionTimerRef.current = window.setTimeout(() => updateSpeaking(false), remainingMs + PLAYBACK_DRAIN_GRACE_MS);
   }
 
   async function playEncodedAudio(encoded: string): Promise<boolean> {
@@ -414,6 +434,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   }
 
   function clearPlayback() {
+    window.clearTimeout(playbackCompletionTimerRef.current);
     playbackSourcesRef.current.forEach((source) => {
       try { source.stop(); } catch { /* already stopped */ }
     });

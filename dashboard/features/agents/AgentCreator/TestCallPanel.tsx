@@ -52,6 +52,8 @@ const DEFAULT_SETTINGS: TestSettings = {
   detectVoicemail: true,
   handleCallScreening: true,
 };
+const REALTIME_PCM_PREROLL_SECONDS = 0.08;
+const PLAYBACK_DRAIN_GRACE_MS = 80;
 
 export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProps) {
   const [callId, setCallId] = useState("");
@@ -98,6 +100,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const pcmQueueRef = useRef<number[]>([]);
   const playbackTimeRef = useRef(0);
   const playbackSourcesRef = useRef(new Set<AudioBufferSourceNode>());
+  const playbackCompletionTimerRef = useRef(0);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
   const nativeRealtimeRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
@@ -374,7 +377,12 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text: event.text! }]);
     }
     if (event.type === "speaking") {
-      updateStatus(event.value ? "speaking" : "listening");
+      if (event.value) {
+        window.clearTimeout(playbackCompletionTimerRef.current);
+        updateStatus("speaking");
+      } else {
+        scheduleRealtimePlaybackIdle();
+      }
       if (!event.value && hybridRealtimeRef.current && nativeEndPendingRef.current) {
         nativeEndPendingRef.current = false;
         const context = audioContextRef.current;
@@ -398,6 +406,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   function playRealtimePcm(data: ArrayBuffer) {
     const context = audioContextRef.current;
     if (!context) return;
+    window.clearTimeout(playbackCompletionTimerRef.current);
+    if (statusRef.current !== "ending") updateStatus("speaking");
     const pcm = new Int16Array(data);
     const buffer = context.createBuffer(1, pcm.length, 16000);
     const channel = buffer.getChannelData(0);
@@ -406,14 +416,27 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     source.buffer = buffer;
     source.connect(context.destination);
     if (recordingDestinationRef.current) source.connect(recordingDestinationRef.current);
-    const startAt = Math.max(context.currentTime + 0.02, playbackTimeRef.current);
+    const queuedUntil = playbackTimeRef.current;
+    const startAt = queuedUntil > context.currentTime + 0.01
+      ? queuedUntil
+      : context.currentTime + REALTIME_PCM_PREROLL_SECONDS;
     source.start(startAt);
     playbackTimeRef.current = startAt + buffer.duration;
     playbackSourcesRef.current.add(source);
     source.onended = () => playbackSourcesRef.current.delete(source);
   }
 
+  function scheduleRealtimePlaybackIdle() {
+    window.clearTimeout(playbackCompletionTimerRef.current);
+    const context = audioContextRef.current;
+    const remainingMs = context ? Math.max(0, playbackTimeRef.current - context.currentTime) * 1000 : 0;
+    playbackCompletionTimerRef.current = window.setTimeout(() => {
+      if (statusRef.current === "speaking" && !endingRef.current) updateStatus("listening");
+    }, remainingMs + PLAYBACK_DRAIN_GRACE_MS);
+  }
+
   function clearRealtimePlayback() {
+    window.clearTimeout(playbackCompletionTimerRef.current);
     playbackSourcesRef.current.forEach((source) => {
       try { source.stop(); } catch { /* already stopped */ }
     });

@@ -32,7 +32,6 @@ class DefaultTwilioMediaStreamServiceTest {
     private final TelephonyRealtimeConversationProvider realtimeConversationProvider = mock(TelephonyRealtimeConversationProvider.class);
     private final TwilioMediaFrameFactory frameFactory = new TwilioMediaFrameFactory(new ObjectMapper());
     private final TelnyxMediaFrameFactory telnyxFrameFactory = new TelnyxMediaFrameFactory(new ObjectMapper());
-    private final SentenceChunker sentenceChunker = new SentenceChunker();
     private final CallSessionStore callSessionStore = mock(CallSessionStore.class);
     private final DashboardEventPublisher dashboardEventPublisher = mock(DashboardEventPublisher.class);
     private final CallTransferService callTransferService = mock(CallTransferService.class);
@@ -46,7 +45,6 @@ class DefaultTwilioMediaStreamServiceTest {
             realtimeConversationProvider,
             frameFactory,
             telnyxFrameFactory,
-            sentenceChunker,
             callSessionStore,
             dashboardEventPublisher,
             callTransferService,
@@ -76,13 +74,12 @@ class DefaultTwilioMediaStreamServiceTest {
         sttProvider.listener.onFinalTranscript("book tomorrow");
 
         verify(callPipelineService, timeout(1000)).processLiveTranscriptTurn(call, "book tomorrow");
-        awaitUntil(() -> frames.size() == 3);
-        assertThat(ttsProvider.spokenText).containsExactly("Yes. ", "I can help with that. ", "");
+        awaitUntil(() -> frames.size() == 2);
+        assertThat(ttsProvider.spokenText).containsExactly("Yes. I can help with that.");
         assertThat(ttsProvider.openCount).isEqualTo(1);
-        assertThat(frames).hasSize(3);
+        assertThat(frames).hasSize(2);
         assertThat(frames.get(0)).contains("\"event\":\"media\"", "\"streamSid\":\"MZ123\"");
-        assertThat(frames.get(1)).contains("\"event\":\"media\"", "\"streamSid\":\"MZ123\"");
-        assertThat(frames.get(2)).contains("\"event\":\"mark\"", "\"name\":\"turn-1-end\"");
+        assertThat(frames.get(1)).contains("\"event\":\"mark\"", "\"name\":\"turn-1-end\"");
     }
 
     @Test
@@ -182,7 +179,6 @@ class DefaultTwilioMediaStreamServiceTest {
                 realtimeConversationProvider,
                 frameFactory,
                 telnyxFrameFactory,
-                sentenceChunker,
                 callSessionStore,
                 dashboardEventPublisher,
                 callTransferService,
@@ -235,7 +231,7 @@ class DefaultTwilioMediaStreamServiceTest {
                 call,
                 "Caller selected keypad option \"Confirm the appointment\" (digits: 1)."
         );
-        awaitUntil(() -> ttsProvider.spokenText.contains("Your appointment is confirmed. "));
+        awaitUntil(() -> ttsProvider.spokenText.contains("Your appointment is confirmed."));
     }
 
     @Test
@@ -277,9 +273,9 @@ class DefaultTwilioMediaStreamServiceTest {
         verify(callPipelineService, timeout(1000)).recordRealtimeTranscript(
                 call.getTenant().getId(), call.getId(), "agent", "Certainly. What day works for you?", false
         );
-        awaitUntil(() -> ttsProvider.spokenText.contains(""));
+        awaitUntil(() -> ttsProvider.spokenText.contains("Certainly. What day works for you?"));
         awaitUntil(() -> frames.stream().anyMatch(frame -> frame.contains("\"event\":\"media\"")));
-        assertThat(ttsProvider.spokenText).containsExactly("Certainly. ", "What day works for you? ", "");
+        assertThat(ttsProvider.spokenText).containsExactly("Certainly. What day works for you?");
         assertThat(frames).anySatisfy(frame -> assertThat(frame).contains("\"event\":\"media\""));
     }
 
@@ -303,11 +299,11 @@ class DefaultTwilioMediaStreamServiceTest {
         realtimeListener.get().onAgentTextComplete("First response.", false);
         realtimeListener.get().onAgentTextComplete("Second response.", false);
 
-        awaitUntil(() -> ttsProvider.spokenText.contains("First response. "));
-        assertThat(ttsProvider.spokenText).doesNotContain("Second response. ");
+        awaitUntil(() -> ttsProvider.spokenText.contains("First response."));
+        assertThat(ttsProvider.spokenText).doesNotContain("Second response.");
 
         ttsProvider.sessions.get(0).complete();
-        awaitUntil(() -> ttsProvider.spokenText.contains("Second response. "));
+        awaitUntil(() -> ttsProvider.spokenText.contains("Second response."));
     }
 
     private void awaitUntil(BooleanSupplier condition) {

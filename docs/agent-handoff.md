@@ -3700,3 +3700,26 @@ Expected:
   - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
 - Known follow-up/risk: after CI/CD, run one browser test call and one carrier call against both the current configured Realtime model and any future `gpt-realtime-2` upgrade. Automated tests cover the exact marker leak, legacy no-phase output, commentary-only output, and mixed commentary/final output; live provider event ordering and model behavior still need an end-to-end check.
+
+### 2026-07-21 - Make complete Cartesia speech atomic and completion-safe
+
+- Fixed the broken/choppy voice and indefinitely loading `Agent is speaking` state at the TTS/playback boundary. The guarded LLM paths already had a complete, validated reply, but then split it back into sentence fragments, sent every fragment as a Cartesia continuation, and finalized the context with an empty transcript. Complete replies now use one Cartesia context and one final generation request, preserving sentence-level prosody and eliminating avoidable continuation seams.
+- Applied the atomic generation contract consistently to hybrid browser calls, public Web Voice, cascaded phone media, and DTMF-triggered replies. Removed the obsolete phone text-fragment state that could no longer be reached after complete-response validation.
+- Added a hybrid TTS completion watchdog. It is refreshed by every PCM frame and terminates a stalled response after eight seconds of inactivity. Provider stream/connect failures now always clear the active utterance, pending speech, and caller-facing speaking state, close the failed Cartesia session, and allow the next caller turn to open a fresh connection without replaying partially heard text.
+- Cartesia error events are now handled before their `done` flag, because provider error payloads may also be terminal. Abnormal WebSocket closure is also reported as a failure instead of leaving the session waiting forever.
+- Browser PCM playback now uses an 80 ms preroll when starting or recovering from an underrun, schedules later chunks contiguously, and defers the listening-state transition until already queued PCM has drained. This absorbs ordinary WebSocket scheduling jitter and keeps the UI state aligned with audible playback.
+- Added regressions for atomic complete-text synthesis, serialized utterances, provider-error cleanup and reconnect, terminal Cartesia errors, abnormal socket closure, and updated phone-media framing expectations.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{CartesiaRealtimeTextToSpeechClient,DefaultTwilioMediaStreamService,HybridVoiceSessionService,WebVoiceSessionService}.java`
+  - `backend/src/test/java/com/sauti/call/{CartesiaRealtimeTextToSpeechClientTest,DefaultTwilioMediaStreamServiceTest,HybridVoiceSessionServiceTest}.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused hybrid, phone-media, and Cartesia WebSocket regression tests - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` in `dashboard/` - passed.
+  - `npm.cmd run build` in `dashboard/` - passed; 50 routes generated.
+  - `git diff --check` - passed before the handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal CI/CD workflow.
+- Known follow-up/risk: after CI/CD, run one browser test call, one public Web Voice call, and one carrier call. Interrupt an ordinary reply and a booking review mid-sentence, then allow a later reply to finish without interruption. Automated coverage verifies generation ordering and terminal state, but microphone echo, browser audio scheduling, and carrier buffering still require live end-to-end confirmation.
