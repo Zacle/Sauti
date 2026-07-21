@@ -1,6 +1,9 @@
 import { RealtimeTurnGate } from "./realtimeTurnGate";
+import { completedRealtimeToolCalls } from "./realtimeProtocol";
 
 const SEMANTIC_TURN_TOOL = "update_conversation_state";
+const RESPONSE_WATCHDOG_MS = 15_000;
+const TOOL_EXECUTION_TIMEOUT_MS = 12_000;
 
 export type OpenAiRealtimeCallbacks = {
   onConnected: () => void;
@@ -79,6 +82,7 @@ export async function connectOpenAiRealtime(options: {
   let protocolRecoveryAttempts = 0;
   let expectedResponses = 0;
   let responseRequestInFlight = false;
+  let responseWatchdog = 0;
   let responseCancellationPending = false;
   let currentResponseId = "";
   let currentResponseGeneration = 0;
@@ -118,6 +122,7 @@ export async function connectOpenAiRealtime(options: {
     dispatchedResponseRequest = request;
     expectedResponses += 1;
     request.send();
+    armResponseWatchdog(request.generation);
   };
 
   const enqueueResponse = (request: () => void, generation = outputGeneration) => {
@@ -127,12 +132,38 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const finishResponse = () => {
+    window.clearTimeout(responseWatchdog);
+    responseWatchdog = 0;
     responseActive = false;
     responseRequestInFlight = false;
+    dispatchedResponseRequest = null;
     responseCancellationPending = false;
     currentResponseId = "";
     currentResponseGeneration = outputGeneration;
     window.setTimeout(drainResponseQueue, 0);
+  };
+
+  const armResponseWatchdog = (generation: number) => {
+    window.clearTimeout(responseWatchdog);
+    responseWatchdog = window.setTimeout(() => {
+      if (generation !== outputGeneration
+        || (!responseActive && !responseRequestInFlight && !responseCancellationPending)) return;
+      if (currentResponseId) ignoredResponseIds.add(currentResponseId);
+      if (responseRequestInFlight) expectedResponses = Math.max(0, expectedResponses - 1);
+      for (let index = pendingResponseRequests.length - 1; index >= 0; index -= 1) {
+        if (pendingResponseRequests[index]?.generation === generation) {
+          pendingResponseRequests.splice(index, 1);
+        }
+      }
+      send(channel, { type: "response.cancel" });
+      finishResponse();
+      deliverAgentSpeech({
+        id: `response-timeout:${generation}`,
+        generation,
+        text: localizedResponseFailure(options.responseLanguage),
+      });
+      options.callbacks.onError("The voice provider did not complete its response in time.");
+    }, RESPONSE_WATCHDOG_MS);
   };
 
   const cancelActiveResponse = () => {
@@ -259,7 +290,9 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const deliverToolFailure = (name: string, generation: number, speechId: string) => {
-    const failure = name === "check_availability"
+    const failure = name === SEMANTIC_TURN_TOOL
+      ? localizedResponseFailure(options.responseLanguage)
+      : name === "check_availability"
       ? localizedAvailabilityFailure(options.responseLanguage)
       : name === "book_slot"
         ? localizedBookingFailure(options.responseLanguage)
@@ -276,7 +309,11 @@ export async function connectOpenAiRealtime(options: {
     const executionKey = `${generation}:${name}:${canonicalJson(argumentsJson)}`;
     let execution = toolExecutions.get(executionKey);
     if (!execution) {
-      execution = options.callbacks.executeTool(callId, name, argumentsJson);
+      execution = withTimeout(
+        options.callbacks.executeTool(callId, name, argumentsJson),
+        TOOL_EXECUTION_TIMEOUT_MS,
+        "The voice tool did not complete in time.",
+      );
       toolExecutions.set(executionKey, execution);
     }
     void execution
@@ -334,6 +371,7 @@ export async function connectOpenAiRealtime(options: {
         });
         if (generation === outputGeneration) {
           deliverToolFailure(name, generation, `tool-failure:${callId}`);
+          options.callbacks.onError("The requested voice action could not be completed.");
         }
       });
   };
@@ -465,6 +503,7 @@ export async function connectOpenAiRealtime(options: {
       responseRequestInFlight = false;
       dispatchedResponseRequest = null;
       responseActive = true;
+      armResponseWatchdog(requestedGeneration);
       currentResponseId = eventResponseId;
       currentResponseGeneration = requestedGeneration;
       if (responseCancellationPending || requestedGeneration !== outputGeneration) {
@@ -559,6 +598,17 @@ export async function connectOpenAiRealtime(options: {
     }
     if (type === "response.done") {
       const completed = completedRealtimeResponse(event);
+      for (const toolCall of completedRealtimeToolCalls(event)) {
+        responseHasToolCall = true;
+        if (acceptToolCall(toolCall.callId)) {
+          executeToolCall(
+            toolCall.callId,
+            toolCall.name,
+            toolCall.argumentsJson,
+            currentResponseGeneration,
+          );
+        }
+      }
       if (completed.hasToolCall) responseHasToolCall = true;
       if (completed.hasPhases) {
         // Realtime 2 can return commentary and final_answer items in one
@@ -566,6 +616,16 @@ export async function connectOpenAiRealtime(options: {
         // and tool preambles remain internal to the voice workflow.
         agentTranscript = completed.finalAnswerText;
         textCompletionSent = !completed.finalAnswerText.trim();
+      }
+      if ((completed.status === "failed" || completed.status === "incomplete")
+        && !completed.hasToolCall && !completed.finalAnswerText.trim()) {
+        deliverAgentSpeech({
+          id: eventResponseId || currentResponseId || `response-failed:${currentResponseGeneration}`,
+          generation: currentResponseGeneration,
+          text: localizedResponseFailure(options.responseLanguage),
+        });
+        options.callbacks.onError("The voice provider could not complete its response.");
+        textCompletionSent = true;
       }
     }
     // A completed response is a defensive flush for transports that omit the
@@ -654,6 +714,14 @@ export async function connectOpenAiRealtime(options: {
       } else if (/no active response|response.*not active/i.test(message)) {
         if (responseCancellationPending && !responseRequestInFlight) finishResponse();
       } else {
+        const failedGeneration = dispatchedResponseRequest?.generation ?? outputGeneration;
+        if (responseRequestInFlight) expectedResponses = Math.max(0, expectedResponses - 1);
+        finishResponse();
+        deliverAgentSpeech({
+          id: `response-error:${failedGeneration}`,
+          generation: failedGeneration,
+          text: localizedResponseFailure(options.responseLanguage),
+        });
         options.callbacks.onError(message);
       }
     }
@@ -699,6 +767,7 @@ export async function connectOpenAiRealtime(options: {
     cancelResponse: cancelActiveResponse,
     close: () => {
       window.clearTimeout(bargeInTimer);
+      window.clearTimeout(responseWatchdog);
       pendingCallerTurns.forEach((watchdog) => window.clearTimeout(watchdog));
       pendingCallerTurns.clear();
       pendingResponseRequests.length = 0;
@@ -826,6 +895,22 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value) ?? "null";
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = globalThis.setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        globalThis.clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        globalThis.clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
 function speechFingerprint(value: string) {
   return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase();
 }
@@ -849,7 +934,7 @@ function localizedResponseFailure(language?: string) {
 }
 
 function completedRealtimeResponse(event: Record<string, unknown>) {
-  const response = event.response as { output?: unknown } | undefined;
+  const response = event.response as { output?: unknown; status?: unknown } | undefined;
   const output = Array.isArray(response?.output) ? response.output : [];
   let hasPhases = false;
   let hasToolCall = false;
@@ -879,7 +964,12 @@ function completedRealtimeResponse(event: Record<string, unknown>) {
     }
   }
 
-  return { hasPhases, hasToolCall, finalAnswerText: finalParts.join("\n").trim() };
+  return {
+    hasPhases,
+    hasToolCall,
+    finalAnswerText: finalParts.join("\n").trim(),
+    status: String(response?.status ?? "").trim().toLocaleLowerCase(),
+  };
 }
 
 const spokenRoleLabels = new Set([

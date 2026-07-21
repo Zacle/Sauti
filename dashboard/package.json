@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 8088",
     "lint": "eslint . --max-warnings=0",
-    "test:voice": "node --experimental-strip-types --test features/voice-runtime/realtimeTurnGate.test.ts",
+    "test:voice": "node --experimental-strip-types --test features/voice-runtime/realtimeTurnGate.test.ts features/voice-runtime/openaiRealtime.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

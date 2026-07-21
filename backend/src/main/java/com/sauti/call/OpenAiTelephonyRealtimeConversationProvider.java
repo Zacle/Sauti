@@ -379,7 +379,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         }
                     }
                     case "response.done" -> {
-                        if (responseContainsToolCall(event)) responseHasToolCall = true;
+                        var completedGeneration = currentResponseGeneration;
+                        if (responseContainsToolCall(event)) {
+                            responseHasToolCall = true;
+                            executeCompletedToolCalls(webSocket, event, completedGeneration);
+                        }
                         var phasedFinalText = phasedFinalAnswerText(event);
                         if (phasedFinalText != null) {
                             // Realtime 2 can return commentary and final_answer
@@ -390,7 +394,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             textCompleted = phasedFinalText.isBlank();
                         }
                         var completedResponseId = eventResponseId.isBlank() ? currentResponseId : eventResponseId;
-                        var completedGeneration = currentResponseGeneration;
+                        var completedStatus = event.path("response").path("status").asText("");
                         responseActive = false;
                         responseCancellationPending = false;
                         if (eventResponseId.isBlank() || eventResponseId.equals(currentResponseId)) {
@@ -405,6 +409,14 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             } else {
                                 completeText("", completedGeneration, completedResponseId);
                             }
+                        } else if (("failed".equals(completedStatus) || "incomplete".equals(completedStatus))
+                                && completedGeneration == turnGeneration) {
+                            deliverAgentCompletion(new AgentCompletion(
+                                    VoiceOutputGuard.safeResponseFailure(responseLanguage()),
+                                    false,
+                                    completedGeneration,
+                                    "response-failed:" + completedResponseId
+                            ));
                         }
                         var activeSession = session;
                         if (activeSession != null) activeSession.responseFinished();
@@ -481,6 +493,24 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 if ("function_call".equals(item.path("type").asText(""))) return true;
             }
             return false;
+        }
+
+        private void executeCompletedToolCalls(WebSocket webSocket, JsonNode event, long generation) {
+            var output = event.path("response").path("output");
+            if (!output.isArray()) return;
+            for (var item : output) {
+                if (!"function_call".equals(item.path("type").asText(""))) continue;
+                var callId = item.path("call_id").asText("");
+                var name = item.path("name").asText("");
+                if (callId.isBlank() || name.isBlank() || !acceptToolCall(callId)) continue;
+                executeTool(
+                        webSocket,
+                        callId,
+                        name,
+                        item.path("arguments").asText("{}"),
+                        generation
+                );
+            }
         }
 
         /**

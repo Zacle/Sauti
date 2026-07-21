@@ -271,7 +271,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             interruptHybridResponse(false, generation);
           }
         },
-        onError: (message) => setError(message),
+        onError: (message) => {
+          setError(message);
+          if (!endingRef.current) updateStatus("listening");
+        },
         executeTool: (toolCallId, name, argumentsJson) => executeTestRealtimeTool(
           started.call.id, toolCallId, name, argumentsJson,
         ),

@@ -3892,3 +3892,26 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: model semantic quality still needs live evaluation across the supported languages, accents, interruptions, ambiguous references, corrections, and each agent's custom fields. After CI/CD, run a multilingual transcript matrix plus one browser and one carrier call, and measure transcript-final-to-first-audio latency. Do not respond to a failure by adding another sentence matcher; improve the semantic schema/prompt, model evaluation set, or deterministic reducer invariant instead.
+
+### 2026-07-21 - Recover first-turn Realtime function calls and bound every wait
+
+- Fixed the first-turn hang shown in Agent Studio after the semantic-turn rollout. The browser and phone handlers previously executed a tool only when OpenAI emitted `response.function_call_arguments.done`. OpenAI's documented Realtime contract also carries the complete `function_call` in `response.done`; Sauti detected that item only to suppress speech, then ended the response without executing the tool or producing a reply.
+- Added idempotent `response.done` function-call recovery in both runtimes. Calls are still deduplicated by `call_id`, so receiving both event forms executes the tool exactly once. Browser parsing lives in the transport-only `realtimeProtocol.ts` module with focused tests for valid and malformed completed calls.
+- Added a 15-second browser response watchdog and a 12-second tool-execution timeout. A missing provider terminal event or stalled tool can no longer leave `responseRequestInFlight`, `responseActive`, or the UI thinking state active indefinitely. The runtime cancels/cleans the failed generation, returns one safe caller-facing failure, exposes an operator-visible error, and remains available for the next caller turn.
+- Added explicit recovery for Realtime responses whose terminal status is `failed` or `incomplete`, and reset Agent Studio/public Web Voice processing indicators on errors. Semantic-tool failures now use a general response failure instead of an unrelated calendar-availability message.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/{openaiRealtime,openaiRealtime.test,realtimeProtocol}.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/package.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused phone Realtime regression - passed.
+  - `npm.cmd run test:voice` - passed; 5 regressions, including `response.done` semantic-tool recovery.
+  - `npm.cmd run lint` and `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` began but the local Next.js process stalled before compilation and hit the five-minute command limit; the same working tree built successfully before this follow-up, and no compile/type/lint failure was reported. Retry after stopping any orphaned local Next.js worker.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat the screenshot's exact first caller turn in hybrid Agent Studio and one carrier call. Confirm one semantic tool execution, one response, and a return to listening. Also force a rejected response/tool endpoint in a non-production environment and confirm the watchdog clears the spinner within its bound.

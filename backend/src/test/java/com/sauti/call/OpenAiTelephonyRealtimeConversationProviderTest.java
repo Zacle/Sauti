@@ -558,6 +558,40 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void executesAFunctionCallRecoveredFromResponseDoneWhenTheDeltaEventIsMissing() {
+        var events = new ArrayList<String>();
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        var spoken = "Which service would you like to book?";
+        when(realtimeService.executeTool(
+                eq(call), eq("semantic-from-done"), eq(com.sauti.tool.ConversationStateTool.NAME), anyString()
+        )).thenReturn(new com.sauti.llm.LlmToolResult(
+                "semantic-from-done", com.sauti.tool.ConversationStateTool.NAME, true,
+                Map.of("spokenResponse", spoken, "nextAction", "reply"), ""
+        ));
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call,
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.done\",\"response\":{" +
+                        "\"id\":\"semantic-response\",\"status\":\"completed\",\"output\":[{" +
+                        "\"type\":\"function_call\",\"call_id\":\"semantic-from-done\"," +
+                        "\"name\":\"update_conversation_state\"," +
+                        "\"arguments\":\"{\\\"booking_intent\\\":\\\"active\\\"}\"}]}}",
+                true);
+
+        verify(realtimeService, timeout(1_000).times(1)).executeTool(
+                eq(call), eq("semantic-from-done"), eq(com.sauti.tool.ConversationStateTool.NAME), anyString()
+        );
+        verify(session, timeout(1_000)).seedAssistantText(spoken);
+        assertThat(events).containsExactly("agent:" + spoken + ":false");
+    }
+
+    @Test
     void executesEachNativeToolCallIdOnlyOnce() {
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);

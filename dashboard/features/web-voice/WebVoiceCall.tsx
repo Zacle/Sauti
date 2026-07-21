@@ -193,7 +193,10 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
                 sendHybridEvent({ type: "interrupt", generation });
               }
             },
-            onError: setError,
+            onError: (message) => {
+              setError(message);
+              setPartial("");
+            },
             executeTool: (callId, name, argumentsJson) => executePublicRealtimeTool(
               session.sessionId, session.token, callId, name, argumentsJson,
             ),
