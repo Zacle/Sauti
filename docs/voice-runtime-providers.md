@@ -15,7 +15,7 @@ The first adapter applies to authenticated Agent Studio test calls only. Existin
 
 Agent Studio explicitly requests the Vapi runtime and displays `VAPI` in the active-call header. A missing or unavailable Vapi configuration therefore fails at call startup instead of silently falling back to Sauti's previous runtime.
 
-The browser never receives `VAPI_API_KEY`. It receives a short-lived, call-scoped Sauti token and sends Vapi's `/call/web` request through an authenticated Sauti proxy. Vapi tool callbacks use that same scoped token and are accepted only while the matching test or web call is active.
+The browser never receives `VAPI_API_KEY` or `VAPI_PUBLIC_KEY`. It receives a short-lived, call-scoped Sauti token and sends Vapi's `/call/web` request through an authenticated Sauti proxy. The proxy authenticates that endpoint with the Vapi public key, as required by Vapi's Web SDK contract. Vapi tool callbacks use the Sauti scoped token and are accepted only while the matching test or web call is active.
 
 ## Configuration
 
@@ -24,6 +24,7 @@ Set these in the uncommitted local `.env` or the production secret environment:
 ```text
 SAUTI_TEST_VOICE_RUNTIME=vapi
 VAPI_API_KEY=replace-with-private-vapi-key
+VAPI_PUBLIC_KEY=replace-with-public-vapi-key
 VAPI_API_BASE_URL=https://api.vapi.ai
 VAPI_PUBLIC_BASE_URL=https://sauti.uk
 VAPI_MODEL_PROVIDER=openai
@@ -40,6 +41,8 @@ VAPI_DELAYED_MESSAGE_MS=1600
 ```
 
 `VAPI_PUBLIC_BASE_URL` must reach the same backend/database that created the test call. Production uses `https://sauti.uk`. A local test with tools needs an HTTPS tunnel to the local backend; pointing a local call at the production URL will fail call-token validation because production does not own the local call record.
+
+`VAPI_PUBLIC_KEY` and `VAPI_API_KEY` are not interchangeable. The browser-call `/call/web` endpoint requires the public key; the private API key is for authenticated server-management endpoints. Both are available under **Vapi Dashboard → Vapi API Keys**. Sauti keeps even the public key behind its proxy so callers cannot replace the server-generated assistant configuration.
 
 The pilot uses the Vapi voice configured above, not the agent's existing Sauti/Cartesia voice ID. This keeps provider comparison explicit instead of assuming that voice identifiers are portable. A later provider-specific voice catalog can map choices deliberately.
 

@@ -72,6 +72,7 @@ jobs:
         env:
           CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
           VAPI_API_KEY: ${{ secrets.VAPI_API_KEY }}
+          VAPI_PUBLIC_KEY: ${{ secrets.VAPI_PUBLIC_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
@@ -104,6 +105,22 @@ jobs:
               mv .env.production.tmp .env.production
               chmod 600 .env.production
               rm -f /tmp/sauti_vapi_env
+            "
+          fi
+
+          if [ -n "$VAPI_PUBLIC_KEY" ]; then
+            key_file="$(mktemp)"
+            printf 'VAPI_PUBLIC_KEY=%s\n' "$VAPI_PUBLIC_KEY" > "$key_file"
+            scp -i ~/.ssh/deploy_key "$key_file" "$VPS_USER@$VPS_HOST:/tmp/sauti_vapi_public_env"
+            rm -f "$key_file"
+            ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" "
+              cd /opt/sauti
+              touch .env.production
+              grep -v '^VAPI_PUBLIC_KEY=' .env.production > .env.production.tmp || true
+              cat /tmp/sauti_vapi_public_env >> .env.production.tmp
+              mv .env.production.tmp .env.production
+              chmod 600 .env.production
+              rm -f /tmp/sauti_vapi_public_env
             "
           fi
 

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 
 class VapiBrowserVoiceRuntimeServiceTest {
     @Test
-    void buildsATransientAssistantWithoutExposingTheVapiApiKey() throws Exception {
+    void buildsATransientAssistantWithoutExposingTheVapiPublicKey() throws Exception {
         var orchestrator = mock(ConversationOrchestrator.class);
         var loader = mock(AgentToolLoader.class);
         var call = mock(Call.class);
@@ -37,7 +37,7 @@ class VapiBrowserVoiceRuntimeServiceTest {
                 Map.of("type", "object", "properties", Map.of("customerId", Map.of("type", "string")))
         )));
         var service = new VapiBrowserVoiceRuntimeService(
-                orchestrator, loader, "vapi-private-secret", "https://sauti.uk/",
+                orchestrator, loader, "vapi-public-key", "https://sauti.uk/",
                 "openai", "gpt-4.1-mini", "deepgram", "nova-3", "multi",
                 "vapi", "Savannah", 2, "auto", 30, 1600
         );
@@ -57,7 +57,7 @@ class VapiBrowserVoiceRuntimeServiceTest {
                 .contains("https://sauti.uk/api/v1/public/vapi/test-call%2F42/webhook?token=browser%2Fcall-token")
                 .contains("\"provider\":\"deepgram\"")
                 .contains("\"voiceId\":\"Savannah\"")
-                .doesNotContain("vapi-private-secret");
+                .doesNotContain("vapi-public-key");
         assertThat(service.claimWebCall("test-call/42", "browser/call-token"))
                 .isEqualTo(session.configuration());
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->

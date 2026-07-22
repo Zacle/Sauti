@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 
 class VapiVoiceControllerTest {
     @Test
-    void forwardsOnlyTheServerGeneratedAssistantThroughThePrivateKeyProxy() throws Exception {
+    void forwardsOnlyTheServerGeneratedAssistantThroughThePublicKeyProxy() throws Exception {
         var authorization = new AtomicReference<String>();
         var receivedBody = new AtomicReference<String>();
         var server = HttpServer.create(new InetSocketAddress(0), 0);
@@ -37,7 +37,7 @@ class VapiVoiceControllerTest {
             var runtime = mock(VapiBrowserVoiceRuntimeService.class);
             var webhooks = mock(VapiWebhookService.class);
             when(webhooks.authorizedCall("test-42", "call-token")).thenReturn(mock(Call.class));
-            when(runtime.apiKey()).thenReturn("private-vapi-key");
+            when(runtime.webCallPublicKey()).thenReturn("public-vapi-key");
             when(runtime.claimWebCall("test-42", "call-token")).thenReturn(Map.of(
                     "name", "Sauti trusted assistant",
                     "model", Map.of("messages", java.util.List.of(Map.of("role", "system", "content", "Trusted prompt")))
@@ -56,13 +56,13 @@ class VapiVoiceControllerTest {
             );
 
             assertThat(response.getStatusCode().value()).isEqualTo(201);
-            assertThat(authorization.get()).isEqualTo("Bearer private-vapi-key");
+            assertThat(authorization.get()).isEqualTo("Bearer public-vapi-key");
             assertThat(receivedBody.get())
                     .contains("Sauti trusted assistant")
                     .contains("Trusted prompt")
                     .doesNotContain("attacker")
                     .doesNotContain("attacker.invalid")
-                    .doesNotContain("private-vapi-key");
+                    .doesNotContain("public-vapi-key");
             verify(runtime).claimWebCall("test-42", "call-token");
         } finally {
             server.stop(0);

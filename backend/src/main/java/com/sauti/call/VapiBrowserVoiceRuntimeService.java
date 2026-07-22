@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvider {
     private final ConversationOrchestrator conversationOrchestrator;
     private final AgentToolLoader agentToolLoader;
-    private final String apiKey;
+    private final String publicKey;
     private final String publicBaseUrl;
     private final String modelProvider;
     private final String model;
@@ -35,7 +35,7 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
     public VapiBrowserVoiceRuntimeService(
             ConversationOrchestrator conversationOrchestrator,
             AgentToolLoader agentToolLoader,
-            @Value("${sauti.vapi.api-key:}") String apiKey,
+            @Value("${sauti.vapi.public-key:}") String publicKey,
             @Value("${sauti.vapi.public-base-url:${sauti.telephony.public-base-url:http://localhost:8080}}") String publicBaseUrl,
             @Value("${sauti.vapi.model-provider:openai}") String modelProvider,
             @Value("${sauti.vapi.model:gpt-4.1-mini}") String model,
@@ -51,7 +51,7 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
     ) {
         this.conversationOrchestrator = conversationOrchestrator;
         this.agentToolLoader = agentToolLoader;
-        this.apiKey = trim(apiKey);
+        this.publicKey = trim(publicKey);
         this.publicBaseUrl = stripTrailingSlash(publicBaseUrl);
         this.modelProvider = trim(modelProvider);
         this.model = trim(model);
@@ -73,17 +73,17 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
 
     @Override
     public boolean isConfigured() {
-        return !apiKey.isBlank();
+        return !publicKey.isBlank();
     }
 
-    public String apiKey() {
-        if (!isConfigured()) throw new IllegalStateException("Vapi is not configured. Set VAPI_API_KEY.");
-        return apiKey;
+    public String webCallPublicKey() {
+        if (!isConfigured()) throw new IllegalStateException("Vapi browser calls are not configured. Set VAPI_PUBLIC_KEY.");
+        return publicKey;
     }
 
     @Override
     public BrowserVoiceRuntimeSession prepare(Call call, String greeting, String callbackToken) {
-        if (!isConfigured()) throw new IllegalStateException("Vapi is not configured. Set VAPI_API_KEY.");
+        if (!isConfigured()) throw new IllegalStateException("Vapi browser calls are not configured. Set VAPI_PUBLIC_KEY.");
         var callbackUrl = callbackUrl(call.getTwilioCallSid(), callbackToken);
         var callbackServer = Map.<String, Object>of(
                 "url", callbackUrl,

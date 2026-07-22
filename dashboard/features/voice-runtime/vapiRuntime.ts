@@ -4,6 +4,7 @@ import type {
   BrowserVoiceRuntimeCallbacks,
   BrowserVoiceRuntimeConnection,
 } from "./browserVoiceRuntime";
+import { vapiErrorMessage } from "./vapiErrors";
 
 type VapiMessage = {
   type?: string;
@@ -27,6 +28,7 @@ export async function connectVapiRuntime(
   let assistantSpeechStartedAfterEndAuthorization = false;
   let ended = false;
   let lastFinal = "";
+  let startFailure = "";
   const typedTranscripts: string[] = [];
 
   const setAssistantSpeaking = (value: boolean) => {
@@ -109,10 +111,14 @@ export async function connectVapiRuntime(
     }
   });
   vapi.on("call-end", () => finish("completed"));
-  vapi.on("error", (error: unknown) => callbacks.onError(vapiError(error)));
+  vapi.on("error", (error: unknown) => {
+    const message = vapiErrorMessage(error);
+    if (!startFailure) startFailure = message;
+    callbacks.onError(message);
+  });
 
   const call = await vapi.start(session.configuration as never);
-  if (!call) throw new Error("Vapi did not create the browser call.");
+  if (!call) throw new Error(startFailure || "Vapi did not create the browser call.");
 
   return {
     sendUserText(text: string) {
@@ -142,15 +148,4 @@ function containsAuthorizedEnd(message: VapiMessage) {
 
 function normalize(value: string) {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
-}
-
-function vapiError(error: unknown) {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
-  if (error && typeof error === "object") {
-    const candidate = error as { message?: unknown; error?: { message?: unknown } };
-    if (typeof candidate.message === "string") return candidate.message;
-    if (typeof candidate.error?.message === "string") return candidate.error.message;
-  }
-  return "The Vapi voice session encountered an error.";
 }

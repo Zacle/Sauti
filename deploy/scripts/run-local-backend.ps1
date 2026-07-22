@@ -54,9 +54,9 @@ foreach ($environmentLine in Get-Content -LiteralPath $resolvedEnvironmentFile) 
 Write-Host "Loaded $loadedVariables environment variables from $resolvedEnvironmentFile."
 $configuredRuntime = [Environment]::GetEnvironmentVariable("SAUTI_TEST_VOICE_RUNTIME", "Process")
 if ($configuredRuntime -eq "vapi") {
-    $configuredVapiKey = [Environment]::GetEnvironmentVariable("VAPI_API_KEY", "Process")
-    if ([string]::IsNullOrWhiteSpace($configuredVapiKey)) {
-        throw "SAUTI_TEST_VOICE_RUNTIME is vapi but VAPI_API_KEY is empty in the environment file."
+    $configuredVapiPublicKey = [Environment]::GetEnvironmentVariable("VAPI_PUBLIC_KEY", "Process")
+    if ([string]::IsNullOrWhiteSpace($configuredVapiPublicKey)) {
+        throw "SAUTI_TEST_VOICE_RUNTIME is vapi but VAPI_PUBLIC_KEY is empty in the environment file."
     }
     Write-Host "Vapi test-call configuration is present. Secret values were not printed."
 }

@@ -89,6 +89,7 @@ sauti:
     test-provider: ${SAUTI_TEST_VOICE_RUNTIME:sauti}
   vapi:
     api-key: ${VAPI_API_KEY:}
+    public-key: ${VAPI_PUBLIC_KEY:}
     api-base-url: ${VAPI_API_BASE_URL:https://api.vapi.ai}
     public-base-url: ${VAPI_PUBLIC_BASE_URL:${PUBLIC_BASE_URL:http://localhost:8080}}
     model-provider: ${VAPI_MODEL_PROVIDER:openai}

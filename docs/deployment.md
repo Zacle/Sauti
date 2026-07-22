@@ -43,7 +43,9 @@ Create these repository Actions secrets:
 - `CARTESIA_API_KEY`: optional; synchronized into the production environment
   when Cartesia is enabled
 - `VAPI_API_KEY`: optional; synchronized into the production environment when
-  the Vapi browser runtime is enabled
+  Vapi server-side management APIs are enabled
+- `VAPI_PUBLIC_KEY`: required for the Vapi browser runtime; synchronized into
+  the production environment without being exposed by Sauti's session API
 
 Provider secrets are copied only when the corresponding Actions secret is
 non-empty. An absent Actions secret does not remove a value that was already

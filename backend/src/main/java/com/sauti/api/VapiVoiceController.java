@@ -65,7 +65,10 @@ public class VapiVoiceController {
             }
             var request = HttpRequest.newBuilder(URI.create(apiBaseUrl + "/call/web"))
                     .timeout(Duration.ofSeconds(25))
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + runtimeService.apiKey())
+                    // Vapi's browser-call endpoint requires the organization
+                    // public key. Private keys authenticate server APIs but
+                    // are rejected by /call/web.
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + runtimeService.webCallPublicKey())
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(authoritative)))
                     .build();

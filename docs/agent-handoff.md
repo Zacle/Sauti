@@ -4334,3 +4334,33 @@ Expected:
 - Verification: the workflow parsed successfully with `js-yaml`; the optional-provider shell step passed `bash -n`; `git diff --check` passed; `gh secret list` confirmed the `VAPI_API_KEY` secret name and update timestamp without exposing its value.
 - Deployment status: not deployed. The change remains uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: the encrypted secret will reach `/opt/sauti/.env.production` only after a maintainer reviews, commits, and pushes the workflow change to `main`, CI passes, and the normal deployment workflow runs. Until then, the currently running production backend remains unchanged.
+
+### 2026-07-22 - Correct Vapi browser-call authentication and preserve provider errors
+
+- Reproduced the reported `Vapi did not create the browser call` failure against Vapi without customer data. The configured key successfully authenticated a read-only server API request (`GET /call` returned HTTP 200), while the same key was rejected by `POST /call/web` with HTTP 401 and Vapi's explicit private-key-versus-public-key diagnostic. This proves the configured `VAPI_API_KEY` is a valid private server key but the Web SDK endpoint requires the organization's public key.
+- Added the separate `VAPI_PUBLIC_KEY` configuration. `VapiBrowserVoiceRuntimeService` now considers browser calls configured only when that public key exists, and `VapiVoiceController` uses it for the proxied `/call/web` request. The private `VAPI_API_KEY` remains separate for server-management APIs and is never substituted for the browser key.
+- Kept Sauti's authenticated proxy and authoritative transient assistant configuration. Although Vapi documents its public key as safe for browser use, Sauti still gives the browser only its short-lived call token so callers cannot replace the system prompt, tools, callbacks, or model configuration.
+- Extended the CI/CD optional-provider secret sync with `VAPI_PUBLIC_KEY`. As with the private key, an absent Actions secret preserves any existing server-side value instead of deleting it.
+- Stopped the Web SDK's detailed startup error from being overwritten by the generic null-return message. Nested Vapi SDK errors are now retained for the Agent Studio error panel, with a bounded stable fallback when the provider supplies no readable message.
+- Updated local/production examples, the direct Windows launcher validation, deployment documentation, and `docs/voice-runtime-providers.md` to explain the public/private key distinction.
+- Files touched:
+  - `.env.example`, `deploy/.env.production.example`, `.github/workflows/deploy.yml`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/api/VapiVoiceController.java`
+  - `backend/src/main/java/com/sauti/call/VapiBrowserVoiceRuntimeService.java`
+  - focused Vapi backend tests
+  - `dashboard/features/voice-runtime/{vapiRuntime,vapiErrors,vapiErrors.test}.ts`
+  - `dashboard/package.json`
+  - `deploy/scripts/run-local-backend.ps1`
+  - `docs/{deployment,voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - authenticated read-only Vapi server API request - HTTP 200; no response data or credentials printed.
+  - unjoined diagnostic Vapi web-call request with the private key - HTTP 401 with the provider's public/private key mismatch result; no customer data used.
+  - focused Vapi backend tests - passed.
+  - `.\\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 21 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - deployment workflow parsed with `js-yaml`; provider-secret shell step passed `bash -n`.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: the local `.env` does not yet contain `VAPI_PUBLIC_KEY`, so a maintainer must copy the Public Key from **Vapi Dashboard → Vapi API Keys** into the local secret environment. It can then be uploaded as the encrypted `VAPI_PUBLIC_KEY` Actions secret without printing it. The production browser runtime cannot start until that secret and this reviewed code reach production.
