@@ -8,6 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +16,10 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvider {
+    private static final Set<String> VAPI_SCHEMA_FORMATS = Set.of(
+            "date-time", "time", "date", "duration", "email", "hostname",
+            "ipv4", "ipv6", "uuid"
+    );
     private final ConversationOrchestrator conversationOrchestrator;
     private final AgentToolLoader agentToolLoader;
     private final String publicKey;
@@ -96,7 +101,7 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
                         "function", Map.of(
                                 "name", tool.name(),
                                 "description", tool.description() == null ? "" : tool.description(),
-                                "parameters", tool.inputSchema() == null ? Map.of("type", "object") : tool.inputSchema()
+                                "parameters", vapiParameters(tool.inputSchema())
                         ),
                         "server", callbackServer,
                         // Vapi supplies and translates the wording. Fast tools
@@ -217,6 +222,45 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
     private String assistantName(Call call) {
         var name = "Sauti " + call.getAgent().getName();
         return name.length() <= 40 ? name : name.substring(0, 40);
+    }
+
+    /**
+     * Vapi validates JSON Schema formats against a smaller allow-list than the
+     * schemas Sauti uses internally. Unsupported annotations such as
+     * {@code format: phone} must not prevent the entire browser call from
+     * starting; the property's type, description, and all validation fields
+     * remain intact.
+     */
+    private static Map<String, Object> vapiParameters(Map<String, Object> schema) {
+        var source = schema == null || schema.isEmpty()
+                ? Map.<String, Object>of("type", "object")
+                : schema;
+        return normalizeSchemaMap(source);
+    }
+
+    private static Map<String, Object> normalizeSchemaMap(Map<?, ?> source) {
+        var normalized = new LinkedHashMap<String, Object>();
+        source.forEach((rawKey, rawValue) -> {
+            if (rawKey == null || rawValue == null) return;
+            var key = rawKey.toString();
+            if ("format".equals(key)
+                    && (!((rawValue instanceof String format)) || !VAPI_SCHEMA_FORMATS.contains(format))) {
+                return;
+            }
+            normalized.put(key, normalizeSchemaValue(rawValue));
+        });
+        return Map.copyOf(normalized);
+    }
+
+    private static Object normalizeSchemaValue(Object value) {
+        if (value instanceof Map<?, ?> map) return normalizeSchemaMap(map);
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .filter(java.util.Objects::nonNull)
+                    .map(VapiBrowserVoiceRuntimeService::normalizeSchemaValue)
+                    .toList();
+        }
+        return value;
     }
 
     private static String url(String value) {

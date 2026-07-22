@@ -221,6 +221,24 @@ Expected:
 
 ## Change log
 
+### 2026-07-22 - Normalize Vapi tool schemas before browser-call creation
+
+- Fixed Vapi test calls failing immediately with HTTP 400 after credentials were configured. A direct provider reproduction identified the rejected field: Sauti's internal JSON schemas use `format: phone`, while Vapi accepts only `date-time`, `time`, `date`, `duration`, `email`, `hostname`, `ipv4`, `ipv6`, and `uuid`.
+- Added provider-boundary schema normalization for every Vapi browser agent. Unsupported `format` annotations are removed recursively while property types, descriptions, requirements, nested objects, enums, and Vapi-supported formats remain unchanged. Phone values therefore remain ordinary required strings and business-tool behavior is preserved.
+- Added regression coverage for supported and unsupported formats, including unsupported formats nested inside object properties.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/VapiBrowserVoiceRuntimeService.java`
+  - `backend/src/test/java/com/sauti/call/VapiBrowserVoiceRuntimeServiceTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - Focused `VapiBrowserVoiceRuntimeServiceTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - Direct synthetic Vapi check with the original booking schema - reproduced HTTP 400 and the `caller_phone.format` validation error.
+  - Direct synthetic Vapi check with the normalized booking schema - accepted with HTTP 201.
+  - `git diff --check` - passed before the handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: Vapi may narrow or expand its accepted JSON Schema dialect in the future. Keep provider-specific compatibility at this adapter boundary and add a regression whenever a new provider validation rule is encountered; do not weaken Sauti's canonical tool schemas globally.
+
 ### 2026-07-22 - Prevent raw VAD echo from chopping speech and flapping call status
 
 - Fixed the reported Agent Studio behavior where the voice broke up while the status repeatedly changed between speaking and listening. The cause was a transport-level `input_audio_buffer.speech_started` event being treated as an authoritative caller interruption. OpenAI VAD can emit that event for speaker echo, a short background sound, or microphone noise, so the browser and carrier paths were stopping valid TTS before any caller words had been recognized.

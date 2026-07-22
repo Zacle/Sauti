@@ -34,7 +34,17 @@ class VapiBrowserVoiceRuntimeServiceTest {
         when(orchestrator.realtimeInstructions(call, "fr")).thenReturn("Answer in French and use tools safely.");
         when(loader.loadForAgent(agentId)).thenReturn(List.of(new LlmToolDefinition(
                 "update_customer_record", "Update a confirmed record",
-                Map.of("type", "object", "properties", Map.of("customerId", Map.of("type", "string")))
+                Map.of("type", "object", "properties", Map.of(
+                        "customerId", Map.of("type", "string", "format", "uuid"),
+                        "phone", Map.of("type", "string", "format", "phone"),
+                        "email", Map.of("type", "string", "format", "email"),
+                        "contact", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "mobile", Map.of("type", "string", "format", "phone")
+                                )
+                        )
+                ))
         )));
         var service = new VapiBrowserVoiceRuntimeService(
                 orchestrator, loader, "vapi-public-key", "https://sauti.uk/",
@@ -54,9 +64,12 @@ class VapiBrowserVoiceRuntimeServiceTest {
                 .contains("update_customer_record")
                 .contains("request-response-delayed")
                 .contains("\"timingMilliseconds\":1600")
+                .contains("\"format\":\"uuid\"")
+                .contains("\"format\":\"email\"")
                 .contains("https://sauti.uk/api/v1/public/vapi/test-call%2F42/webhook?token=browser%2Fcall-token")
                 .contains("\"provider\":\"deepgram\"")
                 .contains("\"voiceId\":\"Savannah\"")
+                .doesNotContain("\"format\":\"phone\"")
                 .doesNotContain("vapi-public-key");
         assertThat(service.claimWebCall("test-call/42", "browser/call-token"))
                 .isEqualTo(session.configuration());
