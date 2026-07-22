@@ -6,6 +6,7 @@ export type BrowserVoiceRuntimeCallbacks = {
   onCallerSpeechStarted(): void;
   onCallerSpeechEnded(): void;
   onCallerTranscript(text: string): void;
+  onAgentCaption(text: string, turn?: number): void;
   onAgentTranscript(text: string, interrupted: boolean): void;
   onAgentSpeaking(value: boolean): void;
   onInterrupted(): void;

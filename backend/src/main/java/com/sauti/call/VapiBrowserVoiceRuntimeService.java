@@ -6,7 +6,6 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.time.Instant;
@@ -52,7 +51,7 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
             @Value("${sauti.vapi.voice-version:2}") int voiceVersion,
             @Value("${sauti.vapi.voice-language:auto}") String voiceLanguage,
             @Value("${sauti.vapi.tool-timeout-seconds:30}") int toolTimeoutSeconds,
-            @Value("${sauti.vapi.delayed-message-ms:1600}") int delayedMessageMs
+            @Value("${sauti.vapi.delayed-message-ms:1000}") int delayedMessageMs
     ) {
         this.conversationOrchestrator = conversationOrchestrator;
         this.agentToolLoader = agentToolLoader;
@@ -180,7 +179,8 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         assistant.put("stopSpeakingPlan", Map.of("numWords", 1, "backoffSeconds", 0.5));
         assistant.put("modelOutputInMessagesEnabled", true);
         assistant.put("clientMessages", List.of(
-                "transcript", "speech-update", "status-update", "tool-calls-result", "user-interrupted"
+                "transcript", "speech-update", "assistant.speechStarted", "status-update",
+                "tool-calls-result", "user-interrupted"
         ));
         // Call lifecycle and transcripts are persisted from the authenticated
         // browser session. The public callback accepts business tools only.

@@ -13,6 +13,9 @@ type VapiMessage = {
   transcriptType?: string;
   transcript?: string;
   status?: string;
+  text?: string;
+  turn?: number;
+  source?: string;
   [key: string]: unknown;
 };
 
@@ -34,11 +37,19 @@ export async function connectVapiRuntime(
     ? session.configuration.firstMessage.trim()
     : "";
   let initialAssistantTranscriptPending = configuredFirstMessage.length > 0;
+  let openingCaptionDisplayed = false;
   const typedTranscripts: string[] = [];
 
   const setAssistantSpeaking = (value: boolean) => {
     if (assistantSpeaking === value) return;
     assistantSpeaking = value;
+    // Vapi's generic speech-start event is synchronized to remote audio. Use
+    // it as a fallback for the fixed opening on SDK/provider versions that do
+    // not emit the more precise assistant.speechStarted caption event.
+    if (value && initialAssistantTranscriptPending && !openingCaptionDisplayed) {
+      openingCaptionDisplayed = true;
+      callbacks.onAgentCaption(configuredFirstMessage, 0);
+    }
     if (value && endAuthorized) assistantSpeechStartedAfterEndAuthorization = true;
     if (value || !callerSpeaking) callbacks.onAgentSpeaking(value);
     if (!value && endAuthorized && assistantSpeechStartedAfterEndAuthorization && !stopped) {
@@ -62,6 +73,16 @@ export async function connectVapiRuntime(
   vapi.on("speech-end", () => setAssistantSpeaking(false));
   vapi.on("message", (raw: unknown) => {
     const message = raw as VapiMessage;
+    if (message.type === "assistant.speechStarted") {
+      const text = message.text?.trim();
+      if (text) {
+        if (message.source === "force-say" && initialAssistantTranscriptPending) {
+          openingCaptionDisplayed = true;
+        }
+        callbacks.onAgentCaption(text, message.turn);
+      }
+      return;
+    }
     if (message.type === "speech-update") {
       if (message.role === "user" && message.status === "started") {
         callerSpeaking = true;

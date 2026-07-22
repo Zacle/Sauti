@@ -41,6 +41,7 @@ type Message = {
 };
 
 type CallStatus = "idle" | "connecting" | "listening" | "capturing" | "thinking" | "speaking" | "ending";
+type TestRuntime = "cartesia" | "vapi";
 type TestSettings = StartTestCallResponse["settings"];
 type VoiceEvent = {
   type: "connected" | "transcript_partial" | "transcript_final" | "agent_response" | "speaking" | "clear_audio" | "error" | "ended";
@@ -67,13 +68,16 @@ const REALTIME_PCM_UNDERRUN_STEP_SECONDS = 0.04;
 const REALTIME_PCM_QUEUE_SAFETY_SECONDS = 0.025;
 const PLAYBACK_DRAIN_GRACE_MS = 80;
 
-export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "vapi" }: TestCallPanelProps) {
+export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "cartesia" }: TestCallPanelProps) {
   const [callId, setCallId] = useState("");
   const [activeRuntime, setActiveRuntime] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<CallStatus>("idle");
   const [error, setError] = useState("");
+  const [testRuntime, setTestRuntime] = useState<TestRuntime>(
+    runtimeProvider.toLowerCase() === "vapi" ? "vapi" : "cartesia",
+  );
 
   const statusRef = useRef<CallStatus>("idle");
   const callIdRef = useRef("");
@@ -127,6 +131,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   const nativeEndAuthorizedRef = useRef(false);
   const transcriptWriteRef = useRef<Promise<void>>(Promise.resolve());
   const managedAgentTranscriptRef = useRef<{ text: string; interrupted: boolean } | null>(null);
+  const managedAgentCaptionRef = useRef<{ id: string; turn?: number } | null>(null);
   const cleanupMediaRef = useRef<() => void>(() => undefined);
   cleanupMediaRef.current = cleanupMedia;
 
@@ -143,11 +148,16 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
 
   async function beginCall() {
     if (!agentId) return;
+    if (testRuntime === "cartesia" && !voiceId?.startsWith("cartesia:")) {
+      setError("Select and save a Cartesia voice before starting the Cartesia test.");
+      return;
+    }
     updateStatus("connecting");
     setError("");
     setMessages([]);
     try {
-      const started = await startTestCall(agentId, voiceId, runtimeProvider);
+      const requestedRuntime = testRuntime === "cartesia" ? "sauti" : "vapi";
+      const started = await startTestCall(agentId, voiceId, requestedRuntime);
       callIdRef.current = started.call.id;
       callSidRef.current = started.call.twilioCallSid;
       settingsRef.current = started.settings;
@@ -157,10 +167,18 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       remindersRef.current = 0;
       endingRef.current = false;
       managedAgentTranscriptRef.current = null;
+      managedAgentCaptionRef.current = null;
       remoteEndPendingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
+      if (testRuntime === "cartesia" && started.mode !== "hybrid_realtime") {
+        throw new Error(
+          "The Cartesia test runtime is unavailable. Confirm the production OpenAI and Cartesia credentials, then try again.",
+        );
+      }
       setCallId(started.call.id);
-      setActiveRuntime(started.runtime?.provider ?? started.mode);
+      setActiveRuntime(testRuntime === "cartesia"
+        ? "Cartesia + OpenAI Realtime"
+        : started.runtime?.provider ?? started.mode);
       if (started.runtime) {
         await connectManagedRuntime(started);
         return;
@@ -209,9 +227,6 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
 
   async function connectManagedRuntime(started: StartTestCallResponse) {
     if (!started.runtime) throw new Error("The selected voice runtime did not return a session configuration.");
-    if (started.greeting) {
-      setMessages([{ id: crypto.randomUUID(), role: "agent", text: started.greeting }]);
-    }
     browserRuntimeConnectionRef.current = await connectBrowserVoiceRuntime(started.runtime, {
       onConnected: () => updateStatus("listening"),
       onCallerSpeechStarted: () => {
@@ -228,6 +243,19 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
         queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "caller", text));
         updateStatus("thinking");
       },
+      onAgentCaption: (text, turn) => {
+        const caption = managedAgentCaptionRef.current;
+        const changedTurn = caption?.turn !== undefined && turn !== undefined && caption.turn !== turn;
+        if (!caption || changedTurn) {
+          const id = crypto.randomUUID();
+          managedAgentCaptionRef.current = { id, turn };
+          setMessages((current) => [...current, { id, role: "agent", text }]);
+          return;
+        }
+        setMessages((current) => current.map((message) =>
+          message.id === caption.id ? { ...message, text } : message
+        ));
+      },
       onAgentTranscript: (text, interrupted) => {
         rememberAgentPrompt(text);
         const pending = managedAgentTranscriptRef.current;
@@ -236,13 +264,16 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           text: merged,
           interrupted: Boolean(pending?.interrupted || interrupted),
         };
-        setMessages((current) => {
-          const last = current.at(-1);
-          if (last?.role !== "agent") {
-            return [...current, { id: crypto.randomUUID(), role: "agent", text: merged }];
-          }
-          return [...current.slice(0, -1), { ...last, text: merged }];
-        });
+        const caption = managedAgentCaptionRef.current;
+        if (!caption) {
+          const id = crypto.randomUUID();
+          managedAgentCaptionRef.current = { id };
+          setMessages((current) => [...current, { id, role: "agent", text: merged }]);
+        } else {
+          setMessages((current) => current.map((message) =>
+            message.id === caption.id ? { ...message, text: merged } : message
+          ));
+        }
       },
       onAgentSpeaking: (value) => {
         if (!endingRef.current) updateStatus(value ? "speaking" : "listening");
@@ -379,6 +410,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   function flushManagedAgentTranscript(activeCallId: string) {
     const pending = managedAgentTranscriptRef.current;
     managedAgentTranscriptRef.current = null;
+    managedAgentCaptionRef.current = null;
     if (!pending?.text.trim()) return;
     queueTranscriptWrite(() => recordTestRealtimeTranscript(
       activeCallId, "agent", pending.text, pending.interrupted,
@@ -1106,6 +1138,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     queuedInterruptionRef.current = null;
     callerInterruptedCurrentTurnRef.current = false;
     managedAgentTranscriptRef.current = null;
+    managedAgentCaptionRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
@@ -1147,10 +1180,37 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           <span className="test-orb"><Mic size={28} /></span>
           <small>Browser test call</small>
           <h2>Talk to {agentName || "your agent"}</h2>
-          <p>The test uses the saved prompt, variables, call behaviour, connected tools, and selected voice runtime.</p>
-          <button disabled={!agentId || status === "connecting"} onClick={() => void beginCall()} type="button">
+          <p>Compare the same saved agent, prompt, tools, and business data through either runtime.</p>
+          <div aria-label="Test call runtime" className="test-runtime-picker" role="group">
+            <button
+              className={testRuntime === "cartesia" ? "selected" : ""}
+              disabled={status === "connecting"}
+              onClick={() => { setTestRuntime("cartesia"); setError(""); }}
+              type="button"
+            >
+              <strong>Sauti + Cartesia</strong>
+              <small>OpenAI Realtime conversation, Cartesia voice</small>
+            </button>
+            <button
+              className={testRuntime === "vapi" ? "selected" : ""}
+              disabled={status === "connecting"}
+              onClick={() => { setTestRuntime("vapi"); setError(""); }}
+              type="button"
+            >
+              <strong>Vapi</strong>
+              <small>Vapi-managed conversation and voice pipeline</small>
+            </button>
+          </div>
+          {testRuntime === "cartesia" && !voiceId?.startsWith("cartesia:") && (
+            <p className="test-runtime-note">Select and save a Cartesia voice in Voice settings to run this test.</p>
+          )}
+          <button
+            disabled={!agentId || status === "connecting" || (testRuntime === "cartesia" && !voiceId?.startsWith("cartesia:"))}
+            onClick={() => void beginCall()}
+            type="button"
+          >
             {status === "connecting" ? <LoaderCircle className="spin" size={17} /> : <Phone size={17} />}
-            {agentId ? status === "connecting" ? "Connecting..." : "Start test call" : "Save agent to test"}
+            {agentId ? status === "connecting" ? "Connecting..." : `Test ${testRuntime === "cartesia" ? "Cartesia" : "Vapi"}` : "Save agent to test"}
           </button>
           {error && <div className="test-call-error">{error}</div>}
         </div>

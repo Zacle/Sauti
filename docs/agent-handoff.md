@@ -221,6 +221,65 @@ Expected:
 
 ## Change log
 
+### 2026-07-22 - Declare safe defaults for Radix runtime CSS variables
+
+- Confirmed the reported unresolved custom properties are supplied by Radix Select and Popover as inline styles at runtime; the warnings came from static CSS inspection, not missing browser values.
+- Added component-local default declarations and matching `var(..., fallback)` values for the Radix trigger width, available height, and transform origin properties used by the shared dark select, Agent Studio schedule selector, call filters, and booking date picker.
+- Radix's runtime inline values remain authoritative when the components are open, while the defaults make the styles analyzable and keep their layout safe before runtime values are available.
+- Files touched:
+  - `dashboard/components/DarkSelect/DarkSelect.module.css`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `dashboard/features/calls/CallsPage/CallsPage.module.css`
+  - `dashboard/features/bookings/presentation/BookingDateRangePicker.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+- Deployment status: not deployed. The CSS changes remain uncommitted alongside the existing voice-provider work for maintainer review and the normal GitHub Actions CI/CD workflow.
+
+### 2026-07-22 - Make Sauti + Cartesia directly testable beside Vapi
+
+- Confirmed the repository already has a complete hybrid browser path: OpenAI Realtime owns transcription, conversation, and guarded tool calls; Sauti sends each validated complete utterance through one warm Cartesia WebSocket context and plays the returned PCM stream. Cartesia is the speech provider in this option, not a replacement for the conversation engine.
+- Found that Agent Studio hardcoded `vapi` when starting every test, which made the existing Cartesia path impossible to select from the UI even when the agent had a saved Cartesia voice.
+- Added an explicit runtime selector to the idle test-call panel. `Sauti + Cartesia` is the default for the next comparison and `Vapi` remains available beside it. Labels state which parts of the stack each option owns so this is not presented as an apples-to-apples managed-platform comparison.
+- The Cartesia option requires a saved `cartesia:` voice, explicitly requests Sauti's runtime, verifies that the backend actually returned `hybrid_realtime`, and fails visibly if either OpenAI Realtime or Cartesia is unavailable. It cannot silently fall back to the slower legacy cascade.
+- Confirmed without exposing credential values that `CARTESIA_API_KEY` exists in the GitHub Actions secret set and that the configured local credential receives HTTP 200 from the Cartesia voice API using `Cartesia-Version: 2026-03-01`.
+- Files touched in this follow-up:
+  - `dashboard/features/agents/AgentCreator/{TestCallPanel.tsx,AgentCreator.css}`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - Cartesia voice-catalog credential/API check - HTTP 200.
+  - `npm.cmd run test:voice` - passed; 24 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - Authenticated visual browser verification was unavailable because no in-app or extension browser session was connected.
+- Deployment status: not deployed. These changes and the preceding Vapi caption changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: the meaningful acceptance test is a live call after deployment with the same agent and scripted scenario through both selector options. Record connection-to-greeting audio, caller-final-to-first-audio, interruption stop time, tool duration/progress speech, STT corrections, booking/CRUD truth, and audible seams. The current Cartesia option tests Sauti + OpenAI Realtime + Cartesia Sonic; testing Cartesia Line as a managed agent would be a separate adapter.
+
+### 2026-07-22 - Synchronize Vapi captions with playback and surface slow tool progress sooner
+
+- Corrected the Agent Studio timing mismatch where Sauti displayed the fixed greeting two to three seconds before Vapi played it. Managed-runtime greetings are no longer rendered optimistically; the browser displays the opening when remote assistant audio actually starts.
+- Opted the transient Vapi assistant into the documented `assistant.speechStarted` client event. This event is gated to audio playback and contains the cumulative assistant text for the current turn, so Agent Studio now creates or updates the active assistant bubble while synthesized segments begin instead of waiting several seconds for a final assistant transcript.
+- Kept final assistant transcripts as the durable source for Sauti call history. Live captions are presentation state only; the existing final-fragment coalescing and interruption persistence remain intact.
+- Preserved provider-generated multilingual progress speech for every slow tool rather than adding business-specific or translated wait phrases. Reduced the default delayed-apology threshold from 1600 ms to 1000 ms so callers receive a follow-up acknowledgment sooner while availability, booking CRUD, payments, messaging, or another tool is still running.
+- Documented the provider boundary: Vapi's default voice emits playback-synchronized text chunks but no word timing, so exact character/word highlighting requires a voice provider with alignment support. The UI can now represent actual playback accurately, but it cannot eliminate Vapi's WebRTC startup or cascaded transcription/model/TTS latency and chunk continuity limits.
+- Files touched:
+  - `.env.example`, `deploy/.env.production.example`
+  - `backend/src/main/java/com/sauti/call/VapiBrowserVoiceRuntimeService.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/call/VapiBrowserVoiceRuntimeServiceTest.java`
+  - `dashboard/features/voice-runtime/{browserVoiceRuntime,vapiRuntime}.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - focused `VapiBrowserVoiceRuntimeServiceTest` - passed.
+  - `.\\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 24 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: only a live provider call can verify the observed caption cadence and progress filler timing. If 2-3 second initial audio latency or audible phrase gaps remain unacceptable, treat that as a Vapi runtime result rather than hiding it with UI state; compare OpenAI Realtime and the planned Telnyx/Cartesia runtime using the same first-audio, interruption, tool, and conversation-quality test set.
+
 ### 2026-07-22 - Make Vapi turns transactional, continuous, and self-ending
 
 - Diagnosed the reported Vapi conversation against the provider's completed call artifact instead of inferring from the rendered transcript. Vapi sent tool input as object-valued `arguments`, but Sauti only accepted object-valued `parameters` or stringified arguments. Consequently `check_availability`, `update_conversation_state`, `book_slot`, and `end_call` reached the fulfillment router with empty arguments. Both booking attempts were correctly rejected with `actionPerformed: false`, but streamed model text incorrectly claimed success before consuming that result.

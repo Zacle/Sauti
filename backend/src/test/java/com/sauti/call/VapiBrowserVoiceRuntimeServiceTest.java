@@ -73,6 +73,7 @@ class VapiBrowserVoiceRuntimeServiceTest {
                 .contains("\"minCharacters\":80")
                 .contains("\"onNoPunctuationSeconds\":1.0")
                 .contains("\"modelOutputInMessagesEnabled\":true")
+                .contains("assistant.speechStarted")
                 .contains("\"format\":\"uuid\"")
                 .contains("\"format\":\"email\"")
                 .contains("https://sauti.uk/api/v1/public/vapi/test-call%2F42/webhook?token=browser%2Fcall-token")

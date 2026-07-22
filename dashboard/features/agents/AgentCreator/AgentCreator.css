@@ -4025,6 +4025,72 @@
   opacity: 0.58;
 }
 
+.test-runtime-picker {
+  display: grid;
+  width: min(100%, 360px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 5px;
+  border: 1px solid rgba(79, 147, 194, 0.24);
+  border-radius: 15px;
+  background: rgba(4, 20, 36, 0.62);
+}
+
+.test-runtime-picker > button {
+  min-width: 0;
+  min-height: 66px;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: #88a0b4;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.test-runtime-picker > button:hover:not(:disabled) {
+  color: #dffbf8;
+  background: rgba(17, 83, 101, 0.3);
+}
+
+.test-runtime-picker > button.selected {
+  border-color: rgba(42, 224, 211, 0.48);
+  color: #eafffd;
+  background: linear-gradient(145deg, rgba(9, 104, 108, 0.5), rgba(8, 38, 62, 0.88));
+  box-shadow: 0 0 0 2px rgba(42, 224, 211, 0.06);
+}
+
+.test-runtime-picker strong,
+.test-runtime-picker small {
+  display: block;
+}
+
+.test-runtime-picker strong {
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.test-runtime-picker small {
+  margin-top: 4px;
+  color: #6f899e;
+  font-size: 0.58rem;
+  line-height: 1.35;
+}
+
+.agent-test-canvas .test-runtime-note {
+  margin: -5px 0 12px;
+  color: #e9ad58;
+  font-size: 0.66rem;
+}
+
+@media (max-width: 520px) {
+  .test-runtime-picker {
+    grid-template-columns: 1fr;
+  }
+}
+
 .test-call-header {
   display: flex;
   min-height: 66px;
@@ -4894,16 +4960,19 @@
 .schedule-time-trigger:focus-visible { border-color: #25ded1; box-shadow: 0 0 0 3px rgba(31, 220, 207, 0.12); }
 
 .schedule-time-content {
+  --radix-select-trigger-width: 118px;
+  --radix-select-content-available-height: 300px;
+  --radix-select-content-transform-origin: top center;
   z-index: 180;
-  min-width: var(--radix-select-trigger-width);
-  max-height: min(300px, var(--radix-select-content-available-height));
+  min-width: var(--radix-select-trigger-width, 118px);
+  max-height: min(300px, var(--radix-select-content-available-height, 300px));
   overflow: hidden;
   border: 1px solid rgba(47, 209, 199, 0.34);
   border-radius: 12px;
   color: #dceaf4;
   background: linear-gradient(155deg, #0d2942, #061a2e);
   box-shadow: 0 22px 58px rgba(0, 0, 0, 0.56), 0 0 30px -20px rgba(34, 222, 210, 0.65);
-  transform-origin: var(--radix-select-content-transform-origin);
+  transform-origin: var(--radix-select-content-transform-origin, top center);
   animation: scheduleTimeSelectIn 140ms ease-out;
 }
 

@@ -13,7 +13,7 @@ The first adapter applies to authenticated Agent Studio test calls only. Existin
 - authoritative booking/CRM/payment state;
 - transcript persistence and post-call analysis.
 
-Agent Studio explicitly requests the Vapi runtime and displays `VAPI` in the active-call header. A missing or unavailable Vapi configuration therefore fails at call startup instead of silently falling back to Sauti's previous runtime.
+Agent Studio exposes an explicit runtime selector. `Vapi` requests the managed Vapi adapter and displays `VAPI` in the active-call header. `Sauti + Cartesia` runs Sauti's guarded OpenAI Realtime conversation path with the agent's saved Cartesia voice. A missing provider configuration fails visibly instead of silently turning the comparison into the legacy cascade runtime.
 
 The browser never receives `VAPI_API_KEY` or `VAPI_PUBLIC_KEY`. It receives a short-lived, call-scoped Sauti token and sends Vapi's `/call/web` request through an authenticated Sauti proxy. The proxy authenticates that endpoint with the Vapi public key, as required by Vapi's Web SDK contract. Vapi tool callbacks use the Sauti scoped token and are accepted only while the matching test or web call is active.
 
@@ -37,7 +37,7 @@ VAPI_VOICE_ID=Savannah
 VAPI_VOICE_VERSION=2
 VAPI_VOICE_LANGUAGE=auto
 VAPI_TOOL_TIMEOUT_SECONDS=30
-VAPI_DELAYED_MESSAGE_MS=1600
+VAPI_DELAYED_MESSAGE_MS=1000
 ```
 
 `VAPI_PUBLIC_BASE_URL` must reach the same backend/database that created the test call. Production uses `https://sauti.uk`. A local test with tools needs an HTTPS tunnel to the local backend; pointing a local call at the production URL will fail call-token validation because production does not own the local call record.
@@ -48,11 +48,21 @@ The pilot uses the Vapi voice configured above, not the agent's existing Sauti/C
 
 Vapi supplies localized tool-start filler and, after `VAPI_DELAYED_MESSAGE_MS`, a delayed apology while the tool continues. Sauti does not maintain translated waiting phrases. Final availability, save, update, cancellation, payment, messaging, and other outcomes always come from the Sauti tool result.
 
-To return Agent Studio tests to the existing runtime without removing the adapter, set:
+Agent Studio subscribes to Vapi's playback-synchronized `assistant.speechStarted` event. The fixed greeting is displayed only when its audio begins, and later assistant captions update as each synthesized speech segment starts instead of waiting for a final assistant transcript. The default Vapi voice provides text-only speech-start events, not word timestamps, so this is segment-synchronized captioning rather than exact character-by-character highlighting. A voice provider that exposes word alignment is required for exact karaoke-style timing.
+
+Vapi remains a cascaded voice pipeline (endpointing, transcription, model, speech synthesis, then playback). UI synchronization can remove misleading display delay, but it cannot remove the provider's connection and model/TTS latency floor. Evaluate first-audio latency and audible chunk continuity separately from Sauti tool latency when comparing runtimes.
+
+API clients that do not send an explicit runtime can choose the backend default with:
 
 ```text
 SAUTI_TEST_VOICE_RUNTIME=sauti
 ```
+
+## Cartesia comparison scope
+
+The Agent Studio Cartesia option is deliberately labelled `Sauti + Cartesia`: Cartesia provides realtime Sonic speech while OpenAI Realtime provides transcription, turn handling, reasoning, and tool calls. It requires a saved `cartesia:` voice and both provider credentials. Sauti keeps tool execution, confirmation policy, transcript persistence, and database outcomes authoritative.
+
+This is a useful comparison for voice quality, uninterrupted playback, first-audio latency, and Sauti's own orchestration. It is not a test of Cartesia Line's separately managed agent platform. Integrating Cartesia Line would require another peer `BrowserVoiceRuntimeProvider` and an explicit decision about how its tools return to Sauti's authority boundary.
 
 ## Running Spring directly on Windows
 
@@ -70,4 +80,4 @@ The direct backend listens on `http://localhost:8080`. If Vapi needs to call thi
 
 Implement `BrowserVoiceRuntimeProvider` on the backend and register a matching connector in `dashboard/features/voice-runtime/browserVoiceRuntime.ts`. Keep the shared session response free of provider secrets. New providers must continue to route side effects through `ToolFulfillmentRouter`; a provider callback must never call a business integration directly.
 
-Telnyx and Cartesia evaluations should be added as peer adapters and compared with the same scenarios, agent prompt, tool fixtures, languages, and latency measurements. Cartesia is primarily a voice/TTS provider, so a Cartesia-only comparison still needs an STT, turn-taking, and model runtime; it is not directly equivalent to Vapi's complete orchestration layer.
+Telnyx and managed-agent evaluations should be added as peer adapters and compared with the same scenarios, agent prompt, tool fixtures, languages, and latency measurements. A Cartesia TTS comparison still needs an STT, turn-taking, and model runtime, so the current Sauti + Cartesia option is not directly equivalent to Vapi's complete orchestration layer.
