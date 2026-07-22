@@ -30,6 +30,7 @@ type TestCallPanelProps = {
   agentId?: string;
   agentName: string;
   voiceId?: string;
+  runtimeProvider?: string;
 };
 
 type Message = {
@@ -65,8 +66,9 @@ const REALTIME_PCM_UNDERRUN_STEP_SECONDS = 0.04;
 const REALTIME_PCM_QUEUE_SAFETY_SECONDS = 0.025;
 const PLAYBACK_DRAIN_GRACE_MS = 80;
 
-export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProps) {
+export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "vapi" }: TestCallPanelProps) {
   const [callId, setCallId] = useState("");
+  const [activeRuntime, setActiveRuntime] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<CallStatus>("idle");
@@ -143,7 +145,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     setError("");
     setMessages([]);
     try {
-      const started = await startTestCall(agentId, voiceId);
+      const started = await startTestCall(agentId, voiceId, runtimeProvider);
       callIdRef.current = started.call.id;
       callSidRef.current = started.call.twilioCallSid;
       settingsRef.current = started.settings;
@@ -155,6 +157,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       remoteEndPendingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
       setCallId(started.call.id);
+      setActiveRuntime(started.runtime?.provider ?? started.mode);
       if (started.runtime) {
         await connectManagedRuntime(started);
         return;
@@ -194,6 +197,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       callIdRef.current = "";
       callSidRef.current = "";
       setCallId("");
+      setActiveRuntime("");
       updateStatus("idle");
       setError(caught instanceof Error ? caught.message : "Unable to start the test call.");
       if (failedCallId) void completeTestCall(failedCallId, "completed").catch(() => undefined);
@@ -1036,6 +1040,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       callIdRef.current = "";
       callSidRef.current = "";
       setCallId("");
+      setActiveRuntime("");
       setError("");
       updateStatus("idle");
     } catch (caught) {
@@ -1121,7 +1126,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       ) : (
         <>
           <header className="test-call-header">
-            <div><span className="test-call-live-dot" /><div><small>Hands-free test call</small><strong>{agentName}</strong></div></div>
+            <div><span className="test-call-live-dot" /><div><small>Hands-free test call{activeRuntime ? ` · ${activeRuntime.toUpperCase()}` : ""}</small><strong>{agentName}</strong></div></div>
             <button disabled={status === "ending"} onClick={() => void endCall()} type="button">
               <PhoneOff size={15} /> {status === "ending" ? "Saving..." : "End"}
             </button>

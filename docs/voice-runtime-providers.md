@@ -13,6 +13,8 @@ The first adapter applies to authenticated Agent Studio test calls only. Existin
 - authoritative booking/CRM/payment state;
 - transcript persistence and post-call analysis.
 
+Agent Studio explicitly requests the Vapi runtime and displays `VAPI` in the active-call header. A missing or unavailable Vapi configuration therefore fails at call startup instead of silently falling back to Sauti's previous runtime.
+
 The browser never receives `VAPI_API_KEY`. It receives a short-lived, call-scoped Sauti token and sends Vapi's `/call/web` request through an authenticated Sauti proxy. Vapi tool callbacks use that same scoped token and are accepted only while the matching test or web call is active.
 
 ## Configuration

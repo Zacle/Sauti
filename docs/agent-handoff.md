@@ -4283,6 +4283,7 @@ Expected:
 - Added a backend `/call/web` proxy. `VAPI_API_KEY` remains server-side; the browser receives only the call-scoped Sauti token. The proxy ignores browser-supplied assistant/tool/model changes and permits one start of the exact server-generated call configuration. Token lifetime covers the configured maximum call duration plus cleanup so callbacks do not expire mid-call.
 - Configured Vapi's provider-owned localized progress behavior for slow tools: its normal tool-start filler remains provider generated, and a delayed apology occurs after the configured threshold while the real operation continues. Final claims still come only from returned Sauti facts; there are no Sauti-maintained multilingual wait phrases.
 - Added client transcript persistence, typed-message support, interruption analytics, authorized end-call handling, duplicate-final suppression, stable caller/assistant UI transitions, transcript flush before completion, and cleanup of a Sauti call if provider connection startup fails.
+- Agent Studio now explicitly requests Vapi and displays the active provider in the call header. Missing Vapi configuration fails visibly at startup instead of silently sending a test through the previous Sauti/OpenAI runtime.
 - Added Vapi environment placeholders and `docs/voice-runtime-providers.md`. The pilot is limited to Agent Studio test calls; public web voice and carrier traffic are unchanged.
 - Files touched:
   - `.env.example`, `deploy/.env.production.example`
