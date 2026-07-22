@@ -10,7 +10,8 @@ final class BookingSpeechRenderer {
 
     static String render(Call call, Booking booking, String bookingNumber) {
         var language = SpokenDateTimeFormatter.language(call);
-        var when = SpokenDateTimeFormatter.appointment(booking.getAppointmentAt(), language);
+        var timezone = call.getAgent() == null ? "" : call.getAgent().getTimezone();
+        var when = SpokenDateTimeFormatter.appointment(booking.getAppointmentAt(), language, timezone);
         var calendarStatus = booking.getCalendarSyncStatus();
         var calendarSynced = "synced".equals(calendarStatus);
         var localOnly = "not_configured".equals(calendarStatus);

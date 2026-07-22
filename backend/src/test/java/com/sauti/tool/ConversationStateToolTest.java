@@ -445,7 +445,11 @@ class ConversationStateToolTest {
                 .containsEntry("nextAction", "use_business_tool")
                 .containsEntry("nextTool", "cancel_booking")
                 .containsEntry("nextToolAuthorized", true)
-                .containsEntry("nextToolArguments", Map.of("booking_number", "SAT-AB12CD34"))
+                .containsEntry("nextToolArguments", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "question_handling", "ready_for_action",
+                        "confirmation_state", "confirmed"
+                ))
                 .doesNotContainKey("spokenResponse");
     }
 
@@ -488,7 +492,9 @@ class ConversationStateToolTest {
                 .containsEntry("nextToolArguments", Map.of(
                         "booking_number", "SAT-AB12CD34",
                         "appointment_at", "2026-07-23T14:00Z",
-                        "duration_minutes", 45
+                        "duration_minutes", 45,
+                        "question_handling", "ready_for_action",
+                        "confirmation_state", "confirmed"
                 ));
     }
 
@@ -593,6 +599,56 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void answersAQuestionAttachedToReviewApprovalBeforeAuthorizingTheSave() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("approval-question-call");
+        when(sessions.conversationState("approval-question-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_name", "Zachary",
+                                "appointment_name", "Sandra",
+                                "caller_phone", "0105752443",
+                                "service_type", "Nails",
+                                "preferred_day", "2026-07-23",
+                                "preferred_time", "10:00"
+                        ),
+                        ConversationState.SUBJECT_OTHER,
+                        ConversationState.INTENT_ACTIVE,
+                        8
+                )
+        ));
+        when(sessions.pendingBooking("approval-question-call")).thenReturn(Optional.of(new BookingDraft(
+                "Sandra", "Nails", "", "2026-07-23T10:00:00+03:00", "0105752443", true,
+                "signed-review-token"
+        )));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("review_decision", "approved"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "turn_understanding", "clear",
+                "caller_question", "answered_in_spoken_response",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "The nails service costs 4 dollars. Would you still like me to save the appointment?"
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "reply")
+                .containsEntry(
+                        "spokenResponse",
+                        "The nails service costs 4 dollars. Would you still like me to save the appointment?"
+                )
+                .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments");
+        assertThat(captureState(sessions, "approval-question-call").values())
+                .doesNotContainKey("review_decision")
+                .containsEntry("service_type", "Nails");
+    }
+
+    @Test
     void configuredVerticalFieldsCanBeRetractedWithoutLanguageSpecificRules() {
         var sessions = mock(CallSessionStore.class);
         var call = call("vertical-field-call");
@@ -629,7 +685,10 @@ class ConversationStateToolTest {
                 .contains("Do not map by keywords")
                 .contains("Corrections replace");
         assertThat(definition.inputSchema().toString())
-                .contains("turn_understanding", "gibberish", "booking_number", "yyyy-MM-dd", "HH:mm")
+                .contains(
+                        "turn_understanding", "gibberish", "booking_number", "yyyy-MM-dd", "HH:mm",
+                        "caller_question", "answered_in_spoken_response", "requires_business_tool"
+                )
                 .doesNotContain("my name is Zachary", "don't book", "call back later");
     }
 

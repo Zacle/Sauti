@@ -437,6 +437,7 @@ class SautiCalendarFulfillmentTest {
                 .thenReturn(List.of(new ConversationMessage("user", "Everything is correct.")));
         arguments.put("review_token", review.result().get("reviewToken"));
         arguments.put("review_action", "approve_review");
+        approveLatestReview(fixture);
         when(fixture.callSessionStore.pendingBooking("call-sid")).thenReturn(java.util.Optional.of(
                 new BookingDraft(
                         "Zachary", "Consultation", "zachary.123@gmail.com", "2026-07-23T12:00:00Z",
@@ -564,8 +565,9 @@ class SautiCalendarFulfillmentTest {
 
         assertThat(notApproved.success()).isTrue();
         assertThat(notApproved.result())
-                .containsEntry("status", "booking_confirmation_required")
-                .containsEntry("bookingCreated", false);
+                .containsEntry("status", "booking_review_decision_required")
+                .containsEntry("bookingCreated", false)
+                .containsEntry("nextTool", ConversationStateTool.NAME);
         verifyNoInteractions(fixture.bookingService);
 
         var booking = mock(com.sauti.calendar.Booking.class);
@@ -587,6 +589,7 @@ class SautiCalendarFulfillmentTest {
         arguments.put("review_token", reviewToken);
         arguments.put("appointment_name", "Zachary");
         arguments.put("review_action", "approve_review");
+        approveLatestReview(fixture);
         var approved = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "actual-approval", "book_slot", Map.copyOf(arguments)
         ));
@@ -718,7 +721,7 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
-    void usesTheStoredReviewTokenWhenTheModelSemanticallyApprovesWithoutAnotherStateTurn() {
+    void refusesAModelApprovalThatDidNotPassThroughLatestSemanticState() {
         var fixture = fixture(HOURS, List.of());
         var latest = "Everything is right.";
         when(fixture.callSessionStore.conversationHistory("call-sid"))
@@ -746,27 +749,16 @@ class SautiCalendarFulfillmentTest {
                         "0105752443", true, reviewToken, 60
                 )
         ));
-        var booking = mock(com.sauti.calendar.Booking.class);
-        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
-        when(booking.getBookingReference()).thenReturn("SAT-STOREDTOKEN");
-        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T10:00:00Z"));
-        when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
-        when(fixture.bookingService.create(any(), any(), any())).thenReturn(booking);
-
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "approved-without-token", "book_slot", Map.of("review_action", "approve_review")
         ));
 
         assertThat(result.result())
-                .containsEntry("bookingCreated", true)
-                .containsEntry("bookingNumber", "SAT-STOREDTOKEN")
-                .doesNotContainKey("bookingReview");
-        verify(fixture.bookingService).create(any(), argThat(request ->
-                "Zachary".equals(request.callerName())
-                        && "0105752443".equals(request.callerPhone())
-                        && "Men hairstyle".equals(request.serviceType())
-                        && OffsetDateTime.parse("2026-07-23T10:00:00Z").equals(request.appointmentAt())
-        ), any());
+                .containsEntry("status", "booking_review_decision_required")
+                .containsEntry("bookingCreated", false)
+                .containsEntry("nextTool", ConversationStateTool.NAME)
+                .containsEntry("nextToolAuthorized", true);
+        verifyNoInteractions(fixture.bookingService);
     }
 
     @Test
@@ -814,6 +806,7 @@ class SautiCalendarFulfillmentTest {
         arguments.put("caller_email", "zachary.123@gmail.com");
         arguments.put("review_token", first.result().get("reviewToken"));
         arguments.put("review_action", "correct_review");
+        correctLatestReview(fixture);
         var corrected = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "review-after-correction", "book_slot", Map.copyOf(arguments)
         ));
@@ -866,6 +859,7 @@ class SautiCalendarFulfillmentTest {
         arguments.put("review_token", first.result().get("reviewToken"));
         arguments.put("caller_phone", "011157543441");
         arguments.put("review_action", "correct_review");
+        correctLatestReview(fixture);
         var correction = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "exact-phone-correction", "book_slot", Map.copyOf(arguments)
         ));
@@ -888,6 +882,7 @@ class SautiCalendarFulfillmentTest {
         arguments.put("review_token", correction.result().get("reviewToken"));
         arguments.put("caller_phone", "011157543441");
         arguments.put("review_action", "approve_review");
+        approveLatestReview(fixture);
         when(fixture.callSessionStore.pendingBooking("call-sid")).thenReturn(java.util.Optional.of(
                 new BookingDraft(
                         "Akari", "Men hairstyle", "", "2026-07-23T12:00:00Z",
@@ -1061,6 +1056,20 @@ class SautiCalendarFulfillmentTest {
                 callSessionStore,
                 intakeNotes
         );
+    }
+
+    private void approveLatestReview(Fixture fixture) {
+        when(fixture.intakeNotes.notes(eq(fixture.call), any())).thenReturn(Map.of(
+                "conversation_state_revision", "9",
+                "review_decision", "approved"
+        ));
+    }
+
+    private void correctLatestReview(Fixture fixture) {
+        when(fixture.intakeNotes.notes(eq(fixture.call), any())).thenReturn(Map.of(
+                "conversation_state_revision", "9",
+                "review_decision", "corrected"
+        ));
     }
 
     private record Fixture(

@@ -17,6 +17,8 @@ public interface TelephonyRealtimeConversationProvider {
     }
 
     interface Listener {
+        default void onCallerAudioStarted() { }
+
         void onCallerSpeechStarted();
 
         void onCallerTranscript(String transcript);
@@ -24,6 +26,8 @@ public interface TelephonyRealtimeConversationProvider {
         void onAgentTextDelta(String delta);
 
         void onAgentTextComplete(String text, boolean interrupted);
+
+        default void onCallEndAuthorized(String outcome) { }
 
         void onError(Throwable error);
 

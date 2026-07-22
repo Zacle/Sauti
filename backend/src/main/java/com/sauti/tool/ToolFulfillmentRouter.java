@@ -12,6 +12,7 @@ public class ToolFulfillmentRouter {
     private final AgentToolRepository agentToolRepository;
     private final Map<String, ToolFulfillment> fulfillments;
     private final ConversationStateTool conversationStateTool;
+    private final ToolActionPolicy actionPolicy;
 
     public ToolFulfillmentRouter(
             AgentToolRepository agentToolRepository,
@@ -21,10 +22,12 @@ public class ToolFulfillmentRouter {
             TwilioTransferFulfillment transferFulfillment,
             DuringCallIntegrationFulfillment integrationFulfillment,
             NoopFulfillment noopFulfillment,
-            ConversationStateTool conversationStateTool
+            ConversationStateTool conversationStateTool,
+            ToolActionPolicy actionPolicy
     ) {
         this.agentToolRepository = agentToolRepository;
         this.conversationStateTool = conversationStateTool;
+        this.actionPolicy = actionPolicy;
         this.fulfillments = Map.of(
                 "sauti_calendar", calendarFulfillment,
                 "webhook", webhookFulfillment,
@@ -49,6 +52,8 @@ public class ToolFulfillmentRouter {
         if (fulfillment == null) {
             return LlmToolResult.error(toolCall, "Unknown fulfillment type: " + toolConfig.getFulfillmentType());
         }
-        return fulfillment.execute(call, toolConfig, toolCall);
+        var deferred = actionPolicy.guard(toolConfig, toolCall);
+        if (deferred.isPresent()) return deferred.get();
+        return fulfillment.execute(call, toolConfig, actionPolicy.businessCall(toolCall));
     }
 }

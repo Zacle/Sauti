@@ -188,6 +188,43 @@ class HybridVoiceSessionServiceTest {
     }
 
     @Test
+    void vadStopsPlaybackImmediatelyWithoutAdvancingTheSemanticGeneration() {
+        var repository = mock(CallRepository.class);
+        var provider = mock(RealtimeTextToSpeechProvider.class);
+        var first = mock(RealtimeTtsSession.class);
+        var second = mock(RealtimeTtsSession.class);
+        var socket = mock(WebSocketSession.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.isActive()).thenReturn(true);
+        when(call.getDirection()).thenReturn("test");
+        when(call.getTwilioCallSid()).thenReturn("vad-stop-hybrid");
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getTtsVoiceId()).thenReturn("cartesia:english-voice");
+        when(repository.findByTwilioCallSid("vad-stop-hybrid")).thenReturn(Optional.of(call));
+        when(socket.isOpen()).thenReturn(true);
+        when(provider.open(eq("en"), eq("cartesia:english-voice"), any()))
+                .thenReturn(CompletableFuture.completedFuture(first), CompletableFuture.completedFuture(second));
+        var service = new HybridVoiceSessionService(
+                repository, provider, new ObjectMapper(),
+                new VoiceRuntimeMetrics(new SimpleMeterRegistry())
+        );
+
+        service.start("vad-stop-hybrid", agentId.toString(), socket);
+        service.accept("vad-stop-hybrid", "{\"type\":\"speak\",\"generation\":0,"
+                + "\"id\":\"old\",\"text\":\"Old response.\"}");
+        service.accept("vad-stop-hybrid", "{\"type\":\"stop_playback\"}");
+
+        verify(first).close();
+        service.accept("vad-stop-hybrid", "{\"type\":\"speak\",\"generation\":0,"
+                + "\"id\":\"same-generation-recovery\",\"text\":\"Recovered response.\"}");
+        verify(second).speak("Recovered response.", true);
+    }
+
+    @Test
     void speaksTheSameCompletedResponseOnlyOnceEvenWithDifferentMessageIds() {
         var repository = mock(CallRepository.class);
         var provider = mock(RealtimeTextToSpeechProvider.class);

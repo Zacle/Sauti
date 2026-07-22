@@ -3,16 +3,46 @@ package com.sauti.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
 
 import com.sauti.agent.Agent;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class DefaultToolSeederTest {
+    @Test
+    void seedsCrossDomainActionPoliciesAsToolMetadata() {
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getBookingRequiredFields()).thenReturn(List.of());
+        var repository = mock(AgentToolRepository.class);
+        when(repository.findByAgent_IdOrderByDisplayOrderAsc(agentId)).thenReturn(List.of());
+
+        new DefaultToolSeeder(repository).seedDefaults(agent);
+
+        var captor = ArgumentCaptor.forClass(AgentTool.class);
+        verify(repository, times(14)).save(captor.capture());
+        var tools = captor.getAllValues().stream().collect(java.util.stream.Collectors.toMap(
+                AgentTool::getToolName, tool -> tool
+        ));
+        assertThat(tools.get("lookup_google_sheet_row").actionEffect()).isEqualTo(ToolActionEffect.READ_ONLY);
+        assertThat(tools.get("update_google_sheet_row").actionEffect()).isEqualTo(ToolActionEffect.DATA_WRITE);
+        assertThat(tools.get("send_whatsapp_message").actionEffect()).isEqualTo(ToolActionEffect.EXTERNAL_COMMUNICATION);
+        assertThat(tools.get("request_mpesa_payment").actionEffect()).isEqualTo(ToolActionEffect.FINANCIAL);
+        assertThat(tools.get("transfer_to_human").actionEffect()).isEqualTo(ToolActionEffect.TRANSFER);
+        assertThat(tools.get("end_call").actionEffect()).isEqualTo(ToolActionEffect.TERMINAL);
+        assertThat(tools.get("request_mpesa_payment").confirmationPolicy()).isEqualTo(ToolConfirmationPolicy.EXPLICIT);
+        assertThat(tools.get("book_slot").confirmationPolicy()).isEqualTo(ToolConfirmationPolicy.VERIFIED_REVIEW);
+    }
+
     @Test
     void repairsEveryCalendarActionFromAnyConnectedGoogleTool() {
         var agent = mock(Agent.class);

@@ -20,6 +20,7 @@ import type { StartTestCallResponse } from "@/types/api";
 import { connectOpenAiRealtime, type OpenAiRealtimeConnection } from "@/features/voice-runtime/openaiRealtime";
 import { HybridPlaybackGate } from "@/features/voice-runtime/hybridPlaybackGate";
 import { PcmStreamPlayer } from "@/features/voice-runtime/pcmStreamPlayer";
+import { confirmedEndCallResult } from "@/features/voice-runtime/realtimeProtocol";
 
 type TestCallPanelProps = {
   agentId?: string;
@@ -115,6 +116,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const nativeRealtimeRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
   const nativeEndPendingRef = useRef(false);
+  const nativeEndAuthorizedRef = useRef(false);
   const transcriptWriteRef = useRef<Promise<void>>(Promise.resolve());
   const cleanupMediaRef = useRef<() => void>(() => undefined);
   cleanupMediaRef.current = cleanupMedia;
@@ -244,7 +246,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           rememberAgentPrompt(text);
           setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text }]);
           queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted));
-          if (isFarewell(text)) nativeEndPendingRef.current = true;
+          if (nativeEndAuthorizedRef.current) {
+            nativeEndAuthorizedRef.current = false;
+            nativeEndPendingRef.current = true;
+          }
         },
         onAgentSpeech: hybrid ? (speech) => {
           activeHybridSpeechRef.current = { id: speech.id, generation: speech.generation };
@@ -257,7 +262,16 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             window.setTimeout(() => void endCall("completed"), 220);
           }
         },
-        onCallerAudioStarted: () => updateStatus("capturing"),
+        onCallerAudioStarted: () => {
+          updateStatus("capturing");
+          if (hybrid) {
+            // Stop audible output on the first provider VAD event. Semantic
+            // cancellation still waits for recognized speech inside Realtime.
+            hybridPlaybackGateRef.current.clear();
+            clearRealtimePlayback();
+            sendHybridEvent({ type: "stop_playback" });
+          }
+        },
         onCallerAudioStopped: () => {
           if (statusRef.current === "capturing") updateStatus("thinking");
         },
@@ -277,9 +291,13 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           setError(message);
           if (!endingRef.current) updateStatus("listening");
         },
-        executeTool: (toolCallId, name, argumentsJson) => executeTestRealtimeTool(
-          started.call.id, toolCallId, name, argumentsJson,
-        ),
+        executeTool: async (toolCallId, name, argumentsJson) => {
+          const result = await executeTestRealtimeTool(
+            started.call.id, toolCallId, name, argumentsJson,
+          );
+          if (confirmedEndCallResult(name, result)) nativeEndAuthorizedRef.current = true;
+          return result;
+        },
       },
     });
   }
@@ -1019,6 +1037,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     hybridRealtimeRef.current = false;
     hybridPlaybackGateRef.current.clear();
     nativeEndPendingRef.current = false;
+    nativeEndAuthorizedRef.current = false;
     const socket = socketRef.current;
     socketRef.current = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "Test call ended");
@@ -1089,8 +1108,4 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       )}
     </aside>
   );
-}
-
-function isFarewell(text: string) {
-  return /(?:au revoir|bonne journ[ée]e|goodbye|bye[.! ]*$|مع السلامة|إلى اللقاء)/i.test(text.trim());
 }

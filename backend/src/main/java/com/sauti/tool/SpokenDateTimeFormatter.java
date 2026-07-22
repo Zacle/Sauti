@@ -3,6 +3,7 @@ package com.sauti.tool;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
@@ -13,6 +14,16 @@ final class SpokenDateTimeFormatter {
 
     static String appointment(OffsetDateTime value, String language) {
         return date(value.toLocalDate(), language) + " " + at(language) + " " + time(value.toLocalTime(), language);
+    }
+
+    static String appointment(OffsetDateTime value, String language, String businessTimezone) {
+        if (businessTimezone == null || businessTimezone.isBlank()) return appointment(value, language);
+        try {
+            var local = value.atZoneSameInstant(ZoneId.of(businessTimezone)).toOffsetDateTime();
+            return appointment(local, language);
+        } catch (RuntimeException ignored) {
+            return appointment(value, language);
+        }
     }
 
     static String slot(String isoValue, String fallback, String language) {

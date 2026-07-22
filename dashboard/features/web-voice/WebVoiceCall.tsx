@@ -15,6 +15,7 @@ import {
 import { connectOpenAiRealtime, type OpenAiRealtimeConnection } from "@/features/voice-runtime/openaiRealtime";
 import { HybridPlaybackGate } from "@/features/voice-runtime/hybridPlaybackGate";
 import { PcmStreamPlayer } from "@/features/voice-runtime/pcmStreamPlayer";
+import { confirmedEndCallResult } from "@/features/voice-runtime/realtimeProtocol";
 import styles from "./WebVoiceCall.module.css";
 
 type Message = { role: "visitor" | "agent"; text: string };
@@ -65,6 +66,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const speakingRef = useRef(false);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
   const nativeEndPendingRef = useRef(false);
+  const nativeEndAuthorizedRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
   const transcriptWriteRef = useRef<Promise<void>>(Promise.resolve());
   const cleanupRef = useRef<() => void>(() => undefined);
@@ -168,7 +170,10 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
             onAgentTranscript: (text, interrupted) => {
               setMessages((current) => [...current, { role: "agent", text }]);
               queueTranscriptWrite(() => recordPublicRealtimeTranscript(session.sessionId, session.token, "agent", text, interrupted));
-              if (isFarewell(text)) nativeEndPendingRef.current = true;
+              if (nativeEndAuthorizedRef.current) {
+                nativeEndAuthorizedRef.current = false;
+                nativeEndPendingRef.current = true;
+              }
             },
             onAgentSpeech: hybrid ? (speech) => {
               activeHybridSpeechRef.current = { id: speech.id, generation: speech.generation };
@@ -181,7 +186,17 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
                 window.setTimeout(end, 220);
               }
             },
-            onCallerAudioStarted: () => setPartial("Listening..."),
+            onCallerAudioStarted: () => {
+              setPartial("Listening...");
+              updateSpeaking(false);
+              if (hybrid) {
+                // Stop external TTS as soon as the caller starts speaking;
+                // recognized speech still owns model-turn cancellation.
+                hybridPlaybackGateRef.current.clear();
+                clearPlayback();
+                sendHybridEvent({ type: "stop_playback" });
+              }
+            },
             onCallerAudioStopped: () => {
               setPartial((current) => current === "Listening..." ? "Processing..." : current);
             },
@@ -200,9 +215,13 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
               setError(message);
               setPartial("");
             },
-            executeTool: (callId, name, argumentsJson) => executePublicRealtimeTool(
-              session.sessionId, session.token, callId, name, argumentsJson,
-            ),
+            executeTool: async (callId, name, argumentsJson) => {
+              const result = await executePublicRealtimeTool(
+                session.sessionId, session.token, callId, name, argumentsJson,
+              );
+              if (confirmedEndCallResult(name, result)) nativeEndAuthorizedRef.current = true;
+              return result;
+            },
           },
         });
         const [, connection, greetingPlayed] = await Promise.all([
@@ -561,6 +580,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     openAiConnectionRef.current?.close();
     openAiConnectionRef.current = null;
     nativeEndPendingRef.current = false;
+    nativeEndAuthorizedRef.current = false;
     hybridRealtimeRef.current = false;
     sessionIdRef.current = "";
     tokenRef.current = "";
@@ -628,8 +648,4 @@ function downsample(samples: Float32Array, sourceRate: number, targetRate: numbe
     result[index] = sum / Math.max(1, end - start);
   }
   return result;
-}
-
-function isFarewell(text: string) {
-  return /(?:au revoir|bonne journ[ée]e|goodbye|bye[.! ]*$|مع السلامة|إلى اللقاء)/i.test(text.trim());
 }

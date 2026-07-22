@@ -4197,3 +4197,58 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: the extra progress model response is created only for turns that exceed 2.5 seconds, so it adds provider usage only on slow turns. After CI/CD, repeat the screenshot’s complete review-approval path in Agent Studio and one carrier call, then intentionally delay a response. Confirm approval starts one `book_slot` save without another semantic response, one natural progress update is heard while a slow response continues, the actual result follows once, and interruption suppresses stale progress. Live provider concurrency, network latency, and external TTS timing still require this end-to-end validation.
+
+### 2026-07-22 - Answer compound customer turns before acting and make interruption/call closure authoritative
+
+- Fixed the reported final-review sequence where the caller said that the details were correct but also asked the price. Every caller turn is now classified semantically as having no separate question, an answer already supplied from authoritative business facts, or a question requiring a safe read-only tool. A question, condition, hesitation, correction, or information request blocks creation, rescheduling, and cancellation for that turn and clears any turn-scoped approval. The agent must answer first, stop, and obtain fresh unconditional confirmation later.
+- Applied the mutation boundary to all existing and future agents at runtime, not to one salon agent and not through hard-coded phrases. `book_slot`, `reschedule_booking`, and `cancel_booking` receive a required `question_handling` decision in their live tool schemas. Calendar fulfillment independently enforces `answer_before_action` and returns a factual no-change result, so a mistaken model tool call still cannot mutate data. For a reviewed booking, a model-selected `approve_review` or `correct_review` label also cannot override the latest server-recorded semantic review decision; a direct action that skipped that state check is routed back through semantic interpretation without saving or repeating the review.
+- Strengthened the global conversation policy: answer the actual customer request before advancing a workflow; use configured customer-facing facts such as prices instead of claiming they are unavailable; remain professionally warm; never say "oops" or narrate a forgotten step; and do not start a farewell merely because an answer or booking step is complete.
+- Corrected confirmed-time rendering across persistence boundaries. Booking and reschedule results now convert stored instants back to the agent's business timezone before speaking, and the review renderer does the same. A reviewed Thursday appointment at 10 a.m. in `Africa/Cairo` therefore remains 10 a.m. after UTC storage instead of being announced as 7 a.m.
+- Stopped audible output at the first provider voice-activity event. Hybrid Agent Studio/public-web playback clears local PCM and sends a dedicated `stop_playback` event that closes server-side external TTS without advancing the semantic generation. Phone Realtime immediately closes Cartesia/Telnyx playback on raw caller audio, while recognized speech remains responsible for the next semantic turn so a noise-only event cannot fabricate an instruction.
+- Replaced browser and phone farewell-text regular expressions with successful `end_call` authorization. The model decides semantically when a caller is clearly finished in their current language; the runtime closes only after the tool succeeds and the final respectful farewell is delivered. This removes the English/French/Swahili phrase dependency and prevents an incidental word such as "goodbye" from terminating a call without workflow authorization.
+- The interruption lifecycle follows OpenAI's documented WebSocket guidance to stop playback immediately and cancel/truncate unplayed assistant output: https://developers.openai.com/api/docs/guides/realtime-conversations#websockets
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{DefaultTwilioMediaStreamService,HybridVoiceSessionService,OpenAiTelephonyRealtimeConversationProvider,TelephonyRealtimeConversationProvider}.java`
+  - `backend/src/main/java/com/sauti/llm/{ConversationOrchestrator,LocalToolCallingLlmProvider}.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,BookingSpeechRenderer,BookingToolArgumentResolver,ConversationStateTool,DefaultToolSeeder,SautiCalendarFulfillment,SpokenDateTimeFormatter}.java`
+  - focused backend regressions for semantic state, CRUD fulfillment, runtime schemas, timezone speech, hybrid/phone interruption, call-end authorization, and orchestrator policy
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/{openaiRealtime.test,realtimeProtocol}.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused backend semantic-state, calendar CRUD, tool-schema, timezone, hybrid/phone Realtime, and orchestrator suites - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run test:voice` - passed; 19 regressions.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat the supplied Sandra nails call in hybrid Agent Studio and one carrier call. At the final review say, "Everything is right, but how much does it cost?" Confirm the agent answers the configured four-dollar price, does not save or say goodbye, waits for fresh confirmation, then saves exactly once at Thursday 10 a.m. and gives the real booking number. Interrupt the review and confirmation once each; old audio must stop immediately and never resume. Also run equivalent compound turns for reschedule and cancellation in a non-English language. Automated tests cover application ordering and guards, but provider VAD sensitivity, acoustic noise, live latency, and external calendar timing still require end-to-end observation.
+
+### 2026-07-22 - Replace booking-name safety checks with a platform action-policy control plane
+
+- Replaced the shared runtime's calendar mutation-name list with persisted tool capabilities. Every agent tool now declares an `actionEffect` (`read_only`, `data_write`, `external_communication`, `financial`, `transfer`, or `terminal`) and a `confirmationPolicy` (`none`, `explicit`, or `verified_review`). The policy is returned by the tool API and can be supplied when creating or updating custom tools.
+- Added migration `V35__agent_tool_action_policy.sql`. It assigns policies to every existing built-in tool, including calendar CRUD, SMS and WhatsApp, Google Sheets reads/writes, M-Pesa requests/status checks, transfers, terminal call ending, and custom webhooks. Existing GET webhooks migrate as read-only; other existing webhooks migrate conservatively as explicitly confirmed writes.
+- Added safe defaults for future custom tools. Unknown POST webhooks and during-call integrations default to explicitly confirmed writes; GET webhooks default to read-only; SMS and transfer fulfillments receive their corresponding effect classes. High-impact financial, transfer, and terminal tools cannot be configured with no confirmation.
+- Centralized schema decoration and execution enforcement in `ToolActionPolicy`. Every side-effecting tool receives the same language-independent unresolved-request decision. Explicit-confirmation tools also receive a structured confirmation decision. The central fulfillment router blocks unresolved, missing-context, and unconfirmed actions before any business fulfillment, regardless of tool name, industry, or provider.
+- Kept platform policy fields private to the control plane. `question_handling` and `confirmation_state` are removed before the sanitized call reaches a webhook, payment integration, messaging provider, transfer provider, calendar module, or other business fulfillment, preventing internal safety metadata from changing external payload contracts.
+- Generalized semantic-state handling and the global voice prompt from calendar mutations to all side effects. Read-only tools remain available to answer customer questions; writes, external messages, payments, transfers, and terminal actions must wait until the customer's complete latest request is resolved. When explicit confirmation is configured, general politeness or confirmation of another step is not authorization.
+- Booking-specific signed-review behavior remains inside the calendar module as a stricter domain policy layered on the generic control plane. The shared action-policy code has no booking, cancellation, CRM, payment, or salon tool-name list.
+- Added cross-domain regressions using arbitrary names such as `synchronize_enterprise_customer_profile`, `collect_deposit`, `search_policy_documents`, and `update_case_management_system`. Tests cover every effect class, explicit confirmation, read-only execution, sanitized fulfillment arguments, default custom-tool policies, policy validation, seeded policies, Flyway migration, and the existing end-to-end agent flow.
+- Files touched for this platform layer:
+  - `backend/src/main/java/com/sauti/tool/{AgentTool,AgentToolDtos,AgentToolLoader,AgentToolService,ConversationStateTool,DefaultToolSeeder,ToolActionEffect,ToolActionPolicy,ToolConfirmationPolicy,ToolFulfillmentRouter}.java`
+  - `backend/src/main/java/com/sauti/llm/{ConversationOrchestrator,LocalToolCallingLlmProvider}.java`
+  - `backend/src/main/resources/db/migration/V35__agent_tool_action_policy.sql`
+  - `backend/src/test/java/com/sauti/tool/{AgentToolLoaderTest,AgentToolServiceTest,ConversationStateToolTest,DefaultToolSeederTest,ToolFulfillmentRouterTest}.java`
+  - existing calendar and end-to-end tests updated to validate the centralized boundary
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused cross-domain policy, schema, service, router, semantic-state, calendar, migration, and end-to-end flow suites - passed.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed with all tasks re-executed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run test:voice` - passed; 19 regressions.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: this establishes generic effect and confirmation enforcement, but verified domain reviews remain the responsibility of each domain module; future payment, healthcare-consent, or regulated workflows should implement a signed review/authorization artifact comparable to booking's signed review token when parameter-level proof is required. After deployment, smoke-test one read, write, external-message, financial, transfer, and terminal tool through Realtime. Confirm unresolved compound turns are deferred, internal policy fields never reach external webhook payloads, and only the read executes without action context.

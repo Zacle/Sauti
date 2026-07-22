@@ -36,6 +36,12 @@ public class AgentTool extends Auditable {
     @Column(nullable = false, length = 32)
     private String fulfillmentType;
 
+    @Column(nullable = false, length = 32)
+    private String actionEffect = ToolActionEffect.READ_ONLY.value();
+
+    @Column(nullable = false, length = 32)
+    private String confirmationPolicy = ToolConfirmationPolicy.NONE.value();
+
     private String webhookUrl;
     private String webhookMethod = "POST";
     private String authType = "none";
@@ -108,6 +114,11 @@ public class AgentTool extends Auditable {
         this.isActive = false;
     }
 
+    public void configureActionPolicy(ToolActionEffect effect, ToolConfirmationPolicy confirmation) {
+        this.actionEffect = (effect == null ? ToolActionEffect.READ_ONLY : effect).value();
+        this.confirmationPolicy = (confirmation == null ? ToolConfirmationPolicy.NONE : confirmation).value();
+    }
+
     public void configureForDraft(boolean active, String calendarType) {
         this.isActive = active;
         if (calendarType != null) {
@@ -149,6 +160,22 @@ public class AgentTool extends Auditable {
 
     public String getFulfillmentType() {
         return fulfillmentType;
+    }
+
+    public String getActionEffect() {
+        return actionEffect;
+    }
+
+    public ToolActionEffect actionEffect() {
+        return ToolActionEffect.from(actionEffect);
+    }
+
+    public String getConfirmationPolicy() {
+        return confirmationPolicy;
+    }
+
+    public ToolConfirmationPolicy confirmationPolicy() {
+        return ToolConfirmationPolicy.from(confirmationPolicy);
     }
 
     public String getWebhookUrl() {

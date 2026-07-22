@@ -388,6 +388,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             callerSpeechNotified = false;
                             callerTurnAgentWasResponding = responseActive;
                             armCallerTranscriptionWatchdog(pendingTurnKey, 15);
+                            listener.onCallerAudioStarted();
                         }
                     }
                     case "input_audio_buffer.speech_stopped" -> {
@@ -996,6 +997,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             safeText, false, generation, "tool-failure:" + callId
                     ));
                     return;
+                }
+                if ("end_call".equals(name)
+                        && Boolean.TRUE.equals(result.result().get("ended"))) {
+                    listener.onCallEndAuthorized(
+                            result.result().getOrDefault("outcome", "completed").toString()
+                    );
                 }
                 var nextTool = toolNextTool(result);
                 if (!nextTool.isBlank()) {

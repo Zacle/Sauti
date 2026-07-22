@@ -208,6 +208,11 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         if (call != null && realtimeConversationProvider.supports(call)) {
             return realtimeConversationProvider.open(call, new TelephonyRealtimeConversationProvider.Listener() {
                 @Override
+                public void onCallerAudioStarted() {
+                    handleRealtimeCallerAudioStarted(callSid);
+                }
+
+                @Override
                 public void onCallerSpeechStarted() {
                     handleRealtimeCallerSpeechStarted(callSid);
                 }
@@ -225,6 +230,12 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                 @Override
                 public void onAgentTextComplete(String text, boolean interrupted) {
                     handleRealtimeAgentComplete(callSid, text, interrupted);
+                }
+
+                @Override
+                public void onCallEndAuthorized(String outcome) {
+                    var session = sessions.get(callSid);
+                    if (session != null) session.authorizeRealtimeEnd();
                 }
 
                 @Override
@@ -492,12 +503,27 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         }
     }
 
+    private void handleRealtimeCallerAudioStarted(String callSid) {
+        var session = sessions.get(callSid);
+        if (session == null) return;
+        // Stop Cartesia/Telnyx playback immediately on provider VAD. Keep the
+        // model response alive until meaningful transcript evidence arrives so
+        // an empty noise event cannot authorize or create another turn.
+        if (session.interruptCurrentTurn()) {
+            callSessionStore.markInterrupted(callSid);
+            callSessionStore.setSpeaking(callSid, false, "");
+            callRepository.findByTwilioCallSid(callSid)
+                    .ifPresent(call -> dashboardEventPublisher.agentSpeaking(call, false));
+            LOGGER.info("Realtime caller audio stopped agent playback for callSid={}", callSid);
+            metrics.interruption("telephony", metricChannel(session));
+        }
+    }
+
     private void handleRealtimeCallerTranscript(String callSid, String transcript) {
         if (!CallerTranscriptGuard.accepts(transcript)) return;
         var session = sessions.get(callSid);
         if (session == null) return;
         session.markCallerResponse();
-        session.rememberRealtimeCallerEnding(transcript);
         callRepository.findByTwilioCallSid(callSid)
                 .filter(Call::isActive)
                 .ifPresent(call -> {
@@ -527,8 +553,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
                         );
                         return;
                     }
-                    var terminal = session.realtimeCallerWasEnding()
-                            && callPipelineService.looksLikeConversationEnding(text);
+                    var terminal = session.consumeRealtimeEndAuthorization();
                     streamTtsResponse(session, text, terminal);
                     callPipelineService.recordRealtimeTranscript(
                             call.getTenant().getId(), call.getId(), "agent", text, false
@@ -699,7 +724,7 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         private long dtmfVersion;
         private boolean ttsResponseActive;
         private int speechQueueGeneration;
-        private boolean realtimeCallerEnding;
+        private boolean realtimeEndAuthorized;
         private boolean cascadeFallbackActive;
 
         private TwilioMediaSession(
@@ -912,25 +937,14 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             }
         }
 
-        private synchronized void rememberRealtimeCallerEnding(String transcript) {
-            realtimeCallerEnding = transcript != null && !transcript.isBlank()
-                    && looksLikeEndingText(transcript);
+        private synchronized void authorizeRealtimeEnd() {
+            realtimeEndAuthorized = true;
         }
 
-        private synchronized boolean realtimeCallerWasEnding() {
-            return realtimeCallerEnding;
-        }
-
-        private boolean looksLikeEndingText(String transcript) {
-            var normalized = java.text.Normalizer.normalize(transcript, java.text.Normalizer.Form.NFD)
-                    .replaceAll("\\p{M}+", "")
-                    .toLowerCase(java.util.Locale.ROOT);
-            return normalized.matches(".*\\b(goodbye|bye|no thanks|no thank you|nothing else|that is all|all good)\\b.*")
-                    || normalized.contains("au revoir")
-                    || normalized.contains("bonne journee")
-                    || normalized.contains("non merci")
-                    || normalized.contains("kwaheri")
-                    || normalized.contains("orevoir");
+        private synchronized boolean consumeRealtimeEndAuthorization() {
+            var authorized = realtimeEndAuthorized;
+            realtimeEndAuthorized = false;
+            return authorized;
         }
 
         private synchronized boolean acceptsTtsGeneration(int generation) {

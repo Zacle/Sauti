@@ -63,7 +63,7 @@ public class AgentToolService {
                 request.active(),
                 request.displayOrder()
         );
-        apply(tool, request);
+        apply(tool, request, true);
         return agentToolRepository.save(tool);
     }
 
@@ -71,7 +71,7 @@ public class AgentToolService {
     public AgentTool update(UUID tenantId, UUID toolId, AgentToolRequest request) {
         validate(request);
         var tool = get(tenantId, toolId);
-        apply(tool, request);
+        apply(tool, request, false);
         return tool;
     }
 
@@ -82,7 +82,7 @@ public class AgentToolService {
         return tool;
     }
 
-    private void apply(AgentTool tool, AgentToolRequest request) {
+    private void apply(AgentTool tool, AgentToolRequest request, boolean creating) {
         tool.update(
                 request.toolName(),
                 request.toolDescription(),
@@ -98,6 +98,14 @@ public class AgentToolService {
                 request.active(),
                 request.displayOrder()
         );
+        var effect = request.actionEffect() == null || request.actionEffect().isBlank()
+                ? (creating ? defaultEffect(request) : tool.actionEffect())
+                : ToolActionEffect.from(request.actionEffect());
+        var confirmation = request.confirmationPolicy() == null || request.confirmationPolicy().isBlank()
+                ? (creating ? defaultConfirmation(effect) : tool.confirmationPolicy())
+                : ToolConfirmationPolicy.from(request.confirmationPolicy());
+        validatePolicy(effect, confirmation);
+        tool.configureActionPolicy(effect, confirmation);
     }
 
     private com.sauti.agent.Agent ensureAgent(UUID tenantId, UUID agentId) {
@@ -119,11 +127,43 @@ public class AgentToolService {
             throw new IllegalArgumentException("Unsupported webhook method: " + request.webhookMethod());
         }
         validateJsonSchema(request.parametersSchema());
+        if (request.actionEffect() != null && !request.actionEffect().isBlank()) {
+            ToolActionEffect.from(request.actionEffect());
+        }
+        if (request.confirmationPolicy() != null && !request.confirmationPolicy().isBlank()) {
+            ToolConfirmationPolicy.from(request.confirmationPolicy());
+        }
         if ("webhook".equals(request.fulfillmentType())) {
             webhookDestinationValidator.validateHttpsPublicUrl(request.webhookUrl());
             if ("api_key".equals(authType(request.authType())) && (request.authHeaderName() == null || request.authHeaderName().isBlank())) {
                 throw new IllegalArgumentException("authHeaderName is required for api_key auth");
             }
+        }
+    }
+
+    private ToolActionEffect defaultEffect(AgentToolRequest request) {
+        return switch (request.fulfillmentType()) {
+            case "sauti_sms" -> ToolActionEffect.EXTERNAL_COMMUNICATION;
+            case "twilio_transfer" -> ToolActionEffect.TRANSFER;
+            case "sauti_integration" -> ToolActionEffect.DATA_WRITE;
+            case "webhook" -> "GET".equals(method(request.webhookMethod()))
+                    ? ToolActionEffect.READ_ONLY : ToolActionEffect.DATA_WRITE;
+            default -> ToolActionEffect.READ_ONLY;
+        };
+    }
+
+    private ToolConfirmationPolicy defaultConfirmation(ToolActionEffect effect) {
+        return effect.isSideEffecting() ? ToolConfirmationPolicy.EXPLICIT : ToolConfirmationPolicy.NONE;
+    }
+
+    private void validatePolicy(ToolActionEffect effect, ToolConfirmationPolicy confirmation) {
+        if (effect == ToolActionEffect.READ_ONLY && confirmation != ToolConfirmationPolicy.NONE) {
+            throw new IllegalArgumentException("Read-only tools cannot require action confirmation");
+        }
+        if ((effect == ToolActionEffect.FINANCIAL || effect == ToolActionEffect.TRANSFER
+                || effect == ToolActionEffect.TERMINAL)
+                && confirmation == ToolConfirmationPolicy.NONE) {
+            throw new IllegalArgumentException(effect.value() + " tools require confirmation");
         }
     }
 

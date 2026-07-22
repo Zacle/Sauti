@@ -2,6 +2,7 @@ package com.sauti.llm;
 
 import com.sauti.session.BookingDraft;
 import com.sauti.session.CallSessionStore;
+import com.sauti.session.ConversationState;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
@@ -99,12 +100,16 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                         "Nitathibitisha miadi hiyo sasa.",
                         "سأؤكد هذا الموعد الآن."
                 ), List.of(
-                        tool("book_slot", bookingArguments(pendingBooking))
+                        tool("book_slot", approvedBookingArguments(context.callSid(), pendingBooking))
                 ));
             }
         }
         if (isEscalationRequest(context, transcript)) {
-            return new LlmToolTurnResponse("", List.of(tool("transfer_to_human", Map.of("reason", "caller requested human"))));
+            return new LlmToolTurnResponse("", List.of(tool("transfer_to_human", Map.of(
+                    "reason", "caller requested human",
+                    "question_handling", "ready_for_action",
+                    "confirmation_state", "confirmed"
+            ))));
         }
         if (transcript.contains("voicemail") || transcript.contains("leave a message")) {
             return new LlmToolTurnResponse(
@@ -115,7 +120,12 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                             "Ninaweza kuchukua ujumbe. Tafadhali niambie ungependa kusema nini.",
                             "يمكنني تدوين رسالة. أخبرني بما تود مشاركته."
                     ),
-                    List.of(tool("end_call", Map.of("outcome", "voicemail", "summary", "Caller requested voicemail")))
+                    List.of(tool("end_call", Map.of(
+                            "outcome", "voicemail",
+                            "summary", "Caller requested voicemail",
+                            "question_handling", "ready_for_action",
+                            "confirmation_state", "confirmed"
+                    )))
             );
         }
         if (context.agent().bookingEnabled() && isBookingRequest(transcript)) {
@@ -208,6 +218,7 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
         arguments.put("caller_phone", booking.callerPhone());
         arguments.put("service_type", booking.serviceType());
         arguments.put("duration_minutes", booking.durationMinutes() > 0 ? booking.durationMinutes() : 60);
+        arguments.put("question_handling", "ready_for_action");
         if (booking.reviewToken() != null && !booking.reviewToken().isBlank()) {
             arguments.put("review_token", booking.reviewToken());
             arguments.put("review_action", "approve_review");
@@ -215,6 +226,23 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
             arguments.put("review_action", "prepare_review");
         }
         return Map.copyOf(arguments);
+    }
+
+    private Map<String, Object> approvedBookingArguments(String callSid, BookingDraft booking) {
+        // The deterministic local provider does not support the semantic state
+        // tool. Record its own recognized approval through the same server state
+        // boundary before asking fulfillment to save. Production model providers
+        // must call ConversationStateTool and cannot bypass this path.
+        var current = callSessionStore.conversationState(callSid).orElse(ConversationState.empty());
+        var values = new java.util.LinkedHashMap<>(current.values());
+        values.put("review_decision", "approved");
+        callSessionStore.updateConversationState(callSid, new ConversationState(
+                values,
+                current.bookingSubject(),
+                current.bookingIntent(),
+                current.revision() + 1
+        ));
+        return bookingArguments(booking);
     }
 
     private String field(Map<?, ?> fields, String key, String fallback) {

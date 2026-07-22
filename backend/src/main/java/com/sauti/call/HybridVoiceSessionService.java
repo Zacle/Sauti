@@ -90,6 +90,7 @@ public class HybridVoiceSessionService {
                                     ? message.path("generation").asLong(state.clientGeneration + 1L)
                                     : state.clientGeneration + 1L
                     );
+                    case "stop_playback" -> stopPlayback(state);
                     case "playback_stalled" -> recoverPlaybackStall(state);
                     case "playback_underrun" -> metrics.playbackUnderrun("hybrid", state.call.getDirection());
                     case "turn_started" -> rememberTurnStart(state, message.path("generation").asLong(-1L));
@@ -193,6 +194,14 @@ public class HybridVoiceSessionService {
             metrics.interruption("hybrid", state.call.getDirection());
             resetTts(state, true);
         }
+    }
+
+    private void stopPlayback(HybridSession state) {
+        var hadOldOutput = state.currentSpeech != null || !state.pendingSpeech.isEmpty() || state.speaking;
+        state.pendingSpeech.clear();
+        state.currentSpeech = null;
+        state.rawResponseText.setLength(0);
+        if (hadOldOutput) resetTts(state, true);
     }
 
     private void recoverPlaybackStall(HybridSession state) {

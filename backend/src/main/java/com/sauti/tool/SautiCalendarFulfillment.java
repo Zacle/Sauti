@@ -315,10 +315,22 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         var explicitReviewAction = java.util.Set.of(
                 "prepare_review", "correct_review", "approve_review"
         ).contains(reviewAction);
-        var callerApprovedReview = (!storedReviewToken.isBlank() && "approve_review".equals(reviewAction))
-                || (semanticState && "approved".equals(reviewDecision));
-        if (!suppliedReviewToken.isBlank() && !explicitReviewAction
-                && (!semanticState || reviewDecision.isBlank())) {
+        // A model-selected review_action is conversational intent, not server
+        // authorization. Once a review exists, the latest caller turn must have
+        // passed through ConversationStateTool so compound turns (for example
+        // approval plus a price question) cannot save by choosing approve_review
+        // directly. The state tool still chains a clean approval straight back
+        // here with server-owned arguments, so the normal path adds no model turn.
+        var callerApprovedReview = semanticState && "approved".equals(reviewDecision);
+        var explicitActionMatchesState = switch (reviewAction) {
+            case "approve_review" -> callerApprovedReview;
+            case "correct_review" -> semanticState && "corrected".equals(reviewDecision);
+            case "prepare_review" -> false;
+            default -> semanticState && !reviewDecision.isBlank();
+        };
+        if (!suppliedReviewToken.isBlank()
+                && (!semanticState || reviewDecision.isBlank()
+                    || (explicitReviewAction && !explicitActionMatchesState))) {
             return Map.of(
                     "status", "booking_review_decision_required",
                     "bookingCreated", false,
@@ -419,7 +431,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("bookingCreated", true);
         result.put("bookingId", booking.getId().toString());
         result.put("bookingNumber", booking.getBookingReference());
-        result.put("appointmentAt", booking.getAppointmentAt().toString());
+        result.put("appointmentAt", inBusinessTimezone(call, booking.getAppointmentAt()).toString());
         result.put("externalEventId", externalEventId);
         result.put("calendarSynced", calendarSynced);
         result.put("externalCalendarConfigured", !localOnly);
@@ -474,6 +486,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         // This describes workflow intent and must never become part of the
         // signed booking-data snapshot.
         normalized.remove("review_action");
+        normalized.remove("question_handling");
+        normalized.remove("confirmation_state");
         var suppliedAppointmentName = normalized.remove("appointment_name");
         if (suppliedAppointmentName != null && !suppliedAppointmentName.toString().isBlank()) {
             normalized.put("caller_name", suppliedAppointmentName.toString());
@@ -601,7 +615,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 "bookingId", booking.getId(),
                 "bookingNumber", booking.getBookingReference() == null
                         ? bookingNumber : booking.getBookingReference(),
-                "appointmentAt", booking.getAppointmentAt().toString(),
+                "appointmentAt", inBusinessTimezone(call, booking.getAppointmentAt()).toString(),
                 "updated", true,
                 "instruction", "Tell the caller in their current language that the booking was rescheduled, "
                         + "using only bookingNumber and appointmentAt from this result. Do not invent another reference or time."
@@ -626,6 +640,15 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     private String stringArg(Map<String, Object> arguments, String name, String defaultValue) {
         var value = arguments.get(name);
         return value == null || value.toString().isBlank() ? defaultValue : value.toString();
+    }
+
+    private OffsetDateTime inBusinessTimezone(Call call, OffsetDateTime value) {
+        if (value == null || call == null || call.getAgent() == null) return value;
+        try {
+            return value.atZoneSameInstant(ZoneId.of(call.getAgent().getTimezone())).toOffsetDateTime();
+        } catch (RuntimeException ignored) {
+            return value;
+        }
     }
 
     private String requiredStringArg(Map<String, Object> arguments, String name) {

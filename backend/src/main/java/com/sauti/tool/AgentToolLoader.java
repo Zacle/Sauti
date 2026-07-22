@@ -11,9 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AgentToolLoader {
     private final AgentToolRepository agentToolRepository;
+    private final ToolActionPolicy actionPolicy;
 
-    public AgentToolLoader(AgentToolRepository agentToolRepository) {
+    public AgentToolLoader(AgentToolRepository agentToolRepository, ToolActionPolicy actionPolicy) {
         this.agentToolRepository = agentToolRepository;
+        this.actionPolicy = actionPolicy;
     }
 
     @Transactional(readOnly = true)
@@ -33,7 +35,14 @@ public class AgentToolLoader {
     @SuppressWarnings("unchecked")
     private LlmToolDefinition definition(AgentTool tool) {
         var definition = LlmToolDefinition.from(tool);
-        if (!"book_slot".equals(tool.getToolName())) return definition;
+        if (tool.actionEffect() == ToolActionEffect.TERMINAL) {
+            return actionPolicy.decorate(tool, new LlmToolDefinition(
+                    definition.name(),
+                    "Authorize a respectful call ending only after the caller clearly indicates they are finished, or after a configured terminal transfer, voicemail, or silence workflow. Never use this merely because one answer or booking step is complete. Thank the caller and give one brief farewell in their current language; do not ask another question afterward.",
+                    definition.inputSchema()
+            ));
+        }
+        if (!"book_slot".equals(tool.getToolName())) return actionPolicy.decorate(tool, definition);
 
         var schema = new LinkedHashMap<String, Object>(definition.inputSchema());
         var properties = new LinkedHashMap<String, Object>(
@@ -57,7 +66,7 @@ public class AgentToolLoader {
         properties.put("review_action", Map.of(
                 "type", "string",
                 "enum", List.of("prepare_review", "correct_review", "approve_review"),
-                "description", "Semantic purpose of this call. Use prepare_review when producing the first final review, correct_review when the caller changed a reviewed value, and approve_review only when the caller clearly approved the latest review in their own words or language."
+                "description", "Semantic purpose of this call. Use prepare_review when producing the first final review, correct_review when the caller changed a reviewed value, and approve_review only for an unconditional approval of the latest review. Approval combined with a question, condition, hesitation, correction, or new request is not approve_review and must use question_handling answer_before_action."
         ));
         if (!required.contains("review_action")) required.add("review_action");
         properties.remove("caller_name");
@@ -93,11 +102,11 @@ public class AgentToolLoader {
         if (!detailFields.isEmpty() && !required.contains("customer_details")) required.add("customer_details");
         schema.put("properties", Map.copyOf(properties));
         schema.put("required", List.copyOf(required));
-        return new LlmToolDefinition(
+        return actionPolicy.decorate(tool, new LlmToolDefinition(
                 definition.name(),
-                "Two-step booking. appointment_name is the person receiving the service, not necessarily the person speaking. Set review_action from the caller's meaning in their language: prepare_review for the first review, correct_review for a correction, and approve_review only for clear approval of the latest review. The server retains the private review token. The caller states details naturally and is never required to spell anything. Never expose the token.",
+                "Two-step booking. appointment_name is the person receiving the service, not necessarily the person speaking. Set review_action from the caller's meaning in their language: prepare_review for the first review, correct_review for a correction, and approve_review only for unconditional approval of the latest review. The server retains the private review token. The caller states details naturally and is never required to spell anything. Never expose the token.",
                 Map.copyOf(schema)
-        );
+        ));
     }
 
     private String humanize(String field) {

@@ -4,6 +4,7 @@ import {
   authorizedNextToolRequest,
   businessActionProgressInstruction,
   callerGuidanceInstruction,
+  confirmedEndCallResult,
   completedResponseText,
   completedRealtimeToolCalls,
   realtimeCancellationDecision,
@@ -49,6 +50,21 @@ test("retries one delayed main response without surfacing a false repeat request
   assert.equal(shouldRetrySlowResponse(true, false), true);
   assert.equal(shouldRetrySlowResponse(true, true), false);
   assert.equal(shouldRetrySlowResponse(false, false), false);
+});
+
+test("authorizes browser call closure only from a successful end-call tool result", () => {
+  assert.equal(confirmedEndCallResult("end_call", {
+    success: true,
+    result: { ended: true, outcome: "completed" },
+  }), true);
+  assert.equal(confirmedEndCallResult("book_slot", {
+    success: true,
+    result: { ended: true },
+  }), false);
+  assert.equal(confirmedEndCallResult("end_call", {
+    success: false,
+    result: { ended: true },
+  }), false);
 });
 
 test("executes a server-authorized booking approval without another model response", () => {

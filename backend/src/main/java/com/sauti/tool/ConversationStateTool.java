@@ -40,6 +40,9 @@ public class ConversationStateTool {
     );
     private static final Set<String> NEXT_ACTIONS = Set.of("reply", "use_business_tool");
     private static final Set<String> TURN_UNDERSTANDING = Set.of("clear", "unclear");
+    private static final Set<String> CALLER_QUESTION = Set.of(
+            "none", "answered_in_spoken_response", "requires_business_tool"
+    );
 
     private final CallSessionStore sessions;
     private final AgentToolRepository agentTools;
@@ -110,6 +113,11 @@ public class ConversationStateTool {
                 "type", "string",
                 "description", "A concise, polite, natural reply in the caller's current language. Answer direct questions first. Leave empty only when a separate business tool must run before any reply. Never include tool syntax, JSON, headings, or private reasoning."
         ));
+        properties.put("caller_question", Map.of(
+                "type", "string",
+                "enum", List.of("none", "answered_in_spoken_response", "requires_business_tool"),
+                "description", "Turn-scoped status of an explicit customer question, condition, hesitation, or request for information that must be resolved before any side effect. Use answered_in_spoken_response only when spoken_response directly answers it from authoritative configured facts. Use requires_business_tool when a read-only lookup must run first. Use none for a clean answer, correction, or unconditional action confirmation with no separate unresolved request. An action request itself is not a customer question."
+        ));
         properties.put("next_action", Map.of(
                 "type", "string",
                 "enum", List.of("reply", "use_business_tool"),
@@ -128,7 +136,7 @@ public class ConversationStateTool {
                         "required", List.of(
                                 "updates", "additional_details", "clear_fields",
                                 "booking_subject", "booking_intent", "turn_understanding",
-                                "spoken_response", "next_action", "business_tool"
+                                "spoken_response", "caller_question", "next_action", "business_tool"
                         ),
                         "additionalProperties", false
                 )
@@ -165,7 +173,21 @@ public class ConversationStateTool {
                 return LlmToolResult.success(toolCall, Map.copyOf(result));
             }
             var previousBookingArguments = verifiedBookingArguments(call, existing);
+            var callerQuestion = choice(
+                    toolCall.arguments().get("caller_question"), CALLER_QUESTION, "none"
+            );
+            var questionBlocksMutation = !"none".equals(callerQuestion);
             var next = reduce(call, existing, toolCall.arguments());
+            if (questionBlocksMutation && next.values().containsKey("review_decision")) {
+                var valuesWithoutApproval = new LinkedHashMap<>(next.values());
+                valuesWithoutApproval.remove("review_decision");
+                next = new ConversationState(
+                        valuesWithoutApproval,
+                        next.bookingSubject(),
+                        next.bookingIntent(),
+                        next.revision()
+                );
+            }
             sessions.updateConversationState(call.getTwilioCallSid(), next);
 
             var result = new LinkedHashMap<String, Object>();
@@ -191,13 +213,16 @@ public class ConversationStateTool {
                     ? Optional.<Map<String, Object>>empty()
                     : verifiedBookingArguments(call, next);
             var reviewDecision = next.values().getOrDefault("review_decision", "");
-            var reviewMustContinue = !ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
+            var reviewMustContinue = !questionBlocksMutation
+                    && !ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
                     && ("approved".equals(reviewDecision) || "corrected".equals(reviewDecision))
                     && configuredFor(call, "book_slot");
-            var bookingBecameReady = previousBookingArguments.isEmpty()
+            var bookingBecameReady = !questionBlocksMutation
+                    && previousBookingArguments.isEmpty()
                     && directBookingArguments.isPresent()
                     && configuredFor(call, "book_slot");
-            var availabilityMustContinue = ConversationState.INTENT_ACTIVE.equals(next.bookingIntent())
+            var availabilityMustContinue = !questionBlocksMutation
+                    && ConversationState.INTENT_ACTIVE.equals(next.bookingIntent())
                     && (turnUpdates.containsKey("preferred_day") || turnUpdates.containsKey("preferred_time"))
                     && configuredFor(call, "check_availability");
             // Approval and correction of a server-generated booking review are
@@ -207,14 +232,24 @@ public class ConversationStateTool {
             // A newly supplied or corrected booking date/time is likewise a
             // workflow transition: live availability must be checked before any
             // caller-facing claim, regardless of the caller's wording.
-            var nextAction = reviewMustContinue || availabilityMustContinue || bookingBecameReady
-                    ? "use_business_tool"
-                    : choice(toolCall.arguments().get("next_action"), NEXT_ACTIONS, "reply");
-            var businessTool = availabilityMustContinue
-                    ? "check_availability"
-                    : reviewMustContinue || bookingBecameReady
-                        ? "book_slot"
-                        : stringArgument(toolCall.arguments(), "business_tool");
+            var requestedBusinessTool = stringArgument(toolCall.arguments(), "business_tool");
+            var questionTool = "requires_business_tool".equals(callerQuestion)
+                    && !sideEffecting(call, requestedBusinessTool)
+                    ? requestedBusinessTool : "";
+            var nextAction = "answered_in_spoken_response".equals(callerQuestion)
+                    ? "reply"
+                    : "requires_business_tool".equals(callerQuestion)
+                        ? (questionTool.isBlank() ? "reply" : "use_business_tool")
+                        : reviewMustContinue || availabilityMustContinue || bookingBecameReady
+                            ? "use_business_tool"
+                            : choice(toolCall.arguments().get("next_action"), NEXT_ACTIONS, "reply");
+            var businessTool = !questionTool.isBlank()
+                    ? questionTool
+                    : availabilityMustContinue
+                        ? "check_availability"
+                        : reviewMustContinue || bookingBecameReady
+                            ? "book_slot"
+                            : requestedBusinessTool;
             var spoken = "reply".equals(nextAction)
                     ? VoiceOutputGuard.speechText(stringArgument(toolCall.arguments(), "spoken_response"))
                     : "";
@@ -244,12 +279,18 @@ public class ConversationStateTool {
                 } else if ("cancel_booking".equals(businessTool)) {
                     var bookingNumber = next.values().getOrDefault("booking_number", "").trim();
                     if (!bookingNumber.isBlank()) {
-                        result.put("nextToolArguments", Map.of("booking_number", bookingNumber));
+                        result.put("nextToolArguments", Map.of(
+                                "booking_number", bookingNumber,
+                                "question_handling", "ready_for_action",
+                                "confirmation_state", "confirmed"
+                        ));
                     }
                 }
             }
             result.put("instruction", spoken.isBlank()
-                    ? "State is updated. Continue with the appropriate configured business tool before speaking, or answer naturally if no business tool is needed."
+                    ? questionBlocksMutation
+                        ? "No side effect is authorized on this turn. Answer the caller's explicit question or condition first, using a read-only business tool when authorized, then stop and wait for a fresh action decision."
+                        : "State is updated. Continue with the appropriate configured business tool before speaking, or answer naturally if no business tool is needed."
                     : "The caller-facing reply has already been supplied exactly once. Do not generate another reply for this turn.");
             return LlmToolResult.success(toolCall, Map.copyOf(result));
         } catch (RuntimeException exception) {
@@ -377,5 +418,14 @@ public class ConversationStateTool {
         return agentTools == null || agentTools
                 .findByAgent_IdAndToolNameAndIsActiveTrue(call.getAgent().getId(), toolName)
                 .isPresent();
+    }
+
+    private boolean sideEffecting(Call call, String toolName) {
+        if (toolName == null || toolName.isBlank()) return false;
+        if (agentTools == null) return true;
+        return agentTools.findByAgent_IdAndToolNameAndIsActiveTrue(call.getAgent().getId(), toolName)
+                .map(AgentTool::actionEffect)
+                .map(ToolActionEffect::isSideEffecting)
+                .orElse(true);
     }
 }

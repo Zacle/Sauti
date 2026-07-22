@@ -202,6 +202,27 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void notifiesPlaybackToStopImmediatelyOnCallerVadBeforeTranscriptRecognition() {
+        var listener = mock(TelephonyRealtimeConversationProvider.Listener.class);
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class), listener, Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(
+                mock(WebSocket.class),
+                "{\"type\":\"input_audio_buffer.speech_started\",\"item_id\":\"caller-vad\"}",
+                true
+        );
+
+        verify(listener).onCallerAudioStarted();
+        verify(listener, never()).onCallerSpeechStarted();
+        verify(session, never()).cancelResponse();
+        verify(session, never()).requestResponse();
+    }
+
+    @Test
     void stripsAssistantRoleLabelOnlyAfterTheCompleteMessageIsValidated() {
         var events = new ArrayList<String>();
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
@@ -477,6 +498,31 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         verify(session, timeout(1_000)).seedAssistantText(spoken);
         verify(session, never()).requestExactResponse(anyString(), anyLong());
         assertThat(events).containsExactly("agent:" + spoken + ":false");
+    }
+
+    @Test
+    void authorizesPhoneClosureOnlyFromTheSuccessfulEndCallToolResult() {
+        var realtimeService = mock(OpenAiRealtimeService.class);
+        var call = mock(Call.class);
+        when(realtimeService.executeTool(eq(call), eq("end-1"), eq("end_call"), anyString()))
+                .thenReturn(new com.sauti.llm.LlmToolResult(
+                        "end-1", "end_call", true,
+                        Map.of("ended", true, "outcome", "completed"), ""
+                ));
+        var listener = mock(TelephonyRealtimeConversationProvider.Listener.class);
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), realtimeService, call, listener, Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.function_call_arguments.done\","
+                        + "\"call_id\":\"end-1\",\"name\":\"end_call\","
+                        + "\"arguments\":\"{\\\"outcome\\\":\\\"completed\\\"}\"}", true);
+
+        verify(listener, timeout(1_000)).onCallEndAuthorized("completed");
+        verify(session, timeout(1_000)).requestToolResultResponse(0L);
     }
 
     @Test

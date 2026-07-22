@@ -46,6 +46,16 @@ export function shouldRetrySlowResponse(progressOnDelay: boolean, alreadyRetried
   return progressOnDelay && !alreadyRetried;
 }
 
+export function confirmedEndCallResult(
+  toolName: string,
+  toolResult: Record<string, unknown>,
+) {
+  if (toolName !== "end_call" || toolResult.success !== true) return false;
+  const payload = toolResult.result;
+  return Boolean(payload && typeof payload === "object" && !Array.isArray(payload)
+    && (payload as Record<string, unknown>).ended === true);
+}
+
 export function completedResponseText(event: Record<string, unknown>) {
   const response = event.response as { output?: unknown } | undefined;
   const output = Array.isArray(response?.output) ? response.output : [];
