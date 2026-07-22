@@ -221,6 +221,38 @@ Expected:
 
 ## Change log
 
+### 2026-07-22 - Make Vapi turns transactional, continuous, and self-ending
+
+- Diagnosed the reported Vapi conversation against the provider's completed call artifact instead of inferring from the rendered transcript. Vapi sent tool input as object-valued `arguments`, but Sauti only accepted object-valued `parameters` or stringified arguments. Consequently `check_availability`, `update_conversation_state`, `book_slot`, and `end_call` reached the fulfillment router with empty arguments. Both booking attempts were correctly rejected with `actionPerformed: false`, but streamed model text incorrectly claimed success before consuming that result.
+- Updated the Vapi webhook adapter to accept all current OpenAI/Vapi argument shapes: object `arguments` or `parameters` at either the tool-call or nested function level, plus the existing stringified form. Calendar checks and booking CRUD now receive the model-supplied date, time, contact, confirmation, and review fields.
+- Added a Vapi-specific highest-priority execution contract: a required business tool must be the first/only output before its result, `actionPerformed: false` can never be described as success, and a booking may be called saved only when the successful result contains the real customer-facing booking number.
+- Mapped Sauti's enabled terminal capability to Vapi's documented native `endCall` tool. The Vapi session now closes after one farewell and the authenticated browser call-end path persists completion, instead of relying on an undocumented client tool-result metadata event.
+- Tuned the managed runtime using Vapi-supported settings: 100 ms final wait, multilingual transcription endpointing, cached voice, 80-character TTS chunks, and sentence-ending punctuation boundaries only. This reduces deliberate response delay and prevents comma/colon phrase chunks. Provider model output is retained in conversation history so the agent does not learn corrupted spellings from retranscribed assistant audio.
+- Prevented the configured opening from being stored twice. The dashboard displays Sauti's authoritative greeting once and suppresses only a provider opening transcript that is sufficiently similar, preserving a genuine first response if the opening was interrupted.
+- Coalesced consecutive Vapi assistant transcript fragments into one visible and persisted agent turn, including overlap removal such as `prefer` + `prefer for ...`. Pending transcript text is flushed before the next caller turn and before call completion.
+- Measured the affected provider call before tuning: model latency averaged 2162 ms and total turn latency averaged 3485 ms; empty-argument retries added further model/tool passes to booking turns. The parser fix removes those avoidable repeats. Remaining latency still depends on Vapi, model, transcriber, and voice infrastructure.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/VapiBrowserVoiceRuntimeService.java`
+  - `backend/src/main/java/com/sauti/call/VapiWebhookService.java`
+  - `backend/src/test/java/com/sauti/call/VapiBrowserVoiceRuntimeServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/VapiWebhookServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/vapiRuntime.ts`
+  - `dashboard/features/voice-runtime/vapiTranscript.ts`
+  - `dashboard/features/voice-runtime/vapiTranscript.test.ts`
+  - `dashboard/package.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - Focused `VapiWebhookServiceTest` and `VapiBrowserVoiceRuntimeServiceTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 24 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - Direct synthetic Vapi validation of function tools, native `endCall`, endpointing, chunking, and model-output configuration - accepted with HTTP 201.
+  - `git diff --check` - passed before the handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: only a live call after CI/CD can measure the new voice-to-voice latency and confirm the selected voice's audible pacing. The external model still controls tool selection; the server remains authoritative and will continue rejecting incomplete or unconfirmed writes. If normal non-tool turns remain materially above the measured provider baseline, compare a Vapi OpenAI Realtime assistant or another low-latency model in the planned provider pilot rather than weakening database confirmation rules.
+
 ### 2026-07-22 - Normalize Vapi tool schemas before browser-call creation
 
 - Fixed Vapi test calls failing immediately with HTTP 400 after credentials were configured. A direct provider reproduction identified the rejected field: Sauti's internal JSON schemas use `format: phone`, while Vapi accepts only `date-time`, `time`, `date`, `duration`, `email`, `hostname`, `ipv4`, `ipv6`, and `uuid`.

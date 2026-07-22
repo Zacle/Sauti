@@ -5,6 +5,7 @@ import type {
   BrowserVoiceRuntimeConnection,
 } from "./browserVoiceRuntime";
 import { vapiErrorMessage } from "./vapiErrors";
+import { isVapiOpeningTranscript } from "./vapiTranscript";
 
 type VapiMessage = {
   type?: string;
@@ -29,6 +30,10 @@ export async function connectVapiRuntime(
   let ended = false;
   let lastFinal = "";
   let startFailure = "";
+  const configuredFirstMessage = typeof session.configuration.firstMessage === "string"
+    ? session.configuration.firstMessage.trim()
+    : "";
+  let initialAssistantTranscriptPending = configuredFirstMessage.length > 0;
   const typedTranscripts: string[] = [];
 
   const setAssistantSpeaking = (value: boolean) => {
@@ -106,6 +111,16 @@ export async function connectVapiRuntime(
       return;
     }
     if (["assistant", "bot"].includes(String(message.role))) {
+      // Sauti already persists and displays the configured opening. Vapi also
+      // emits its spoken firstMessage as a transcript, which otherwise creates
+      // a duplicate opening turn (and may contain TTS/STT spelling drift).
+      if (initialAssistantTranscriptPending) {
+        initialAssistantTranscriptPending = false;
+        if (isVapiOpeningTranscript(configuredFirstMessage, text)) {
+          interruptedAgentTurn = false;
+          return;
+        }
+      }
       callbacks.onAgentTranscript(text, interruptedAgentTurn);
       interruptedAgentTurn = false;
     }

@@ -81,8 +81,16 @@ public class VapiWebhookService {
     }
 
     private Map<String, Object> arguments(JsonNode node, JsonNode function) {
-        var parameters = node.path("parameters");
-        if (parameters.isObject()) return objectMapper.convertValue(parameters, new TypeReference<>() { });
+        for (var candidate : List.of(
+                node.path("arguments"),
+                node.path("parameters"),
+                function.path("arguments"),
+                function.path("parameters")
+        )) {
+            if (candidate.isObject()) {
+                return objectMapper.convertValue(candidate, new TypeReference<>() { });
+            }
+        }
         var raw = firstNonBlank(text(node, "arguments"), text(function, "arguments"));
         if (raw.isBlank()) return Map.of();
         try {

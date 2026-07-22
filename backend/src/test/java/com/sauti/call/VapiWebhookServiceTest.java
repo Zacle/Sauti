@@ -41,7 +41,7 @@ class VapiWebhookServiceTest {
         var payload = mapper.readTree("""
                 {"message":{"type":"tool-calls","toolCallList":[{
                   "id":"tool-7","name":"update_customer_record",
-                  "parameters":{"customerId":"cust-9","confirmation_state":"confirmed"}
+                  "arguments":{"customerId":"cust-9","confirmation_state":"confirmed"}
                 }]}}
                 """);
 
@@ -56,6 +56,44 @@ class VapiWebhookServiceTest {
         assertThat(toolCall.getValue().arguments())
                 .containsEntry("customerId", "cust-9")
                 .containsEntry("confirmation_state", "confirmed");
+    }
+
+    @Test
+    void acceptsObjectArgumentsInsideTheOpenAiFunctionShape() throws Exception {
+        var repository = mock(CallRepository.class);
+        var tokens = mock(WebVoiceTokenService.class);
+        var router = mock(ToolFulfillmentRouter.class);
+        var mapper = new ObjectMapper();
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.isActive()).thenReturn(true);
+        when(call.getDirection()).thenReturn("test");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(tokens.verify("call-token")).thenReturn(
+                new WebVoiceTokenService.WebVoicePrincipal("test-42", agentId.toString())
+        );
+        when(repository.findByTwilioCallSid("test-42")).thenReturn(Optional.of(call));
+        when(router.route(any(), any())).thenAnswer(invocation -> {
+            LlmToolCall toolCall = invocation.getArgument(1);
+            return LlmToolResult.success(toolCall, Map.of("status", "available"));
+        });
+        var service = new VapiWebhookService(repository, tokens, router, mapper);
+
+        service.handle("test-42", "call-token", mapper.readTree("""
+                {"message":{"type":"tool-calls","toolCallList":[{
+                  "id":"availability-1","function":{"name":"check_availability","arguments":{
+                    "date":"2026-07-24","time_preference":"14:00"
+                  }}
+                }]}}
+                """));
+
+        var toolCall = ArgumentCaptor.forClass(LlmToolCall.class);
+        verify(router).route(any(), toolCall.capture());
+        assertThat(toolCall.getValue().arguments())
+                .containsEntry("date", "2026-07-24")
+                .containsEntry("time_preference", "14:00");
     }
 
     @Test

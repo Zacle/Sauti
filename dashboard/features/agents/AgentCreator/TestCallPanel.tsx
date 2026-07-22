@@ -25,6 +25,7 @@ import {
 import { HybridPlaybackGate } from "@/features/voice-runtime/hybridPlaybackGate";
 import { PcmStreamPlayer } from "@/features/voice-runtime/pcmStreamPlayer";
 import { confirmedEndCallResult } from "@/features/voice-runtime/realtimeProtocol";
+import { mergeVapiTranscript } from "@/features/voice-runtime/vapiTranscript";
 
 type TestCallPanelProps = {
   agentId?: string;
@@ -125,6 +126,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   const nativeEndPendingRef = useRef(false);
   const nativeEndAuthorizedRef = useRef(false);
   const transcriptWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const managedAgentTranscriptRef = useRef<{ text: string; interrupted: boolean } | null>(null);
   const cleanupMediaRef = useRef<() => void>(() => undefined);
   cleanupMediaRef.current = cleanupMedia;
 
@@ -154,6 +156,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       acceptedCallerTurnsRef.current = 0;
       remindersRef.current = 0;
       endingRef.current = false;
+      managedAgentTranscriptRef.current = null;
       remoteEndPendingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
       setCallId(started.call.id);
@@ -206,6 +209,9 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
 
   async function connectManagedRuntime(started: StartTestCallResponse) {
     if (!started.runtime) throw new Error("The selected voice runtime did not return a session configuration.");
+    if (started.greeting) {
+      setMessages([{ id: crypto.randomUUID(), role: "agent", text: started.greeting }]);
+    }
     browserRuntimeConnectionRef.current = await connectBrowserVoiceRuntime(started.runtime, {
       onConnected: () => updateStatus("listening"),
       onCallerSpeechStarted: () => {
@@ -215,6 +221,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
         if (!endingRef.current && statusRef.current === "capturing") updateStatus("thinking");
       },
       onCallerTranscript: (text) => {
+        flushManagedAgentTranscript(started.call.id);
         acceptedCallerTurnsRef.current += 1;
         lastActivityAtRef.current = Date.now();
         setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text }]);
@@ -223,8 +230,19 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       },
       onAgentTranscript: (text, interrupted) => {
         rememberAgentPrompt(text);
-        setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text }]);
-        queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted));
+        const pending = managedAgentTranscriptRef.current;
+        const merged = mergeVapiTranscript(pending?.text ?? "", text);
+        managedAgentTranscriptRef.current = {
+          text: merged,
+          interrupted: Boolean(pending?.interrupted || interrupted),
+        };
+        setMessages((current) => {
+          const last = current.at(-1);
+          if (last?.role !== "agent") {
+            return [...current, { id: crypto.randomUUID(), role: "agent", text: merged }];
+          }
+          return [...current.slice(0, -1), { ...last, text: merged }];
+        });
       },
       onAgentSpeaking: (value) => {
         if (!endingRef.current) updateStatus(value ? "speaking" : "listening");
@@ -238,6 +256,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
         if (!endingRef.current) updateStatus("listening");
       },
       onEnded: (outcome = "completed") => {
+        flushManagedAgentTranscript(started.call.id);
         if (!endingRef.current) void endCall(outcome);
       },
     });
@@ -355,6 +374,15 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     transcriptWriteRef.current = transcriptWriteRef.current
       .then(write, write)
       .then(() => undefined, () => undefined);
+  }
+
+  function flushManagedAgentTranscript(activeCallId: string) {
+    const pending = managedAgentTranscriptRef.current;
+    managedAgentTranscriptRef.current = null;
+    if (!pending?.text.trim()) return;
+    queueTranscriptWrite(() => recordTestRealtimeTranscript(
+      activeCallId, "agent", pending.text, pending.interrupted,
+    ));
   }
 
   function interruptHybridResponse(cancelModel: boolean, generation?: number) {
@@ -939,6 +967,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       utteranceRecorderRef.current.stop();
       utteranceRecorderRef.current = null;
     }
+    if (browserRuntimeConnectionRef.current) flushManagedAgentTranscript(activeCallId);
     setInput("");
     setError("");
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text: transcript }]);
@@ -993,6 +1022,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   async function endCall(outcome = "completed", politeFarewell = false) {
     const activeCallId = callIdRef.current;
     if (!activeCallId || endingRef.current) return;
+    flushManagedAgentTranscript(activeCallId);
     endingRef.current = true;
     const managedRuntime = browserRuntimeConnectionRef.current;
     browserRuntimeConnectionRef.current = null;
@@ -1075,6 +1105,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     processingTurnRef.current = false;
     queuedInterruptionRef.current = null;
     callerInterruptedCurrentTurnRef.current = false;
+    managedAgentTranscriptRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();

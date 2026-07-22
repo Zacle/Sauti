@@ -31,21 +31,26 @@ class VapiBrowserVoiceRuntimeServiceTest {
         when(agent.getName()).thenReturn("Amina");
         when(agent.getSttEndpointingMs()).thenReturn(340);
         when(agent.getMaxCallDurationSeconds()).thenReturn(720);
-        when(orchestrator.realtimeInstructions(call, "fr")).thenReturn("Answer in French and use tools safely.");
-        when(loader.loadForAgent(agentId)).thenReturn(List.of(new LlmToolDefinition(
-                "update_customer_record", "Update a confirmed record",
-                Map.of("type", "object", "properties", Map.of(
-                        "customerId", Map.of("type", "string", "format", "uuid"),
-                        "phone", Map.of("type", "string", "format", "phone"),
-                        "email", Map.of("type", "string", "format", "email"),
-                        "contact", Map.of(
-                                "type", "object",
-                                "properties", Map.of(
-                                        "mobile", Map.of("type", "string", "format", "phone")
+        when(orchestrator.realtimeInstructions(call, "fr")).thenReturn(
+                "Answer in French, use tools safely, and call end_call after the farewell."
+        );
+        when(loader.loadForAgent(agentId)).thenReturn(List.of(
+                new LlmToolDefinition(
+                        "update_customer_record", "Update a confirmed record",
+                        Map.of("type", "object", "properties", Map.of(
+                                "customerId", Map.of("type", "string", "format", "uuid"),
+                                "phone", Map.of("type", "string", "format", "phone"),
+                                "email", Map.of("type", "string", "format", "email"),
+                                "contact", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "mobile", Map.of("type", "string", "format", "phone")
+                                        )
                                 )
-                        )
-                ))
-        )));
+                        ))
+                ),
+                new LlmToolDefinition("end_call", "End after a farewell", Map.of("type", "object"))
+        ));
         var service = new VapiBrowserVoiceRuntimeService(
                 orchestrator, loader, "vapi-public-key", "https://sauti.uk/",
                 "openai", "gpt-4.1-mini", "deepgram", "nova-3", "multi",
@@ -60,15 +65,20 @@ class VapiBrowserVoiceRuntimeServiceTest {
         assertThat(session.apiBaseUrl()).isEqualTo("/api/v1/public/vapi/test-call%2F42");
         assertThat(json)
                 .contains("Bonjour, comment puis-je vous aider ?")
-                .contains("Answer in French and use tools safely.")
+                .contains("Answer in French, use tools safely, and call endCall after the farewell.")
                 .contains("update_customer_record")
+                .contains("\"type\":\"endCall\"")
                 .contains("request-response-delayed")
                 .contains("\"timingMilliseconds\":1600")
+                .contains("\"minCharacters\":80")
+                .contains("\"onNoPunctuationSeconds\":1.0")
+                .contains("\"modelOutputInMessagesEnabled\":true")
                 .contains("\"format\":\"uuid\"")
                 .contains("\"format\":\"email\"")
                 .contains("https://sauti.uk/api/v1/public/vapi/test-call%2F42/webhook?token=browser%2Fcall-token")
                 .contains("\"provider\":\"deepgram\"")
                 .contains("\"voiceId\":\"Savannah\"")
+                .doesNotContain("\"name\":\"end_call\"")
                 .doesNotContain("\"format\":\"phone\"")
                 .doesNotContain("vapi-public-key");
         assertThat(service.claimWebCall("test-call/42", "browser/call-token"))

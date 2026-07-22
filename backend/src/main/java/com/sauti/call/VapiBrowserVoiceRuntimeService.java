@@ -94,7 +94,13 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
                 "url", callbackUrl,
                 "timeoutSeconds", toolTimeoutSeconds
         );
-        var tools = agentToolLoader.loadForAgent(call.getAgent().getId()).stream()
+        var loadedTools = agentToolLoader.loadForAgent(call.getAgent().getId());
+        var hasEndCall = loadedTools.stream().anyMatch(tool -> "end_call".equals(tool.name()));
+        var tools = new java.util.ArrayList<>(loadedTools.stream()
+                // Vapi's built-in endCall tool reliably drains the farewell and
+                // closes the provider session. Sauti still persists completion
+                // from the authenticated browser call-end event.
+                .filter(tool -> !"end_call".equals(tool.name()))
                 .map(tool -> Map.<String, Object>of(
                         "type", "function",
                         "async", false,
@@ -112,7 +118,8 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
                                 "timingMilliseconds", delayedMessageMs
                         ))
                 ))
-                .toList();
+                .toList());
+        if (hasEndCall) tools.add(Map.of("type", "endCall"));
 
         var language = call.getLanguageDetected() == null
                 ? call.getAgent().getDefaultLanguage()
@@ -124,7 +131,7 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         modelConfig.put("maxTokens", 500);
         modelConfig.put("messages", List.of(Map.of(
                 "role", "system",
-                "content", conversationOrchestrator.realtimeInstructions(call, language)
+                "content", vapiInstructions(call, language, hasEndCall)
         )));
         if (!tools.isEmpty()) modelConfig.put("tools", tools);
 
@@ -145,6 +152,12 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
             voice.put("version", voiceVersion);
             voice.put("language", voiceLanguage.isBlank() ? "auto" : voiceLanguage);
         }
+        voice.put("cachingEnabled", true);
+        voice.put("chunkPlan", Map.of(
+                "enabled", true,
+                "minCharacters", 80,
+                "punctuationBoundaries", List.of(".", "!", "?", "。", "۔", "।", "॥")
+        ));
 
         var assistant = new LinkedHashMap<String, Object>();
         assistant.put("name", assistantName(call));
@@ -156,8 +169,16 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         assistant.put("voice", voice);
         assistant.put("backgroundSound", "off");
         assistant.put("maxDurationSeconds", Math.max(10, call.getAgent().getMaxCallDurationSeconds()));
-        assistant.put("startSpeakingPlan", Map.of("waitSeconds", 0.2));
+        assistant.put("startSpeakingPlan", Map.of(
+                "waitSeconds", 0.1,
+                "transcriptionEndpointingPlan", Map.of(
+                        "onPunctuationSeconds", 0.1,
+                        "onNoPunctuationSeconds", 1.0,
+                        "onNumberSeconds", 0.6
+                )
+        ));
         assistant.put("stopSpeakingPlan", Map.of("numWords", 1, "backoffSeconds", 0.5));
+        assistant.put("modelOutputInMessagesEnabled", true);
         assistant.put("clientMessages", List.of(
                 "transcript", "speech-update", "status-update", "tool-calls-result", "user-interrupted"
         ));
@@ -222,6 +243,22 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
     private String assistantName(Call call) {
         var name = "Sauti " + call.getAgent().getName();
         return name.length() <= 40 ? name : name.substring(0, 40);
+    }
+
+    private String vapiInstructions(Call call, String language, boolean hasEndCall) {
+        var instructions = conversationOrchestrator.realtimeInstructions(call, language);
+        if (hasEndCall) instructions = instructions.replace("end_call", "endCall");
+        return instructions + """
+
+                VAPI EXECUTION CONTRACT — HIGHEST PRIORITY:
+                - When a business tool is needed, emit that tool call as the first and only output. Do not speak, acknowledge, summarize, or begin a sentence before the tool result arrives.
+                - Treat the complete tool result as authoritative. If actionPerformed is false, the action did not happen. Never continue a sentence that says it succeeded.
+                - A booking is saved only when the successful book_slot result contains a customer-facing booking number. State that exact number once. Without it, never say booked, confirmed, saved, or scheduled.
+                - Keep one spoken response continuous. Do not split a sentence around a tool call and do not emit sentence fragments.
+                - Never repeat the configured opening greeting after the caller begins speaking.
+                """ + (hasEndCall ? """
+                - When the caller clearly finishes, give one brief respectful farewell, invoke endCall immediately, and produce no further speech.
+                """ : "");
     }
 
     /**
