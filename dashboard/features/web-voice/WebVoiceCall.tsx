@@ -13,6 +13,7 @@ import {
   type PublicWebVoiceAgent,
 } from "@/lib/api/public-web-voice";
 import { connectOpenAiRealtime, type OpenAiRealtimeConnection } from "@/features/voice-runtime/openaiRealtime";
+import { HybridPlaybackGate } from "@/features/voice-runtime/hybridPlaybackGate";
 import { PcmStreamPlayer } from "@/features/voice-runtime/pcmStreamPlayer";
 import styles from "./WebVoiceCall.module.css";
 
@@ -59,6 +60,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const pcmPlaybackActiveRef = useRef(false);
   const pcmPlayerRef = useRef<PcmStreamPlayer | null>(null);
   const activeHybridSpeechRef = useRef<{ id: string; generation: number } | null>(null);
+  const hybridPlaybackGateRef = useRef(new HybridPlaybackGate());
   const pcmQueueRef = useRef<number[]>([]);
   const speakingRef = useRef(false);
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
@@ -189,6 +191,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
               if (hybrid) {
                 // Always advance the external TTS generation. A Cartesia context
                 // may still be generating before its first audio frame arrives.
+                hybridPlaybackGateRef.current.clear();
                 clearPlayback();
                 sendHybridEvent({ type: "interrupt", generation });
               }
@@ -387,6 +390,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   function handleEvent(event: VoiceEvent) {
     if (event.type === "transcript_partial") {
       if (speakingRef.current) {
+        hybridPlaybackGateRef.current.clear();
         clearPlayback();
         updateSpeaking(false);
         const socket = socketRef.current;
@@ -402,6 +406,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       setMessages((current) => [...current, { role: "agent", text: event.text! }]);
     }
     if (event.type === "speaking") {
+      hybridPlaybackGateRef.current.speaking(event.value === true);
       if (event.value) {
         window.clearTimeout(playbackCompletionTimerRef.current);
         pcmPlayerRef.current?.begin();
@@ -416,7 +421,10 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
         window.setTimeout(end, remainingMs + 180);
       }
     }
-    if (event.type === "clear_audio") clearPlayback();
+    if (event.type === "clear_audio") {
+      hybridPlaybackGateRef.current.clear();
+      clearPlayback();
+    }
     if (event.type === "error") setError(event.message ?? "The voice session encountered an error.");
     if (event.type === "ended") {
       setStatus("ended");
@@ -425,6 +433,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   }
 
   function playPcm(buffer: ArrayBuffer) {
+    if (!hybridPlaybackGateRef.current.accepts(hybridRealtimeRef.current)) return;
     if (pcmPlayerRef.current) {
       pcmPlayerRef.current.pushPcm16(buffer);
       return;
@@ -538,6 +547,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   }
 
   function cleanup() {
+    hybridPlaybackGateRef.current.clear();
     stopCapture();
     clearPlayback();
     const socket = socketRef.current;

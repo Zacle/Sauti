@@ -4142,3 +4142,29 @@ Expected:
   - `.\gradlew.bat :backend:test` - passed after the final CRUD, progress, and stale-result guards.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: the mocked suite verifies the exact reported 4 p.m. then phone-number transition and a late-calendar-result race, but real provider latency still needs one Agent Studio and one carrier call after CI/CD. Confirm that the phone-number turn goes directly to one booking review with no generic repeat message and that correcting the time invalidates the prior slot before review.
+
+### 2026-07-22 - Stop interrupted hybrid audio and make booking reviews token-loss safe
+
+- Fixed the case where the UI accepted a caller interruption and generated the next reply while buffered audio from the interrupted Cartesia response continued playing. Agent Studio and the public web-voice surface now close a local hybrid playback gate as soon as recognized caller speech confirms the interruption. Binary PCM arriving during the server cancellation round trip is discarded until an ordered `speaking: true` event opens the gate for a new TTS generation.
+- Kept the existing immediate PCM worklet/source clear and server `interrupt` event. The new gate covers the previously unprotected interval after that clear, when late frames from the old external-TTS socket could refill the empty browser buffer and overlap the next response.
+- Made the final booking review resilient to model argument loss. `book_slot` now prefers the latest signed review token stored in the call session over an omitted or stale model copy, so an already-spoken review cannot be interpreted as a brand-new review and read in full again.
+- When a reviewed booking reaches `book_slot` before the latest caller response has a semantic review decision, the backend silently requires `update_conversation_state` for that same turn. Approval, correction, rejection, and unclear speech are therefore interpreted from conversational meaning in any supported language; Sauti does not add phrase lists. The reviewed details remain server-owned and the tool speaks nothing during this internal recovery step.
+- Added regressions for late hybrid PCM suppression, non-hybrid compatibility, restoring a missing private review token, routing a missing semantic decision without repeated speech, and completing an approved save from the exact signed review snapshot.
+- This follows OpenAI's documented WebSocket interruption sequence: cancel the active response, stop playback immediately, and truncate/remove unplayed output from conversation state. Sauti applies the equivalent lifecycle to its validated text plus external Cartesia PCM path: https://developers.openai.com/api/docs/guides/realtime-conversations#websockets
+- Files touched:
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `dashboard/features/voice-runtime/{hybridPlaybackGate,hybridPlaybackGate.test}.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/package.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `SautiCalendarFulfillmentTest` - passed.
+  - `npm.cmd run test:voice` - passed; 16 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: after CI/CD, repeat the supplied Agent Studio call and interrupt halfway through the consolidated review. Confirm the old voice stops immediately, no late words return, the new reply plays once, and a natural approval such as “everything is right” saves once without another full review. Repeat once in a non-English language and once on the public web-voice surface. Carrier calls already use the telephony clear/cancel path and should also receive a smoke test, but the newly fixed late-PCM window was specific to browser hybrid playback.

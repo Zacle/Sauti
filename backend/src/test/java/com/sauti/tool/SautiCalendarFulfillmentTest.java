@@ -19,6 +19,7 @@ import com.sauti.call.Call;
 import com.sauti.call.CallIntakeNoteService;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.ConversationMessage;
+import com.sauti.session.BookingDraft;
 import com.sauti.session.CallSessionStore;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -653,6 +654,102 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("bookingNumber", "SAT-SEMANTIC");
         verify(fixture.bookingService).create(any(), argThat(request ->
                 "Zachary".equals(request.callerName())
+        ), any());
+    }
+
+    @Test
+    void restoresTheServerReviewTokenAndRequestsSemanticInterpretationInsteadOfRepeatingTheReview() {
+        var fixture = fixture(HOURS, List.of());
+        var latest = "Everything is right.";
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", latest)));
+        when(fixture.intakeNotes.notes(fixture.call, latest)).thenReturn(Map.of(
+                "conversation_state_revision", "12",
+                "booking_subject", "self",
+                "booking_intent", "active",
+                "caller_name", "Zachary",
+                "appointment_name", "Zachary"
+        ));
+        var arguments = Map.<String, Object>of(
+                "appointment_at", "2026-07-23T10:00:00Z",
+                "appointment_name", "Zachary",
+                "caller_phone", "0105752443",
+                "service_type", "Men hairstyle"
+        );
+        var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "initial-review", "book_slot", arguments
+        ));
+        var reviewToken = review.result().get("reviewToken").toString();
+        when(fixture.callSessionStore.pendingBooking("call-sid")).thenReturn(java.util.Optional.of(
+                new BookingDraft(
+                        "Zachary", "Men hairstyle", "", "2026-07-23T10:00:00Z",
+                        "0105752443", true, reviewToken, 60
+                )
+        ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "model-dropped-token", "book_slot", Map.of()
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_review_decision_required")
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", ConversationStateTool.NAME)
+                .containsEntry("nextToolAuthorized", true)
+                .doesNotContainKeys("spokenResponse", "bookingReview", "reviewToken");
+        verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
+    void usesTheStoredReviewTokenWhenSemanticApprovalArrivesWithoutPrivateModelArguments() {
+        var fixture = fixture(HOURS, List.of());
+        var latest = "Everything is right.";
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", latest)));
+        when(fixture.intakeNotes.notes(fixture.call, latest)).thenReturn(Map.of(
+                "conversation_state_revision", "13",
+                "booking_subject", "self",
+                "booking_intent", "active",
+                "review_decision", "approved",
+                "caller_name", "Zachary",
+                "appointment_name", "Zachary"
+        ));
+        var arguments = Map.<String, Object>of(
+                "appointment_at", "2026-07-23T10:00:00Z",
+                "appointment_name", "Zachary",
+                "caller_phone", "0105752443",
+                "service_type", "Men hairstyle"
+        );
+        var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "initial-approved-review", "book_slot", arguments
+        ));
+        var reviewToken = review.result().get("reviewToken").toString();
+        when(fixture.callSessionStore.pendingBooking("call-sid")).thenReturn(java.util.Optional.of(
+                new BookingDraft(
+                        "Zachary", "Men hairstyle", "", "2026-07-23T10:00:00Z",
+                        "0105752443", true, reviewToken, 60
+                )
+        ));
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(booking.getBookingReference()).thenReturn("SAT-STOREDTOKEN");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T10:00:00Z"));
+        when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
+        when(fixture.bookingService.create(any(), any(), any())).thenReturn(booking);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "approved-without-token", "book_slot", Map.of()
+        ));
+
+        assertThat(result.result())
+                .containsEntry("bookingCreated", true)
+                .containsEntry("bookingNumber", "SAT-STOREDTOKEN")
+                .doesNotContainKey("bookingReview");
+        verify(fixture.bookingService).create(any(), argThat(request ->
+                "Zachary".equals(request.callerName())
+                        && "0105752443".equals(request.callerPhone())
+                        && "Men hairstyle".equals(request.serviceType())
+                        && OffsetDateTime.parse("2026-07-23T10:00:00Z").equals(request.appointmentAt())
         ), any());
     }
 

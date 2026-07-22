@@ -296,7 +296,12 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     }
 
     private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, AgentTool toolConfig) {
-        var suppliedReviewToken = stringArg(toolCall.arguments(), "review_token", "");
+        var modelReviewToken = stringArg(toolCall.arguments(), "review_token", "");
+        var storedReviewToken = pendingReviewToken(call).orElse("");
+        // The review token is private server workflow state, not customer data.
+        // Realtime models can omit or replay an older copy after an interruption;
+        // never let that turn an already-spoken review into a brand-new review.
+        var suppliedReviewToken = storedReviewToken.isBlank() ? modelReviewToken : storedReviewToken;
         var latestCaller = latestCallerTranscript(call);
         var currentState = intakeNotes.notes(call, latestCaller);
         if ("paused".equals(currentState.get("booking_intent"))) {
@@ -307,9 +312,22 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             );
         }
         var semanticState = currentState.containsKey("conversation_state_revision");
+        var reviewDecision = currentState.getOrDefault("review_decision", "");
         var callerApprovedReview = semanticState
-                ? "approved".equals(currentState.get("review_decision"))
+                ? "approved".equals(reviewDecision)
                 : callerApprovedLatestReview(latestCaller);
+        if (!suppliedReviewToken.isBlank() && semanticState && reviewDecision.isBlank()) {
+            return Map.of(
+                    "status", "booking_review_decision_required",
+                    "bookingCreated", false,
+                    "nextAction", "use_business_tool",
+                    "nextTool", ConversationStateTool.NAME,
+                    "nextToolAuthorized", true,
+                    "instruction", "The server restored the private token for the review already spoken. "
+                            + "Interpret the caller's latest response with update_conversation_state before any booking action. "
+                            + "Do not repeat the review or speak while that internal step runs."
+            );
+        }
         var arguments = new LinkedHashMap<>(normalizeBookingArgumentsFromConversation(
                 call, toolCall.arguments(), suppliedReviewToken, latestCaller
         ));
@@ -426,6 +444,19 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 reviewToken,
                 intArg(arguments, "duration_minutes", 60)
         ));
+    }
+
+    private Optional<String> pendingReviewToken(Call call) {
+        if (call.getTwilioCallSid() == null || call.getTwilioCallSid().isBlank()) return Optional.empty();
+        try {
+            return callSessionStore.pendingBooking(call.getTwilioCallSid())
+                    .map(BookingDraft::reviewToken)
+                    .map(String::trim)
+                    .filter(token -> !token.isBlank());
+        } catch (RuntimeException exception) {
+            LOGGER.debug("Pending booking review unavailable for callId={}", call.getId());
+            return Optional.empty();
+        }
     }
 
     private Map<String, Object> normalizeBookingArgumentsFromConversation(

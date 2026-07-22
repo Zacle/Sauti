@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/calls";
 import type { StartTestCallResponse } from "@/types/api";
 import { connectOpenAiRealtime, type OpenAiRealtimeConnection } from "@/features/voice-runtime/openaiRealtime";
+import { HybridPlaybackGate } from "@/features/voice-runtime/hybridPlaybackGate";
 import { PcmStreamPlayer } from "@/features/voice-runtime/pcmStreamPlayer";
 
 type TestCallPanelProps = {
@@ -109,6 +110,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const pcmPlaybackActiveRef = useRef(false);
   const pcmPlayerRef = useRef<PcmStreamPlayer | null>(null);
   const activeHybridSpeechRef = useRef<{ id: string; generation: number } | null>(null);
+  const hybridPlaybackGateRef = useRef(new HybridPlaybackGate());
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
   const nativeRealtimeRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
@@ -295,6 +297,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
 
   function interruptHybridResponse(cancelModel: boolean, generation?: number) {
     if (cancelModel) openAiConnectionRef.current?.cancelResponse();
+    hybridPlaybackGateRef.current.clear();
     clearRealtimePlayback();
     sendHybridEvent({ type: "interrupt", ...(generation === undefined ? {} : { generation }) });
   }
@@ -425,6 +428,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text: event.text! }]);
     }
     if (event.type === "speaking") {
+      hybridPlaybackGateRef.current.speaking(event.value === true);
       if (event.value) {
         window.clearTimeout(playbackCompletionTimerRef.current);
         pcmPlayerRef.current?.begin();
@@ -439,7 +443,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         window.setTimeout(() => void endCall("completed"), remainingMs + 180);
       }
     }
-    if (event.type === "clear_audio") clearRealtimePlayback();
+    if (event.type === "clear_audio") {
+      hybridPlaybackGateRef.current.clear();
+      clearRealtimePlayback();
+    }
     if (event.type === "error") setError(event.message ?? "The realtime voice session encountered an error.");
     if (event.type === "ended" && !endingRef.current && !remoteEndPendingRef.current) {
       remoteEndPendingRef.current = true;
@@ -453,6 +460,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function playRealtimePcm(data: ArrayBuffer) {
+    if (!hybridPlaybackGateRef.current.accepts(hybridRealtimeRef.current)) return;
     if (pcmPlayerRef.current) {
       pcmPlayerRef.current.pushPcm16(data);
       return;
@@ -729,6 +737,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   }
 
   function interruptRealtimeAgent() {
+    hybridPlaybackGateRef.current.clear();
     clearRealtimePlayback();
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "interrupt" }));
@@ -1008,6 +1017,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     openAiConnectionRef.current = null;
     nativeRealtimeRef.current = false;
     hybridRealtimeRef.current = false;
+    hybridPlaybackGateRef.current.clear();
     nativeEndPendingRef.current = false;
     const socket = socketRef.current;
     socketRef.current = null;
