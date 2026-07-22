@@ -125,4 +125,38 @@ class VapiWebhookServiceTest {
 
         assertThat(mapper.writeValueAsString(response)).contains("sautiEndCall").contains("true");
     }
+
+    @Test
+    void acceptsAnEndOfCallReportAfterTheSautiCallHasCompleted() throws Exception {
+        var repository = mock(CallRepository.class);
+        var tokens = mock(WebVoiceTokenService.class);
+        var router = mock(ToolFulfillmentRouter.class);
+        var mapper = new ObjectMapper();
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var callId = UUID.randomUUID();
+        var agentId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        when(call.isActive()).thenReturn(false);
+        when(call.getDirection()).thenReturn("test");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(tokens.verify("call-token")).thenReturn(
+                new WebVoiceTokenService.WebVoicePrincipal("test-42", agentId.toString())
+        );
+        when(repository.findByTwilioCallSid("test-42")).thenReturn(Optional.of(call));
+        var service = new VapiWebhookService(repository, tokens, router, mapper);
+
+        var response = service.handle("test-42", "call-token", mapper.readTree("""
+                {"message":{"type":"end-of-call-report","endedReason":"customer-ended-call",
+                  "call":{"id":"vapi-call-7"},"artifact":{"performanceMetrics":{
+                    "turnLatencyAverage":1.2,"modelLatencyAverage":0.4,
+                    "voiceLatencyAverage":0.2,"transcriberLatencyAverage":0.1,
+                    "endpointingLatencyAverage":0.5,"numUserInterrupted":1,
+                    "numAssistantInterrupted":0
+                  }}}}
+                """));
+
+        assertThat(response).isEmpty();
+    }
 }

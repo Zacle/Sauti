@@ -5,7 +5,7 @@ import type {
   BrowserVoiceRuntimeConnection,
 } from "./browserVoiceRuntime";
 import { vapiErrorMessage } from "./vapiErrors";
-import { isVapiOpeningTranscript } from "./vapiTranscript";
+import { isVapiOpeningTranscript, mergeVapiTranscript } from "./vapiTranscript";
 
 type VapiMessage = {
   type?: string;
@@ -14,10 +14,14 @@ type VapiMessage = {
   transcript?: string;
   status?: string;
   text?: string;
+  input?: string;
   turn?: number;
   source?: string;
+  call?: { id?: string };
   [key: string]: unknown;
 };
+
+const CAPTION_EVENT_GRACE_MS = 160;
 
 export async function connectVapiRuntime(
   session: BrowserVoiceRuntimeSession,
@@ -33,12 +37,48 @@ export async function connectVapiRuntime(
   let ended = false;
   let lastFinal = "";
   let startFailure = "";
+  let providerCallId = "";
+  let pendingVoiceInput = "";
+  let captionEventReceivedForSpeech = false;
+  let lastCaptionEventAt = 0;
+  let captionFallbackTimer: number | null = null;
+  let lastCallerFinalAt = 0;
+  const runtimeStartedAt = performance.now();
   const configuredFirstMessage = typeof session.configuration.firstMessage === "string"
     ? session.configuration.firstMessage.trim()
     : "";
   let initialAssistantTranscriptPending = configuredFirstMessage.length > 0;
   let openingCaptionDisplayed = false;
   const typedTranscripts: string[] = [];
+
+  const trace = (event: string, details: Record<string, unknown> = {}) => {
+    console.debug("Vapi runtime timing", {
+      event,
+      providerCallId: providerCallId || undefined,
+      sinceRuntimeStartMs: Math.round(performance.now() - runtimeStartedAt),
+      sinceCallerFinalMs: lastCallerFinalAt ? Math.round(performance.now() - lastCallerFinalAt) : undefined,
+      ...details,
+    });
+  };
+
+  const cancelCaptionFallback = () => {
+    if (captionFallbackTimer === null) return;
+    window.clearTimeout(captionFallbackTimer);
+    captionFallbackTimer = null;
+  };
+
+  const scheduleCaptionFallback = () => {
+    cancelCaptionFallback();
+    captionFallbackTimer = window.setTimeout(() => {
+      captionFallbackTimer = null;
+      if (!assistantSpeaking || captionEventReceivedForSpeech || !pendingVoiceInput) return;
+      // voice-input is the exact text Vapi handed to TTS. Use it only when the
+      // playback-synchronized event did not arrive, and only after remote audio
+      // actually began; model output is intentionally never shown as speech.
+      callbacks.onAgentCaption(pendingVoiceInput);
+      trace("caption-fallback", { textLength: pendingVoiceInput.length });
+    }, CAPTION_EVENT_GRACE_MS);
+  };
 
   const setAssistantSpeaking = (value: boolean) => {
     if (assistantSpeaking === value) return;
@@ -49,6 +89,17 @@ export async function connectVapiRuntime(
     if (value && initialAssistantTranscriptPending && !openingCaptionDisplayed) {
       openingCaptionDisplayed = true;
       callbacks.onAgentCaption(configuredFirstMessage, 0);
+    }
+    if (value) {
+      captionEventReceivedForSpeech = performance.now() - lastCaptionEventAt < 1000;
+      scheduleCaptionFallback();
+      trace("assistant-audio-start");
+    } else {
+      cancelCaptionFallback();
+      pendingVoiceInput = "";
+      captionEventReceivedForSpeech = false;
+      lastCaptionEventAt = 0;
+      trace("assistant-audio-end");
     }
     if (value && endAuthorized) assistantSpeechStartedAfterEndAuthorization = true;
     if (value || !callerSpeaking) callbacks.onAgentSpeaking(value);
@@ -69,17 +120,35 @@ export async function connectVapiRuntime(
   };
 
   vapi.on("call-start", callbacks.onConnected);
+  vapi.on("call-start-success", (event) => {
+    providerCallId = event.callId ?? providerCallId;
+    trace("call-start-success", { setupMs: Math.round(event.totalDuration) });
+  });
   vapi.on("speech-start", () => setAssistantSpeaking(true));
   vapi.on("speech-end", () => setAssistantSpeaking(false));
   vapi.on("message", (raw: unknown) => {
     const message = raw as VapiMessage;
+    if (!providerCallId && message.call?.id) providerCallId = message.call.id;
     if (message.type === "assistant.speechStarted") {
       const text = message.text?.trim();
       if (text) {
+        captionEventReceivedForSpeech = true;
+        lastCaptionEventAt = performance.now();
+        cancelCaptionFallback();
         if (message.source === "force-say" && initialAssistantTranscriptPending) {
           openingCaptionDisplayed = true;
         }
         callbacks.onAgentCaption(text, message.turn);
+        trace("assistant-caption", { source: message.source, turn: message.turn, textLength: text.length });
+      }
+      return;
+    }
+    if (message.type === "voice-input") {
+      const input = message.input?.trim();
+      if (input) {
+        pendingVoiceInput = mergeVapiTranscript(pendingVoiceInput, input);
+        trace("voice-input", { textLength: input.length });
+        if (assistantSpeaking && !captionEventReceivedForSpeech) scheduleCaptionFallback();
       }
       return;
     }
@@ -123,6 +192,8 @@ export async function connectVapiRuntime(
     if (["user", "customer"].includes(String(message.role))) {
       callerSpeaking = false;
       interruptedAgentTurn = false;
+      lastCallerFinalAt = performance.now();
+      pendingVoiceInput = "";
       const typedIndex = typedTranscripts.findIndex((candidate) => normalize(candidate) === normalize(text));
       if (typedIndex >= 0) {
         typedTranscripts.splice(typedIndex, 1);
@@ -143,6 +214,7 @@ export async function connectVapiRuntime(
         }
       }
       callbacks.onAgentTranscript(text, interruptedAgentTurn);
+      trace("assistant-final-transcript", { textLength: text.length });
       interruptedAgentTurn = false;
     }
   });
@@ -155,6 +227,8 @@ export async function connectVapiRuntime(
 
   const call = await vapi.start(session.configuration as never);
   if (!call) throw new Error(startFailure || "Vapi did not create the browser call.");
+  providerCallId = call.id || providerCallId;
+  trace("call-created");
 
   return {
     sendUserText(text: string) {
@@ -169,6 +243,7 @@ export async function connectVapiRuntime(
       if (stopped) return;
       stopped = true;
       ended = true;
+      cancelCaptionFallback();
       await vapi.stop();
     },
   };

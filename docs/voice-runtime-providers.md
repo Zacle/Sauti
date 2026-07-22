@@ -31,7 +31,7 @@ VAPI_MODEL_PROVIDER=openai
 VAPI_MODEL=gpt-4.1-mini
 VAPI_TRANSCRIBER_PROVIDER=deepgram
 VAPI_TRANSCRIBER_MODEL=nova-3
-VAPI_TRANSCRIBER_LANGUAGE=multi
+VAPI_TRANSCRIBER_LANGUAGE=agent
 VAPI_VOICE_PROVIDER=vapi
 VAPI_VOICE_ID=Savannah
 VAPI_VOICE_VERSION=2
@@ -46,9 +46,13 @@ VAPI_DELAYED_MESSAGE_MS=1000
 
 The pilot uses the Vapi voice configured above, not the agent's existing Sauti/Cartesia voice ID. This keeps provider comparison explicit instead of assuming that voice identifiers are portable. A later provider-specific voice catalog can map choices deliberately.
 
-Vapi supplies localized tool-start filler and, after `VAPI_DELAYED_MESSAGE_MS`, a delayed apology while the tool continues. Sauti does not maintain translated waiting phrases. Final availability, save, update, cancellation, payment, messaging, and other outcomes always come from the Sauti tool result.
+`VAPI_TRANSCRIBER_LANGUAGE=agent` resolves a single-language agent to its configured default language and uses `multi` only when the agent supports more than one language. An explicit provider language such as `en`, `fr`, or `multi` still overrides this behavior. Deepgram also receives the business identity and the agent's saved boosted-keyword list as keyterms; Sauti does not hard-code phrases from one business.
 
-Agent Studio subscribes to Vapi's playback-synchronized `assistant.speechStarted` event. The fixed greeting is displayed only when its audio begins, and later assistant captions update as each synthesized speech segment starts instead of waiting for a final assistant transcript. The default Vapi voice provides text-only speech-start events, not word timestamps, so this is segment-synchronized captioning rather than exact character-by-character highlighting. A voice provider that exposes word alignment is required for exact karaoke-style timing.
+Potentially remote or state-changing tools receive Vapi's generated `request-start` filler in the active call language and, after `VAPI_DELAYED_MESSAGE_MS`, its delayed apology while the tool continues. Static business-hours reads and internal conversation-state updates remain on the fast path. Sauti does not maintain translated waiting phrases. Final availability, save, update, cancellation, payment, messaging, and other outcomes always come from the Sauti tool result.
+
+Agent Studio subscribes to Vapi's playback-synchronized `assistant.speechStarted` event. The fixed greeting is displayed only when its audio begins, and later assistant captions update as each synthesized speech segment starts instead of waiting for a final assistant transcript. It also subscribes to `voice-input`, the exact text submitted to TTS, and reveals that text only after remote audio starts when `assistant.speechStarted` is absent. It never presents streamed model output as spoken text. The default Vapi voice provides text-only speech-start events, not word timestamps, so this is segment-synchronized captioning rather than exact character-by-character highlighting. A voice provider that exposes word alignment is required for exact karaoke-style timing.
+
+Vapi tool callbacks log the provider call ID, Sauti call ID, tool name, success flag, and server execution duration without logging tool arguments. End-of-call reports log Vapi's aggregate turn, model, voice, transcriber, and endpointing metrics. These two records separate Sauti/database latency from provider pipeline latency while keeping customer content out of operational logs.
 
 Vapi remains a cascaded voice pipeline (endpointing, transcription, model, speech synthesis, then playback). UI synchronization can remove misleading display delay, but it cannot remove the provider's connection and model/TTS latency floor. Evaluate first-audio latency and audible chunk continuity separately from Sauti tool latency when comparing runtimes.
 

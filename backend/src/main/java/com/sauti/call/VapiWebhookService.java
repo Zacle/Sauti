@@ -4,15 +4,20 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.llm.LlmToolCall;
+import com.sauti.llm.LlmToolResult;
 import com.sauti.tool.ToolFulfillmentRouter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 @Service
 public class VapiWebhookService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(VapiWebhookService.class);
     private final CallRepository callRepository;
     private final WebVoiceTokenService tokenService;
     private final ToolFulfillmentRouter toolRouter;
@@ -31,20 +36,41 @@ public class VapiWebhookService {
     }
 
     public Map<String, Object> handle(String callSid, String token, JsonNode payload) {
-        var call = authorizedCall(callSid, token);
         var message = payload == null ? null : payload.path("message");
         if (message == null || message.isMissingNode() || message.isNull()) return Map.of();
-        if (!"tool-calls".equals(message.path("type").asText())) return Map.of();
+        var messageType = message.path("type").asText();
+        if ("end-of-call-report".equals(messageType)) {
+            var call = authorizedCall(callSid, token, false);
+            logEndOfCallMetrics(call, message);
+            return Map.of();
+        }
+        var call = authorizedCall(callSid, token);
+        if (!"tool-calls".equals(messageType)) return Map.of();
 
         var results = new ArrayList<Map<String, Object>>();
         var toolCalls = message.path("toolCallList");
         if (!toolCalls.isArray()) return Map.of("error", "Vapi tool request did not include toolCallList");
+        var providerCallId = message.path("call").path("id").asText("");
         for (var node : toolCalls) {
             var function = node.path("function");
             var id = text(node, "id");
             var name = firstNonBlank(text(node, "name"), text(function, "name"));
             var arguments = arguments(node, function);
-            var routed = toolRouter.route(call, new LlmToolCall(id, name, arguments));
+            var startedAt = System.nanoTime();
+            LlmToolResult routed;
+            try {
+                routed = toolRouter.route(call, new LlmToolCall(id, name, arguments));
+                LOGGER.info(
+                        "Vapi tool completed sautiCallId={} providerCallId={} tool={} success={} durationMs={}",
+                        call.getId(), providerCallId, name, routed.success(), elapsedMillis(startedAt)
+                );
+            } catch (RuntimeException exception) {
+                LOGGER.warn(
+                        "Vapi tool failed sautiCallId={} providerCallId={} tool={} durationMs={} reason={}",
+                        call.getId(), providerCallId, name, elapsedMillis(startedAt), exception.getMessage()
+                );
+                throw exception;
+            }
             var result = new LinkedHashMap<String, Object>();
             result.put("name", name);
             result.put("toolCallId", id);
@@ -69,15 +95,47 @@ public class VapiWebhookService {
     }
 
     public Call authorizedCall(String callSid, String token) {
+        return authorizedCall(callSid, token, true);
+    }
+
+    private Call authorizedCall(String callSid, String token, boolean activeRequired) {
         if (token == null || token.isBlank()) throw new IllegalArgumentException("Vapi callback token is required");
         var principal = tokenService.verify(token);
         if (!callSid.equals(principal.callSid())) throw new IllegalArgumentException("Vapi callback token does not match call");
         return callRepository.findByTwilioCallSid(callSid)
-                .filter(Call::isActive)
+                .filter(call -> !activeRequired || call.isActive())
                 .filter(call -> "test".equals(call.getDirection()) || "web".equals(call.getDirection()))
                 .filter(call -> principal.publicAgentId().equals(call.getAgent().getId().toString())
                         || principal.publicAgentId().equals(call.getAgent().getWebVoicePublicId()))
                 .orElseThrow(() -> new IllegalArgumentException("Vapi call is unavailable"));
+    }
+
+    private void logEndOfCallMetrics(Call call, JsonNode message) {
+        var providerCallId = message.path("call").path("id").asText("");
+        var artifact = message.path("artifact");
+        if (artifact.isMissingNode() || artifact.isNull()) artifact = message.path("call").path("artifact");
+        var metrics = artifact.path("performanceMetrics");
+        LOGGER.info(
+                "Vapi call metrics sautiCallId={} providerCallId={} endedReason={} turnLatencyAverage={} modelLatencyAverage={} voiceLatencyAverage={} transcriberLatencyAverage={} endpointingLatencyAverage={} userInterruptions={} assistantInterruptions={}",
+                call.getId(),
+                providerCallId,
+                message.path("endedReason").asText(message.path("call").path("endedReason").asText("")),
+                metric(metrics, "turnLatencyAverage"),
+                metric(metrics, "modelLatencyAverage"),
+                metric(metrics, "voiceLatencyAverage"),
+                metric(metrics, "transcriberLatencyAverage"),
+                metric(metrics, "endpointingLatencyAverage"),
+                metric(metrics, "numUserInterrupted"),
+                metric(metrics, "numAssistantInterrupted")
+        );
+    }
+
+    private double metric(JsonNode metrics, String name) {
+        return metrics.path(name).isNumber() ? metrics.path(name).asDouble() : -1;
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
     }
 
     private Map<String, Object> arguments(JsonNode node, JsonNode function) {

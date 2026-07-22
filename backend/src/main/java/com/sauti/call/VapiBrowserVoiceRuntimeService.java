@@ -1,5 +1,6 @@
 package com.sauti.call;
 
+import com.sauti.agent.AgentBusinessIdentity;
 import com.sauti.llm.ConversationOrchestrator;
 import com.sauti.tool.AgentToolLoader;
 import java.net.URLEncoder;
@@ -45,7 +46,7 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
             @Value("${sauti.vapi.model:gpt-4.1-mini}") String model,
             @Value("${sauti.vapi.transcriber-provider:deepgram}") String transcriberProvider,
             @Value("${sauti.vapi.transcriber-model:nova-3}") String transcriberModel,
-            @Value("${sauti.vapi.transcriber-language:multi}") String transcriberLanguage,
+            @Value("${sauti.vapi.transcriber-language:agent}") String transcriberLanguage,
             @Value("${sauti.vapi.voice-provider:vapi}") String voiceProvider,
             @Value("${sauti.vapi.voice-id:Savannah}") String voiceId,
             @Value("${sauti.vapi.voice-version:2}") int voiceVersion,
@@ -112,10 +113,7 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
                         // Vapi supplies and translates the wording. Fast tools
                         // return normally; delayed tools receive one apology
                         // without Sauti maintaining language-specific phrases.
-                        "messages", List.of(Map.of(
-                                "type", "request-response-delayed",
-                                "timingMilliseconds", delayedMessageMs
-                        ))
+                        "messages", toolMessages(tool)
                 ))
                 .toList());
         if (hasEndCall) tools.add(Map.of("type", "endCall"));
@@ -137,11 +135,13 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         var transcriber = new LinkedHashMap<String, Object>();
         transcriber.put("provider", transcriberProvider);
         transcriber.put("model", transcriberModel);
-        transcriber.put("language", transcriberLanguage);
+        transcriber.put("language", resolvedTranscriberLanguage(call));
         if ("deepgram".equalsIgnoreCase(transcriberProvider)) {
             transcriber.put("smartFormat", true);
             transcriber.put("numerals", true);
             transcriber.put("endpointing", Math.max(10, Math.min(500, call.getAgent().getSttEndpointingMs())));
+            var keyterms = boostedKeyterms(call);
+            if (!keyterms.isEmpty()) transcriber.put("keyterm", keyterms);
         }
 
         var voice = new LinkedHashMap<String, Object>();
@@ -180,11 +180,12 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         assistant.put("modelOutputInMessagesEnabled", true);
         assistant.put("clientMessages", List.of(
                 "transcript", "speech-update", "assistant.speechStarted", "status-update",
-                "tool-calls-result", "user-interrupted"
+                "tool-calls-result", "user-interrupted", "voice-input"
         ));
         // Call lifecycle and transcripts are persisted from the authenticated
-        // browser session. The public callback accepts business tools only.
-        assistant.put("serverMessages", List.of("tool-calls"));
+        // browser session. The public callback accepts business tools plus a
+        // metrics-only end report; it never trusts provider transcript writes.
+        assistant.put("serverMessages", List.of("tool-calls", "end-of-call-report"));
         assistant.put("server", callbackServer);
         assistant.put("artifactPlan", Map.of(
                 "recordingEnabled", false,
@@ -243,6 +244,47 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
     private String assistantName(Call call) {
         var name = "Sauti " + call.getAgent().getName();
         return name.length() <= 40 ? name : name.substring(0, 40);
+    }
+
+    private List<Map<String, Object>> toolMessages(com.sauti.llm.LlmToolDefinition tool) {
+        var messages = new java.util.ArrayList<Map<String, Object>>();
+        if (tool.callerWaitExpected()) {
+            // Omitting content deliberately selects Vapi's generated filler in
+            // the active call language. Sauti must not maintain phrase tables.
+            messages.add(Map.of("type", "request-start", "blocking", false));
+        }
+        messages.add(Map.of(
+                "type", "request-response-delayed",
+                "timingMilliseconds", delayedMessageMs
+        ));
+        return List.copyOf(messages);
+    }
+
+    private String resolvedTranscriberLanguage(Call call) {
+        if (!"agent".equalsIgnoreCase(transcriberLanguage)
+                && !"auto".equalsIgnoreCase(transcriberLanguage)) {
+            return transcriberLanguage;
+        }
+        var supported = call.getAgent().getSupportedLanguages();
+        if (supported != null && supported.stream().filter(value -> value != null && !value.isBlank()).distinct().count() > 1) {
+            return "multi";
+        }
+        var configured = trim(call.getAgent().getDefaultLanguage());
+        return configured.isBlank() ? "multi" : configured;
+    }
+
+    private List<String> boostedKeyterms(Call call) {
+        var configured = trim(call.getAgent().getSttBoostedKeywords());
+        var businessName = AgentBusinessIdentity.fromPrompt(call.getAgent());
+        return java.util.stream.Stream.concat(
+                        java.util.stream.Stream.of(businessName),
+                        java.util.Arrays.stream(configured.split(","))
+                )
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .limit(100)
+                .toList();
     }
 
     private String vapiInstructions(Call call, String language, boolean hasEndCall) {

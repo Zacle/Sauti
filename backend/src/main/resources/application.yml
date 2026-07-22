@@ -96,7 +96,7 @@ sauti:
     model: ${VAPI_MODEL:gpt-4.1-mini}
     transcriber-provider: ${VAPI_TRANSCRIBER_PROVIDER:deepgram}
     transcriber-model: ${VAPI_TRANSCRIBER_MODEL:nova-3}
-    transcriber-language: ${VAPI_TRANSCRIBER_LANGUAGE:multi}
+    transcriber-language: ${VAPI_TRANSCRIBER_LANGUAGE:agent}
     voice-provider: ${VAPI_VOICE_PROVIDER:vapi}
     voice-id: ${VAPI_VOICE_ID:Savannah}
     voice-version: ${VAPI_VOICE_VERSION:2}

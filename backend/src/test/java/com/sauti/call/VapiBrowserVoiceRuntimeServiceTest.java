@@ -29,6 +29,10 @@ class VapiBrowserVoiceRuntimeServiceTest {
         when(call.getLanguageDetected()).thenReturn("fr");
         when(agent.getId()).thenReturn(agentId);
         when(agent.getName()).thenReturn("Amina");
+        when(agent.getDefaultLanguage()).thenReturn("fr");
+        when(agent.getSupportedLanguages()).thenReturn(List.of("fr"));
+        when(agent.getSystemPrompt()).thenReturn("Business: Clinique Amina");
+        when(agent.getSttBoostedKeywords()).thenReturn("Sauti, consultation premium, Sauti");
         when(agent.getSttEndpointingMs()).thenReturn(340);
         when(agent.getMaxCallDurationSeconds()).thenReturn(720);
         when(orchestrator.realtimeInstructions(call, "fr")).thenReturn(
@@ -47,13 +51,14 @@ class VapiBrowserVoiceRuntimeServiceTest {
                                                 "mobile", Map.of("type", "string", "format", "phone")
                                         )
                                 )
-                        ))
+                        )),
+                        true
                 ),
                 new LlmToolDefinition("end_call", "End after a farewell", Map.of("type", "object"))
         ));
         var service = new VapiBrowserVoiceRuntimeService(
                 orchestrator, loader, "vapi-public-key", "https://sauti.uk/",
-                "openai", "gpt-4.1-mini", "deepgram", "nova-3", "multi",
+                "openai", "gpt-4.1-mini", "deepgram", "nova-3", "agent",
                 "vapi", "Savannah", 2, "auto", 30, 1600
         );
 
@@ -68,16 +73,21 @@ class VapiBrowserVoiceRuntimeServiceTest {
                 .contains("Answer in French, use tools safely, and call endCall after the farewell.")
                 .contains("update_customer_record")
                 .contains("\"type\":\"endCall\"")
+                .contains("request-start")
                 .contains("request-response-delayed")
                 .contains("\"timingMilliseconds\":1600")
                 .contains("\"minCharacters\":80")
                 .contains("\"onNoPunctuationSeconds\":1.0")
                 .contains("\"modelOutputInMessagesEnabled\":true")
                 .contains("assistant.speechStarted")
+                .contains("voice-input")
+                .contains("end-of-call-report")
                 .contains("\"format\":\"uuid\"")
                 .contains("\"format\":\"email\"")
                 .contains("https://sauti.uk/api/v1/public/vapi/test-call%2F42/webhook?token=browser%2Fcall-token")
                 .contains("\"provider\":\"deepgram\"")
+                .contains("\"language\":\"fr\"")
+                .contains("\"keyterm\":[\"Clinique Amina\",\"Sauti\",\"consultation premium\"]")
                 .contains("\"voiceId\":\"Savannah\"")
                 .doesNotContain("\"name\":\"end_call\"")
                 .doesNotContain("\"format\":\"phone\"")

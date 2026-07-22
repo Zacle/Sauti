@@ -52,7 +52,8 @@ public class ToolActionPolicy {
                 java.util.Objects.requireNonNullElse(definition.description(), "")
                         + " Effect: " + effect.value() + ". " + SAFETY
                         + confirmationInstruction(tool.confirmationPolicy()),
-                Map.copyOf(schema)
+                Map.copyOf(schema),
+                definition.callerWaitExpected()
         );
     }
 

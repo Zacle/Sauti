@@ -39,7 +39,8 @@ public class AgentToolLoader {
             return actionPolicy.decorate(tool, new LlmToolDefinition(
                     definition.name(),
                     "Authorize a respectful call ending only after the caller clearly indicates they are finished, or after a configured terminal transfer, voicemail, or silence workflow. Never use this merely because one answer or booking step is complete. Thank the caller and give one brief farewell in their current language; do not ask another question afterward.",
-                    definition.inputSchema()
+                    definition.inputSchema(),
+                    definition.callerWaitExpected()
             ));
         }
         if (!"book_slot".equals(tool.getToolName())) return actionPolicy.decorate(tool, definition);
@@ -105,7 +106,8 @@ public class AgentToolLoader {
         return actionPolicy.decorate(tool, new LlmToolDefinition(
                 definition.name(),
                 "Two-step booking. appointment_name is the person receiving the service, not necessarily the person speaking. Set review_action from the caller's meaning in their language: prepare_review for the first review, correct_review for a correction, and approve_review only for unconditional approval of the latest review. The server retains the private review token. The caller states details naturally and is never required to spell anything. Never expose the token.",
-                Map.copyOf(schema)
+                Map.copyOf(schema),
+                definition.callerWaitExpected()
         ));
     }
 

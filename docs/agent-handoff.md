@@ -221,6 +221,33 @@ Expected:
 
 ## Change log
 
+### 2026-07-22 - Make Vapi captions, speech recognition, and tool latency measurable
+
+- Added a truthful live-caption fallback for Vapi browser calls. `assistant.speechStarted` remains authoritative; if that event is absent, Agent Studio now buffers Vapi's exact `voice-input` text and reveals it only after remote assistant audio begins. Streamed model output is never presented as spoken text. Runtime timing diagnostics contain event names, durations, provider call ID, turns, and text lengths but no transcript content.
+- Made Vapi transcription language follow the agent by default. Single-language agents send their configured language to Deepgram; multilingual agents use `multi`; an explicit `VAPI_TRANSCRIBER_LANGUAGE` provider value remains an override. Deepgram receives the parsed business identity and the saved agent STT boosted-keyword list as deduplicated keyterms.
+- Added provider-neutral `callerWaitExpected` metadata to loaded tool definitions. Tools that may cross a transaction or network boundary receive Vapi's generated, non-blocking `request-start` filler in the active call language plus the existing delayed apology. Static business-hours reads and the internal conversation-state tool remain on the fast path.
+- Added sanitized backend timing records. Every Vapi business callback records the Sauti call ID, provider call ID, tool name, success flag, and execution duration without arguments. Authenticated end-of-call reports are accepted even if the Sauti call completed first and record provider turn/model/voice/transcriber/endpointing averages and interruption counts.
+- Updated placeholder configuration so `VAPI_TRANSCRIBER_LANGUAGE=agent` is the default. A deployed environment that explicitly retains `multi` will continue to override agent-aware selection until a maintainer changes or removes that value.
+- Files touched:
+  - `.env.example`, `deploy/.env.production.example`
+  - `backend/src/main/java/com/sauti/call/{VapiBrowserVoiceRuntimeService,VapiWebhookService}.java`
+  - `backend/src/main/java/com/sauti/llm/LlmToolDefinition.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,ToolActionPolicy}.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/call/{VapiBrowserVoiceRuntimeServiceTest,VapiWebhookServiceTest}.java`
+  - `backend/src/test/java/com/sauti/llm/LlmToolDefinitionTest.java`
+  - `dashboard/features/voice-runtime/vapiRuntime.ts`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - Focused Vapi runtime, webhook, and tool-definition tests - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 24 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: provider event cadence and the generated filler must be verified in a live Vapi call after deployment. The new metrics make that test diagnostic rather than subjective. Vapi's standard voice still exposes chunk-level text rather than word alignment; exact character-by-character playback requires a voice provider with alignment support.
+
 ### 2026-07-22 - Declare safe defaults for Radix runtime CSS variables
 
 - Confirmed the reported unresolved custom properties are supplied by Radix Select and Popover as inline styles at runtime; the warnings came from static CSS inspection, not missing browser values.
