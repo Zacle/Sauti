@@ -4363,4 +4363,11 @@ Expected:
   - `npm.cmd run build` - passed; 50 routes generated.
   - deployment workflow parsed with `js-yaml`; provider-secret shell step passed `bash -n`.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
-- Known follow-up/risk: the local `.env` does not yet contain `VAPI_PUBLIC_KEY`, so a maintainer must copy the Public Key from **Vapi Dashboard → Vapi API Keys** into the local secret environment. It can then be uploaded as the encrypted `VAPI_PUBLIC_KEY` Actions secret without printing it. The production browser runtime cannot start until that secret and this reviewed code reach production.
+
+### 2026-07-22 - Store the Vapi browser public key for the next deployment
+
+- Confirmed the public-key browser-runtime code is deployed at commit `490322b`, but the running backend still reported Vapi as unavailable because the deployment occurred before the `VAPI_PUBLIC_KEY` Actions secret existed.
+- Confirmed the local `.env` now contains a non-empty `VAPI_PUBLIC_KEY` without printing it, then uploaded it through standard input as the encrypted `VAPI_PUBLIC_KEY` secret for `Zacle/Sauti`.
+- Verification: `gh secret list` shows both `VAPI_API_KEY` and `VAPI_PUBLIC_KEY` with update timestamps while exposing neither value; `https://sauti.uk/health` remains `UP`.
+- Deployment status: the secret is stored but not yet present in the running container. A maintainer must review and push this handoff update (or another reviewed change) to `main`; the resulting successful CI-triggered deployment will run the existing secret synchronization step and recreate the backend with `VAPI_PUBLIC_KEY`.
+- Known follow-up/risk: do not manually rerun or bypass deployment. After the next normal deployment, start an Agent Studio Vapi call and confirm the provider creates the web call; the improved client now preserves any remaining Vapi validation error verbatim.
