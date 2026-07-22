@@ -57,7 +57,8 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                     field(fields, "appointmentAt", ""),
                     field(fields, "callerPhone", context.callerPhone()),
                     true,
-                    bookingReview.result().get("reviewToken").toString()
+                    bookingReview.result().get("reviewToken").toString(),
+                    integerField(fields, "durationMinutes", 60)
             ));
             return new LlmToolTurnResponse(bookingReview.result().get("spokenResponse").toString(), List.of());
         }
@@ -78,7 +79,8 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                 if (!pendingBooking.identityReadbackRequested()) {
                     callSessionStore.updatePendingBooking(context.callSid(), new BookingDraft(
                             pendingBooking.callerName(), pendingBooking.serviceType(), pendingBooking.preferredDate(),
-                            pendingBooking.confirmedSlot(), pendingBooking.callerPhone(), true
+                            pendingBooking.confirmedSlot(), pendingBooking.callerPhone(), true,
+                            pendingBooking.reviewToken(), pendingBooking.durationMinutes()
                     ));
                     var spelling = natoSpelling(pendingBooking.callerName());
                     var digits = individualDigits(pendingBooking.callerPhone());
@@ -206,6 +208,7 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
         arguments.put("caller_name", booking.callerName());
         arguments.put("caller_phone", booking.callerPhone());
         arguments.put("service_type", booking.serviceType());
+        arguments.put("duration_minutes", booking.durationMinutes() > 0 ? booking.durationMinutes() : 60);
         if (booking.reviewToken() != null && !booking.reviewToken().isBlank()) {
             arguments.put("review_token", booking.reviewToken());
         }
@@ -216,6 +219,15 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
         var value = fields.get(key);
         var safeFallback = fallback == null ? "" : fallback;
         return value == null || value.toString().isBlank() ? safeFallback : value.toString();
+    }
+
+    private int integerField(Map<?, ?> fields, String key, int fallback) {
+        try {
+            var value = fields.get(key);
+            return value == null ? fallback : Integer.parseInt(value.toString());
+        } catch (RuntimeException exception) {
+            return fallback;
+        }
     }
 
     private String firstAvailableSlot(LlmToolResult availability, OffsetDateTime fallback) {

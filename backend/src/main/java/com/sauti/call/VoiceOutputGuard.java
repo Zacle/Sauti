@@ -133,6 +133,29 @@ public final class VoiceOutputGuard {
         };
     }
 
+    public static String safeBookingMutationFailure(String language, String toolName) {
+        var cancellation = "cancel_booking".equals(toolName);
+        if ("ar".equalsIgnoreCase(language)) {
+            return cancellation
+                    ? "\u062A\u0639\u0630\u0631 \u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0645\u0648\u0639\u062F. \u0644\u0645 \u064A\u062A\u063A\u064A\u0631 \u0627\u0644\u062D\u062C\u0632."
+                    : "\u062A\u0639\u0630\u0631 \u062A\u063A\u064A\u064A\u0631 \u0645\u0648\u0639\u062F \u0627\u0644\u062D\u062C\u0632. \u0644\u0645 \u064A\u062A\u063A\u064A\u0631 \u0627\u0644\u062D\u062C\u0632.";
+        }
+        return switch (language == null ? "en" : language.toLowerCase(Locale.ROOT)) {
+            case "fr" -> cancellation
+                    ? "Je n'ai pas pu annuler le rendez-vous. La reservation reste inchangee."
+                    : "Je n'ai pas pu deplacer le rendez-vous. La reservation reste inchangee.";
+            case "ar" -> cancellation
+                    ? "Ù„Ù… Ø£ØªÙ…ÙƒÙ† Ù…Ù† Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ù…ÙˆØ¹Ø¯. Ù…Ø§ Ø²Ø§Ù„ Ø§Ù„Ø­Ø¬Ø² Ø¯ÙˆÙ† ØªØºÙŠÙŠØ±."
+                    : "Ù„Ù… Ø£ØªÙ…ÙƒÙ† Ù…Ù† ØªØºÙŠÙŠØ± Ù…ÙˆØ¹Ø¯ Ø§Ù„Ø­Ø¬Ø². Ù…Ø§ Ø²Ø§Ù„ Ø§Ù„Ø­Ø¬Ø² Ø¯ÙˆÙ† ØªØºÙŠÙŠØ±.";
+            case "sw" -> cancellation
+                    ? "Sikuweza kughairi miadi. Nafasi hiyo haijabadilishwa."
+                    : "Sikuweza kubadilisha muda wa miadi. Nafasi hiyo haijabadilishwa.";
+            default -> cancellation
+                    ? "I couldn't cancel the appointment, so the booking remains unchanged."
+                    : "I couldn't reschedule the appointment, so the booking remains unchanged.";
+        };
+    }
+
     public static String safeResponseFailure(String language) {
         return switch (language == null ? "en" : language.toLowerCase(Locale.ROOT)) {
             case "fr" -> "Desole, je n'ai pas pu terminer ma reponse. Pouvez-vous repeter votre question, s'il vous plait ?";

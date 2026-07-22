@@ -486,8 +486,24 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         when(realtimeService.executeTool(eq(call), eq("availability-review"), eq("check_availability"), anyString()))
                 .thenReturn(new com.sauti.llm.LlmToolResult(
                         "availability-review", "check_availability", true,
-                        Map.of("status", "requested_time_available", "nextTool", "book_slot"), ""
+                        Map.of(
+                                "status", "requested_time_available",
+                                "nextTool", "book_slot",
+                                "nextToolAuthorized", true,
+                                "nextToolArguments", Map.of(
+                                        "appointment_name", "Zachary",
+                                        "caller_phone", "0105752441",
+                                        "service_type", "Men hairstyle",
+                                        "appointment_at", "2026-07-24T15:00:00Z"
+                                )
+                        ), ""
                 ));
+        when(realtimeService.executeTool(
+                eq(call), eq("sauti-chain:availability-review:book_slot"), eq("book_slot"), anyString()
+        )).thenReturn(new com.sauti.llm.LlmToolResult(
+                "sauti-chain:availability-review:book_slot", "book_slot", true,
+                Map.of("status", "booking_review_required", "spokenResponse", "Please confirm the details."), ""
+        ));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
                 new ObjectMapper(), realtimeService, call,
                 new RecordingListener(new ArrayList<>()), Map.of()
@@ -501,7 +517,10 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                         + "\"arguments\":\"{\\\"date\\\":\\\"2026-07-24\\\",\\\"time_preference\\\":\\\"15:00\\\"}\"}",
                 true);
 
-        verify(session, timeout(1_000)).requestResponseWithRequiredTool("book_slot");
+        verify(realtimeService, timeout(1_000)).executeTool(
+                eq(call), eq("sauti-chain:availability-review:book_slot"), eq("book_slot"), anyString()
+        );
+        verify(session, never()).requestResponseWithRequiredTool("book_slot");
         verify(session, never()).requestToolResultResponse();
         verify(session, never()).requestExactResponse(anyString(), anyLong());
     }
@@ -785,11 +804,17 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     void progressInstructionsDelegateLanguageAndWordingToTheModel() {
         assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("book_slot")).isTrue();
         assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("check_availability")).isTrue();
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("reschedule_booking")).isTrue();
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("cancel_booking")).isTrue();
         assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction("book_slot"))
                 .contains("caller's current language", "apology", "still saving the appointment")
                 .doesNotContain("I’m saving the appointment");
         assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction("check_availability"))
                 .contains("still checking the live schedule");
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction("reschedule_booking"))
+                .contains("still rescheduling the appointment");
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction("cancel_booking"))
+                .contains("still cancelling the appointment");
     }
 
     @Test

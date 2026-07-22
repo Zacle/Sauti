@@ -9,6 +9,7 @@ import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
 import com.sauti.session.BookingDraft;
 import com.sauti.session.CallSessionStore;
+import com.sauti.session.ConversationState;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -153,8 +154,13 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                             ? "requested_time_available"
                             : "slots_available";
         result.put("status", status);
-        if ("requested_time_available".equals(status) && readyForAutomaticBookingReview(call)) {
+        var bookingArguments = "requested_time_available".equals(status)
+                ? rememberVerifiedSlot(call, date, requestedTime.orElseThrow(), matchingSlot.orElseThrow(), duration)
+                : clearInvalidVerifiedSlot(call, date, requestedTime);
+        if (bookingArguments.isPresent()) {
             result.put("nextTool", "book_slot");
+            result.put("nextToolAuthorized", true);
+            result.put("nextToolArguments", bookingArguments.get());
             result.put("instruction", "The requested time is available and the caller has an active booking intake. "
                     + "Call book_slot immediately without speaking, asking permission, or asking the caller to wait. "
                     + "The booking tool will validate missing fields and produce the exact review.");
@@ -167,15 +173,65 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         return Map.copyOf(result);
     }
 
-    private boolean readyForAutomaticBookingReview(Call call) {
+    private Optional<Map<String, Object>> rememberVerifiedSlot(
+            Call call,
+            LocalDate date,
+            LocalTime requestedTime,
+            com.sauti.calendar.CalendarAvailabilitySlot slot,
+            int durationMinutes
+    ) {
         var latestCaller = latestCallerTranscript(call);
         var notes = intakeNotes.notes(call, latestCaller);
-        var recipientKnown = notes.containsKey("appointment_name")
-                || (!"other".equals(notes.get("booking_subject")) && notes.containsKey("caller_name"));
-        return "active".equals(notes.get("booking_intent"))
-                && recipientKnown
-                && notes.containsKey("caller_phone")
-                && notes.containsKey("service_type");
+        if (!ConversationState.INTENT_ACTIVE.equals(notes.get("booking_intent"))
+                || !stateStillMatchesRequest(notes, date, Optional.of(requestedTime))) {
+            return Optional.empty();
+        }
+        var draft = new BookingDraft(
+                notes.getOrDefault("appointment_name", notes.getOrDefault("caller_name", "")),
+                notes.getOrDefault("service_type", ""),
+                date.toString(),
+                slot.start().toString(),
+                notes.getOrDefault("caller_phone", ""),
+                true,
+                "",
+                durationMinutes
+        );
+        if (call.getTwilioCallSid() != null && !call.getTwilioCallSid().isBlank()) {
+            callSessionStore.updatePendingBooking(call.getTwilioCallSid(), draft);
+        }
+        var verifiedNotes = new LinkedHashMap<>(notes);
+        verifiedNotes.put("preferred_day", date.toString());
+        verifiedNotes.put("preferred_time", requestedTime.toString());
+        return BookingToolArgumentResolver.resolve(call, Map.copyOf(verifiedNotes), draft);
+    }
+
+    private Optional<Map<String, Object>> clearInvalidVerifiedSlot(
+            Call call,
+            LocalDate date,
+            Optional<LocalTime> requestedTime
+    ) {
+        var latestCaller = latestCallerTranscript(call);
+        var notes = intakeNotes.notes(call, latestCaller);
+        if (ConversationState.INTENT_ACTIVE.equals(notes.get("booking_intent"))
+                && stateStillMatchesRequest(notes, date, requestedTime)
+                && call.getTwilioCallSid() != null && !call.getTwilioCallSid().isBlank()) {
+            callSessionStore.updatePendingBooking(call.getTwilioCallSid(), null);
+        }
+        return Optional.empty();
+    }
+
+    private boolean stateStillMatchesRequest(
+            Map<String, String> notes,
+            LocalDate date,
+            Optional<LocalTime> requestedTime
+    ) {
+        // The semantic state may advance while a slow calendar call is still in
+        // flight. A stale result must never verify or clear the newer turn's slot.
+        if (!notes.containsKey("conversation_state_revision")) return true;
+        if (!date.toString().equals(notes.get("preferred_day"))) return false;
+        return requestedTime
+                .map(time -> time.toString().equals(notes.get("preferred_time")))
+                .orElse(true);
     }
 
     private Map<String, Object> missingDate(Call call, ZoneId timezone) {
@@ -367,7 +423,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 stringArg(arguments, "appointment_at", ""),
                 stringArg(arguments, "caller_phone", ""),
                 true,
-                reviewToken
+                reviewToken,
+                intArg(arguments, "duration_minutes", 60)
         ));
     }
 
@@ -522,19 +579,37 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     }
 
     private Map<String, Object> reschedule(Call call, LlmToolCall toolCall) {
-        var existing = bookingService.resolve(call.getTenant().getId(), requiredStringArg(toolCall.arguments(), "booking_number"));
+        var bookingNumber = requiredStringArg(toolCall.arguments(), "booking_number");
+        var existing = bookingService.resolve(call.getTenant().getId(), bookingNumber);
         var booking = bookingService.reschedule(call.getTenant().getId(), existing.getId(),
                 new com.sauti.calendar.BookingDtos.RescheduleBookingRequest(
                         OffsetDateTime.parse(requiredStringArg(toolCall.arguments(), "appointment_at")),
                         intArg(toolCall.arguments(), "duration_minutes", 60)));
-        return Map.of("bookingId", booking.getId(), "appointmentAt", booking.getAppointmentAt().toString(),
-                "updated", true);
+        return Map.of(
+                "status", "booking_rescheduled",
+                "bookingId", booking.getId(),
+                "bookingNumber", booking.getBookingReference() == null
+                        ? bookingNumber : booking.getBookingReference(),
+                "appointmentAt", booking.getAppointmentAt().toString(),
+                "updated", true,
+                "instruction", "Tell the caller in their current language that the booking was rescheduled, "
+                        + "using only bookingNumber and appointmentAt from this result. Do not invent another reference or time."
+        );
     }
 
     private Map<String, Object> cancel(Call call, LlmToolCall toolCall) {
-        var existing = bookingService.resolve(call.getTenant().getId(), requiredStringArg(toolCall.arguments(), "booking_number"));
+        var bookingNumber = requiredStringArg(toolCall.arguments(), "booking_number");
+        var existing = bookingService.resolve(call.getTenant().getId(), bookingNumber);
         var booking = bookingService.cancel(call.getTenant().getId(), existing.getId());
-        return Map.of("bookingId", booking.getId(), "cancelled", true);
+        return Map.of(
+                "status", "booking_cancelled",
+                "bookingId", booking.getId(),
+                "bookingNumber", booking.getBookingReference() == null
+                        ? bookingNumber : booking.getBookingReference(),
+                "cancelled", true,
+                "instruction", "Tell the caller in their current language that bookingNumber was cancelled. "
+                        + "Do not claim that any other booking was changed."
+        );
     }
 
     private String stringArg(Map<String, Object> arguments, String name, String defaultValue) {

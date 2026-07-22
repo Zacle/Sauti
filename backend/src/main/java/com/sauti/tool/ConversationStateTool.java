@@ -6,12 +6,14 @@ import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolDefinition;
 import com.sauti.llm.LlmToolResult;
 import com.sauti.session.CallSessionStore;
+import com.sauti.session.BookingDraft;
 import com.sauti.session.ConversationState;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -25,7 +27,8 @@ public class ConversationStateTool {
     public static final String NAME = "update_conversation_state";
     private static final Set<String> COMMON_FIELDS = Set.of(
             "caller_name", "appointment_name", "recipient_relation", "service_type",
-            "caller_phone", "caller_email", "preferred_day", "preferred_time", "review_decision"
+            "caller_phone", "caller_email", "booking_number", "preferred_day", "preferred_time",
+            "review_decision"
     );
     private static final Set<String> SUBJECTS = Set.of(
             "unchanged", ConversationState.SUBJECT_UNKNOWN,
@@ -62,6 +65,7 @@ public class ConversationStateTool {
                     case "service_type" -> "Requested configured service, only when the meaning is clear.";
                     case "caller_phone" -> "Complete caller-provided phone number.";
                     case "caller_email" -> "Complete caller-provided email address.";
+                    case "booking_number" -> "Exact customer-facing booking number supplied for a lookup, reschedule, or cancellation.";
                     case "preferred_day" -> "Clearly understood appointment date normalized to yyyy-MM-dd using TODAY IN THE BUSINESS TIMEZONE. Omit when the date is unclear.";
                     case "preferred_time" -> "Clearly understood exact appointment time normalized to HH:mm, or a clear broad period such as morning or afternoon. Omit when the time is unclear.";
                     case "review_decision" -> "Meaning of the caller's latest response to a booking review: approved, corrected, rejected, or unclear. This is turn-scoped and never inferred from politeness alone.";
@@ -160,6 +164,7 @@ public class ConversationStateTool {
                 result.put("instruction", "The unclear turn did not change booking state or authorize a business tool. Speak spokenResponse once and wait for a clearer caller reply.");
                 return LlmToolResult.success(toolCall, Map.copyOf(result));
             }
+            var previousBookingArguments = verifiedBookingArguments(call, existing);
             var next = reduce(call, existing, toolCall.arguments());
             sessions.updateConversationState(call.getTwilioCallSid(), next);
 
@@ -168,9 +173,29 @@ public class ConversationStateTool {
             result.put("state", next.asNotes());
             result.put("bookingAllowed", !ConversationState.INTENT_PAUSED.equals(next.bookingIntent()));
             var turnUpdates = updates(toolCall.arguments().get("updates"));
+            var clearedFields = clearFields(
+                    toolCall.arguments().get("clear_fields"),
+                    call.getAgent().getBookingRequiredFields() == null
+                            ? Set.of()
+                            : Set.copyOf(call.getAgent().getBookingRequiredFields())
+            );
+            var invalidatesVerifiedSlot = turnUpdates.containsKey("preferred_day")
+                    || turnUpdates.containsKey("preferred_time")
+                    || clearedFields.contains("preferred_day")
+                    || clearedFields.contains("preferred_time")
+                    || !ConversationState.INTENT_ACTIVE.equals(next.bookingIntent());
+            if (invalidatesVerifiedSlot) {
+                sessions.updatePendingBooking(call.getTwilioCallSid(), null);
+            }
+            var directBookingArguments = invalidatesVerifiedSlot
+                    ? Optional.<Map<String, Object>>empty()
+                    : verifiedBookingArguments(call, next);
             var reviewDecision = next.values().getOrDefault("review_decision", "");
             var reviewMustContinue = !ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
                     && ("approved".equals(reviewDecision) || "corrected".equals(reviewDecision))
+                    && configuredFor(call, "book_slot");
+            var bookingBecameReady = previousBookingArguments.isEmpty()
+                    && directBookingArguments.isPresent()
                     && configuredFor(call, "book_slot");
             var availabilityMustContinue = ConversationState.INTENT_ACTIVE.equals(next.bookingIntent())
                     && (turnUpdates.containsKey("preferred_day") || turnUpdates.containsKey("preferred_time"))
@@ -182,12 +207,12 @@ public class ConversationStateTool {
             // A newly supplied or corrected booking date/time is likewise a
             // workflow transition: live availability must be checked before any
             // caller-facing claim, regardless of the caller's wording.
-            var nextAction = reviewMustContinue || availabilityMustContinue
+            var nextAction = reviewMustContinue || availabilityMustContinue || bookingBecameReady
                     ? "use_business_tool"
                     : choice(toolCall.arguments().get("next_action"), NEXT_ACTIONS, "reply");
             var businessTool = availabilityMustContinue
                     ? "check_availability"
-                    : reviewMustContinue
+                    : reviewMustContinue || bookingBecameReady
                         ? "book_slot"
                         : stringArgument(toolCall.arguments(), "business_tool");
             var spoken = "reply".equals(nextAction)
@@ -199,7 +224,7 @@ public class ConversationStateTool {
                     && businessTool.matches("[A-Za-z][A-Za-z0-9_]{1,63}")
                     && !NAME.equals(businessTool)
                     && !(ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
-                        && "book_slot".equals(businessTool))
+                        && Set.of("book_slot", "reschedule_booking", "cancel_booking").contains(businessTool))
                     && configuredFor(call, businessTool)) {
                 result.put("nextTool", businessTool);
                 result.put("nextToolAuthorized", true);
@@ -208,13 +233,19 @@ public class ConversationStateTool {
                     if (!availabilityArguments.isEmpty()) {
                         result.put("nextToolArguments", availabilityArguments);
                     }
-                } else if ("book_slot".equals(businessTool) && "approved".equals(reviewDecision)) {
-                    sessions.pendingBooking(call.getTwilioCallSid())
-                            .map(com.sauti.session.BookingDraft::reviewToken)
-                            .filter(token -> token != null && !token.isBlank())
-                            .ifPresent(token -> {
-                                result.put("nextToolArguments", Map.of("review_token", token));
-                            });
+                } else if ("book_slot".equals(businessTool)) {
+                    directBookingArguments.ifPresent(arguments ->
+                            result.put("nextToolArguments", arguments)
+                    );
+                } else if ("reschedule_booking".equals(businessTool)) {
+                    verifiedRescheduleArguments(call, next).ifPresent(arguments ->
+                            result.put("nextToolArguments", arguments)
+                    );
+                } else if ("cancel_booking".equals(businessTool)) {
+                    var bookingNumber = next.values().getOrDefault("booking_number", "").trim();
+                    if (!bookingNumber.isBlank()) {
+                        result.put("nextToolArguments", Map.of("booking_number", bookingNumber));
+                    }
                 }
             }
             result.put("instruction", spoken.isBlank()
@@ -238,6 +269,28 @@ public class ConversationStateTool {
         var preferredTime = state.values().getOrDefault("preferred_time", "").trim();
         if (!preferredTime.isBlank()) result.put("time_preference", preferredTime);
         return Map.copyOf(result);
+    }
+
+    private Optional<Map<String, Object>> verifiedBookingArguments(Call call, ConversationState state) {
+        Optional<BookingDraft> pending;
+        try {
+            pending = sessions.pendingBooking(call.getTwilioCallSid());
+        } catch (RuntimeException exception) {
+            return Optional.empty();
+        }
+        if (pending == null || pending.isEmpty()) return Optional.empty();
+        return BookingToolArgumentResolver.resolve(call, state.asNotes(), pending.get());
+    }
+
+    private Optional<Map<String, Object>> verifiedRescheduleArguments(Call call, ConversationState state) {
+        Optional<BookingDraft> pending;
+        try {
+            pending = sessions.pendingBooking(call.getTwilioCallSid());
+        } catch (RuntimeException exception) {
+            return Optional.empty();
+        }
+        if (pending == null || pending.isEmpty()) return Optional.empty();
+        return BookingToolArgumentResolver.resolveReschedule(call, state.asNotes(), pending.get());
     }
 
     private ConversationState reduce(Call call, ConversationState current, Map<String, Object> arguments) {

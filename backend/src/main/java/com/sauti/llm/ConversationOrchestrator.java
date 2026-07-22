@@ -224,7 +224,6 @@ public class ConversationOrchestrator {
     private String serverAuthorizedNextTool(LlmToolResult result) {
         if (!result.success()) return "";
         var value = result.result().get("nextTool");
-        if ("book_slot".equals(value)) return value.toString();
         return Boolean.TRUE.equals(result.result().get("nextToolAuthorized"))
                 && value != null
                 && value.toString().matches("[A-Za-z][A-Za-z0-9_]{1,63}")

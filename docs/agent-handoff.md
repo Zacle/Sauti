@@ -4113,3 +4113,32 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: speech recognition may still transcribe poor audio as nonsense; this change makes that case safe by asking for repetition instead of acting on stale state. After CI/CD, repeat the supplied path in Agent Studio and one carrier call: request 3 p.m., select the offered 4 p.m. alternative, then intentionally say an unintelligible fragment. Confirm the clear selection receives one calendar answer without the timeout banner and the unclear fragment triggers one short clarification with no additional calendar call or state change.
+
+### 2026-07-22 - Carry verified booking state through the final intake field
+
+- Fixed the remaining conversational-response timeout after a caller supplied the final required booking field, as observed with phone number `010-575-2441`. The phone number was already persisted correctly; the failure came from requesting another Realtime model response solely to reconstruct `book_slot` arguments from conversation history.
+- A successful exact availability check now stores a call-scoped verified slot with its duration. When the remaining name, phone, service, email, or configured detail becomes complete, Sauti builds the booking request from authoritative semantic state plus that verified slot and executes `book_slot` directly. The model no longer has an opportunity to forget, rename, or reinterpret those values between intake and the server-generated review.
+- Applied the same server-built argument path to an immediately complete availability check, review corrections, and review approval. Date or time changes invalidate the stored slot and force a new availability check before another review or save.
+- Extended the authoritative argument path to update and delete operations. Semantic state now retains the exact customer-facing booking number; confirmed cancellation uses that number directly, while rescheduling combines it with a newly verified replacement slot. An existing booking number prevents an availability result from accidentally starting a new-booking review.
+- Reschedule and cancellation outcomes now expose explicit factual statuses, the customer-facing booking number, and the confirmed replacement time where applicable. Natural wording remains model-owned after success; if the operation itself fails, the caller receives a narrow factual unchanged-booking fallback rather than the unrelated generic request to repeat their question.
+- Slow reschedule and cancellation operations now receive the same delayed, model-generated apology/progress update as availability and creation, and browser execution allows the same 30-second mutation window. The application chooses when an update is safe; the model chooses its wording and caller language.
+- Guarded slow-operation races: a late availability response may neither overwrite nor clear a newer date/time selected by the caller. Only a result that still matches the current semantic-state revision can update the verified slot.
+- Removed the implicit `book_slot` trust exception from browser Realtime, phone Realtime, and the turn-based orchestrator. Every chained business tool now requires explicit server authorization; direct execution additionally requires concrete server-built arguments.
+- Preserved appointment duration in pending/review booking drafts, including the local fallback provider, rather than silently reverting every resumed flow to 60 minutes.
+- This follows OpenAI's Realtime function-calling boundary: application code owns custom function execution and factual state, while another `response.create` is used only when a further conversational response is actually needed. Reference: https://developers.openai.com/api/docs/guides/realtime-conversations#function-calling
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/llm/{ConversationOrchestrator,LocalToolCallingLlmProvider}.java`
+  - `backend/src/main/java/com/sauti/session/BookingDraft.java`
+  - `backend/src/main/java/com/sauti/tool/{BookingToolArgumentResolver,ConversationStateTool,SautiCalendarFulfillment}.java`
+  - focused backend tests for semantic state, calendar CRUD fulfillment, phone Realtime, safe voice output, and the turn-based orchestrator
+  - `dashboard/features/voice-runtime/{openaiRealtime.test,realtimeProtocol}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused semantic-state, calendar-fulfillment, phone-Realtime, and orchestrator suites - passed.
+  - `npm.cmd run test:voice` - passed; 14 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `.\gradlew.bat :backend:test` - passed after the final CRUD, progress, and stale-result guards.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: the mocked suite verifies the exact reported 4 p.m. then phone-number transition and a late-calendar-result race, but real provider latency still needs one Agent Studio and one carrier call after CI/CD. Confirm that the phone-number turn goes directly to one booking review with no generic repeat message and that correcting the time invalidates the prior slot before review.

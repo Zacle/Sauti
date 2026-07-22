@@ -395,6 +395,8 @@ export async function connectOpenAiRealtime(options: {
       ? localizedAvailabilityFailure(options.responseLanguage)
       : name === "book_slot"
         ? localizedBookingFailure(options.responseLanguage)
+        : name === "reschedule_booking" || name === "cancel_booking"
+          ? localizedBookingMutationFailure(options.responseLanguage, name)
         : localizedAvailabilityClarification(options.responseLanguage);
     deliverAgentSpeech({ id: speechId, generation, text: failure });
   };
@@ -457,7 +459,7 @@ export async function connectOpenAiRealtime(options: {
     if (!execution) {
       execution = withTimeout(
         options.callbacks.executeTool(callId, name, argumentsJson),
-        name === "book_slot" ? BOOKING_EXECUTION_TIMEOUT_MS : TOOL_EXECUTION_TIMEOUT_MS,
+        isBookingMutation(name) ? BOOKING_EXECUTION_TIMEOUT_MS : TOOL_EXECUTION_TIMEOUT_MS,
         "The voice tool did not complete in time.",
       );
       toolExecutions.set(executionKey, execution);
@@ -1218,8 +1220,37 @@ function localizedBookingFailure(language?: string) {
   }
 }
 
+function localizedBookingMutationFailure(language: string | undefined, toolName: string) {
+  const cancellation = toolName === "cancel_booking";
+  if (language?.toLocaleLowerCase() === "ar") {
+    return cancellation
+      ? "\u062A\u0639\u0630\u0631 \u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0645\u0648\u0639\u062F. \u0644\u0645 \u064A\u062A\u063A\u064A\u0631 \u0627\u0644\u062D\u062C\u0632."
+      : "\u062A\u0639\u0630\u0631 \u062A\u063A\u064A\u064A\u0631 \u0645\u0648\u0639\u062F \u0627\u0644\u062D\u062C\u0632. \u0644\u0645 \u064A\u062A\u063A\u064A\u0631 \u0627\u0644\u062D\u062C\u0632.";
+  }
+  switch (language?.toLocaleLowerCase()) {
+    case "fr": return cancellation
+      ? "Je n'ai pas pu annuler le rendez-vous. La reservation reste inchangee."
+      : "Je n'ai pas pu deplacer le rendez-vous. La reservation reste inchangee.";
+    case "ar": return cancellation
+      ? "Ù„Ù… Ø£ØªÙ…ÙƒÙ† Ù…Ù† Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ù…ÙˆØ¹Ø¯. Ù…Ø§ Ø²Ø§Ù„ Ø§Ù„Ø­Ø¬Ø² Ø¯ÙˆÙ† ØªØºÙŠÙŠØ±."
+      : "Ù„Ù… Ø£ØªÙ…ÙƒÙ† Ù…Ù† ØªØºÙŠÙŠØ± Ù…ÙˆØ¹Ø¯ Ø§Ù„Ø­Ø¬Ø². Ù…Ø§ Ø²Ø§Ù„ Ø§Ù„Ø­Ø¬Ø² Ø¯ÙˆÙ† ØªØºÙŠÙŠØ±.";
+    case "sw": return cancellation
+      ? "Sikuweza kughairi miadi. Nafasi hiyo haijabadilishwa."
+      : "Sikuweza kubadilisha muda wa miadi. Nafasi hiyo haijabadilishwa.";
+    default: return cancellation
+      ? "I couldn't cancel the appointment, so the booking remains unchanged."
+      : "I couldn't reschedule the appointment, so the booking remains unchanged.";
+  }
+}
+
 function supportsBusinessActionProgress(toolName: string) {
-  return toolName === "check_availability" || toolName === "book_slot";
+  return toolName === "check_availability" || isBookingMutation(toolName);
+}
+
+function isBookingMutation(toolName: string) {
+  return toolName === "book_slot"
+    || toolName === "reschedule_booking"
+    || toolName === "cancel_booking";
 }
 
 function isAuxiliaryResponsePurpose(purpose?: PendingResponseRequest["purpose"]) {

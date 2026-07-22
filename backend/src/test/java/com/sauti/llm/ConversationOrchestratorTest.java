@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class ConversationOrchestratorTest {
     @Test
@@ -257,7 +258,15 @@ class ConversationOrchestratorTest {
             LlmToolCall toolCall = invocation.getArgument(1);
             return "check_availability".equals(toolCall.name())
                     ? LlmToolResult.success(toolCall, Map.of(
-                            "status", "requested_time_available", "nextTool", "book_slot"
+                            "status", "requested_time_available",
+                            "nextTool", "book_slot",
+                            "nextToolAuthorized", true,
+                            "nextToolArguments", Map.of(
+                                    "appointment_name", "Zachary",
+                                    "caller_phone", "0105752441",
+                                    "service_type", "Men hairstyle",
+                                    "appointment_at", "2026-07-24T15:00:00Z"
+                            )
                     ))
                     : LlmToolResult.success(toolCall, Map.of(
                             "status", "booking_review_required", "spokenResponse", "Here is the exact booking review."
@@ -267,13 +276,14 @@ class ConversationOrchestratorTest {
         var result = orchestrator.handleUserUtterance(call, "en", "Friday at 3 p.m.");
 
         assertThat(result.responseText()).isEqualTo("Here is the exact booking review.");
-        assertThat(provider.contexts).hasSize(2);
-        assertThat(provider.contexts.get(1).requiredToolName()).isEqualTo("book_slot");
-        assertThat(provider.contexts.get(1).tools()).extracting(LlmToolDefinition::name)
-                .containsExactly("book_slot");
-        assertThat(provider.contexts.get(1).systemPrompt())
-                .contains("MANDATORY NEXT ACTION: Call `book_slot` now before speaking")
-                .contains("Do not add a preamble, ask permission, or ask the caller to wait");
+        assertThat(provider.contexts).hasSize(1);
+        var calls = ArgumentCaptor.forClass(LlmToolCall.class);
+        verify(router, times(2)).route(eq(call), calls.capture());
+        assertThat(calls.getAllValues()).extracting(LlmToolCall::name)
+                .containsExactly("check_availability", "book_slot");
+        assertThat(calls.getAllValues().get(1).arguments())
+                .containsEntry("caller_phone", "0105752441")
+                .containsEntry("appointment_at", "2026-07-24T15:00:00Z");
     }
 
     @Test

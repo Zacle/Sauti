@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
@@ -81,7 +82,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
     }
 
     static boolean supportsBusinessActionProgress(String toolName) {
-        return "check_availability".equals(toolName) || "book_slot".equals(toolName);
+        return Set.of(
+                "check_availability", "book_slot", "reschedule_booking", "cancel_booking"
+        ).contains(toolName);
     }
 
     static boolean isAuxiliaryResponsePurpose(String purpose) {
@@ -93,6 +96,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         var operation = switch (toolName == null ? "" : toolName) {
             case "book_slot" -> "saving the appointment";
             case "check_availability" -> "checking the live schedule";
+            case "reschedule_booking" -> "rescheduling the appointment";
+            case "cancel_booking" -> "cancelling the appointment";
             default -> "completing the requested business action";
         };
         return "The system is still " + operation + " and the caller has been waiting longer than expected. "
@@ -899,6 +904,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     var safeText = switch (name) {
                         case "check_availability" -> VoiceOutputGuard.safeAvailabilityFailure(responseLanguage());
                         case "book_slot" -> VoiceOutputGuard.safeBookingFailure(responseLanguage());
+                        case "reschedule_booking", "cancel_booking" ->
+                                VoiceOutputGuard.safeBookingMutationFailure(responseLanguage(), name);
                         default -> VoiceOutputGuard.safeAvailabilityClarification(responseLanguage());
                     };
                     deliverAgentCompletion(new AgentCompletion(
@@ -1009,7 +1016,6 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         private String toolNextTool(com.sauti.llm.LlmToolResult result) {
             var value = result.result().get("nextTool");
-            if ("book_slot".equals(value)) return value.toString();
             return Boolean.TRUE.equals(result.result().get("nextToolAuthorized"))
                     && value != null
                     && value.toString().matches("[A-Za-z][A-Za-z0-9_]{1,63}")

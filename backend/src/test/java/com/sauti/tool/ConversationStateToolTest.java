@@ -177,6 +177,7 @@ class ConversationStateToolTest {
                         "date", "2026-07-30", "time_preference", "13:00"
                 ))
                 .doesNotContainKey("spokenResponse");
+        verify(sessions).updatePendingBooking("business-action-call", null);
     }
 
     @Test
@@ -212,6 +213,7 @@ class ConversationStateToolTest {
                         "date", "2026-07-23", "time_preference", "15:00"
                 ))
                 .doesNotContainKey("spokenResponse");
+        verify(sessions).updatePendingBooking("availability-transition-call", null);
     }
 
     @Test
@@ -254,6 +256,7 @@ class ConversationStateToolTest {
                         "date", "2026-07-23", "time_preference", "15:00"
                 ))
                 .doesNotContainKey("spokenResponse");
+        verify(sessions).updatePendingBooking("review-date-correction-call", null);
     }
 
     @Test
@@ -358,6 +361,138 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void collectingTheLastRequiredFieldUsesTheVerifiedSlotWithoutAnotherModelTurn() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("phone-completes-booking-call");
+        when(call.getAgent().getBookingRequiredFields()).thenReturn(List.of(
+                "caller_name", "caller_phone", "service_type", "appointment_at"
+        ));
+        when(sessions.conversationState("phone-completes-booking-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_name", "Zachary",
+                                "appointment_name", "Zachary",
+                                "service_type", "Men hairstyle",
+                                "preferred_day", "2026-07-22",
+                                "preferred_time", "16:00"
+                        ),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        5
+                )
+        ));
+        when(sessions.pendingBooking("phone-completes-booking-call")).thenReturn(Optional.of(
+                new BookingDraft(
+                        "Zachary", "Men hairstyle", "2026-07-22",
+                        "2026-07-22T16:00:00Z", "", true, "", 60
+                )
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_phone", "0105752441"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Thanks."
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "book_slot")
+                .containsEntry("nextToolAuthorized", true)
+                .doesNotContainKey("spokenResponse");
+        @SuppressWarnings("unchecked")
+        var arguments = (Map<String, Object>) result.result().get("nextToolArguments");
+        assertThat(arguments)
+                .containsEntry("appointment_name", "Zachary")
+                .containsEntry("caller_phone", "0105752441")
+                .containsEntry("service_type", "Men hairstyle")
+                .containsEntry("appointment_at", "2026-07-22T16:00Z")
+                .containsEntry("duration_minutes", 60)
+                .doesNotContainKey("review_token");
+    }
+
+    @Test
+    void cancellationUsesTheStoredBookingNumberWithoutAnotherModelTurn() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("cancel-booking-call");
+        when(sessions.conversationState("cancel-booking-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of("booking_number", "SAT-AB12CD34"),
+                        ConversationState.SUBJECT_UNKNOWN,
+                        ConversationState.INTENT_ACTIVE,
+                        3
+                )
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of(),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "use_business_tool",
+                "business_tool", "cancel_booking",
+                "spoken_response", ""
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "cancel_booking")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of("booking_number", "SAT-AB12CD34"))
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void rescheduleUsesTheBookingNumberAndVerifiedReplacementSlotWithoutAnotherModelTurn() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("reschedule-booking-call");
+        when(sessions.conversationState("reschedule-booking-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "booking_number", "SAT-AB12CD34",
+                                "preferred_day", "2026-07-23",
+                                "preferred_time", "14:00"
+                        ),
+                        ConversationState.SUBJECT_UNKNOWN,
+                        ConversationState.INTENT_ACTIVE,
+                        6
+                )
+        ));
+        when(sessions.pendingBooking("reschedule-booking-call")).thenReturn(Optional.of(
+                new BookingDraft("", "", "2026-07-23", "2026-07-23T14:00:00Z", "", true, "", 45)
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of(),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "use_business_tool",
+                "business_tool", "reschedule_booking",
+                "spoken_response", ""
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "reschedule_booking")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "appointment_at", "2026-07-23T14:00Z",
+                        "duration_minutes", 45
+                ));
+    }
+
+    @Test
     void multilingualReviewApprovalCannotBeTurnedIntoAnotherConfirmationQuestion() {
         var sessions = mock(CallSessionStore.class);
         var call = call("approved-review-call");
@@ -395,9 +530,15 @@ class ConversationStateToolTest {
                 .containsEntry("nextAction", "use_business_tool")
                 .containsEntry("nextTool", "book_slot")
                 .containsEntry("nextToolAuthorized", true)
-                .containsEntry("nextToolArguments", Map.of("review_token", "signed-review-token"))
                 .doesNotContainKey("progressResponse")
                 .doesNotContainKey("spokenResponse");
+        @SuppressWarnings("unchecked")
+        var arguments = (Map<String, Object>) result.result().get("nextToolArguments");
+        assertThat(arguments)
+                .containsEntry("review_token", "signed-review-token")
+                .containsEntry("appointment_name", "Zachary")
+                .containsEntry("caller_phone", "0105753221")
+                .containsEntry("appointment_at", "2026-07-23T15:00Z");
     }
 
     @Test
@@ -405,10 +546,21 @@ class ConversationStateToolTest {
         var sessions = mock(CallSessionStore.class);
         var call = call("corrected-review-call");
         when(sessions.conversationState("corrected-review-call")).thenReturn(Optional.of(new ConversationState(
-                Map.of("caller_name", "Akari", "appointment_name", "Akari"),
+                Map.of(
+                        "caller_name", "Akari",
+                        "appointment_name", "Akari",
+                        "caller_phone", "0105753221",
+                        "service_type", "Men hairstyle",
+                        "preferred_day", "2026-07-23",
+                        "preferred_time", "15:00"
+                ),
                 ConversationState.SUBJECT_SELF,
                 ConversationState.INTENT_ACTIVE,
                 3
+        )));
+        when(sessions.pendingBooking("corrected-review-call")).thenReturn(Optional.of(new BookingDraft(
+                "Akari", "Men hairstyle", "", "2026-07-23T15:00:00Z", "0105753221", true,
+                "preceding-review-token"
         )));
         var tool = new ConversationStateTool(sessions);
 
@@ -432,6 +584,12 @@ class ConversationStateToolTest {
                 .containsEntry("nextTool", "book_slot")
                 .containsEntry("nextToolAuthorized", true)
                 .doesNotContainKey("spokenResponse");
+        @SuppressWarnings("unchecked")
+        var arguments = (Map<String, Object>) result.result().get("nextToolArguments");
+        assertThat(arguments)
+                .containsEntry("review_token", "preceding-review-token")
+                .containsEntry("appointment_name", "Zachary")
+                .containsEntry("caller_phone", "0105753221");
     }
 
     @Test
@@ -471,7 +629,7 @@ class ConversationStateToolTest {
                 .contains("Do not map by keywords")
                 .contains("Corrections replace");
         assertThat(definition.inputSchema().toString())
-                .contains("turn_understanding", "gibberish", "yyyy-MM-dd", "HH:mm")
+                .contains("turn_understanding", "gibberish", "booking_number", "yyyy-MM-dd", "HH:mm")
                 .doesNotContain("my name is Zachary", "don't book", "call back later");
     }
 
@@ -480,6 +638,7 @@ class ConversationStateToolTest {
         var agent = mock(Agent.class);
         when(call.getTwilioCallSid()).thenReturn(sid);
         when(call.getAgent()).thenReturn(agent);
+        when(agent.getTimezone()).thenReturn("UTC");
         when(agent.getBookingRequiredFields()).thenReturn(List.of());
         return call;
     }

@@ -85,4 +85,14 @@ class VoiceOutputGuardTest {
                 "Sure, here are the arguments: {date: tomorrow, time: noon}"
         )).isEmpty();
     }
+
+    @Test
+    void mutationFailureFallbacksNeverAskTheCallerToRepeatCompletedIntake() {
+        assertThat(VoiceOutputGuard.safeBookingMutationFailure("en", "reschedule_booking"))
+                .contains("couldn't reschedule", "remains unchanged")
+                .doesNotContainIgnoringCase("repeat");
+        assertThat(VoiceOutputGuard.safeBookingMutationFailure("en", "cancel_booking"))
+                .contains("couldn't cancel", "remains unchanged")
+                .doesNotContainIgnoringCase("repeat");
+    }
 }

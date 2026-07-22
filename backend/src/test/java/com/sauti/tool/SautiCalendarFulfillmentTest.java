@@ -119,10 +119,137 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.result())
                 .containsEntry("status", "requested_time_available")
                 .containsEntry("nextTool", "book_slot")
+                .containsEntry("nextToolAuthorized", true)
                 .doesNotContainKey("spokenResponse");
+        @SuppressWarnings("unchecked")
+        var arguments = (Map<String, Object>) result.result().get("nextToolArguments");
+        assertThat(arguments)
+                .containsEntry("appointment_name", "Zachary")
+                .containsEntry("caller_phone", "0820110502")
+                .containsEntry("service_type", "Men's hairstyle")
+                .containsEntry("appointment_at", "2026-07-22T15:00Z")
+                .containsEntry("duration_minutes", 60);
         assertThat(result.result().get("instruction").toString())
                 .contains("Call book_slot immediately without speaking")
                 .contains("without", "asking permission", "wait");
+        verify(fixture.callSessionStore).updatePendingBooking(
+                eq("call-sid"),
+                argThat(draft -> "2026-07-22T15:00Z".equals(draft.confirmedSlot())
+                        && draft.durationMinutes() == 60)
+        );
+    }
+
+    @Test
+    void remembersAnAvailableSlotUntilTheCallerProvidesTheLastRequiredField() {
+        var openHours = """
+                {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
+                """;
+        var slot = new CalendarAvailabilitySlot(
+                OffsetDateTime.parse("2026-07-22T16:00:00Z"),
+                OffsetDateTime.parse("2026-07-22T17:00:00Z"),
+                "16:00"
+        );
+        var fixture = fixture(openHours, List.of(slot));
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Four in the afternoon.")));
+        when(fixture.intakeNotes.notes(fixture.call, "Four in the afternoon.")).thenReturn(Map.of(
+                "booking_intent", "active",
+                "caller_name", "Zachary",
+                "appointment_name", "Zachary",
+                "service_type", "Men hairstyle"
+        ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "availability-before-phone", "check_availability",
+                Map.of("date", "2026-07-22", "time_preference", "16:00", "duration_minutes", 60)
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "requested_time_available")
+                .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments")
+                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
+                        .startsWith("That time is available."));
+        verify(fixture.callSessionStore).updatePendingBooking(
+                eq("call-sid"),
+                argThat(draft -> "2026-07-22T16:00Z".equals(draft.confirmedSlot())
+                        && draft.callerPhone().isBlank()
+                        && draft.reviewToken().isBlank())
+        );
+    }
+
+    @Test
+    void availabilityForAnExistingBookingCannotStartANewBookingReview() {
+        var openHours = """
+                {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
+                """;
+        var slot = new CalendarAvailabilitySlot(
+                OffsetDateTime.parse("2026-07-22T16:00:00Z"),
+                OffsetDateTime.parse("2026-07-22T17:00:00Z"),
+                "16:00"
+        );
+        var fixture = fixture(openHours, List.of(slot));
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Move SAT-AB12CD34 to four.")));
+        when(fixture.intakeNotes.notes(fixture.call, "Move SAT-AB12CD34 to four.")).thenReturn(Map.of(
+                "conversation_state_revision", "8",
+                "booking_intent", "active",
+                "booking_number", "SAT-AB12CD34",
+                "caller_name", "Zachary",
+                "appointment_name", "Zachary",
+                "caller_phone", "0105752441",
+                "service_type", "Men hairstyle",
+                "preferred_day", "2026-07-22",
+                "preferred_time", "16:00"
+        ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "reschedule-availability", "check_availability",
+                Map.of("date", "2026-07-22", "time_preference", "16:00", "duration_minutes", 60)
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "requested_time_available")
+                .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments");
+        verify(fixture.callSessionStore).updatePendingBooking(
+                eq("call-sid"),
+                argThat(draft -> "2026-07-22T16:00Z".equals(draft.confirmedSlot()))
+        );
+    }
+
+    @Test
+    void aSlowAvailabilityResultCannotOverwriteANewerCallerTime() {
+        var openHours = """
+                {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
+                """;
+        var staleSlot = new CalendarAvailabilitySlot(
+                OffsetDateTime.parse("2026-07-22T16:00:00Z"),
+                OffsetDateTime.parse("2026-07-22T17:00:00Z"),
+                "16:00"
+        );
+        var fixture = fixture(openHours, List.of(staleSlot));
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "Actually, make that two.")));
+        when(fixture.intakeNotes.notes(fixture.call, "Actually, make that two.")).thenReturn(Map.of(
+                "conversation_state_revision", "7",
+                "booking_intent", "active",
+                "booking_subject", "self",
+                "caller_name", "Zachary",
+                "appointment_name", "Zachary",
+                "caller_phone", "0105752441",
+                "service_type", "Men hairstyle",
+                "preferred_day", "2026-07-22",
+                "preferred_time", "14:00"
+        ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "stale-availability", "check_availability",
+                Map.of("date", "2026-07-22", "time_preference", "16:00", "duration_minutes", 60)
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "requested_time_available")
+                .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments");
+        verify(fixture.callSessionStore, never()).updatePendingBooking(eq("call-sid"), any());
     }
 
     @Test
@@ -711,6 +838,62 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "needs_date")
                 .containsEntry("spokenResponse", "Which day would you like me to check?");
         verifyNoInteractions(fixture.provider);
+    }
+
+    @Test
+    void rescheduleReturnsTheCustomerFacingFactualOutcome() {
+        var fixture = fixture(HOURS, List.of());
+        var existing = mock(com.sauti.calendar.Booking.class);
+        var updated = mock(com.sauti.calendar.Booking.class);
+        var bookingId = java.util.UUID.randomUUID();
+        when(existing.getId()).thenReturn(bookingId);
+        when(updated.getId()).thenReturn(bookingId);
+        when(updated.getBookingReference()).thenReturn("SAT-AB12CD34");
+        when(updated.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T14:00:00Z"));
+        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
+        when(fixture.bookingService.reschedule(any(), eq(bookingId), any())).thenReturn(updated);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "reschedule-booking", "reschedule_booking", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "appointment_at", "2026-07-23T14:00:00Z",
+                        "duration_minutes", 45
+                )
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_rescheduled")
+                .containsEntry("bookingNumber", "SAT-AB12CD34")
+                .containsEntry("appointmentAt", "2026-07-23T14:00Z")
+                .containsEntry("updated", true)
+                .hasEntrySatisfying("instruction", instruction -> assertThat(instruction.toString())
+                        .contains("bookingNumber", "appointmentAt")
+                        .containsIgnoringCase("current language"));
+    }
+
+    @Test
+    void cancellationReturnsTheCustomerFacingFactualOutcome() {
+        var fixture = fixture(HOURS, List.of());
+        var existing = mock(com.sauti.calendar.Booking.class);
+        var cancelled = mock(com.sauti.calendar.Booking.class);
+        var bookingId = java.util.UUID.randomUUID();
+        when(existing.getId()).thenReturn(bookingId);
+        when(cancelled.getId()).thenReturn(bookingId);
+        when(cancelled.getBookingReference()).thenReturn("SAT-AB12CD34");
+        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
+        when(fixture.bookingService.cancel(any(), eq(bookingId))).thenReturn(cancelled);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "cancel-booking", "cancel_booking", Map.of("booking_number", "SAT-AB12CD34")
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_cancelled")
+                .containsEntry("bookingNumber", "SAT-AB12CD34")
+                .containsEntry("cancelled", true)
+                .hasEntrySatisfying("instruction", instruction -> assertThat(instruction.toString())
+                        .contains("bookingNumber")
+                        .containsIgnoringCase("current language"));
     }
 
     private Fixture fixture(String hours, List<CalendarAvailabilitySlot> slots) {

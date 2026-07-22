@@ -17,6 +17,10 @@ export function businessActionProgressInstruction(toolName: string) {
     ? "saving the appointment"
     : toolName === "check_availability"
       ? "checking the live schedule"
+      : toolName === "reschedule_booking"
+        ? "rescheduling the appointment"
+        : toolName === "cancel_booking"
+          ? "cancelling the appointment"
       : "completing the requested business action";
   return `The system is still ${operation} and the caller has been waiting longer than expected. `
     + "Give one brief, natural, professional progress update in the caller's current language. "
@@ -62,7 +66,7 @@ export function authorizedNextToolRequest(
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
   const values = payload as Record<string, unknown>;
   const name = typeof values.nextTool === "string" ? values.nextTool.trim() : "";
-  const authorized = name === "book_slot" || values.nextToolAuthorized === true;
+  const authorized = values.nextToolAuthorized === true;
   if (!authorized || !/^[A-Za-z][A-Za-z0-9_]{1,63}$/.test(name)) return null;
   const rawArguments = values.nextToolArguments;
   const argumentsJson = values.nextToolAuthorized === true

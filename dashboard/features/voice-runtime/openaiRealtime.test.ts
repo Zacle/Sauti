@@ -56,28 +56,29 @@ test("executes server-authorized availability arguments without another model re
       nextToolArguments: { date: "2026-07-22" },
     },
   }), null);
-  assert.deepEqual(authorizedNextToolRequest({
+  assert.equal(authorizedNextToolRequest({
     success: true,
     result: {
       nextTool: "book_slot",
       nextToolAuthorized: false,
       nextToolArguments: { review_token: "must-not-run-directly" },
     },
-  }), {
-    name: "book_slot",
-    argumentsJson: "",
-  });
+  }), null);
 });
 
 test("asks the model for contextual delayed-operation speech instead of a translated template", () => {
   const booking = businessActionProgressInstruction("book_slot");
   const availability = businessActionProgressInstruction("check_availability");
+  const reschedule = businessActionProgressInstruction("reschedule_booking");
+  const cancellation = businessActionProgressInstruction("cancel_booking");
 
   assert.match(booking, /caller's current language/i);
   assert.match(booking, /apology/i);
   assert.match(booking, /still saving the appointment/i);
   assert.match(booking, /Do not claim success or failure/i);
   assert.match(availability, /still checking the live schedule/i);
+  assert.match(reschedule, /still rescheduling the appointment/i);
+  assert.match(cancellation, /still cancelling the appointment/i);
 });
 
 test("accepts trusted post-booking guidance only after a successful save", () => {
