@@ -4274,3 +4274,31 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: this establishes generic effect and confirmation enforcement, but verified domain reviews remain the responsibility of each domain module; future payment, healthcare-consent, or regulated workflows should implement a signed review/authorization artifact comparable to booking's signed review token when parameter-level proof is required. After deployment, smoke-test one read, write, external-message, financial, transfer, and terminal tool through Realtime. Confirm unresolved compound turns are deferred, internal policy fields never reach external webhook payloads, and only the read executes without action context.
+
+### 2026-07-22 - Add a provider-neutral browser runtime and Vapi Agent Studio pilot
+
+- Added a provider-neutral browser voice runtime boundary. Backend adapters register through `BrowserVoiceRuntimeProvider`/`BrowserVoiceRuntimeRegistry`; the dashboard consumes the generic runtime session through a connector registry. Telnyx or another full runtime can now be added as a peer without adding provider branches throughout `CallController` or `TestCallPanel`.
+- Added a Vapi adapter for authenticated Agent Studio test calls. Vapi owns WebRTC microphone capture, interruption, turn detection, transcription, conversational streaming, and speech playback. The previous Sauti microphone recorder, browser VAD, PCM scheduler, and Vapi WebRTC capture do not run concurrently.
+- Kept Sauti authoritative for the saved prompt, tenant-scoped tool catalog, action/confirmation policies, tool fulfillment, call transcript, and post-call processing. Vapi tool callbacks are validated with a short-lived call token and routed through the existing `ToolFulfillmentRouter`, so CRUD, messaging, payment, transfer, and terminal actions retain the same cross-domain safety enforcement.
+- Added a backend `/call/web` proxy. `VAPI_API_KEY` remains server-side; the browser receives only the call-scoped Sauti token. The proxy ignores browser-supplied assistant/tool/model changes and permits one start of the exact server-generated call configuration. Token lifetime covers the configured maximum call duration plus cleanup so callbacks do not expire mid-call.
+- Configured Vapi's provider-owned localized progress behavior for slow tools: its normal tool-start filler remains provider generated, and a delayed apology occurs after the configured threshold while the real operation continues. Final claims still come only from returned Sauti facts; there are no Sauti-maintained multilingual wait phrases.
+- Added client transcript persistence, typed-message support, interruption analytics, authorized end-call handling, duplicate-final suppression, stable caller/assistant UI transitions, transcript flush before completion, and cleanup of a Sauti call if provider connection startup fails.
+- Added Vapi environment placeholders and `docs/voice-runtime-providers.md`. The pilot is limited to Agent Studio test calls; public web voice and carrier traffic are unchanged.
+- Files touched:
+  - `.env.example`, `deploy/.env.production.example`
+  - `backend/src/main/java/com/sauti/api/{CallController,VapiVoiceController}.java`
+  - `backend/src/main/java/com/sauti/call/{BrowserVoiceRuntimeProvider,BrowserVoiceRuntimeRegistry,BrowserVoiceRuntimeSession,VapiBrowserVoiceRuntimeService,VapiWebhookService,WebVoiceTokenService}.java`
+  - `backend/src/main/java/com/sauti/call/{CallDtos,CallPipelineService}.java`, `backend/src/main/resources/application.yml`
+  - focused Vapi runtime, proxy, and webhook backend tests
+  - `dashboard/features/voice-runtime/{browserVoiceRuntime,vapiRuntime}.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/lib/api/calls.ts`, `dashboard/types/api.ts`, dashboard package manifests
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - focused Vapi runtime, private-key proxy, and webhook tests - passed.
+  - `.\\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 19 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: live Vapi validation requires a real key and a public callback URL connected to the same environment that owns the test call. The Vapi pilot currently uses its explicitly configured voice rather than translating an existing Cartesia voice ID. After CI/CD, compare first-response latency, interruption stop time, STT accuracy for names/numbers/dates, slow-tool progress, CRUD correctness, and respectful closure across at least two languages before routing public or carrier traffic to Vapi.

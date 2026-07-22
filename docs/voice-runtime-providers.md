@@ -1,0 +1,56 @@
+# Browser voice runtime providers
+
+Sauti can delegate browser call transport, turn detection, transcription, and speech playback to a managed provider without delegating business authority. The provider-neutral session contract is `BrowserVoiceRuntimeSession`; backend providers register through `BrowserVoiceRuntimeProvider`, and the dashboard connects them through `browserVoiceRuntime.ts`.
+
+## Vapi pilot scope
+
+The first adapter applies to authenticated Agent Studio test calls only. Existing public web voice and carrier calls remain on Sauti's current runtimes. Vapi owns the test call's WebRTC audio, barge-in, STT, LLM turn, and TTS. Sauti still owns:
+
+- tenant and agent selection;
+- the saved system prompt and business facts;
+- available tool definitions;
+- action effects, confirmation policy, and tool execution;
+- authoritative booking/CRM/payment state;
+- transcript persistence and post-call analysis.
+
+The browser never receives `VAPI_API_KEY`. It receives a short-lived, call-scoped Sauti token and sends Vapi's `/call/web` request through an authenticated Sauti proxy. Vapi tool callbacks use that same scoped token and are accepted only while the matching test or web call is active.
+
+## Configuration
+
+Set these in the uncommitted local `.env` or the production secret environment:
+
+```text
+SAUTI_TEST_VOICE_RUNTIME=vapi
+VAPI_API_KEY=replace-with-private-vapi-key
+VAPI_API_BASE_URL=https://api.vapi.ai
+VAPI_PUBLIC_BASE_URL=https://sauti.uk
+VAPI_MODEL_PROVIDER=openai
+VAPI_MODEL=gpt-4.1-mini
+VAPI_TRANSCRIBER_PROVIDER=deepgram
+VAPI_TRANSCRIBER_MODEL=nova-3
+VAPI_TRANSCRIBER_LANGUAGE=multi
+VAPI_VOICE_PROVIDER=vapi
+VAPI_VOICE_ID=Savannah
+VAPI_VOICE_VERSION=2
+VAPI_VOICE_LANGUAGE=auto
+VAPI_TOOL_TIMEOUT_SECONDS=30
+VAPI_DELAYED_MESSAGE_MS=1600
+```
+
+`VAPI_PUBLIC_BASE_URL` must reach the same backend/database that created the test call. Production uses `https://sauti.uk`. A local test with tools needs an HTTPS tunnel to the local backend; pointing a local call at the production URL will fail call-token validation because production does not own the local call record.
+
+The pilot uses the Vapi voice configured above, not the agent's existing Sauti/Cartesia voice ID. This keeps provider comparison explicit instead of assuming that voice identifiers are portable. A later provider-specific voice catalog can map choices deliberately.
+
+Vapi supplies localized tool-start filler and, after `VAPI_DELAYED_MESSAGE_MS`, a delayed apology while the tool continues. Sauti does not maintain translated waiting phrases. Final availability, save, update, cancellation, payment, messaging, and other outcomes always come from the Sauti tool result.
+
+To return Agent Studio tests to the existing runtime without removing the adapter, set:
+
+```text
+SAUTI_TEST_VOICE_RUNTIME=sauti
+```
+
+## Adding another provider
+
+Implement `BrowserVoiceRuntimeProvider` on the backend and register a matching connector in `dashboard/features/voice-runtime/browserVoiceRuntime.ts`. Keep the shared session response free of provider secrets. New providers must continue to route side effects through `ToolFulfillmentRouter`; a provider callback must never call a business integration directly.
+
+Telnyx and Cartesia evaluations should be added as peer adapters and compared with the same scenarios, agent prompt, tool fixtures, languages, and latency measurements. Cartesia is primarily a voice/TTS provider, so a Cartesia-only comparison still needs an STT, turn-taking, and model runtime; it is not directly equivalent to Vapi's complete orchestration layer.

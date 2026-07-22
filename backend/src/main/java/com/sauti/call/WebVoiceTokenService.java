@@ -21,13 +21,18 @@ public class WebVoiceTokenService {
     }
 
     public String issue(String callSid, String publicAgentId) {
+        return issue(callSid, publicAgentId, tokenMinutes * 60);
+    }
+
+    public String issue(String callSid, String publicAgentId, long minimumLifetimeSeconds) {
         var now = Instant.now();
+        var lifetimeSeconds = Math.max(tokenMinutes * 60, minimumLifetimeSeconds);
         return JWT.create()
                 .withIssuer("sauti-web-voice")
                 .withSubject(callSid)
                 .withClaim("agent", publicAgentId)
                 .withIssuedAt(now)
-                .withExpiresAt(now.plus(tokenMinutes, ChronoUnit.MINUTES))
+                .withExpiresAt(now.plus(lifetimeSeconds, ChronoUnit.SECONDS))
                 .sign(algorithm);
     }
 

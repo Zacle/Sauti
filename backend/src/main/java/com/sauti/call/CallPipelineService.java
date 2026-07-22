@@ -235,7 +235,7 @@ public class CallPipelineService {
             throw new IllegalArgumentException("Only browser test calls can be completed here");
         }
         if (call.isActive()) {
-            var outcome = java.util.Set.of("completed", "no-response", "max-duration").contains(requestedOutcome)
+            var outcome = java.util.Set.of("completed", "no-response", "max-duration", "failed").contains(requestedOutcome)
                     ? requestedOutcome
                     : "completed";
             call.complete(outcome);

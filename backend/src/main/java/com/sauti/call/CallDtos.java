@@ -73,7 +73,7 @@ public final class CallDtos {
     public record SimulatedTurnResponse(String language, String response, String transcript, String outcome, boolean acceptedTranscript) {
     }
 
-    public record StartTestCallRequest(UUID agentId, String ttsVoiceId) {
+    public record StartTestCallRequest(UUID agentId, String ttsVoiceId, String runtimeProvider) {
     }
 
     public record CompleteTestCallRequest(String outcome) {
@@ -88,7 +88,8 @@ public final class CallDtos {
             String token,
             int inputSampleRate,
             String mode,
-            boolean availabilityToolEnabled
+            boolean availabilityToolEnabled,
+            BrowserVoiceRuntimeSession runtime
     ) {
     }
 

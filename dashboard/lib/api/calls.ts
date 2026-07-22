@@ -5,10 +5,14 @@ export function listCalls() {
   return apiRequest<Call[]>("/calls");
 }
 
-export function startTestCall(agentId: string, ttsVoiceId?: string) {
+export function startTestCall(agentId: string, ttsVoiceId?: string, runtimeProvider?: string) {
   return apiRequest<StartTestCallResponse>("/calls/test", {
     method: "POST",
-    body: JSON.stringify({ agentId, ttsVoiceId: ttsVoiceId?.trim() ?? "" }),
+    body: JSON.stringify({
+      agentId,
+      ttsVoiceId: ttsVoiceId?.trim() ?? "",
+      runtimeProvider: runtimeProvider?.trim() ?? "",
+    }),
   });
 }
 

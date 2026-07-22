@@ -11,6 +11,8 @@ import com.sauti.call.CallDtos.StartTestCallResponse;
 import com.sauti.call.CallDtos.TestAudioTurnResponse;
 import com.sauti.call.CallDtos.TestCallSettings;
 import com.sauti.call.BrowserSpeechToTextService;
+import com.sauti.call.BrowserVoiceRuntimeSession;
+import com.sauti.call.BrowserVoiceRuntimeRegistry;
 import com.sauti.call.CallPipelineService;
 import com.sauti.call.CallQueryService;
 import com.sauti.call.CallRecordingService;
@@ -54,6 +56,8 @@ public class CallController {
     private final String webVoiceWebsocketUrl;
     private final OpenAiRealtimeService openAiRealtimeService;
     private final CartesiaRealtimeTextToSpeechClient cartesiaClient;
+    private final BrowserVoiceRuntimeRegistry browserVoiceRuntimeRegistry;
+    private final String defaultTestVoiceRuntime;
 
     public CallController(
             CallQueryService callQueryService,
@@ -64,6 +68,8 @@ public class CallController {
             WebVoiceTokenService webVoiceTokenService,
             OpenAiRealtimeService openAiRealtimeService,
             CartesiaRealtimeTextToSpeechClient cartesiaClient,
+            BrowserVoiceRuntimeRegistry browserVoiceRuntimeRegistry,
+            @Value("${sauti.voice-runtime.test-provider:sauti}") String defaultTestVoiceRuntime,
             @Value("${sauti.web-voice.public-websocket-base-url:ws://localhost:8082}") String webVoiceWebsocketUrl
     ) {
         this.callQueryService = callQueryService;
@@ -74,6 +80,8 @@ public class CallController {
         this.webVoiceTokenService = webVoiceTokenService;
         this.openAiRealtimeService = openAiRealtimeService;
         this.cartesiaClient = cartesiaClient;
+        this.browserVoiceRuntimeRegistry = browserVoiceRuntimeRegistry;
+        this.defaultTestVoiceRuntime = defaultTestVoiceRuntime == null ? "sauti" : defaultTestVoiceRuntime.trim();
         this.webVoiceWebsocketUrl = webVoiceWebsocketUrl;
     }
 
@@ -92,13 +100,21 @@ public class CallController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody StartTestCallRequest request
     ) {
+        var requestedRuntime = requestedRuntime(request.runtimeProvider());
+        if (!"sauti".equals(requestedRuntime)) browserVoiceRuntimeRegistry.requireConfigured(requestedRuntime);
         var call = callPipelineService.startTestCall(user.tenantId(), request.agentId(), request.ttsVoiceId());
         var greeting = callQueryService.firstAgentResponse(user.tenantId(), call.getId());
         var agentKey = call.getAgent().getId().toString();
-        var token = webVoiceTokenService.issue(call.getTwilioCallSid(), agentKey);
-        var mode = realtimeMode(call);
+        // Managed providers use this same call-scoped credential for server
+        // callbacks, so it must remain valid through call cleanup.
+        var token = webVoiceTokenService.issue(
+                call.getTwilioCallSid(), agentKey, call.getAgent().getMaxCallDurationSeconds() + 120L);
+        var mode = realtimeMode(call, requestedRuntime);
         var websocketPath = "hybrid_realtime".equals(mode) ? "/ws/hybrid-voice/" : "/ws/web-voice/";
         var greetingAudio = cachedHybridGreeting(call, greeting, mode);
+        BrowserVoiceRuntimeSession runtime = browserVoiceRuntimeRegistry.supports(mode)
+                ? browserVoiceRuntimeRegistry.prepare(mode, call, greeting, token)
+                : null;
         return new StartTestCallResponse(
                 CallResponse.from(call),
                 greeting,
@@ -108,7 +124,8 @@ public class CallController {
                 token,
                 16000,
                 mode,
-                openAiRealtimeService.hasTool(call, "check_availability")
+                openAiRealtimeService.hasTool(call, "check_availability"),
+                runtime
         );
     }
 
@@ -132,7 +149,18 @@ public class CallController {
         }
     }
 
-    private String realtimeMode(com.sauti.call.Call call) {
+    private String requestedRuntime(String requestedProvider) {
+        var provider = requestedProvider == null || requestedProvider.isBlank()
+                ? defaultTestVoiceRuntime
+                : requestedProvider.trim();
+        if (!"sauti".equalsIgnoreCase(provider) && !browserVoiceRuntimeRegistry.supports(provider)) {
+            throw new IllegalArgumentException("Unsupported test voice runtime: " + provider);
+        }
+        return provider.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private String realtimeMode(com.sauti.call.Call call, String requestedProvider) {
+        if (!"sauti".equals(requestedProvider)) return requestedProvider;
         if (!openAiRealtimeService.enabled()) return "cascade";
         if ((openAiRealtimeService.usesCartesiaVoice(call) || openAiRealtimeService.usesOpenAiVoice(call))
                 && cartesiaClient.isConfigured()) return "hybrid_realtime";

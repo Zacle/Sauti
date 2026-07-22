@@ -18,6 +18,10 @@ import {
 } from "@/lib/api/calls";
 import type { StartTestCallResponse } from "@/types/api";
 import { connectOpenAiRealtime, type OpenAiRealtimeConnection } from "@/features/voice-runtime/openaiRealtime";
+import {
+  connectBrowserVoiceRuntime,
+  type BrowserVoiceRuntimeConnection,
+} from "@/features/voice-runtime/browserVoiceRuntime";
 import { HybridPlaybackGate } from "@/features/voice-runtime/hybridPlaybackGate";
 import { PcmStreamPlayer } from "@/features/voice-runtime/pcmStreamPlayer";
 import { confirmedEndCallResult } from "@/features/voice-runtime/realtimeProtocol";
@@ -113,6 +117,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const activeHybridSpeechRef = useRef<{ id: string; generation: number } | null>(null);
   const hybridPlaybackGateRef = useRef(new HybridPlaybackGate());
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
+  const browserRuntimeConnectionRef = useRef<BrowserVoiceRuntimeConnection | null>(null);
   const nativeRealtimeRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
   const nativeEndPendingRef = useRef(false);
@@ -138,17 +143,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     setError("");
     setMessages([]);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      const [, started] = await Promise.all([
-        prepareAudio(stream),
-        startTestCall(agentId, voiceId),
-      ]);
+      const started = await startTestCall(agentId, voiceId);
       callIdRef.current = started.call.id;
       callSidRef.current = started.call.twilioCallSid;
       settingsRef.current = started.settings;
@@ -160,6 +155,18 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       remoteEndPendingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
       setCallId(started.call.id);
+      if (started.runtime) {
+        await connectManagedRuntime(started);
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      await prepareAudio(stream);
       if (started.mode === "openai_realtime" || started.mode === "hybrid_realtime") {
         nativeRealtimeRef.current = true;
         hybridRealtimeRef.current = started.mode === "hybrid_realtime";
@@ -182,10 +189,54 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         startVoiceMonitor();
       }
     } catch (caught) {
+      const failedCallId = callIdRef.current;
       cleanupMedia();
+      callIdRef.current = "";
+      callSidRef.current = "";
+      setCallId("");
       updateStatus("idle");
       setError(caught instanceof Error ? caught.message : "Unable to start the test call.");
+      if (failedCallId) void completeTestCall(failedCallId, "completed").catch(() => undefined);
     }
+  }
+
+  async function connectManagedRuntime(started: StartTestCallResponse) {
+    if (!started.runtime) throw new Error("The selected voice runtime did not return a session configuration.");
+    browserRuntimeConnectionRef.current = await connectBrowserVoiceRuntime(started.runtime, {
+      onConnected: () => updateStatus("listening"),
+      onCallerSpeechStarted: () => {
+        if (!endingRef.current) updateStatus("capturing");
+      },
+      onCallerSpeechEnded: () => {
+        if (!endingRef.current && statusRef.current === "capturing") updateStatus("thinking");
+      },
+      onCallerTranscript: (text) => {
+        acceptedCallerTurnsRef.current += 1;
+        lastActivityAtRef.current = Date.now();
+        setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text }]);
+        queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "caller", text));
+        updateStatus("thinking");
+      },
+      onAgentTranscript: (text, interrupted) => {
+        rememberAgentPrompt(text);
+        setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text }]);
+        queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted));
+      },
+      onAgentSpeaking: (value) => {
+        if (!endingRef.current) updateStatus(value ? "speaking" : "listening");
+      },
+      onInterrupted: () => {
+        if (!endingRef.current) updateStatus("capturing");
+        void markTestInterruption(started.call.id).catch(() => undefined);
+      },
+      onError: (message) => {
+        setError(message);
+        if (!endingRef.current) updateStatus("listening");
+      },
+      onEnded: (outcome = "completed") => {
+        if (!endingRef.current) void endCall(outcome);
+      },
+    });
   }
 
   async function connectHybridVoice(started: StartTestCallResponse) {
@@ -888,6 +939,13 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     setError("");
     setMessages((current) => [...current, { id: crypto.randomUUID(), role: "caller", text: transcript }]);
     updateStatus("thinking");
+    if (browserRuntimeConnectionRef.current) {
+      acceptedCallerTurnsRef.current += 1;
+      lastActivityAtRef.current = Date.now();
+      queueTranscriptWrite(() => recordTestRealtimeTranscript(activeCallId, "caller", transcript));
+      browserRuntimeConnectionRef.current.sendUserText(transcript);
+      return;
+    }
     if (nativeRealtimeRef.current && openAiConnectionRef.current) {
       openAiConnectionRef.current.sendUserText(transcript);
       return;
@@ -932,6 +990,15 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     const activeCallId = callIdRef.current;
     if (!activeCallId || endingRef.current) return;
     endingRef.current = true;
+    const managedRuntime = browserRuntimeConnectionRef.current;
+    browserRuntimeConnectionRef.current = null;
+    if (managedRuntime) {
+      try {
+        await managedRuntime.stop();
+      } catch {
+        // Persist the Sauti call even if the provider session already closed.
+      }
+    }
     setError("");
     cancelAnimationFrame(monitorFrameRef.current);
     if (politeFarewell) {
@@ -963,6 +1030,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     try {
       const recording = await stopRecorder();
       if (recording.size > 0) await uploadCallRecording(activeCallId, recording);
+      await transcriptWriteRef.current;
       await completeTestCall(activeCallId, outcome);
       cleanupMedia();
       callIdRef.current = "";
@@ -1022,6 +1090,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     processorRef.current = null;
     openAiConnectionRef.current?.close();
     openAiConnectionRef.current = null;
+    void browserRuntimeConnectionRef.current?.stop();
+    browserRuntimeConnectionRef.current = null;
     nativeRealtimeRef.current = false;
     hybridRealtimeRef.current = false;
     hybridPlaybackGateRef.current.clear();
@@ -1041,7 +1111,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           <span className="test-orb"><Mic size={28} /></span>
           <small>Browser test call</small>
           <h2>Talk to {agentName || "your agent"}</h2>
-          <p>The test uses the saved prompt, variables, voice, call behaviour, and connected tools.</p>
+          <p>The test uses the saved prompt, variables, call behaviour, connected tools, and selected voice runtime.</p>
           <button disabled={!agentId || status === "connecting"} onClick={() => void beginCall()} type="button">
             {status === "connecting" ? <LoaderCircle className="spin" size={17} /> : <Phone size={17} />}
             {agentId ? status === "connecting" ? "Connecting..." : "Start test call" : "Save agent to test"}

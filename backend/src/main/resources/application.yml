@@ -85,6 +85,23 @@ sauti:
       telephony-enabled: ${OPENAI_REALTIME_TELEPHONY_ENABLED:true}
       speech-url: ${OPENAI_SPEECH_URL:https://api.openai.com/v1/audio/speech}
       preview-model: ${OPENAI_TTS_PREVIEW_MODEL:gpt-4o-mini-tts}
+  voice-runtime:
+    test-provider: ${SAUTI_TEST_VOICE_RUNTIME:sauti}
+  vapi:
+    api-key: ${VAPI_API_KEY:}
+    api-base-url: ${VAPI_API_BASE_URL:https://api.vapi.ai}
+    public-base-url: ${VAPI_PUBLIC_BASE_URL:${PUBLIC_BASE_URL:http://localhost:8080}}
+    model-provider: ${VAPI_MODEL_PROVIDER:openai}
+    model: ${VAPI_MODEL:gpt-4.1-mini}
+    transcriber-provider: ${VAPI_TRANSCRIBER_PROVIDER:deepgram}
+    transcriber-model: ${VAPI_TRANSCRIBER_MODEL:nova-3}
+    transcriber-language: ${VAPI_TRANSCRIBER_LANGUAGE:multi}
+    voice-provider: ${VAPI_VOICE_PROVIDER:vapi}
+    voice-id: ${VAPI_VOICE_ID:Savannah}
+    voice-version: ${VAPI_VOICE_VERSION:2}
+    voice-language: ${VAPI_VOICE_LANGUAGE:auto}
+    tool-timeout-seconds: ${VAPI_TOOL_TIMEOUT_SECONDS:30}
+    delayed-message-ms: ${VAPI_DELAYED_MESSAGE_MS:1600}
   whatsapp:
     access-token: ${WHATSAPP_ACCESS_TOKEN:}
     verify-token: ${WHATSAPP_VERIFY_TOKEN:}

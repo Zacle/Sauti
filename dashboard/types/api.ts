@@ -297,6 +297,13 @@ export type CallTurn = {
   interrupted: boolean;
 };
 
+export type BrowserVoiceRuntimeSession = {
+  provider: string;
+  clientToken: string;
+  apiBaseUrl: string;
+  configuration: Record<string, unknown>;
+};
+
 export type StartTestCallResponse = {
   call: Call;
   greeting: string;
@@ -304,8 +311,9 @@ export type StartTestCallResponse = {
   websocketUrl: string;
   token: string;
   inputSampleRate: number;
-  mode: "openai_realtime" | "hybrid_realtime" | "cascade";
+  mode: string;
   availabilityToolEnabled: boolean;
+  runtime: BrowserVoiceRuntimeSession | null;
   settings: {
     bargeInSensitivity: number;
     bargeInGraceMs: number;
