@@ -40,6 +40,14 @@ Create these repository Actions secrets:
 - `VPS_HOST`: server IPv4 address or hostname
 - `VPS_USER`: non-root deployment user
 - `VPS_SSH_KEY`: private key for that user's authorized public key
+- `CARTESIA_API_KEY`: optional; synchronized into the production environment
+  when Cartesia is enabled
+- `VAPI_API_KEY`: optional; synchronized into the production environment when
+  the Vapi browser runtime is enabled
+
+Provider secrets are copied only when the corresponding Actions secret is
+non-empty. An absent Actions secret does not remove a value that was already
+configured directly in `/opt/sauti/.env.production`.
 
 Protect `main`, require the `backend` and `dashboard` CI jobs, and require pull
 requests for changes once additional collaborators join.

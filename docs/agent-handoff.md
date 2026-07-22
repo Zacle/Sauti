@@ -4322,3 +4322,15 @@ Expected:
   - `.\\gradlew.bat :backend:test` - passed.
 - Deployment status: not deployed. These follow-up changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: if Java is hosted by systemd, another service manager, or a cloud platform rather than launched by this Windows helper, configure the same variables in that service's environment and restart it. The helper is only for direct Windows development.
+
+### 2026-07-22 - Add a safe production Vapi secret synchronization path
+
+- Confirmed that the reported Vapi configuration error came from the deployed backend, not a direct local Spring process. The local `.env` contains `VAPI_API_KEY`, but production uses the separate `/opt/sauti/.env.production`; no local backend was listening on port 8080 during diagnosis.
+- Extended the existing optional-provider secret deployment step to accept the encrypted GitHub Actions secret `VAPI_API_KEY` and synchronize it into `/opt/sauti/.env.production` before the normal Compose deployment. The secret value is written through a temporary file, never printed, and the temporary local and remote files are removed.
+- Preserved existing server configuration when the Actions secret is absent. The workflow updates only non-empty provider secrets, so a missing GitHub secret cannot delete a Vapi or Cartesia key already configured directly on the server.
+- Documented the optional provider secrets and their preservation behavior in `docs/deployment.md`.
+- Files touched: `.github/workflows/deploy.yml`, `docs/deployment.md`, and `docs/agent-handoff.md`.
+- Stored the local Vapi credential as the encrypted `VAPI_API_KEY` Actions secret for `Zacle/Sauti` through standard input; the value was never printed or written to a tracked file.
+- Verification: the workflow parsed successfully with `js-yaml`; the optional-provider shell step passed `bash -n`; `git diff --check` passed; `gh secret list` confirmed the `VAPI_API_KEY` secret name and update timestamp without exposing its value.
+- Deployment status: not deployed. The change remains uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: the encrypted secret will reach `/opt/sauti/.env.production` only after a maintainer reviews, commits, and pushes the workflow change to `main`, CI passes, and the normal deployment workflow runs. Until then, the currently running production backend remains unchanged.
