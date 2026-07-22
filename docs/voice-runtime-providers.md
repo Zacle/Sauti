@@ -51,6 +51,18 @@ To return Agent Studio tests to the existing runtime without removing the adapte
 SAUTI_TEST_VOICE_RUNTIME=sauti
 ```
 
+## Running Spring directly on Windows
+
+Spring Boot does not automatically import the repository `.env` when it is launched directly with Gradle. Use the repository helper so provider credentials become process environment variables without printing them:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/scripts/run-local-backend.ps1
+```
+
+To validate loading without starting Spring, add `-ValidateOnly`.
+
+The direct backend listens on `http://localhost:8080`. If Vapi needs to call this local process, run `cloudflared tunnel --url http://localhost:8080`, put the resulting HTTPS URL in `VAPI_PUBLIC_BASE_URL`, stop the backend, and run the helper again. If the backend is publicly hosted at `https://sauti.uk`, no local tunnel is required.
+
 ## Adding another provider
 
 Implement `BrowserVoiceRuntimeProvider` on the backend and register a matching connector in `dashboard/features/voice-runtime/browserVoiceRuntime.ts`. Keep the shared session response free of provider secrets. New providers must continue to route side effects through `ToolFulfillmentRouter`; a provider callback must never call a business integration directly.

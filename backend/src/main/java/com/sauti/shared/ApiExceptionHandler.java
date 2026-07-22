@@ -4,6 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import com.sauti.auth.RateLimitExceededException;
 import com.sauti.auth.UnverifiedEmailException;
 import com.sauti.call.PublicWebVoiceRateLimitExceededException;
+import com.sauti.call.VoiceRuntimeUnavailableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -42,6 +43,12 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> webVoiceRateLimited(PublicWebVoiceRateLimitExceededException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(new ApiError("rate_limited", exception.getMessage()));
+    }
+
+    @ExceptionHandler(VoiceRuntimeUnavailableException.class)
+    ResponseEntity<ApiError> voiceRuntimeUnavailable(VoiceRuntimeUnavailableException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ApiError("voice_runtime_unavailable", exception.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

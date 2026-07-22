@@ -4303,3 +4303,22 @@ Expected:
   - `npm.cmd run build` - passed; 50 routes generated.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: live Vapi validation requires a real key and a public callback URL connected to the same environment that owns the test call. The Vapi pilot currently uses its explicitly configured voice rather than translating an existing Cartesia voice ID. After CI/CD, compare first-response latency, interruption stop time, STT accuracy for names/numbers/dates, slow-tool progress, CRUD correctness, and respectful closure across at least two languages before routing public or carrier traffic to Vapi.
+
+### 2026-07-22 - Make direct Spring startup load provider credentials safely
+
+- Diagnosed the immediate Agent Studio 500 after Vapi was explicitly selected. The repository `.env` contained a Vapi key, but the direct Gradle/Java process environment did not; Spring Boot does not automatically import a dotenv file. `BrowserVoiceRuntimeRegistry` correctly rejected the unavailable provider, but the generic Spring error response hid that cause.
+- Added `deploy/scripts/run-local-backend.ps1`. It parses the repository `.env`, imports valid entries only into the child process, never prints values, validates that a Vapi key exists when Vapi is selected, and launches `:backend:bootRun`. `-ValidateOnly` verifies configuration without starting Spring.
+- Added a dedicated `VoiceRuntimeUnavailableException` and HTTP 503 API response. Agent Studio now receives the safe actionable configuration message instead of “Internal server error”; the response never exposes credential values.
+- Documented the difference between a direct local Spring process and a publicly hosted backend. Direct Spring uses port 8080 and needs a tunnel for Vapi callbacks; a backend publicly reachable at `https://sauti.uk` does not.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{BrowserVoiceRuntimeRegistry,VoiceRuntimeUnavailableException}.java`
+  - `backend/src/main/java/com/sauti/shared/ApiExceptionHandler.java`
+  - focused registry and API exception-handler tests
+  - `deploy/scripts/run-local-backend.ps1`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - dotenv loader `-ValidateOnly` - passed; 133 variables loaded and Vapi configuration detected without printing secrets.
+  - focused runtime-registry and API exception-handler tests - passed.
+  - `.\\gradlew.bat :backend:test` - passed.
+- Deployment status: not deployed. These follow-up changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: if Java is hosted by systemd, another service manager, or a cloud platform rather than launched by this Windows helper, configure the same variables in that service's environment and restart it. The helper is only for direct Windows development.

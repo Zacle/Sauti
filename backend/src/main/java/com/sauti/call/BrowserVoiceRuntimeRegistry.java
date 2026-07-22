@@ -25,7 +25,10 @@ public class BrowserVoiceRuntimeRegistry {
     public void requireConfigured(String provider) {
         var runtime = require(provider);
         if (!runtime.isConfigured()) {
-            throw new IllegalStateException(runtime.provider() + " test calls are not configured");
+            throw new VoiceRuntimeUnavailableException(
+                    runtime.provider() + " test calls are not configured in the running backend. "
+                            + "Set the provider credentials in its process environment and restart it."
+            );
         }
     }
 
