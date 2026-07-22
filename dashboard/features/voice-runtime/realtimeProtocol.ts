@@ -11,6 +11,60 @@ export type AuthorizedNextToolRequest = {
 
 export const SAUTI_REALTIME_REQUEST_ID = "sauti_request_id";
 export const AUTHORITATIVE_TRANSCRIPT_PREFIX = "SAUTI_INPUT_TRANSCRIPT";
+export const SLOW_RESPONSE_PROGRESS_PURPOSE = "sauti_slow_response_progress";
+
+export function slowResponseProgressRequest(requestId: string) {
+  return {
+    type: "response.create",
+    response: {
+      conversation: "none",
+      instructions: "The main response to the caller is still being prepared and the caller has waited longer than expected. "
+        + "Give one very brief, natural, professional progress update in the caller's current language. "
+        + "Briefly apologize for the wait and say you are still working on their request. "
+        + "Do not answer the request, claim success or failure, repeat details, ask a question, or call a tool.",
+      tool_choice: "none",
+      output_modalities: ["text"],
+      metadata: {
+        [SAUTI_REALTIME_REQUEST_ID]: requestId,
+        purpose: SLOW_RESPONSE_PROGRESS_PURPOSE,
+      },
+    },
+  };
+}
+
+export function isSlowResponseProgressEvent(
+  event: Record<string, unknown>,
+  knownResponseIds: ReadonlySet<string>,
+) {
+  const response = event.response as { id?: unknown; metadata?: Record<string, unknown> } | undefined;
+  const responseId = String(event.response_id ?? response?.id ?? "").trim();
+  return response?.metadata?.purpose === SLOW_RESPONSE_PROGRESS_PURPOSE
+    || Boolean(responseId && knownResponseIds.has(responseId));
+}
+
+export function shouldRetrySlowResponse(progressOnDelay: boolean, alreadyRetried: boolean) {
+  return progressOnDelay && !alreadyRetried;
+}
+
+export function completedResponseText(event: Record<string, unknown>) {
+  const response = event.response as { output?: unknown } | undefined;
+  const output = Array.isArray(response?.output) ? response.output : [];
+  const parts: string[] = [];
+  for (const rawItem of output) {
+    if (!rawItem || typeof rawItem !== "object") continue;
+    const item = rawItem as { content?: unknown };
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const rawContent of content) {
+      if (!rawContent || typeof rawContent !== "object") continue;
+      const value = rawContent as { type?: unknown; text?: unknown; transcript?: unknown };
+      const text = String(value.type ?? "") === "output_audio"
+        ? String(value.transcript ?? "")
+        : String(value.text ?? "");
+      if (text.trim()) parts.push(text.trim());
+    }
+  }
+  return parts.join("\n").trim();
+}
 
 export function businessActionProgressInstruction(toolName: string) {
   const operation = toolName === "book_slot"

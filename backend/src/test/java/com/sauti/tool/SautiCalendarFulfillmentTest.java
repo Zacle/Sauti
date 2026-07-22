@@ -411,6 +411,7 @@ class SautiCalendarFulfillmentTest {
         arguments.put("service_type", "Consultation");
         arguments.put("duration_minutes", 75);
         arguments.put("customer_details", Map.of("preferred_staff", "any available staff"));
+        arguments.put("review_action", "prepare_review");
         var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "booking-review", "book_slot", Map.copyOf(arguments)
         ));
@@ -435,6 +436,13 @@ class SautiCalendarFulfillmentTest {
         when(fixture.callSessionStore.conversationHistory("call-sid"))
                 .thenReturn(List.of(new ConversationMessage("user", "Everything is correct.")));
         arguments.put("review_token", review.result().get("reviewToken"));
+        arguments.put("review_action", "approve_review");
+        when(fixture.callSessionStore.pendingBooking("call-sid")).thenReturn(java.util.Optional.of(
+                new BookingDraft(
+                        "Zachary", "Consultation", "zachary.123@gmail.com", "2026-07-23T12:00:00Z",
+                        "01115753441", true, review.result().get("reviewToken").toString(), 75
+                )
+        ));
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "booking-without-google", "book_slot", Map.copyOf(arguments)
         ));
@@ -539,6 +547,7 @@ class SautiCalendarFulfillmentTest {
         arguments.put("caller_name", "Alexandra");
         arguments.put("caller_phone", "0105753441");
         arguments.put("service_type", "Women hairstyle");
+        arguments.put("review_action", "prepare_review");
         when(fixture.callSessionStore.conversationHistory("call-sid"))
                 .thenReturn(List.of(new ConversationMessage("user", "Alexandra")));
         var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
@@ -548,6 +557,7 @@ class SautiCalendarFulfillmentTest {
 
         when(fixture.callSessionStore.conversationHistory("call-sid"))
                 .thenReturn(List.of(new ConversationMessage("user", "What do you want me to do?")));
+        arguments.put("review_action", "correct_review");
         var notApproved = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "not-an-approval", "book_slot", Map.copyOf(arguments)
         ));
@@ -567,9 +577,16 @@ class SautiCalendarFulfillmentTest {
         when(fixture.callSessionStore.conversationHistory("call-sid"))
                 .thenReturn(List.of(new ConversationMessage("user", "Yes, it is.")));
         var reviewToken = arguments.get("review_token");
+        when(fixture.callSessionStore.pendingBooking("call-sid")).thenReturn(java.util.Optional.of(
+                new BookingDraft(
+                        "Alexandra", "Women hairstyle", "", "2026-07-23T13:00:00Z",
+                        "0105753441", true, reviewToken.toString(), 60
+                )
+        ));
         arguments.clear();
         arguments.put("review_token", reviewToken);
         arguments.put("appointment_name", "Zachary");
+        arguments.put("review_action", "approve_review");
         var approved = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "actual-approval", "book_slot", Map.copyOf(arguments)
         ));
@@ -701,7 +718,7 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
-    void usesTheStoredReviewTokenWhenSemanticApprovalArrivesWithoutPrivateModelArguments() {
+    void usesTheStoredReviewTokenWhenTheModelSemanticallyApprovesWithoutAnotherStateTurn() {
         var fixture = fixture(HOURS, List.of());
         var latest = "Everything is right.";
         when(fixture.callSessionStore.conversationHistory("call-sid"))
@@ -710,7 +727,6 @@ class SautiCalendarFulfillmentTest {
                 "conversation_state_revision", "13",
                 "booking_subject", "self",
                 "booking_intent", "active",
-                "review_decision", "approved",
                 "caller_name", "Zachary",
                 "appointment_name", "Zachary"
         ));
@@ -738,7 +754,7 @@ class SautiCalendarFulfillmentTest {
         when(fixture.bookingService.create(any(), any(), any())).thenReturn(booking);
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
-                "approved-without-token", "book_slot", Map.of()
+                "approved-without-token", "book_slot", Map.of("review_action", "approve_review")
         ));
 
         assertThat(result.result())
@@ -790,12 +806,14 @@ class SautiCalendarFulfillmentTest {
         arguments.put("caller_phone", "01115753441");
         arguments.put("caller_email", "wrong@example.com");
         arguments.put("service_type", "Men hairstyle");
+        arguments.put("review_action", "prepare_review");
         var first = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "review-before-correction", "book_slot", Map.copyOf(arguments)
         ));
 
         arguments.put("caller_email", "zachary.123@gmail.com");
         arguments.put("review_token", first.result().get("reviewToken"));
+        arguments.put("review_action", "correct_review");
         var corrected = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "review-after-correction", "book_slot", Map.copyOf(arguments)
         ));
@@ -828,6 +846,7 @@ class SautiCalendarFulfillmentTest {
         arguments.put("caller_name", "Zachary");
         arguments.put("caller_phone", "011175753441");
         arguments.put("service_type", "Men hairstyle");
+        arguments.put("review_action", "prepare_review");
 
         var first = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "exact-phone-review", "book_slot", Map.copyOf(arguments)
@@ -846,6 +865,7 @@ class SautiCalendarFulfillmentTest {
         arguments.put("caller_name", "Akari");
         arguments.put("review_token", first.result().get("reviewToken"));
         arguments.put("caller_phone", "011157543441");
+        arguments.put("review_action", "correct_review");
         var correction = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "exact-phone-correction", "book_slot", Map.copyOf(arguments)
         ));
@@ -867,6 +887,13 @@ class SautiCalendarFulfillmentTest {
                 .thenReturn(List.of(new ConversationMessage("user", "It is okay.")));
         arguments.put("review_token", correction.result().get("reviewToken"));
         arguments.put("caller_phone", "011157543441");
+        arguments.put("review_action", "approve_review");
+        when(fixture.callSessionStore.pendingBooking("call-sid")).thenReturn(java.util.Optional.of(
+                new BookingDraft(
+                        "Akari", "Men hairstyle", "", "2026-07-23T12:00:00Z",
+                        "0115753441", true, correction.result().get("reviewToken").toString(), 60
+                )
+        ));
         var booked = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "book-after-phone-approval", "book_slot", Map.copyOf(arguments)
         ));

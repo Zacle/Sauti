@@ -4,11 +4,52 @@ import {
   authorizedNextToolRequest,
   businessActionProgressInstruction,
   callerGuidanceInstruction,
+  completedResponseText,
   completedRealtimeToolCalls,
   realtimeCancellationDecision,
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
+  isSlowResponseProgressEvent,
+  shouldRetrySlowResponse,
+  slowResponseProgressRequest,
+  SLOW_RESPONSE_PROGRESS_PURPOSE,
 } from "./realtimeProtocol.ts";
+
+test("creates concurrent model-generated progress outside the caller conversation", () => {
+  const request = slowResponseProgressRequest("progress-7");
+  assert.equal(request.response.conversation, "none");
+  assert.equal(request.response.tool_choice, "none");
+  assert.deepEqual(request.response.output_modalities, ["text"]);
+  assert.equal(request.response.metadata.sauti_request_id, "progress-7");
+  assert.equal(request.response.metadata.purpose, SLOW_RESPONSE_PROGRESS_PURPOSE);
+  assert.match(request.response.instructions, /caller's current language/i);
+  assert.match(request.response.instructions, /still working/i);
+  assert.match(request.response.instructions, /Do not answer the request/i);
+
+  assert.equal(isSlowResponseProgressEvent({
+    type: "response.created",
+    response: { id: "progress-response", metadata: request.response.metadata },
+  }, new Set()), true);
+  assert.equal(isSlowResponseProgressEvent({
+    type: "response.output_text.delta",
+    response_id: "progress-response",
+  }, new Set(["progress-response"])), true);
+  assert.equal(isSlowResponseProgressEvent({
+    type: "response.done",
+    response: { id: "main-response" },
+  }, new Set(["progress-response"])), false);
+  assert.equal(completedResponseText({
+    response: {
+      output: [{ content: [{ type: "output_text", text: "Sorry for the wait. I am still working on that." }] }],
+    },
+  }), "Sorry for the wait. I am still working on that.");
+});
+
+test("retries one delayed main response without surfacing a false repeat request", () => {
+  assert.equal(shouldRetrySlowResponse(true, false), true);
+  assert.equal(shouldRetrySlowResponse(true, true), false);
+  assert.equal(shouldRetrySlowResponse(false, false), false);
+});
 
 test("executes a server-authorized booking approval without another model response", () => {
   assert.deepEqual(authorizedNextToolRequest({

@@ -815,6 +815,46 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 .contains("still rescheduling the appointment");
         assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction("cancel_booking"))
                 .contains("still cancelling the appointment");
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.slowResponseProgressInstruction())
+                .contains("caller's current language", "still working on their request")
+                .doesNotContain("Could you repeat");
+    }
+
+    @Test
+    void deliversConcurrentOutOfBandProgressWithoutReplacingTheMainPhoneResponse() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        when(session.dispatchedGeneration()).thenReturn(0L);
+        when(session.dispatchedPurpose()).thenReturn("conversation");
+        when(session.dispatchedProgressKey()).thenReturn("");
+        when(session.isDispatchedRequest("main-request")).thenReturn(true);
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"main-response\"," +
+                        "\"metadata\":{\"sauti_request_id\":\"main-request\"}}}", true);
+        socketListener.registerSlowResponseProgress("progress-request", 0L);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"progress-response\"," +
+                        "\"metadata\":{\"sauti_request_id\":\"progress-request\"," +
+                        "\"purpose\":\"slow_response_progress\",\"main_request_id\":\"main-request\"}}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\",\"response\":{\"id\":\"progress-response\"," +
+                        "\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"content\":[" +
+                        "{\"type\":\"output_text\",\"text\":\"Sorry for the wait. I am still working on that.\"}]}]}}",
+                true);
+
+        assertThat(events).containsExactly(
+                "agent:Sorry for the wait. I am still working on that.:false"
+        );
+        verify(session, times(1)).consumeExpectedResponse();
+        verify(session, never()).responseFinished();
     }
 
     @Test

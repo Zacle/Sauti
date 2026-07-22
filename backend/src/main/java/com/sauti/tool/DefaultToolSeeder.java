@@ -23,7 +23,7 @@ public class DefaultToolSeeder {
                         "time_preference", property("string", "Exact preferred time in HH:mm when provided, otherwise a period such as morning", ""),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("date")), "sauti_calendar", "noop_calendar", 10);
-        seed(agent, "book_slot", "Two-step booking: appointment_name is the person receiving the service and may differ from the person speaking. Call without review_token after all configured details and availability are complete; speak the returned review and wait. On a correction, change only that field and pass the preceding review_token for a focused correction review. After approval, call again with unchanged details and the latest review_token. Never ask the caller to spell or expose the token.",
+        seed(agent, "book_slot", "Two-step booking: appointment_name is the service recipient. Set review_action semantically to prepare_review, correct_review, or approve_review from the caller's meaning in their language. The server retains the private review token. Never ask the caller to spell or expose the token.",
                 schema(Map.ofEntries(
                         Map.entry("appointment_at", property("string", "Confirmed ISO-8601 appointment datetime", "date-time")),
                         Map.entry("appointment_name", property("string", "Full name to place on the appointment; use the service recipient's name when someone is booking for another person", "")),
@@ -32,9 +32,10 @@ public class DefaultToolSeeder {
                         Map.entry("service_type", property("string", "Service being booked", "")),
                         Map.entry("duration_minutes", property("integer", "Appointment duration in minutes", "")),
                         Map.entry("review_token", property("string", "Private token from the preceding review; keep it when correcting a value, and never say it aloud", "")),
+                        Map.entry("review_action", property("string", "Semantic action: prepare_review, correct_review, or approve_review", "")),
                         Map.entry("customer_details", property("object", "Additional fields required by this agent's booking workflow", ""))
                 ), List.of(
-                        "appointment_at", "appointment_name", "caller_phone", "service_type"
+                        "appointment_at", "appointment_name", "caller_phone", "service_type", "review_action"
                 )), "sauti_calendar", "noop_calendar", 20);
         seed(agent, "reschedule_booking", "Reschedule a booking only after checking the new time with check_availability and receiving caller confirmation.",
                 schema(Map.of(

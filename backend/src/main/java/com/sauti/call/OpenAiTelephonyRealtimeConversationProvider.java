@@ -35,7 +35,9 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
     private static final String RESPONSE_PURPOSE_CONVERSATION = "conversation";
     private static final String RESPONSE_PURPOSE_BUSINESS_PROGRESS = "business_progress";
     private static final String RESPONSE_PURPOSE_POST_BOOKING_GUIDANCE = "post_booking_guidance";
+    private static final String RESPONSE_PURPOSE_SLOW_RESPONSE_PROGRESS = "slow_response_progress";
     private static final long BUSINESS_ACTION_PROGRESS_DELAY_MILLIS = 1_500L;
+    private static final long SLOW_RESPONSE_PROGRESS_DELAY_MILLIS = 2_500L;
 
     private final ObjectMapper objectMapper;
     private final OpenAiRealtimeService realtimeService;
@@ -106,6 +108,13 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 + "Do not claim success or failure, invent a result, repeat booking details, ask a question, or call a tool.";
     }
 
+    static String slowResponseProgressInstruction() {
+        return "The main response to the caller is still being prepared and the caller has waited longer than expected. "
+                + "Give one very brief, natural, professional progress update in the caller's current language. "
+                + "Briefly apologize for the wait and say you are still working on their request. "
+                + "Do not answer the request, claim success or failure, repeat details, ask a question, or call a tool.";
+    }
+
     @Override
     public boolean supports(Call call) {
         return enabled
@@ -137,7 +146,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             webSocket,
                             objectMapper,
                             keepAliveExecutor,
-                            eventListener::markCurrentResponseCancelled
+                            eventListener::markCurrentResponseCancelled,
+                            eventListener::registerSlowResponseProgress
                     );
                     eventListener.attach(session);
                     return session;
@@ -197,6 +207,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final java.util.Map<String, ScheduledFuture<?>> businessActionProgressTimers =
                 new java.util.HashMap<>();
         private final java.util.Set<String> activeBusinessActionProgress = new java.util.HashSet<>();
+        private final java.util.Map<String, Long> slowResponseProgressRequests =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        private final java.util.Map<String, String> slowResponseProgressResponseIds =
+                new java.util.concurrent.ConcurrentHashMap<>();
+        private final java.util.Map<String, String> slowResponseProgressMainRequests =
+                new java.util.concurrent.ConcurrentHashMap<>();
         private String currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
         private String currentBusinessActionProgressKey = "";
 
@@ -216,6 +232,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         void attach(OpenAiTelephonySession session) {
             this.session = session;
+        }
+
+        void registerSlowResponseProgress(String requestId, long generation) {
+            if (requestId == null || requestId.isBlank()) return;
+            slowResponseProgressRequests.put(requestId, generation);
         }
 
         synchronized void markCurrentResponseCancelled() {
@@ -285,6 +306,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 var event = objectMapper.readTree(value);
                 var type = event.path("type").asText("");
                 var eventResponseId = responseId(event);
+                if (handleSlowResponseProgressEvent(event, type, eventResponseId)) return;
                 if ("response.created".equals(type)) {
                     var activeSession = session;
                     var createdRequestId = responseRequestId(event);
@@ -565,6 +587,68 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             } catch (Exception exception) {
                 listener.onError(exception);
             }
+        }
+
+        private boolean handleSlowResponseProgressEvent(
+                JsonNode event,
+                String type,
+                String eventResponseId
+        ) {
+            var response = event.path("response");
+            var requestId = response.path("metadata").path(RESPONSE_REQUEST_ID_METADATA).asText("").trim();
+            var purpose = response.path("metadata").path("purpose").asText("").trim();
+            var mainRequestId = response.path("metadata").path("main_request_id").asText("").trim();
+            var knownRequest = slowResponseProgressRequests.containsKey(requestId);
+            var mappedRequestId = eventResponseId.isBlank()
+                    ? ""
+                    : slowResponseProgressResponseIds.getOrDefault(eventResponseId, "");
+            if (!RESPONSE_PURPOSE_SLOW_RESPONSE_PROGRESS.equals(purpose)
+                    && !knownRequest && mappedRequestId.isBlank()) {
+                return false;
+            }
+            if ("response.created".equals(type) && knownRequest && !eventResponseId.isBlank()) {
+                slowResponseProgressResponseIds.put(eventResponseId, requestId);
+                if (!mainRequestId.isBlank()) {
+                    slowResponseProgressMainRequests.put(requestId, mainRequestId);
+                }
+            }
+            var effectiveRequestId = knownRequest ? requestId : mappedRequestId;
+            if (("response.done".equals(type) || "response.cancelled".equals(type))
+                    && !effectiveRequestId.isBlank()) {
+                var generation = slowResponseProgressRequests.remove(effectiveRequestId);
+                var expectedMainRequest = slowResponseProgressMainRequests.remove(effectiveRequestId);
+                if (!eventResponseId.isBlank()) slowResponseProgressResponseIds.remove(eventResponseId);
+                var activeSession = session;
+                if ("response.done".equals(type) && generation != null
+                        && generation == turnGeneration && responseActive
+                        && activeSession != null
+                        && expectedMainRequest != null && !expectedMainRequest.isBlank()
+                        && activeSession.isDispatchedRequest(expectedMainRequest)) {
+                    var text = responseText(event);
+                    if (!text.isBlank()) {
+                        deliverAgentCompletion(new AgentCompletion(
+                                text, false, generation,
+                                eventResponseId.isBlank()
+                                        ? "slow-progress:" + effectiveRequestId
+                                        : eventResponseId
+                        ));
+                    }
+                }
+            }
+            return true;
+        }
+
+        private String responseText(JsonNode event) {
+            var parts = new java.util.ArrayList<String>();
+            for (var item : event.path("response").path("output")) {
+                for (var content : item.path("content")) {
+                    var text = "output_audio".equals(content.path("type").asText(""))
+                            ? content.path("transcript").asText("")
+                            : content.path("text").asText("");
+                    if (!text.isBlank()) parts.add(text.trim());
+                }
+            }
+            return VoiceOutputGuard.speechText(String.join("\n", parts));
         }
 
         private boolean acceptCallerTranscript(String itemId, String transcript) {
@@ -1115,13 +1199,17 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final WebSocket webSocket;
         private final ObjectMapper objectMapper;
         private final ScheduledFuture<?> keepAliveTask;
+        private final ScheduledExecutorService scheduler;
         private final Runnable onCancel;
+        private final java.util.function.BiConsumer<String, Long> onSlowProgressRequested;
         private final java.util.concurrent.atomic.AtomicInteger expectedResponses = new java.util.concurrent.atomic.AtomicInteger();
         private final java.util.ArrayDeque<QueuedResponse> pendingResponses = new java.util.ArrayDeque<>();
         private boolean responseOutstanding;
         private QueuedResponse inFlightResponse;
         private long generation;
         private long responseRequestSequence;
+        private long slowProgressSequence;
+        private ScheduledFuture<?> slowProgressTask;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
 
         OpenAiTelephonySession(
@@ -1138,9 +1226,21 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 ScheduledExecutorService keepAliveExecutor,
                 Runnable onCancel
         ) {
+            this(webSocket, objectMapper, keepAliveExecutor, onCancel, (requestId, generation) -> { });
+        }
+
+        OpenAiTelephonySession(
+                WebSocket webSocket,
+                ObjectMapper objectMapper,
+                ScheduledExecutorService keepAliveExecutor,
+                Runnable onCancel,
+                java.util.function.BiConsumer<String, Long> onSlowProgressRequested
+        ) {
             this.webSocket = webSocket;
             this.objectMapper = objectMapper;
+            this.scheduler = keepAliveExecutor;
             this.onCancel = onCancel;
+            this.onSlowProgressRequested = onSlowProgressRequested;
             this.keepAliveTask = keepAliveExecutor.scheduleAtFixedRate(
                     () -> webSocket.sendPing(ByteBuffer.wrap(new byte[] {1})),
                     8,
@@ -1207,6 +1307,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             synchronized (this) {
                 generation++;
                 pendingResponses.removeIf(response -> response.generation() != generation);
+                cancelSlowResponseProgress();
             }
             onCancel.run();
         }
@@ -1223,7 +1324,10 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             // updateInstructions(...) installs the full personalized prompt just
             // before this call. Supplying response.instructions here would
             // override it for this turn and drop exact owner-configured facts.
-            enqueueResponse(Map.of("type", "response.create"));
+            enqueueResponse(
+                    Map.of("type", "response.create"),
+                    currentGeneration(), RESPONSE_PURPOSE_CONVERSATION, "", true
+            );
         }
 
         void requestToolResultResponse() {
@@ -1245,7 +1349,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     "response", Map.of(
                             "tool_choice", Map.of("type", "function", "name", toolName)
                     )
-            ));
+            ), currentGeneration(), RESPONSE_PURPOSE_CONVERSATION, "", true);
         }
 
         void requestExactResponse(String text) {
@@ -1292,7 +1396,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         private synchronized void enqueueResponse(Map<String, ?> response, long expectedGeneration) {
-            enqueueResponse(response, expectedGeneration, RESPONSE_PURPOSE_CONVERSATION, "");
+            enqueueResponse(response, expectedGeneration, RESPONSE_PURPOSE_CONVERSATION, "", false);
         }
 
         private synchronized void enqueueResponse(
@@ -1301,6 +1405,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 String purpose,
                 String progressKey
         ) {
+            enqueueResponse(response, expectedGeneration, purpose, progressKey, false);
+        }
+
+        private synchronized void enqueueResponse(
+                Map<String, ?> response,
+                long expectedGeneration,
+                String purpose,
+                String progressKey,
+                boolean progressOnDelay
+        ) {
             if (expectedGeneration != generation) return;
             var requestId = "phone-" + expectedGeneration + "-" + (++responseRequestSequence);
             pendingResponses.addLast(new QueuedResponse(
@@ -1308,6 +1422,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     requestId,
                     purpose,
                     progressKey,
+                    progressOnDelay,
                     withRequestMetadata(response, requestId)
             ));
             dispatchNextResponse();
@@ -1323,9 +1438,47 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             expectedResponses.incrementAndGet();
             inFlightResponse = pendingResponses.removeFirst();
             send(inFlightResponse.payload());
+            armSlowResponseProgress(inFlightResponse);
+        }
+
+        private synchronized void armSlowResponseProgress(QueuedResponse response) {
+            cancelSlowResponseProgress();
+            if (response == null || !response.progressOnDelay()) return;
+            slowProgressTask = scheduler.schedule(() -> {
+                synchronized (OpenAiTelephonySession.this) {
+                    slowProgressTask = null;
+                    if (!responseOutstanding || inFlightResponse == null
+                            || !response.requestId().equals(inFlightResponse.requestId())
+                            || response.generation() != generation) {
+                        return;
+                    }
+                    var requestId = "phone-progress-" + generation + "-" + (++slowProgressSequence);
+                    onSlowProgressRequested.accept(requestId, generation);
+                    send(Map.of(
+                            "type", "response.create",
+                            "response", Map.of(
+                                    "conversation", "none",
+                                    "instructions", slowResponseProgressInstruction(),
+                                    "tool_choice", "none",
+                                    "output_modalities", java.util.List.of("text"),
+                                    "metadata", Map.of(
+                                            RESPONSE_REQUEST_ID_METADATA, requestId,
+                                            "purpose", RESPONSE_PURPOSE_SLOW_RESPONSE_PROGRESS,
+                                            "main_request_id", response.requestId()
+                                    )
+                            )
+                    ));
+                }
+            }, SLOW_RESPONSE_PROGRESS_DELAY_MILLIS, TimeUnit.MILLISECONDS);
+        }
+
+        private synchronized void cancelSlowResponseProgress() {
+            if (slowProgressTask != null) slowProgressTask.cancel(false);
+            slowProgressTask = null;
         }
 
         synchronized void responseFinished() {
+            cancelSlowResponseProgress();
             responseOutstanding = false;
             inFlightResponse = null;
             dispatchNextResponse();
@@ -1344,6 +1497,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         synchronized String abandonOutstandingResponse() {
             if (!responseOutstanding) return "";
+            cancelSlowResponseProgress();
             var abandonedRequestId = inFlightResponse == null ? "" : inFlightResponse.requestId();
             if (inFlightResponse != null) {
                 expectedResponses.updateAndGet(current -> Math.max(0, current - 1));
@@ -1434,6 +1588,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 String requestId,
                 String purpose,
                 String progressKey,
+                boolean progressOnDelay,
                 Map<String, ?> payload
         ) { }
 
@@ -1450,6 +1605,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         @Override
         public void close() {
             keepAliveTask.cancel(false);
+            cancelSlowResponseProgress();
             webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "call ended");
         }
 

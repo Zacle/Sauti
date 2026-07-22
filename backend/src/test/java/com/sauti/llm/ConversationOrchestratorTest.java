@@ -103,6 +103,7 @@ class ConversationOrchestratorTest {
                 .contains("phonetic similarity alone")
                 .contains("do not record a service yet")
                 .contains("private review token")
+                .contains("review_action `approve_review`")
                 .contains("speak only the focused correction review")
                 .contains("Treat every caller name as an opaque literal value")
                 .contains("Never merge, insert, reorder, or duplicate digits")

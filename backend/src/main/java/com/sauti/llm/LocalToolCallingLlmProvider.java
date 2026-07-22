@@ -92,7 +92,6 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                             "Before I book, please confirm the spelling of your name: " + spelling + ", and your phone number: " + digits + ". Is that correct?"
                     ), List.of());
                 }
-                callSessionStore.updatePendingBooking(context.callSid(), null);
                 return new LlmToolTurnResponse(localized(
                         context.language(),
                         "I will confirm that appointment now.",
@@ -211,6 +210,9 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
         arguments.put("duration_minutes", booking.durationMinutes() > 0 ? booking.durationMinutes() : 60);
         if (booking.reviewToken() != null && !booking.reviewToken().isBlank()) {
             arguments.put("review_token", booking.reviewToken());
+            arguments.put("review_action", "approve_review");
+        } else {
+            arguments.put("review_action", "prepare_review");
         }
         return Map.copyOf(arguments);
     }

@@ -4168,3 +4168,32 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: after CI/CD, repeat the supplied Agent Studio call and interrupt halfway through the consolidated review. Confirm the old voice stops immediately, no late words return, the new reply plays once, and a natural approval such as “everything is right” saves once without another full review. Repeat once in a non-English language and once on the public web-voice surface. Carrier calls already use the telephony clear/cancel path and should also receive a smoke test, but the newly fixed late-PCM window was specific to browser hybrid playback.
+
+### 2026-07-22 - Remove the final-review approval round trip and keep callers informed during slow Realtime responses
+
+- Fixed the exact final-review failure shown after the caller said “No, everything is right.” The backend had restored the signed review token, but then required a second hidden `update_conversation_state` response solely to classify the approval. That additional serialized model generation could hit the conversational watchdog before `book_slot` began, producing the unrelated request to repeat and the red provider-timeout banner.
+- Added the language-independent `review_action` enum to the runtime `book_slot` contract: `prepare_review`, `correct_review`, or `approve_review`. The active model selects the action from the caller’s meaning and language in the same function call. When `approve_review` is paired with a server-retained signed review token, the backend restores the exact reviewed snapshot and saves directly; the model cannot alter verified booking facts or authorize a save without that token. The previous semantic-state recovery remains as a compatibility fallback for a tool call that omits the new action.
+- Removed the legacy multilingual regular-expression approval matcher. Approval is no longer inferred from enumerated English, French, Swahili, or Arabic phrases; current calls use the structured semantic action, while a legacy call without it is routed through semantic interpretation.
+- Kept workflow intent out of the signed booking-data snapshot, so changing the action from review preparation to approval cannot invalidate or mutate the reviewed customer, service, phone, date, time, or duration.
+- Updated the deterministic local fallback to emit the same review action and retain the server review snapshot until fulfillment succeeds. Successful booking fulfillment now clears that pending snapshot centrally, avoiding both premature token loss and stale post-save workflow state.
+- Added a general slow-response path before any business tool has started. If a main browser or phone Realtime response is still pending after 2.5 seconds, Sauti creates one concurrent out-of-band response with `conversation: "none"`. The active AI writes a brief, professional apology/progress update in the caller’s current language and is forbidden from answering the request, claiming an outcome, repeating details, asking a question, or calling a tool. There are no customer-facing phrase lists or translated progress templates.
+- Correlated each out-of-band response with Sauti metadata and its original generation. A completed or interrupted main turn cancels or suppresses stale progress; progress output never consumes the main response, enters the default conversation, changes tool state, or replaces the eventual factual answer. When a calendar tool begins, this generic progress path yields to the existing operation-specific progress lifecycle.
+- Changed the browser’s first slow main-response watchdog expiry into one silent retry of that same request. It cancels or abandons the old provider response without speaking “Could you repeat,” preserves any progress update already in flight, and gives Realtime one fresh attempt. A second provider failure still terminates safely rather than hanging indefinitely.
+- This uses OpenAI’s documented out-of-band Realtime response mechanism, which permits `response.conversation: "none"` responses to run concurrently and be correlated with metadata: https://developers.openai.com/api/docs/guides/realtime-conversations#create-responses-outside-the-default-conversation
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/llm/LocalToolCallingLlmProvider.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - focused backend tests for phone out-of-band progress, booking action schema, signed-review approval, and prompt behavior
+  - `dashboard/features/voice-runtime/{openaiRealtime,openaiRealtime.test,realtimeProtocol}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused backend Realtime, tool-schema, fulfillment, and orchestrator suites - passed.
+  - `npm.cmd run test:voice` - passed; 18 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: the extra progress model response is created only for turns that exceed 2.5 seconds, so it adds provider usage only on slow turns. After CI/CD, repeat the screenshot’s complete review-approval path in Agent Studio and one carrier call, then intentionally delay a response. Confirm approval starts one `book_slot` save without another semantic response, one natural progress update is heard while a slow response continues, the actual result follows once, and interruption suppresses stale progress. Live provider concurrency, network latency, and external TTS timing still require this end-to-end validation.

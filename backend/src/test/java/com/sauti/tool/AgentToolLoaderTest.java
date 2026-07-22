@@ -66,7 +66,7 @@ class AgentToolLoaderTest {
         var properties = (Map<String, Object>) definition.inputSchema().get("properties");
         var details = (Map<String, Object>) properties.get("customer_details");
         var detailProperties = (Map<String, Object>) details.get("properties");
-        assertThat(required).contains("appointment_name", "caller_email", "customer_details")
+        assertThat(required).contains("appointment_name", "caller_email", "customer_details", "review_action")
                 .doesNotContain("caller_name", "caller_name_spelling_confirmed", "final_booking_review_confirmed");
         assertThat(properties).doesNotContainKeys(
                 "caller_name_spelling_confirmed",
@@ -74,13 +74,15 @@ class AgentToolLoaderTest {
                 "caller_email_spelling_confirmed",
                 "final_booking_review_confirmed"
         );
-        assertThat(properties).containsKeys("appointment_name", "review_token")
+        assertThat(properties).containsKeys("appointment_name", "review_token", "review_action")
                 .doesNotContainKey("caller_name");
         assertThat(required).doesNotContain("review_token");
         assertThat(definition.description())
                 .contains("person receiving the service")
-                .contains("pass the preceding review_token")
-                .contains("focused correction review");
+                .contains("review_action")
+                .contains("approve_review");
+        assertThat((List<String>) ((Map<String, Object>) properties.get("review_action")).get("enum"))
+                .containsExactly("prepare_review", "correct_review", "approve_review");
         assertThat(((Map<String, Object>) properties.get("appointment_name")).get("description").toString())
                 .contains("may differ from the person speaking");
         assertThat((List<String>) details.get("required"))

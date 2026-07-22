@@ -16,11 +16,9 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.text.Normalizer;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -297,6 +295,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
 
     private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, AgentTool toolConfig) {
         var modelReviewToken = stringArg(toolCall.arguments(), "review_token", "");
+        var reviewAction = stringArg(toolCall.arguments(), "review_action", "");
         var storedReviewToken = pendingReviewToken(call).orElse("");
         // The review token is private server workflow state, not customer data.
         // Realtime models can omit or replay an older copy after an interruption;
@@ -313,10 +312,13 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         }
         var semanticState = currentState.containsKey("conversation_state_revision");
         var reviewDecision = currentState.getOrDefault("review_decision", "");
-        var callerApprovedReview = semanticState
-                ? "approved".equals(reviewDecision)
-                : callerApprovedLatestReview(latestCaller);
-        if (!suppliedReviewToken.isBlank() && semanticState && reviewDecision.isBlank()) {
+        var explicitReviewAction = java.util.Set.of(
+                "prepare_review", "correct_review", "approve_review"
+        ).contains(reviewAction);
+        var callerApprovedReview = (!storedReviewToken.isBlank() && "approve_review".equals(reviewAction))
+                || (semanticState && "approved".equals(reviewDecision));
+        if (!suppliedReviewToken.isBlank() && !explicitReviewAction
+                && (!semanticState || reviewDecision.isBlank())) {
             return Map.of(
                     "status", "booking_review_decision_required",
                     "bookingCreated", false,
@@ -429,6 +431,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("instruction", localOnly
                 ? "Tell the caller the booking was saved in Sauti and provide the booking number. Do not claim an external calendar was updated."
                 : "Tell the caller whether the external calendar was confirmed. Always provide the booking number. If calendarSynced is false, say the booking was saved in Sauti for owner follow-up.");
+        if (call.getTwilioCallSid() != null && !call.getTwilioCallSid().isBlank()) {
+            callSessionStore.updatePendingBooking(call.getTwilioCallSid(), null);
+        }
         return Map.copyOf(result);
     }
 
@@ -466,6 +471,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             String latest
     ) {
         var normalized = new LinkedHashMap<String, Object>(originalArguments);
+        // This describes workflow intent and must never become part of the
+        // signed booking-data snapshot.
+        normalized.remove("review_action");
         var suppliedAppointmentName = normalized.remove("appointment_name");
         if (suppliedAppointmentName != null && !suppliedAppointmentName.toString().isBlank()) {
             normalized.put("caller_name", suppliedAppointmentName.toString());
@@ -543,34 +551,6 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 .forEach(field -> BookingReviewRenderer.reviewedValue(call, reviewToken, "detail." + field)
                         .ifPresent(value -> details.put(field, value)));
         if (!details.isEmpty()) arguments.put("customer_details", Map.copyOf(details));
-    }
-
-    private boolean callerApprovedLatestReview(String transcript) {
-        var normalized = Normalizer.normalize(transcript == null ? "" : transcript, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "")
-                .toLowerCase(Locale.ROOT)
-                .replace('’', '\'')
-                .replaceAll("[^\\p{L}\\p{N}' ]+", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
-        if (normalized.isBlank()) return false;
-        if (normalized.matches(".*\\b(no corrections?|nothing (?:is )?wrong|everything is (?:right|correct)|"
-                + "hakuna marekebisho|kila kitu kiko sawa)\\b.*")) {
-            return true;
-        }
-        if (normalized.matches(".*\\b(but|actually|instead|change|correct that|correction|wrong|incorrect|not right|"
-                + "pas correct|modifier|changer|lakini|badilisha|si sahihi|لكن|خطأ|غير صحيح|غيره)\\b.*")) {
-            return false;
-        }
-        if (normalized.matches("^(?:yes|yeah|yep|oui|ndiyo|ndio|نعم)\\b.*")) return true;
-        return normalized.matches(
-                "(?:(?:yes|yeah|yep)(?: it is| (?:that is|that's|everything is) (?:right|correct|fine))?|"
-                        + "correct|confirmed|(?:that is|that's|it is) (?:right|correct|fine|okay)|right|sounds (?:right|good)|"
-                        + "looks good|all good|okay|ok|go ahead|save it|book it|please (?:save|book) it|"
-                        + "oui|c'est correct|c'est exact|exact|d'accord|parfait|"
-                        + "ndiyo|ndio|sahihi|sawa|iko sawa|endelea|hifadhi|weka miadi|"
-                        + "نعم|صحيح|تمام|موافق|احجز|احفظ)"
-        );
     }
 
     private void copyAuthoritativeNote(

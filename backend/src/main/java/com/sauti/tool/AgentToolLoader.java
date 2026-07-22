@@ -54,6 +54,12 @@ public class AgentToolLoader {
                 "type", "string",
                 "description", "Private token returned by the immediately preceding booking review. Never say it aloud. Keep passing the preceding token when correcting one value so only that correction is reconfirmed."
         ));
+        properties.put("review_action", Map.of(
+                "type", "string",
+                "enum", List.of("prepare_review", "correct_review", "approve_review"),
+                "description", "Semantic purpose of this call. Use prepare_review when producing the first final review, correct_review when the caller changed a reviewed value, and approve_review only when the caller clearly approved the latest review in their own words or language."
+        ));
+        if (!required.contains("review_action")) required.add("review_action");
         properties.remove("caller_name");
         properties.put("appointment_name", Map.of(
                 "type", "string",
@@ -89,7 +95,7 @@ public class AgentToolLoader {
         schema.put("required", List.copyOf(required));
         return new LlmToolDefinition(
                 definition.name(),
-                "Two-step booking. appointment_name is the person receiving the service, not necessarily the person speaking. First call without review_token after configured details and availability are complete. Speak the returned review and wait. On a correction, change only that field and pass the preceding review_token so the server returns a focused correction review. After approval, call again with unchanged details and the latest review_token. The caller states details naturally and is never required to spell them. Never expose the token.",
+                "Two-step booking. appointment_name is the person receiving the service, not necessarily the person speaking. Set review_action from the caller's meaning in their language: prepare_review for the first review, correct_review for a correction, and approve_review only for clear approval of the latest review. The server retains the private review token. The caller states details naturally and is never required to spell anything. Never expose the token.",
                 Map.copyOf(schema)
         );
     }
