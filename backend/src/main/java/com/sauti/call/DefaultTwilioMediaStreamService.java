@@ -208,11 +208,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
         if (call != null && realtimeConversationProvider.supports(call)) {
             return realtimeConversationProvider.open(call, new TelephonyRealtimeConversationProvider.Listener() {
                 @Override
-                public void onCallerAudioStarted() {
-                    handleRealtimeCallerAudioStarted(callSid);
-                }
-
-                @Override
                 public void onCallerSpeechStarted() {
                     handleRealtimeCallerSpeechStarted(callSid);
                 }
@@ -499,22 +494,6 @@ public class DefaultTwilioMediaStreamService implements TwilioMediaStreamService
             callRepository.findByTwilioCallSid(callSid)
                     .ifPresent(call -> dashboardEventPublisher.agentSpeaking(call, false));
             LOGGER.info("Realtime barge-in detected for callSid={}", callSid);
-            metrics.interruption("telephony", metricChannel(session));
-        }
-    }
-
-    private void handleRealtimeCallerAudioStarted(String callSid) {
-        var session = sessions.get(callSid);
-        if (session == null) return;
-        // Stop Cartesia/Telnyx playback immediately on provider VAD. Keep the
-        // model response alive until meaningful transcript evidence arrives so
-        // an empty noise event cannot authorize or create another turn.
-        if (session.interruptCurrentTurn()) {
-            callSessionStore.markInterrupted(callSid);
-            callSessionStore.setSpeaking(callSid, false, "");
-            callRepository.findByTwilioCallSid(callSid)
-                    .ifPresent(call -> dashboardEventPublisher.agentSpeaking(call, false));
-            LOGGER.info("Realtime caller audio stopped agent playback for callSid={}", callSid);
             metrics.interruption("telephony", metricChannel(session));
         }
     }

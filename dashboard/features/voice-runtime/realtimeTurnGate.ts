@@ -2,8 +2,9 @@
  * Separates raw VAD from a recognized caller interruption.
  *
  * Server VAD can fire for echo, a chair movement, or background speech. Those
- * events may update the UI, but they must not cancel a valid model/TTS turn
- * until the transcription stream contains meaningful caller words.
+ * events are transport hints only: they must not change the visible call state
+ * or cancel a valid model/TTS turn until the transcription stream contains
+ * meaningful caller words.
  */
 export class RealtimeTurnGate {
   private partialTranscript = "";

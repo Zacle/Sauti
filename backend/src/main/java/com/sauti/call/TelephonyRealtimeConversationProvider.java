@@ -17,8 +17,6 @@ public interface TelephonyRealtimeConversationProvider {
     }
 
     interface Listener {
-        default void onCallerAudioStarted() { }
-
         void onCallerSpeechStarted();
 
         void onCallerTranscript(String transcript);

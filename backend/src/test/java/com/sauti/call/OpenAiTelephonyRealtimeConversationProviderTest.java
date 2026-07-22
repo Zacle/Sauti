@@ -202,7 +202,7 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
-    void notifiesPlaybackToStopImmediatelyOnCallerVadBeforeTranscriptRecognition() {
+    void rawCallerVadDoesNotStopPlaybackBeforeTranscriptRecognition() {
         var listener = mock(TelephonyRealtimeConversationProvider.Listener.class);
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
                 new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class), listener, Map.of()
@@ -216,7 +216,6 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 true
         );
 
-        verify(listener).onCallerAudioStarted();
         verify(listener, never()).onCallerSpeechStarted();
         verify(session, never()).cancelResponse();
         verify(session, never()).requestResponse();

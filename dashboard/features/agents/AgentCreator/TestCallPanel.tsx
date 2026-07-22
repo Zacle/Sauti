@@ -262,28 +262,17 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             window.setTimeout(() => void endCall("completed"), 220);
           }
         },
-        onCallerAudioStarted: () => {
-          updateStatus("capturing");
-          if (hybrid) {
-            // Stop audible output on the first provider VAD event. Semantic
-            // cancellation still waits for recognized speech inside Realtime.
-            hybridPlaybackGateRef.current.clear();
-            clearRealtimePlayback();
-            sendHybridEvent({ type: "stop_playback" });
-          }
-        },
-        onCallerAudioStopped: () => {
-          if (statusRef.current === "capturing") updateStatus("thinking");
-        },
         onCallerAudioAbandoned: () => {
           if (statusRef.current === "capturing" || statusRef.current === "thinking") {
             updateStatus("listening");
           }
         },
         onCallerSpeechStarted: (_agentWasResponding, generation) => {
+          updateStatus("capturing");
           if (hybrid) {
-            // Always advance the external TTS generation. A Cartesia context
-            // may still be generating even before its first audio frame arrives.
+            // Only transcript-confirmed caller speech may stop playback. Raw
+            // provider VAD is noisy enough to fire on echo and brief room
+            // sounds, which previously chopped speech and flapped the UI.
             interruptHybridResponse(false, generation);
           }
         },

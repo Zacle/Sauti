@@ -28,8 +28,6 @@ export type OpenAiRealtimeCallbacks = {
   onCallerTranscript: (text: string, generation: number) => void;
   onAgentTranscript: (text: string, interrupted: boolean) => void;
   onSpeaking: (speaking: boolean) => void;
-  onCallerAudioStarted?: () => void;
-  onCallerAudioStopped?: () => void;
   onCallerAudioAbandoned?: () => void;
   onCallerSpeechStarted: (agentWasResponding: boolean, generation: number) => void;
   onAgentSpeech?: (speech: { id: string; generation: number; text: string }) => void;
@@ -1014,7 +1012,6 @@ export async function connectOpenAiRealtime(options: {
       callerSpeechActive = true;
       callerTurnAgentWasResponding = responseActive || responseRequestInFlight;
       callerSpeechGate.begin();
-      options.callbacks.onCallerAudioStarted?.();
       armCallerTranscriptionWatchdog(pendingTurnKey, 15_000);
       const debounceMs = Math.max(180, options.bargeInDebounceMs ?? 0);
       window.clearTimeout(bargeInTimer);
@@ -1030,7 +1027,6 @@ export async function connectOpenAiRealtime(options: {
     }
     if (type === "input_audio_buffer.speech_stopped") {
       callerSpeechActive = false;
-      options.callbacks.onCallerAudioStopped?.();
       window.clearTimeout(bargeInTimer);
       const pendingTurnKey = callerTurnKey(event) || activeCallerTurnKey;
       armCallerTranscriptionWatchdog(pendingTurnKey, 4_000);

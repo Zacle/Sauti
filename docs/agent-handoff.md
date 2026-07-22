@@ -221,6 +221,28 @@ Expected:
 
 ## Change log
 
+### 2026-07-22 - Prevent raw VAD echo from chopping speech and flapping call status
+
+- Fixed the reported Agent Studio behavior where the voice broke up while the status repeatedly changed between speaking and listening. The cause was a transport-level `input_audio_buffer.speech_started` event being treated as an authoritative caller interruption. OpenAI VAD can emit that event for speaker echo, a short background sound, or microphone noise, so the browser and carrier paths were stopping valid TTS before any caller words had been recognized.
+- Made raw VAD a transport hint only. It still opens and times the pending transcription window, but it no longer clears audio, changes the visible call state, cancels Cartesia/Telnyx playback, or marks a carrier interruption.
+- Kept natural barge-in through the existing language-independent transcript gate. Once a meaningful transcription delta or final transcript confirms that a person is speaking, Agent Studio and public web voice move to the caller state, clear the previous PCM generation, and interrupt hybrid TTS; carrier calls synchronously cancel the model and playback through the same confirmed-speech callback.
+- This applies to every Realtime agent using the shared browser or carrier runtime, independent of business type, prompt, language, or tool workflow.
+- Files touched:
+  - `dashboard/features/voice-runtime/{openaiRealtime,realtimeTurnGate}.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `backend/src/main/java/com/sauti/call/{DefaultTwilioMediaStreamService,OpenAiTelephonyRealtimeConversationProvider,TelephonyRealtimeConversationProvider}.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `OpenAiTelephonyRealtimeConversationProviderTest` and `DefaultTwilioMediaStreamServiceTest` with task rerun - passed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run test:voice` - passed; 19 regressions.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed with all tasks re-executed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: interruption now waits for meaningful transcript evidence, normally a short transcription delta after the existing 180 ms hybrid debounce. This deliberately trades an imperceptible amount of barge-in speed for immunity to echo-driven cutouts. After CI/CD, test once with speakers and once with headphones, then interrupt with short utterances such as a name or “yes”; the agent should stop once, the UI should not flap during its own speech, and raw room noise should not interrupt it.
+
 ### 2026-07-17 - Canonical calendar prompt settings and structured selectors
 
 - Fixed stale appointment prompts that still rendered `Set up later` after Google Calendar was connected. Runtime prompt resolution now treats the agent's calendar provider and routing policy as canonical, overriding obsolete onboarding-variable values.

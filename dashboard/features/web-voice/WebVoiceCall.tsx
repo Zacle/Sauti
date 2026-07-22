@@ -186,26 +186,13 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
                 window.setTimeout(end, 220);
               }
             },
-            onCallerAudioStarted: () => {
+            onCallerAudioAbandoned: () => setPartial(""),
+            onCallerSpeechStarted: (_agentWasResponding, generation) => {
               setPartial("Listening...");
               updateSpeaking(false);
               if (hybrid) {
-                // Stop external TTS as soon as the caller starts speaking;
-                // recognized speech still owns model-turn cancellation.
-                hybridPlaybackGateRef.current.clear();
-                clearPlayback();
-                sendHybridEvent({ type: "stop_playback" });
-              }
-            },
-            onCallerAudioStopped: () => {
-              setPartial((current) => current === "Listening..." ? "Processing..." : current);
-            },
-            onCallerAudioAbandoned: () => setPartial(""),
-            onCallerSpeechStarted: (_agentWasResponding, generation) => {
-              updateSpeaking(false);
-              if (hybrid) {
-                // Always advance the external TTS generation. A Cartesia context
-                // may still be generating before its first audio frame arrives.
+                // Only transcript-confirmed caller speech may stop playback.
+                // Raw provider VAD can be echo or a short background sound.
                 hybridPlaybackGateRef.current.clear();
                 clearPlayback();
                 sendHybridEvent({ type: "interrupt", generation });

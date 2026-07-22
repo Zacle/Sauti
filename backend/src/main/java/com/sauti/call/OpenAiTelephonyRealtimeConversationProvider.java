@@ -388,7 +388,6 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                             callerSpeechNotified = false;
                             callerTurnAgentWasResponding = responseActive;
                             armCallerTranscriptionWatchdog(pendingTurnKey, 15);
-                            listener.onCallerAudioStarted();
                         }
                     }
                     case "input_audio_buffer.speech_stopped" -> {
