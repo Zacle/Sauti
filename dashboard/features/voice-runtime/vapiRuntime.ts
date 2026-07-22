@@ -5,7 +5,12 @@ import type {
   BrowserVoiceRuntimeConnection,
 } from "./browserVoiceRuntime";
 import { vapiErrorMessage } from "./vapiErrors";
-import { isVapiOpeningTranscript, mergeVapiTranscript } from "./vapiTranscript";
+import {
+  accumulateVapiCaption,
+  isVapiOpeningTranscript,
+  mergeVapiTranscript,
+  type VapiCaptionState,
+} from "./vapiTranscript";
 
 type VapiMessage = {
   type?: string;
@@ -39,6 +44,7 @@ export async function connectVapiRuntime(
   let startFailure = "";
   let providerCallId = "";
   let pendingVoiceInput = "";
+  let captionState: VapiCaptionState | null = null;
   let captionEventReceivedForSpeech = false;
   let lastCaptionEventAt = 0;
   let captionFallbackTimer: number | null = null;
@@ -75,8 +81,9 @@ export async function connectVapiRuntime(
       // voice-input is the exact text Vapi handed to TTS. Use it only when the
       // playback-synchronized event did not arrive, and only after remote audio
       // actually began; model output is intentionally never shown as speech.
-      callbacks.onAgentCaption(pendingVoiceInput);
-      trace("caption-fallback", { textLength: pendingVoiceInput.length });
+      captionState = accumulateVapiCaption(captionState, pendingVoiceInput);
+      callbacks.onAgentCaption(captionState.text, captionState.turn);
+      trace("caption-fallback", { textLength: captionState.text.length });
     }, CAPTION_EVENT_GRACE_MS);
   };
 
@@ -96,7 +103,6 @@ export async function connectVapiRuntime(
       trace("assistant-audio-start");
     } else {
       cancelCaptionFallback();
-      pendingVoiceInput = "";
       captionEventReceivedForSpeech = false;
       lastCaptionEventAt = 0;
       trace("assistant-audio-end");
@@ -120,6 +126,13 @@ export async function connectVapiRuntime(
   };
 
   vapi.on("call-start", callbacks.onConnected);
+  vapi.on("call-start-progress", (event) => {
+    trace("call-start-progress", {
+      stage: event.stage,
+      status: event.status,
+      durationMs: event.duration === undefined ? undefined : Math.round(event.duration),
+    });
+  });
   vapi.on("call-start-success", (event) => {
     providerCallId = event.callId ?? providerCallId;
     trace("call-start-success", { setupMs: Math.round(event.totalDuration) });
@@ -138,8 +151,13 @@ export async function connectVapiRuntime(
         if (message.source === "force-say" && initialAssistantTranscriptPending) {
           openingCaptionDisplayed = true;
         }
-        callbacks.onAgentCaption(text, message.turn);
-        trace("assistant-caption", { source: message.source, turn: message.turn, textLength: text.length });
+        captionState = accumulateVapiCaption(captionState, text, message.turn);
+        callbacks.onAgentCaption(captionState.text, captionState.turn);
+        trace("assistant-caption", {
+          source: message.source,
+          turn: message.turn,
+          textLength: captionState.text.length,
+        });
       }
       return;
     }
@@ -155,6 +173,8 @@ export async function connectVapiRuntime(
     if (message.type === "speech-update") {
       if (message.role === "user" && message.status === "started") {
         callerSpeaking = true;
+        pendingVoiceInput = "";
+        captionState = null;
         cancelAuthorizedEnd();
         callbacks.onCallerSpeechStarted();
       }
@@ -167,6 +187,8 @@ export async function connectVapiRuntime(
     }
     if (message.type === "user-interrupted") {
       callerSpeaking = true;
+      pendingVoiceInput = "";
+      captionState = null;
       cancelAuthorizedEnd();
       interruptedAgentTurn = true;
       callbacks.onInterrupted();
@@ -194,6 +216,7 @@ export async function connectVapiRuntime(
       interruptedAgentTurn = false;
       lastCallerFinalAt = performance.now();
       pendingVoiceInput = "";
+      captionState = null;
       const typedIndex = typedTranscripts.findIndex((candidate) => normalize(candidate) === normalize(text));
       if (typedIndex >= 0) {
         typedTranscripts.splice(typedIndex, 1);

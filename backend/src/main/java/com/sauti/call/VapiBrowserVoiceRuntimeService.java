@@ -20,6 +20,9 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
             "date-time", "time", "date", "duration", "email", "hostname",
             "ipv4", "ipv6", "uuid"
     );
+    private static final Set<String> FLUX_LANGUAGES = Set.of(
+            "en", "es", "fr", "de", "hi", "ru", "pt", "ja", "it", "nl"
+    );
     private final ConversationOrchestrator conversationOrchestrator;
     private final AgentToolLoader agentToolLoader;
     private final String publicKey;
@@ -29,10 +32,13 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
     private final String transcriberProvider;
     private final String transcriberModel;
     private final String transcriberLanguage;
+    private final double fluxEotThreshold;
+    private final int fluxEotTimeoutMs;
     private final String voiceProvider;
     private final String voiceId;
     private final int voiceVersion;
     private final String voiceLanguage;
+    private final String cartesiaModel;
     private final int toolTimeoutSeconds;
     private final int delayedMessageMs;
     private final Map<String, PendingWebCall> pendingWebCalls = new ConcurrentHashMap<>();
@@ -45,12 +51,15 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
             @Value("${sauti.vapi.model-provider:openai}") String modelProvider,
             @Value("${sauti.vapi.model:gpt-4.1-mini}") String model,
             @Value("${sauti.vapi.transcriber-provider:deepgram}") String transcriberProvider,
-            @Value("${sauti.vapi.transcriber-model:nova-3}") String transcriberModel,
+            @Value("${sauti.vapi.transcriber-model:agent}") String transcriberModel,
             @Value("${sauti.vapi.transcriber-language:agent}") String transcriberLanguage,
+            @Value("${sauti.vapi.flux-eot-threshold:0.7}") double fluxEotThreshold,
+            @Value("${sauti.vapi.flux-eot-timeout-ms:2500}") int fluxEotTimeoutMs,
             @Value("${sauti.vapi.voice-provider:vapi}") String voiceProvider,
             @Value("${sauti.vapi.voice-id:Savannah}") String voiceId,
             @Value("${sauti.vapi.voice-version:2}") int voiceVersion,
             @Value("${sauti.vapi.voice-language:auto}") String voiceLanguage,
+            @Value("${sauti.vapi.cartesia-model:sonic-3}") String cartesiaModel,
             @Value("${sauti.vapi.tool-timeout-seconds:30}") int toolTimeoutSeconds,
             @Value("${sauti.vapi.delayed-message-ms:1000}") int delayedMessageMs
     ) {
@@ -63,10 +72,13 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         this.transcriberProvider = trim(transcriberProvider);
         this.transcriberModel = trim(transcriberModel);
         this.transcriberLanguage = trim(transcriberLanguage);
+        this.fluxEotThreshold = Math.max(0.5, Math.min(0.9, fluxEotThreshold));
+        this.fluxEotTimeoutMs = Math.max(500, Math.min(10_000, fluxEotTimeoutMs));
         this.voiceProvider = trim(voiceProvider);
         this.voiceId = trim(voiceId);
         this.voiceVersion = voiceVersion;
         this.voiceLanguage = trim(voiceLanguage);
+        this.cartesiaModel = trim(cartesiaModel);
         this.toolTimeoutSeconds = Math.max(1, Math.min(300, toolTimeoutSeconds));
         this.delayedMessageMs = Math.max(100, Math.min(120_000, delayedMessageMs));
     }
@@ -124,39 +136,61 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         var modelConfig = new LinkedHashMap<String, Object>();
         modelConfig.put("provider", modelProvider);
         modelConfig.put("model", model);
-        modelConfig.put("temperature", 0.2);
-        modelConfig.put("maxTokens", 500);
+        var realtimeModel = isOpenAiRealtimeModel();
+        var resolvedTranscriberModel = realtimeModel ? "" : resolvedTranscriberModel(call);
+        var fluxTranscriber = resolvedTranscriberModel.startsWith("flux-");
+        modelConfig.put("temperature", realtimeModel ? 0.6 : 0.2);
+        modelConfig.put("maxTokens", realtimeModel ? 300 : 500);
         modelConfig.put("messages", List.of(Map.of(
                 "role", "system",
                 "content", vapiInstructions(call, language, hasEndCall)
         )));
         if (!tools.isEmpty()) modelConfig.put("tools", tools);
 
-        var transcriber = new LinkedHashMap<String, Object>();
-        transcriber.put("provider", transcriberProvider);
-        transcriber.put("model", transcriberModel);
-        transcriber.put("language", resolvedTranscriberLanguage(call));
-        if ("deepgram".equalsIgnoreCase(transcriberProvider)) {
-            transcriber.put("smartFormat", true);
-            transcriber.put("numerals", true);
-            transcriber.put("endpointing", Math.max(10, Math.min(500, call.getAgent().getSttEndpointingMs())));
-            var keyterms = boostedKeyterms(call);
-            if (!keyterms.isEmpty()) transcriber.put("keyterm", keyterms);
+        Map<String, Object> transcriber = null;
+        if (!realtimeModel) {
+            transcriber = new LinkedHashMap<>();
+            transcriber.put("provider", transcriberProvider);
+            transcriber.put("model", resolvedTranscriberModel);
+            transcriber.put("language", resolvedTranscriberLanguage(call, resolvedTranscriberModel));
+            if ("deepgram".equalsIgnoreCase(transcriberProvider)) {
+                transcriber.put("smartFormat", true);
+                transcriber.put("numerals", true);
+                if (fluxTranscriber) {
+                    transcriber.put("eotThreshold", fluxEotThreshold);
+                    transcriber.put("eotTimeoutMs", fluxEotTimeoutMs);
+                } else {
+                    transcriber.put("endpointing", Math.max(10, Math.min(500, call.getAgent().getSttEndpointingMs())));
+                }
+                var keyterms = boostedKeyterms(call);
+                if (!keyterms.isEmpty()) transcriber.put("keyterm", keyterms);
+            }
         }
 
+        var selectedCartesiaVoice = selectedCartesiaVoiceId(call);
+        var resolvedVoiceProvider = realtimeModel
+                ? "openai"
+                : selectedCartesiaVoice.isBlank() ? voiceProvider : "cartesia";
+        var resolvedVoiceId = realtimeModel
+                ? compatibleRealtimeVoice()
+                : selectedCartesiaVoice.isBlank() ? voiceId : selectedCartesiaVoice;
         var voice = new LinkedHashMap<String, Object>();
-        voice.put("provider", voiceProvider);
-        voice.put("voiceId", voiceId);
-        if ("vapi".equalsIgnoreCase(voiceProvider)) {
+        voice.put("provider", resolvedVoiceProvider);
+        voice.put("voiceId", resolvedVoiceId);
+        if ("cartesia".equalsIgnoreCase(resolvedVoiceProvider)) {
+            voice.put("model", cartesiaModel.isBlank() ? "sonic-3" : cartesiaModel);
+        } else if (!realtimeModel && "vapi".equalsIgnoreCase(resolvedVoiceProvider)) {
             voice.put("version", voiceVersion);
             voice.put("language", voiceLanguage.isBlank() ? "auto" : voiceLanguage);
         }
-        voice.put("cachingEnabled", true);
-        voice.put("chunkPlan", Map.of(
-                "enabled", true,
-                "minCharacters", 80,
-                "punctuationBoundaries", List.of(".", "!", "?", "。", "۔", "।", "॥")
-        ));
+        if (!realtimeModel) {
+            voice.put("cachingEnabled", true);
+            voice.put("chunkPlan", Map.of(
+                    "enabled", true,
+                    "minCharacters", 80,
+                    "punctuationBoundaries", List.of(".", "!", "?", "。", "۔", "।", "॥")
+            ));
+        }
 
         var assistant = new LinkedHashMap<String, Object>();
         assistant.put("name", assistantName(call));
@@ -164,18 +198,20 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         assistant.put("firstMessageMode", "assistant-speaks-first");
         assistant.put("firstMessageInterruptionsEnabled", true);
         assistant.put("model", modelConfig);
-        assistant.put("transcriber", transcriber);
+        if (transcriber != null) assistant.put("transcriber", transcriber);
         assistant.put("voice", voice);
         assistant.put("backgroundSound", "off");
         assistant.put("maxDurationSeconds", Math.max(10, call.getAgent().getMaxCallDurationSeconds()));
-        assistant.put("startSpeakingPlan", Map.of(
-                "waitSeconds", 0.1,
-                "transcriptionEndpointingPlan", Map.of(
-                        "onPunctuationSeconds", 0.1,
-                        "onNoPunctuationSeconds", 1.0,
-                        "onNumberSeconds", 0.6
-                )
-        ));
+        assistant.put("startSpeakingPlan", realtimeModel || fluxTranscriber
+                ? Map.of("waitSeconds", 0.1)
+                : Map.of(
+                        "waitSeconds", 0.1,
+                        "transcriptionEndpointingPlan", Map.of(
+                                "onPunctuationSeconds", 0.1,
+                                "onNoPunctuationSeconds", 1.0,
+                                "onNumberSeconds", 0.6
+                        )
+                ));
         assistant.put("stopSpeakingPlan", Map.of("numWords", 1, "backoffSeconds", 0.5));
         assistant.put("modelOutputInMessagesEnabled", true);
         assistant.put("clientMessages", List.of(
@@ -260,7 +296,9 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         return List.copyOf(messages);
     }
 
-    private String resolvedTranscriberLanguage(Call call) {
+    private String resolvedTranscriberLanguage(Call call, String resolvedModel) {
+        if ("flux-general-en".equalsIgnoreCase(resolvedModel)) return "en";
+        if ("flux-general-multi".equalsIgnoreCase(resolvedModel)) return "multi";
         if (!"agent".equalsIgnoreCase(transcriberLanguage)
                 && !"auto".equalsIgnoreCase(transcriberLanguage)) {
             return transcriberLanguage;
@@ -271,6 +309,54 @@ public class VapiBrowserVoiceRuntimeService implements BrowserVoiceRuntimeProvid
         }
         var configured = trim(call.getAgent().getDefaultLanguage());
         return configured.isBlank() ? "multi" : configured;
+    }
+
+    private String resolvedTranscriberModel(Call call) {
+        if (!"agent".equalsIgnoreCase(transcriberModel)
+                && !"auto".equalsIgnoreCase(transcriberModel)) {
+            return transcriberModel;
+        }
+        var languages = call.getAgent().getSupportedLanguages() == null
+                ? List.<String>of()
+                : call.getAgent().getSupportedLanguages().stream()
+                        .filter(java.util.Objects::nonNull)
+                        .map(VapiBrowserVoiceRuntimeService::primaryLanguage)
+                        .filter(value -> !value.isBlank())
+                        .distinct()
+                        .toList();
+        if (languages.isEmpty()) {
+            var fallback = primaryLanguage(call.getAgent().getDefaultLanguage());
+            languages = fallback.isBlank() ? List.of() : List.of(fallback);
+        }
+        if (languages.isEmpty() || !FLUX_LANGUAGES.containsAll(languages)) return "nova-3";
+        return languages.size() == 1 && "en".equals(languages.get(0))
+                ? "flux-general-en"
+                : "flux-general-multi";
+    }
+
+    private static String primaryLanguage(String language) {
+        var normalized = trim(language).toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+        var separator = normalized.indexOf('-');
+        return separator < 0 ? normalized : normalized.substring(0, separator);
+    }
+
+    private boolean isOpenAiRealtimeModel() {
+        return "openai".equalsIgnoreCase(modelProvider)
+                && model.toLowerCase(java.util.Locale.ROOT).contains("realtime");
+    }
+
+    private String compatibleRealtimeVoice() {
+        var configured = voiceId.toLowerCase(java.util.Locale.ROOT);
+        return Set.of("alloy", "echo", "shimmer", "marin", "cedar").contains(configured)
+                ? configured
+                : "marin";
+    }
+
+    private String selectedCartesiaVoiceId(Call call) {
+        var selected = trim(call.getAgent().getTtsVoiceId());
+        return selected.startsWith(CartesiaRealtimeTextToSpeechClient.VOICE_PREFIX)
+                ? selected.substring(CartesiaRealtimeTextToSpeechClient.VOICE_PREFIX.length())
+                : "";
     }
 
     private List<String> boostedKeyterms(Call call) {

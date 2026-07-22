@@ -8,6 +8,7 @@ import com.sauti.llm.LlmToolResult;
 import com.sauti.session.CallSessionStore;
 import com.sauti.session.BookingDraft;
 import com.sauti.session.ConversationState;
+import com.sauti.session.PendingAction;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -71,7 +72,7 @@ public class ConversationStateTool {
                     case "booking_number" -> "Exact customer-facing booking number supplied for a lookup, reschedule, or cancellation.";
                     case "preferred_day" -> "Clearly understood appointment date normalized to yyyy-MM-dd using TODAY IN THE BUSINESS TIMEZONE. Omit when the date is unclear.";
                     case "preferred_time" -> "Clearly understood exact appointment time normalized to HH:mm, or a clear broad period such as morning or afternoon. Omit when the time is unclear.";
-                    case "review_decision" -> "Meaning of the caller's latest response to a booking review: approved, corrected, rejected, or unclear. This is turn-scoped and never inferred from politeness alone.";
+                    case "review_decision" -> "Meaning of the caller's latest response to the immediately preceding server-retained booking review or action confirmation: approved, corrected, rejected, or unclear. This is turn-scoped and never inferred from politeness alone.";
                     default -> "Explicitly provided conversation value.";
                 }
         )));
@@ -173,6 +174,7 @@ public class ConversationStateTool {
                 return LlmToolResult.success(toolCall, Map.copyOf(result));
             }
             var previousBookingArguments = verifiedBookingArguments(call, existing);
+            var pendingAction = pendingAction(call);
             var callerQuestion = choice(
                     toolCall.arguments().get("caller_question"), CALLER_QUESTION, "none"
             );
@@ -189,6 +191,11 @@ public class ConversationStateTool {
                 );
             }
             sessions.updateConversationState(call.getTwilioCallSid(), next);
+            if (ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
+                    || "rejected".equals(next.values().getOrDefault("review_decision", ""))) {
+                sessions.updatePendingAction(call.getTwilioCallSid(), null);
+                pendingAction = Optional.empty();
+            }
 
             var result = new LinkedHashMap<String, Object>();
             result.put("status", "conversation_state_updated");
@@ -213,6 +220,10 @@ public class ConversationStateTool {
                     ? Optional.<Map<String, Object>>empty()
                     : verifiedBookingArguments(call, next);
             var reviewDecision = next.values().getOrDefault("review_decision", "");
+            var approvedPendingAction = !questionBlocksMutation
+                    && "approved".equals(reviewDecision)
+                    && pendingAction.isPresent()
+                    && next.revision() > pendingAction.orElseThrow().proposedAtRevision();
             var reviewMustContinue = !questionBlocksMutation
                     && !ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
                     && ("approved".equals(reviewDecision) || "corrected".equals(reviewDecision))
@@ -240,12 +251,14 @@ public class ConversationStateTool {
                     ? "reply"
                     : "requires_business_tool".equals(callerQuestion)
                         ? (questionTool.isBlank() ? "reply" : "use_business_tool")
-                        : reviewMustContinue || availabilityMustContinue || bookingBecameReady
+                        : approvedPendingAction || reviewMustContinue || availabilityMustContinue || bookingBecameReady
                             ? "use_business_tool"
                             : choice(toolCall.arguments().get("next_action"), NEXT_ACTIONS, "reply");
             var businessTool = !questionTool.isBlank()
                     ? questionTool
-                    : availabilityMustContinue
+                    : approvedPendingAction
+                        ? pendingAction.orElseThrow().toolName()
+                        : availabilityMustContinue
                         ? "check_availability"
                         : reviewMustContinue || bookingBecameReady
                             ? "book_slot"
@@ -263,7 +276,14 @@ public class ConversationStateTool {
                     && configuredFor(call, businessTool)) {
                 result.put("nextTool", businessTool);
                 result.put("nextToolAuthorized", true);
-                if ("check_availability".equals(businessTool)) {
+                if (approvedPendingAction) {
+                    var arguments = new LinkedHashMap<String, Object>(
+                            pendingAction.orElseThrow().arguments()
+                    );
+                    arguments.put("question_handling", "ready_for_action");
+                    arguments.put("confirmation_state", "confirmed");
+                    result.put("nextToolArguments", Map.copyOf(arguments));
+                } else if ("check_availability".equals(businessTool)) {
                     var availabilityArguments = availabilityArguments(next);
                     if (!availabilityArguments.isEmpty()) {
                         result.put("nextToolArguments", availabilityArguments);
@@ -332,6 +352,15 @@ public class ConversationStateTool {
         }
         if (pending == null || pending.isEmpty()) return Optional.empty();
         return BookingToolArgumentResolver.resolveReschedule(call, state.asNotes(), pending.get());
+    }
+
+    private Optional<PendingAction> pendingAction(Call call) {
+        try {
+            var pending = sessions.pendingAction(call.getTwilioCallSid());
+            return pending == null ? Optional.empty() : pending;
+        } catch (RuntimeException exception) {
+            return Optional.empty();
+        }
     }
 
     private ConversationState reduce(Call call, ConversationState current, Map<String, Object> arguments) {

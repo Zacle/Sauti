@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   authorizedNextToolRequest,
   businessActionProgressInstruction,
+  callerWaitExpected,
   callerGuidanceInstruction,
   confirmedEndCallResult,
   completedResponseText,
@@ -136,6 +137,20 @@ test("asks the model for contextual delayed-operation speech instead of a transl
   assert.match(availability, /still checking the live schedule/i);
   assert.match(reschedule, /still rescheduling the appointment/i);
   assert.match(cancellation, /still cancelling the appointment/i);
+});
+
+test("arms delayed progress for configured remote tools without business-name lists", () => {
+  assert.equal(callerWaitExpected("check_availability"), true);
+  assert.equal(callerWaitExpected("synchronize_customer_record"), true);
+  assert.equal(callerWaitExpected("collect_payment"), true);
+  assert.equal(callerWaitExpected("update_conversation_state"), false);
+  assert.equal(callerWaitExpected("get_business_hours"), false);
+  assert.equal(callerWaitExpected("end_call"), false);
+
+  assert.match(
+    businessActionProgressInstruction("synchronize_customer_record"),
+    /still working on the caller's request/i,
+  );
 });
 
 test("accepts trusted post-booking guidance only after a successful save", () => {

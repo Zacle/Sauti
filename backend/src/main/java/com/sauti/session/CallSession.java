@@ -17,6 +17,7 @@ public class CallSession {
     private List<ConversationMessage> conversationHistory = new ArrayList<>();
     private ConversationState conversationState = ConversationState.empty();
     private BookingDraft pendingBookingDraft;
+    private PendingAction pendingAction;
     private String agentSpeakingMarkName;
     private boolean speaking;
     private boolean currentTurnInterrupted;
@@ -126,6 +127,14 @@ public class CallSession {
 
     public void setPendingBookingDraft(BookingDraft pendingBookingDraft) {
         this.pendingBookingDraft = pendingBookingDraft;
+    }
+
+    public PendingAction getPendingAction() {
+        return pendingAction;
+    }
+
+    public void setPendingAction(PendingAction pendingAction) {
+        this.pendingAction = pendingAction;
     }
 
     public String getAgentSpeakingMarkName() {

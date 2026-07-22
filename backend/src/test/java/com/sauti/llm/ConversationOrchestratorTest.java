@@ -314,7 +314,7 @@ class ConversationOrchestratorTest {
         var result = orchestrator.handleUserUtterance(call, "fr", "Demain a midi", spokenDeltas::add);
 
         assertThat(result.responseText()).isEqualTo(
-                "Desole, je n'ai pas pu terminer ma reponse. Pouvez-vous repeter votre question, s'il vous plait ?"
+                "Desole, je n'ai pas pu terminer cette demande. Rien n'a ete modifie. Souhaitez-vous que je reessaie ?"
         );
         assertThat(spokenDeltas).containsExactly(result.responseText());
         assertThat(spokenDeltas).noneMatch(text -> text.contains("{\"date\""));

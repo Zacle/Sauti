@@ -13,6 +13,23 @@ export const SAUTI_REALTIME_REQUEST_ID = "sauti_request_id";
 export const AUTHORITATIVE_TRANSCRIPT_PREFIX = "SAUTI_INPUT_TRANSCRIPT";
 export const SLOW_RESPONSE_PROGRESS_PURPOSE = "sauti_slow_response_progress";
 
+const IMMEDIATE_TOOL_NAMES = new Set([
+  "update_conversation_state",
+  "get_business_hours",
+  "end_call",
+]);
+
+/**
+ * Tools outside this small protocol-only set may cross a network or wait on a
+ * customer system. Progress is armed by capability instead of maintaining a
+ * list of booking phrases, so configured CRM, payment, messaging, and custom
+ * tools get the same caller experience.
+ */
+export function callerWaitExpected(toolName: string) {
+  const normalized = toolName.trim().toLocaleLowerCase();
+  return Boolean(normalized) && !IMMEDIATE_TOOL_NAMES.has(normalized);
+}
+
 export function slowResponseProgressRequest(requestId: string) {
   return {
     type: "response.create",
@@ -83,9 +100,9 @@ export function businessActionProgressInstruction(toolName: string) {
       ? "checking the live schedule"
       : toolName === "reschedule_booking"
         ? "rescheduling the appointment"
-        : toolName === "cancel_booking"
-          ? "cancelling the appointment"
-      : "completing the requested business action";
+      : toolName === "cancel_booking"
+        ? "cancelling the appointment"
+      : "working on the caller's request";
   return `The system is still ${operation} and the caller has been waiting longer than expected. `
     + "Give one brief, natural, professional progress update in the caller's current language. "
     + "Include a short apology for the wait and make clear that you are still working on it. "

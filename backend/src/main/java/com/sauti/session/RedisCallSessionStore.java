@@ -154,6 +154,47 @@ public class RedisCallSessionStore implements CallSessionStore {
     }
 
     @Override
+    public Optional<PendingAction> pendingAction(String callSid) {
+        return get(callSid).map(CallSession::getPendingAction);
+    }
+
+    @Override
+    public void updatePendingAction(String callSid, PendingAction action) {
+        mutate(callSid, session -> {
+            if (session != null) {
+                session.setPendingAction(action);
+                session.touch();
+            }
+            return session;
+        });
+    }
+
+    @Override
+    public boolean consumeConfirmedAction(
+            String callSid,
+            String toolName,
+            Map<String, Object> arguments
+    ) {
+        if (callSid == null || callSid.isBlank()) return false;
+        var consumed = new boolean[1];
+        mutate(callSid, session -> {
+            if (session == null) return null;
+            var pending = session.getPendingAction();
+            var state = session.getConversationState();
+            consumed[0] = pending != null
+                    && state.revision() > pending.proposedAtRevision()
+                    && "approved".equals(state.values().getOrDefault("review_decision", ""))
+                    && pending.matches(toolName, arguments);
+            if (consumed[0]) {
+                session.setPendingAction(null);
+                session.touch();
+            }
+            return session;
+        });
+        return consumed[0];
+    }
+
+    @Override
     public void setSpeaking(String callSid, boolean speaking, String markName) {
         mutate(callSid, session -> {
             if (session != null) {

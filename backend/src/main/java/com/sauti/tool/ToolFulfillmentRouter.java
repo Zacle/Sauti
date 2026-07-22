@@ -52,8 +52,11 @@ public class ToolFulfillmentRouter {
         if (fulfillment == null) {
             return LlmToolResult.error(toolCall, "Unknown fulfillment type: " + toolConfig.getFulfillmentType());
         }
-        var deferred = actionPolicy.guard(toolConfig, toolCall);
+        var deferred = actionPolicy.guard(call, toolConfig, toolCall);
         if (deferred.isPresent()) return deferred.get();
-        return fulfillment.execute(call, toolConfig, actionPolicy.businessCall(toolCall));
+        return actionPolicy.factualOutcome(
+                toolConfig,
+                fulfillment.execute(call, toolConfig, actionPolicy.businessCall(toolCall))
+        );
     }
 }

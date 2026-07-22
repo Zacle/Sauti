@@ -95,12 +95,15 @@ sauti:
     model-provider: ${VAPI_MODEL_PROVIDER:openai}
     model: ${VAPI_MODEL:gpt-4.1-mini}
     transcriber-provider: ${VAPI_TRANSCRIBER_PROVIDER:deepgram}
-    transcriber-model: ${VAPI_TRANSCRIBER_MODEL:nova-3}
+    transcriber-model: ${VAPI_TRANSCRIBER_MODEL:agent}
     transcriber-language: ${VAPI_TRANSCRIBER_LANGUAGE:agent}
+    flux-eot-threshold: ${VAPI_FLUX_EOT_THRESHOLD:0.7}
+    flux-eot-timeout-ms: ${VAPI_FLUX_EOT_TIMEOUT_MS:2500}
     voice-provider: ${VAPI_VOICE_PROVIDER:vapi}
     voice-id: ${VAPI_VOICE_ID:Savannah}
     voice-version: ${VAPI_VOICE_VERSION:2}
     voice-language: ${VAPI_VOICE_LANGUAGE:auto}
+    cartesia-model: ${VAPI_CARTESIA_MODEL:sonic-3}
     tool-timeout-seconds: ${VAPI_TOOL_TIMEOUT_SECONDS:30}
     delayed-message-ms: ${VAPI_DELAYED_MESSAGE_MS:1000}
   whatsapp:

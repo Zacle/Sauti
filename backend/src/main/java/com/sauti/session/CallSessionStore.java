@@ -33,6 +33,12 @@ public interface CallSessionStore {
 
     void updatePendingBooking(String callSid, BookingDraft draft);
 
+    Optional<PendingAction> pendingAction(String callSid);
+
+    void updatePendingAction(String callSid, PendingAction action);
+
+    boolean consumeConfirmedAction(String callSid, String toolName, java.util.Map<String, Object> arguments);
+
     void setSpeaking(String callSid, boolean speaking, String markName);
 
     void markInterrupted(String callSid);

@@ -95,4 +95,11 @@ class VoiceOutputGuardTest {
                 .contains("couldn't cancel", "remains unchanged")
                 .doesNotContainIgnoringCase("repeat");
     }
+
+    @Test
+    void terminalProviderFailureRetainsTheAcceptedTurnAndOffersARetry() {
+        assertThat(VoiceOutputGuard.safeResponseFailure("en"))
+                .contains("Nothing was changed", "try again")
+                .doesNotContainIgnoringCase("repeat your question");
+    }
 }

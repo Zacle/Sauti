@@ -851,6 +851,19 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("check_availability")).isTrue();
         assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("reschedule_booking")).isTrue();
         assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("cancel_booking")).isTrue();
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress(
+                "synchronize_customer_record"
+        )).isTrue();
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress(
+                "collect_payment"
+        )).isTrue();
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress(
+                "update_conversation_state"
+        )).isFalse();
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress(
+                "get_business_hours"
+        )).isFalse();
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.supportsBusinessActionProgress("end_call")).isFalse();
         assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction("book_slot"))
                 .contains("caller's current language", "apology", "still saving the appointment")
                 .doesNotContain("I’m saving the appointment");
@@ -860,9 +873,32 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 .contains("still rescheduling the appointment");
         assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction("cancel_booking"))
                 .contains("still cancelling the appointment");
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.businessActionProgressInstruction(
+                "synchronize_customer_record"
+        )).contains("still working on the caller's request");
         assertThat(OpenAiTelephonyRealtimeConversationProvider.slowResponseProgressInstruction())
                 .contains("caller's current language", "still working on their request")
                 .doesNotContain("Could you repeat");
+    }
+
+    @Test
+    void retriesAnAcceptedCallerTurnOnceWhenRealtimeReturnsIncomplete() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        socketListener.attach(session);
+
+        socketListener.onText(mock(WebSocket.class),
+                "{\"type\":\"response.done\",\"response\":{"
+                        + "\"id\":\"incomplete-response\",\"status\":\"incomplete\",\"output\":[]}}",
+                true);
+
+        verify(session).requestResponse();
+        verify(session).responseFinished();
+        assertThat(events).isEmpty();
     }
 
     @Test

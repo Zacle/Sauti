@@ -221,6 +221,36 @@ Expected:
 
 ## Change log
 
+### 2026-07-22 - Preserve the selected Cartesia voice in Vapi and coalesce live captions
+
+- Corrected an attempted OpenAI-native Realtime default before deployment because it would have silently replaced the agent's selected Cartesia voice with OpenAI `marin`. Vapi native speech-to-speech requires an OpenAI-compatible voice and cannot preserve Cartesia TTS.
+- The default Vapi path remains `gpt-4.1-mini` with Deepgram. When an agent has a saved `cartesia:` voice, the adapter now strips only Sauti's namespace prefix and sends the same underlying voice ID to Vapi with provider `cartesia` and model `sonic-3`. The configured Vapi/Savannah voice remains a fallback for agents without a Cartesia selection.
+- Added `VAPI_CARTESIA_MODEL`, defaulting to the Vapi-supported `sonic-3`, so the Vapi-side Cartesia model is explicit without hard-coding a business or voice ID. Function tools, server callbacks, factual outcomes, and provider-managed interruption behavior remain unchanged.
+- Changed the default `VAPI_TRANSCRIBER_MODEL` from fixed `nova-3` to agent-aware selection. English-only agents use `flux-general-en`; agents whose configured languages are all in Flux's supported set use `flux-general-multi`; Arabic or any unsupported language automatically retains Nova-3. Flux uses native EOT at threshold 0.7 with a 2500 ms maximum timeout and omits the redundant transcription endpointing plan. Explicit transcriber model values remain authoritative.
+- Corrected live caption fragmentation. Vapi documents `assistant.speechStarted` as a per-TTS-chunk event; Agent Studio now accumulates chunks by provider turn and keeps the cumulative `voice-input` fallback across short audio gaps. A caller turn or interruption resets the accumulator, so a later response cannot append to the previous one.
+- Added sanitized `call-start-progress` timing traces alongside the existing call-start total. These expose which Vapi setup stage owns connection-to-greeting delay without logging transcript content. Sauti does not play a speculative local greeting over an unconnected Vapi session because the caller could answer before Vapi is listening; the remaining pre-greeting room/WebRTC setup is a provider boundary and must be measured in the next live test.
+- Updated the runtime examples and provider guide to describe voice consistency and the incompatibility between OpenAI-native speech-to-speech and external Cartesia TTS.
+- Files touched:
+  - `.env.example`, `deploy/.env.production.example`
+  - `backend/src/main/java/com/sauti/call/VapiBrowserVoiceRuntimeService.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/call/VapiBrowserVoiceRuntimeServiceTest.java`
+  - `dashboard/features/voice-runtime/{vapiRuntime,vapiTranscript,vapiTranscript.test}.ts`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - Focused Vapi backend test - passed.
+  - Vapi caption regression tests - passed; 4 tests.
+  - `npm.cmd run typecheck` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-ups/risks:
+  - Vapi must be able to use Cartesia voice IDs for the organization. If the organization requires bring-your-own-provider credentials, configure the Cartesia credential in Vapi before the live comparison.
+  - The Vapi + Cartesia path remains cascaded. Flux improves end-of-turn latency but does not remove the STT, text-model, and Cartesia synthesis stages. Changing to OpenAI-native speech-to-speech is a separate product choice that changes both the voice and cost profile.
+  - Flux multilingual does not support Arabic. The automatic Nova-3 fallback is intentional; do not force `flux-general-multi` globally for Sauti's current English/French/Arabic language surface.
+  - The Web SDK cannot speak before its call room is joined. Use the new `call-start-progress` stages to distinguish provider setup delay from greeting generation; eliminating room startup would require a different session lifecycle, not another speech timeout.
+
 ### 2026-07-22 - Make Vapi captions, speech recognition, and tool latency measurable
 
 - Added a truthful live-caption fallback for Vapi browser calls. `assistant.speechStarted` remains authoritative; if that event is absent, Agent Studio now buffers Vapi's exact `voice-input` text and reveals it only after remote assistant audio begins. Streamed model output is never presented as spoken text. Runtime timing diagnostics contain event names, durations, provider call ID, turns, and text lengths but no transcript content.
@@ -258,7 +288,7 @@ Expected:
   - `dashboard/features/agents/AgentCreator/AgentCreator.css`
   - `dashboard/features/calls/CallsPage/CallsPage.module.css`
   - `dashboard/features/bookings/presentation/BookingDateRangePicker.module.css`
-  - `docs/agent-handoff.md`
+  - `docs/{agent-handoff,voice-runtime-providers}.md`
 - Verification:
   - `npm.cmd run typecheck` - passed.
   - `npm.cmd run build` - passed; 50 routes generated.
@@ -4507,3 +4537,52 @@ Expected:
 - Verification: `gh secret list` shows both `VAPI_API_KEY` and `VAPI_PUBLIC_KEY` with update timestamps while exposing neither value; `https://sauti.uk/health` remains `UP`.
 - Deployment status: the secret is stored but not yet present in the running container. A maintainer must review and push this handoff update (or another reviewed change) to `main`; the resulting successful CI-triggered deployment will run the existing secret synchronization step and recreate the backend with `VAPI_PUBLIC_KEY`.
 - Known follow-up/risk: do not manually rerun or bypass deployment. After the next normal deployment, start an Agent Studio Vapi call and confirm the provider creates the web call; the improved client now preserves any remaining Vapi validation error verbatim.
+
+### 2026-07-22 - Make explicit action confirmation server-owned and provider-neutral
+
+- Closed the remaining generic action-policy gap: a model-supplied `confirmation_state=confirmed` can no longer execute a non-terminal side effect by itself. The first attempted action is retained in the call session with its exact tool name, sanitized arguments, and current semantic-state revision.
+- A later caller turn must pass through `update_conversation_state` as a clean unconditional approval. The session store atomically verifies the retained tool and arguments against the newer approved revision and consumes the proposal before fulfillment, preventing duplicate provider retries and stale approvals from repeating or changing an action.
+- `ConversationStateTool` now continues an approved retained action directly from server-owned arguments. This works across provider runtimes and caller languages and covers configured reschedules, cancellations, data writes, payments, messages requiring confirmation, transfers, and custom side-effecting tools without phrase matching or business-name lists.
+- Preserved the natural end-call path as a deliberate terminal exception: a caller who clearly says they are finished receives one respectful farewell and the call can end without an artificial second confirmation turn.
+- Standardized factual side-effect outcomes at the shared fulfillment router. Results now expose `actionPerformed`, `effect`, and `action`; protocol-level success is not treated as a completed mutation when a domain result explicitly says `bookingCreated`, `updated`, `cancelled`, `sent`, `requested`, `transferred`, or `ended` is false. Booking review responses therefore remain factual non-actions.
+- Updated the shared voice instructions and semantic-state schema so both OpenAI Realtime and Vapi use the same retained-action protocol. Booking creation continues to use its stricter signed review token.
+- Files touched for this change:
+  - `backend/src/main/java/com/sauti/session/{PendingAction,CallSession,CallSessionStore,RedisCallSessionStore}.java`
+  - `backend/src/main/java/com/sauti/tool/{ConversationStateTool,ToolActionPolicy,ToolFulfillmentRouter}.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/session/RedisCallSessionStoreTest.java`
+  - `backend/src/test/java/com/sauti/tool/{ConversationStateToolTest,ToolFulfillmentRouterTest}.java`
+  - `docs/{agent-handoff,voice-runtime-providers}.md`
+- Verification:
+  - focused conversation-state, action-policy, tool-loader, and calendar fulfillment suites - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 25 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: live provider testing is still required. For each runtime, test one clean approval, one approval plus a question, one correction, one changed-argument retry, and one interrupted/delayed fulfillment for create, reschedule, and cancel. The backend now prevents unauthorized or duplicate mutations, but provider STT accuracy and whether the model naturally phrases the confirmation remain observable runtime quality concerns.
+
+### 2026-07-23 - Keep OpenAI Realtime slow tools alive and recover accepted turns
+
+- Separated the caller-facing response deadline from accepted tool execution in the browser OpenAI Realtime runtime. Removed the 12/30-second client race that could announce a false failure while the backend was still saving or retrieving data; the authoritative provider/integration result now settles the operation.
+- Generalized delayed-operation progress beyond calendar tool names. Any potentially remote CRM, payment, messaging, booking, or custom tool receives a model-generated update after 1.5 seconds and every 8 seconds while pending. Internal semantic-state updates, static business-hours reads, and call ending remain on the immediate path.
+- Preserved active tool futures across caller interruption in both browser and telephony OpenAI Realtime paths. Speech still stops for barge-in, completed entries are released on the next turn, semantically identical retries share an active execution, and late factual results are queued against the current generation instead of being silently discarded.
+- Added one automatic retry when OpenAI ends an accepted main response as `failed` or `incomplete` without text or a tool call. The terminal safety fallback now says that nothing changed and offers to try again; it no longer asks customers to repeat a question already present in the conversation.
+- Kept wait wording language-flexible: the model produces the short professional apology in the active caller language from lifecycle facts, while deterministic multilingual text remains only as the last-resort safety fallback.
+- Files touched for this change:
+  - `dashboard/features/voice-runtime/{openaiRealtime,realtimeProtocol}.ts`
+  - `dashboard/features/voice-runtime/openaiRealtime.test.ts`
+  - `backend/src/main/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProvider,VoiceOutputGuard}.java`
+  - `backend/src/test/java/com/sauti/call/{OpenAiTelephonyRealtimeConversationProviderTest,VoiceOutputGuardTest}.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - focused OpenAI telephony Realtime and voice-output guard tests - passed.
+  - `npm.cmd run test:voice` - passed; 26 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `.\gradlew.bat :backend:test` - passed; 334 tests.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: live testing must distinguish model-response delay from downstream integration delay. Test a tool that completes after 15 seconds, interrupt one progress update, and verify exactly one real mutation plus one factual final outcome. Provider or reverse-proxy transport failures can still return a real tool failure; those should be measured and configured in the owning integration adapter rather than hidden by the conversation runtime.

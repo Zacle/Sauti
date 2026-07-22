@@ -12,6 +12,7 @@ import com.sauti.llm.LlmToolCall;
 import com.sauti.session.CallSessionStore;
 import com.sauti.session.BookingDraft;
 import com.sauti.session.ConversationState;
+import com.sauti.session.PendingAction;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -438,6 +439,50 @@ class ConversationStateToolTest {
                 "booking_intent", "unchanged",
                 "next_action", "use_business_tool",
                 "business_tool", "cancel_booking",
+                "spoken_response", ""
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "cancel_booking")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "question_handling", "ready_for_action",
+                        "confirmation_state", "confirmed"
+                ))
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void callerApprovalContinuesTheExactServerRetainedActionWithoutTrustingModelArguments() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("verified-action-call");
+        when(sessions.conversationState("verified-action-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of("booking_number", "SAT-AB12CD34"),
+                        ConversationState.SUBJECT_UNKNOWN,
+                        ConversationState.INTENT_ACTIVE,
+                        11
+                )
+        ));
+        when(sessions.pendingAction("verified-action-call")).thenReturn(Optional.of(
+                new PendingAction(
+                        "cancel_booking", Map.of("booking_number", "SAT-AB12CD34"), 11
+                )
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("review_decision", "approved"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "turn_understanding", "clear",
+                "caller_question", "none",
+                "next_action", "reply",
+                "business_tool", "",
                 "spoken_response", ""
         )));
 

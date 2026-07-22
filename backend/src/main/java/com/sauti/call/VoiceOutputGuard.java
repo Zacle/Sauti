@@ -158,10 +158,10 @@ public final class VoiceOutputGuard {
 
     public static String safeResponseFailure(String language) {
         return switch (language == null ? "en" : language.toLowerCase(Locale.ROOT)) {
-            case "fr" -> "Desole, je n'ai pas pu terminer ma reponse. Pouvez-vous repeter votre question, s'il vous plait ?";
-            case "ar" -> "عذرا، لم أتمكن من إكمال إجابتي. هل يمكنك تكرار سؤالك من فضلك؟";
-            case "sw" -> "Samahani, sikuweza kukamilisha jibu langu. Tafadhali rudia swali lako.";
-            default -> "Sorry, I couldn't complete that answer. Could you repeat your question, please?";
+            case "fr" -> "Desole, je n'ai pas pu terminer cette demande. Rien n'a ete modifie. Souhaitez-vous que je reessaie ?";
+            case "ar" -> "عذراً، لم أتمكن من إكمال هذا الطلب. لم يتم تغيير أي شيء. هل تريدني أن أحاول مرة أخرى؟";
+            case "sw" -> "Samahani, sikuweza kukamilisha ombi hilo. Hakuna kilichobadilishwa. Ungependa nijaribu tena?";
+            default -> "I'm sorry, I couldn't finish processing that request. Nothing was changed. Would you like me to try again?";
         };
     }
 }

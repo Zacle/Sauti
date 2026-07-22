@@ -28,6 +28,28 @@ export function mergeVapiTranscript(previous: string, fragment: string): string 
   return `${left}${separator}${remainder}`;
 }
 
+export type VapiCaptionState = {
+  text: string;
+  turn?: number;
+};
+
+/**
+ * Vapi emits assistant.speechStarted once per TTS chunk. Keep every chunk from
+ * the same provider turn in one caption instead of replacing the visible text
+ * with the latest phrase fragment.
+ */
+export function accumulateVapiCaption(
+  previous: VapiCaptionState | null,
+  fragment: string,
+  turn?: number,
+): VapiCaptionState {
+  const changedTurn = previous?.turn !== undefined && turn !== undefined && previous.turn !== turn;
+  return {
+    text: changedTurn ? fragment.trim() : mergeVapiTranscript(previous?.text ?? "", fragment),
+    turn: turn ?? previous?.turn,
+  };
+}
+
 export function isVapiOpeningTranscript(expected: string, observed: string): boolean {
   const expectedWords = normalizedWords(expected);
   const observedWords = normalizedWords(observed);
