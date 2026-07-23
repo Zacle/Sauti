@@ -1,3 +1,5 @@
+import { pcmPlaybackBufferProfile } from "./pcmPlaybackBuffer";
+
 type PcmStreamPlayerOptions = {
   recordingDestination?: MediaStreamAudioDestinationNode | null;
   onPlaybackStarted: () => void;
@@ -54,16 +56,13 @@ export class PcmStreamPlayer {
     context: AudioContext,
     options: PcmStreamPlayerOptions,
   ): Promise<PcmStreamPlayer> {
-    await context.audioWorklet.addModule("/pcm-stream-player.js?v=20260721-2");
+    await context.audioWorklet.addModule("/pcm-stream-player.js?v=20260723-1");
+    const bufferProfile = pcmPlaybackBufferProfile(context.sampleRate);
     const node = new AudioWorkletNode(context, "sauti-pcm-stream-player", {
       numberOfInputs: 0,
       numberOfOutputs: 1,
       outputChannelCount: [1],
-      processorOptions: {
-        initialBufferFrames: Math.round(0.16 * context.sampleRate),
-        maxBufferFrames: Math.round(0.32 * context.sampleRate),
-        underrunStepFrames: Math.round(0.04 * context.sampleRate),
-      },
+      processorOptions: bufferProfile,
     });
     node.connect(context.destination);
     if (options.recordingDestination) node.connect(options.recordingDestination);

@@ -1,6 +1,7 @@
 package com.sauti.call;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayOutputStream;
 import java.text.Normalizer;
 import java.util.ArrayDeque;
 import java.util.HashSet;
@@ -26,6 +27,7 @@ import org.springframework.web.socket.WebSocketSession;
 public class HybridVoiceSessionService {
     private static final Logger LOGGER = LoggerFactory.getLogger(HybridVoiceSessionService.class);
     private static final int TTS_IDLE_TIMEOUT_SECONDS = 8;
+    private static final int PCM_FORWARD_BYTES = 1_280; // 40 ms of 16 kHz mono s16le.
     private static final ScheduledExecutorService TTS_WATCHDOG = Executors.newSingleThreadScheduledExecutor(runnable -> {
         var thread = new Thread(runnable, "hybrid-tts-watchdog");
         thread.setDaemon(true);
@@ -217,6 +219,7 @@ public class HybridVoiceSessionService {
     private void resetTts(HybridSession state, boolean clearAudio) {
         cancelSpeechWatchdog(state);
         state.ttsGeneration++;
+        state.pcmForwardBuffer.reset();
         closeTts(state);
         if (clearAudio) sendJson(state, Map.of("type", "clear_audio"));
         if (state.speaking) {
@@ -239,23 +242,11 @@ public class HybridVoiceSessionService {
                     if (!state.current(generation)) return;
                     if (state.currentSpeech != null) {
                         armSpeechWatchdog(state, state.currentSpeech, generation);
-                        if (!state.currentSpeechFirstAudioRecorded) {
-                            state.currentSpeechFirstAudioRecorded = true;
-                            recordFirstAudio(state, state.currentSpeech);
-                        }
                     }
-                    if (!state.speaking) {
-                        state.speaking = true;
-                        if (!state.firstAudioRecorded) {
-                            state.firstAudioRecorded = true;
-                            metrics.recordLatency(
-                                    "session_to_first_audio", "hybrid", state.call.getDirection(),
-                                    System.nanoTime() - state.startedNanos
-                            );
-                        }
-                        sendJson(state, Map.of("type", "speaking", "value", true));
+                    state.pcmForwardBuffer.writeBytes(audio);
+                    if (state.pcmForwardBuffer.size() >= PCM_FORWARD_BYTES) {
+                        flushPcm(state, generation);
                     }
-                    sendBinary(state, audio);
                 }
             }
 
@@ -263,6 +254,7 @@ public class HybridVoiceSessionService {
             public void onComplete() {
                 synchronized (state) {
                     if (!state.current(generation)) return;
+                    flushPcm(state, generation);
                     cancelSpeechWatchdog(state);
                     state.speaking = false;
                     state.currentSpeech = null;
@@ -328,6 +320,7 @@ public class HybridVoiceSessionService {
         cancelSpeechWatchdog(state);
         state.currentSpeech = null;
         state.pendingSpeech.clear();
+        state.pcmForwardBuffer.reset();
         state.speaking = false;
         metrics.failure("hybrid", state.call.getDirection(), stage);
         sendJson(state, Map.of("type", "speaking", "value", false));
@@ -381,6 +374,28 @@ public class HybridVoiceSessionService {
         } catch (Exception exception) {
             LOGGER.debug("Hybrid audio delivery failed for call={}", state.call.getTwilioCallSid(), exception);
         }
+    }
+
+    private void flushPcm(HybridSession state, int generation) {
+        if (!state.current(generation) || state.pcmForwardBuffer.size() == 0) return;
+        var audio = state.pcmForwardBuffer.toByteArray();
+        state.pcmForwardBuffer.reset();
+        if (state.currentSpeech != null && !state.currentSpeechFirstAudioRecorded) {
+            state.currentSpeechFirstAudioRecorded = true;
+            recordFirstAudio(state, state.currentSpeech);
+        }
+        if (!state.speaking) {
+            state.speaking = true;
+            if (!state.firstAudioRecorded) {
+                state.firstAudioRecorded = true;
+                metrics.recordLatency(
+                        "session_to_first_audio", "hybrid", state.call.getDirection(),
+                        System.nanoTime() - state.startedNanos
+                );
+            }
+            sendJson(state, Map.of("type", "speaking", "value", true));
+        }
+        sendBinary(state, audio);
     }
 
     private void rememberTurnStart(HybridSession state, long generation) {
@@ -445,6 +460,8 @@ public class HybridVoiceSessionService {
         private final Set<String> acceptedSpeechFingerprints = new HashSet<>();
         private final Map<Long, Long> turnStartedNanos = new LinkedHashMap<>();
         private final Map<String, SpeechTiming> speechTimings = new LinkedHashMap<>();
+        private final ByteArrayOutputStream pcmForwardBuffer =
+                new ByteArrayOutputStream(PCM_FORWARD_BYTES * 2);
         private final Runnable onClose;
         private final long startedNanos = System.nanoTime();
         private CompletableFuture<RealtimeTtsSession> tts = CompletableFuture.completedFuture(null);
@@ -478,6 +495,7 @@ public class HybridVoiceSessionService {
             ttsGeneration++;
             pendingSpeech.clear();
             currentSpeech = null;
+            pcmForwardBuffer.reset();
             turnStartedNanos.clear();
             speechTimings.clear();
             onClose.run();

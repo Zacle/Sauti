@@ -4586,3 +4586,27 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: live testing must distinguish model-response delay from downstream integration delay. Test a tool that completes after 15 seconds, interrupt one progress update, and verify exactly one real mutation plus one factual final outcome. Provider or reverse-proxy transport failures can still return a real tool failure; those should be measured and configured in the owning integration adapter rather than hidden by the conversation runtime.
+
+### 2026-07-23 - Stabilize Sauti + Cartesia browser PCM playback
+
+- Traced the remaining audible breakup to downstream PCM starvation rather than OpenAI reply generation. Cartesia PCM chunks were forwarded individually and the browser began playback with a 160 ms buffer, allowing normal provider/backend/browser WebSocket jitter to drain the AudioWorklet and insert silence.
+- Coalesced arbitrary Cartesia output into 40 ms, 16 kHz mono s16le frames in `HybridVoiceSessionService`. Any final partial frame is flushed before the provider completion event, and buffered stale audio is discarded on interruption, reset, failure, or close.
+- Increased the AudioWorklet's initial jitter target from 160 ms to 280 ms. A real underrun now raises the target by 80 ms up to 720 ms, avoiding repeated stop/rebuffer cycles while limiting the normal first-audio tradeoff to about 120 ms.
+- Moved hybrid `speaking=true` and first-audio metrics to the point at which a coalesced PCM frame is actually forwarded, rather than the point where an undersized provider fragment first arrives.
+- Bumped the AudioWorklet asset cache version so deployed browsers load the new buffering defaults instead of a previously cached processor.
+- Files touched for this change:
+  - `backend/src/main/java/com/sauti/call/HybridVoiceSessionService.java`
+  - `backend/src/test/java/com/sauti/call/HybridVoiceSessionServiceTest.java`
+  - `dashboard/features/voice-runtime/{pcmPlaybackBuffer,pcmStreamPlayer}.ts`
+  - `dashboard/features/voice-runtime/hybridPlaybackGate.test.ts`
+  - `dashboard/public/pcm-stream-player.js`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - focused `HybridVoiceSessionServiceTest` - passed; 10 tests.
+  - `npm.cmd run test:voice` - passed; 27 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `.\gradlew.bat :backend:test` - passed; 334 tests.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: live testing is still required on both stable and jittery networks. Compare the `sauti.voice.playback.underruns` metric before and after deployment. If underruns remain, tune the initial target from observed telemetry rather than increasing Cartesia text buffering or changing the model pipeline.

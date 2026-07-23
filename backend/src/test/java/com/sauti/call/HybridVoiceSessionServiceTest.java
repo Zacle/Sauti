@@ -59,7 +59,9 @@ class HybridVoiceSessionServiceTest {
         service.accept("test-hybrid", "{\"type\":\"tts_delta\",\"text\":\"Bonjour, je peux vous aider avec votre rendez-vous. \"}");
         service.accept("test-hybrid", "{\"type\":\"tts_complete\"}");
         delayedTts.complete(tts);
-        listener.getValue().onPcmAudio(new byte[] {1, 2, 3, 4});
+        listener.getValue().onPcmAudio(new byte[640]);
+        verify(socket, never()).sendMessage(any(BinaryMessage.class));
+        listener.getValue().onPcmAudio(new byte[640]);
         listener.getValue().onComplete();
         service.accept("test-hybrid", "{\"type\":\"playback_started\",\"generation\":0,\"id\":\"legacy-1\"}");
         service.accept("test-hybrid", "{\"type\":\"playback_underrun\"}");
@@ -68,7 +70,7 @@ class HybridVoiceSessionServiceTest {
         writes.verify(tts).speak("Bonjour, je peux vous aider avec votre rendez-vous.", true);
         var binary = ArgumentCaptor.forClass(BinaryMessage.class);
         verify(socket).sendMessage(binary.capture());
-        assertThat(binary.getValue().getPayloadLength()).isEqualTo(4);
+        assertThat(binary.getValue().getPayloadLength()).isEqualTo(1_280);
         verify(socket, atLeastOnce()).sendMessage(any(TextMessage.class));
         assertThat(registry.find("sauti.voice.latency")
                 .tag("stage", "transcript_to_speech_ready").timer().count()).isEqualTo(1);
@@ -367,7 +369,7 @@ class HybridVoiceSessionServiceTest {
         verify(provider).open(eq("en"), eq("cartesia:english-voice"), listener.capture());
         service.accept("failed-hybrid", "{\"type\":\"speak\",\"generation\":0,"
                 + "\"id\":\"failed\",\"text\":\"This response starts and then fails.\"}");
-        listener.getValue().onPcmAudio(new byte[] {1, 2, 3, 4});
+        listener.getValue().onPcmAudio(new byte[1_280]);
         listener.getValue().onError(new IllegalStateException("provider disconnected"));
         service.accept("failed-hybrid", "{\"type\":\"speak\",\"generation\":1,"
                 + "\"id\":\"retry\",\"text\":\"This is the next caller turn.\"}");
@@ -415,7 +417,7 @@ class HybridVoiceSessionServiceTest {
         verify(provider).open(eq("en"), eq("cartesia:english-voice"), listener.capture());
         service.accept("stalled-playback", "{\"type\":\"speak\",\"generation\":0,"
                 + "\"id\":\"active\",\"text\":\"This response started speaking.\"}");
-        listener.getValue().onPcmAudio(new byte[] {1, 2, 3, 4});
+        listener.getValue().onPcmAudio(new byte[1_280]);
 
         service.accept("stalled-playback", "{\"type\":\"playback_stalled\"}");
 

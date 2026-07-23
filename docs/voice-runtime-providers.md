@@ -75,6 +75,10 @@ The Agent Studio Cartesia option is deliberately labelled `Sauti + Cartesia`: Ca
 
 This is a useful comparison for voice quality, uninterrupted playback, first-audio latency, and Sauti's own orchestration. It is not a test of Cartesia Line's separately managed agent platform. Integrating Cartesia Line would require another peer `BrowserVoiceRuntimeProvider` and an explicit decision about how its tools return to Sauti's authority boundary.
 
+The hybrid browser media path coalesces Cartesia's arbitrary provider chunks into 40 ms PCM WebSocket frames before forwarding them. The AudioWorklet starts with a 280 ms jitter buffer and increases its target by 80 ms after a real underrun, up to 720 ms. This intentionally trades about 120 ms of additional first-playback buffering for continuous speech; it does not add seconds to model or tool latency. Interruption still clears the worklet and closes the old Cartesia context immediately.
+
+`CARTESIA_MAX_BUFFER_DELAY_MS` controls Cartesia's handling of incrementally streamed text, not Sauti's downstream PCM jitter buffer. Sauti sends each validated assistant message as one complete, punctuated transcript with `continue=false`, so browser continuity is handled at the PCM boundary rather than by adding a multi-second text-generation delay.
+
 ## Shared conversational authority
 
 Changing a voice provider must not change which customer facts or actions Sauti trusts. Every runtime uses the same three-layer contract:
