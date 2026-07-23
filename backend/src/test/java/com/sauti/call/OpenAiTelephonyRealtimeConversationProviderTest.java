@@ -2,6 +2,7 @@ package com.sauti.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
@@ -1451,6 +1452,7 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         var call = mock(Call.class);
         var started = new CountDownLatch(1);
         var release = new CountDownLatch(1);
+        var outputPublished = new CountDownLatch(1);
         when(realtimeService.executeTool(eq(call), eq("late-tool"), eq("check_availability"), anyString()))
                 .thenAnswer(ignored -> {
                     started.countDown();
@@ -1467,6 +1469,12 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
         socketListener.attach(session);
         var webSocket = mock(WebSocket.class);
+        when(webSocket.sendText(anyString(), eq(true))).thenAnswer(invocation -> {
+            if (invocation.getArgument(0, String.class).contains("function_call_output")) {
+                outputPublished.countDown();
+            }
+            return CompletableFuture.completedFuture(webSocket);
+        });
 
         socketListener.onText(webSocket,
                 "{\"type\":\"response.function_call_arguments.done\","
@@ -1478,8 +1486,9 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         verify(realtimeService, timeout(1_000)).executeTool(
                 eq(call), eq("late-tool"), eq("check_availability"), anyString()
         );
-        verify(session, never()).requestExactResponse(anyString(), anyLong());
-        verify(session, never()).requestToolResultResponse(anyLong());
+        assertThat(outputPublished.await(1, TimeUnit.SECONDS)).isTrue();
+        verify(session, after(200).never()).requestExactResponse(anyString(), anyLong());
+        verify(session, after(200).never()).requestToolResultResponse(anyLong());
     }
 
     @Test

@@ -995,18 +995,10 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         )
                 ));
                 if (!isCurrentGeneration(generation)) {
-                    var activeSession = session;
-                    if (activeSession != null) {
-                        var currentGeneration = activeSession.currentGeneration();
-                        var factualResponse = result.success()
-                                ? toolSpokenResponse(result)
-                                : safeToolFailure(name);
-                        if (!factualResponse.isBlank()) {
-                            activeSession.requestExactResponse(factualResponse, currentGeneration);
-                        } else {
-                            activeSession.requestToolResultResponse(currentGeneration);
-                        }
-                    }
+                    // The accepted operation may finish after caller speech has
+                    // advanced the conversation. Its output is retained above
+                    // for factual history, but old-turn speech must never be
+                    // rebound to the newer generation or talk over the caller.
                     return;
                 }
                 if (!result.success()) {

@@ -4736,3 +4736,19 @@ Expected:
   - `npm.cmd run build` - passed; 50 routes generated.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: a live provider call is still required because automated tests cannot reproduce the caller's browser/network jitter or Cartesia service timing. Verify greeting first audio, at least five normal turns, a mid-sentence interruption, a slow tool completion, and call ending. The direct path removes the known double-WebSocket/backend relay and custom worklet scheduler, but it cannot eliminate Cartesia synthesis or internet latency.
+
+### 2026-07-23 - Prevent interrupted telephony tools from queuing late speech
+
+- Fixed the CI failure in `anInterruptedToolMayFinishButCannotQueueLateSpeech`. A tool accepted before caller interruption is still allowed to finish exactly once, and its `function_call_output` is still written to Realtime history, but its old-generation result is no longer rebound to the caller's newer generation as an exact or model-generated response.
+- The previous rebinding created a real race: depending on executor timing, late tool speech could be queued before Mockito's `never()` assertion or after it. In production, that same race could make the agent talk over a newer caller turn with an answer to the interrupted turn.
+- Made the regression deterministic by waiting for the asynchronous `function_call_output` publication and then observing a quiet period before asserting that neither late-response path was requested.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `anInterruptedToolMayFinishButCannotQueueLateSpeech` with `--rerun-tasks` - passed.
+  - full `OpenAiTelephonyRealtimeConversationProviderTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: callers who start a genuinely newer turn take precedence over an older operation's spoken result. The completed result remains in conversation history and can ground the next response; it is intentionally not spoken asynchronously over the caller.
