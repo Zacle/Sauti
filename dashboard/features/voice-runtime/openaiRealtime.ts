@@ -9,6 +9,8 @@ import {
   ownsOriginatingToolResponse,
   realtimeCancellationDecision,
   realtimeAuthorizedFunctionCallItem,
+  realtimeRateLimitRetryDelayMs,
+  releaseTerminalResponseForProtocolRecovery,
   newRealtimeChainedCallId,
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
@@ -156,6 +158,8 @@ export async function connectOpenAiRealtime(options: {
   const toolFollowupGenerations = new Set<number>();
   const noToolRecoveryGenerations = new Set<number>();
   const failedResponseRetryGenerations = new Set<number>();
+  const rateLimitRetryGenerations = new Set<number>();
+  const rateLimitRetryTimers = new Map<number, number>();
   const pendingResponseRequests: PendingResponseRequest[] = [];
   let dispatchedResponseRequest: PendingResponseRequest | null = null;
   let currentResponseRequest: PendingResponseRequest | null = null;
@@ -263,6 +267,62 @@ export async function connectOpenAiRealtime(options: {
       request.progressKey,
       false,
     );
+    return true;
+  };
+
+  const clearRateLimitRetryTimers = (reason: string) => {
+    rateLimitRetryTimers.forEach((timer, generation) => {
+      window.clearTimeout(timer);
+      diagnostic("rate_limit_retry_cancelled", { generation, reason });
+    });
+    rateLimitRetryTimers.clear();
+  };
+
+  const scheduleRateLimitRetry = (
+    request: PendingResponseRequest | null,
+    generation: number,
+    delayMs: number,
+  ) => {
+    if (!request || isAuxiliaryResponsePurpose(request.purpose)
+      || delayMs <= 0 || rateLimitRetryGenerations.has(generation)) return false;
+
+    rateLimitRetryGenerations.add(generation);
+    diagnostic("rate_limit_retry_scheduled", {
+      failedRequestId: request.requestId,
+      generation,
+      purpose: request.purpose,
+      delayMs,
+    }, "warn");
+    deliverAgentSpeech({
+      id: `rate-limit-progress:${generation}`,
+      generation,
+      text: localizedRateLimitProgress(options.responseLanguage),
+    });
+    const timer = window.setTimeout(() => {
+      rateLimitRetryTimers.delete(generation);
+      if (generation !== outputGeneration || channel.readyState !== "open") {
+        diagnostic("rate_limit_retry_abandoned", {
+          failedRequestId: request.requestId,
+          generation,
+          activeGeneration: outputGeneration,
+        });
+        return;
+      }
+      diagnostic("rate_limit_retry_dispatched", {
+        failedRequestId: request.requestId,
+        generation,
+        purpose: request.purpose,
+      });
+      enqueueResponse(
+        request.send,
+        generation,
+        request.retryWithoutTools,
+        request.purpose,
+        request.progressKey,
+        false,
+      );
+    }, delayMs);
+    rateLimitRetryTimers.set(generation, timer);
     return true;
   };
 
@@ -431,6 +491,8 @@ export async function connectOpenAiRealtime(options: {
     toolFollowupGenerations.clear();
     noToolRecoveryGenerations.clear();
     failedResponseRetryGenerations.clear();
+    rateLimitRetryGenerations.clear();
+    clearRateLimitRetryTimers("caller_turn_advanced");
     // A caller interruption cancels speech, not an already accepted external
     // operation. Keep its promise alive so a late provider success is never
     // converted into a second execution or a false failure.
@@ -895,9 +957,10 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const recoverProtocolOutput = (cancelResponse: boolean) => {
+    const recoveryGeneration = currentResponseGeneration;
     diagnostic("provider_protocol_recovery", {
       responseId: currentResponseId,
-      generation: currentResponseGeneration,
+      generation: recoveryGeneration,
       attempt: protocolRecoveryAttempts + 1,
       cancelResponse,
       phase: responsePhase,
@@ -910,11 +973,19 @@ export async function connectOpenAiRealtime(options: {
     if (cancelResponse) {
       cancelActiveResponse();
       send(channel, { type: "output_audio_buffer.clear" });
+    } else if (releaseTerminalResponseForProtocolRecovery(cancelResponse)) {
+      // response.done is already terminal. Release its local ownership before
+      // queuing recovery; otherwise the queue remains blocked until a watchdog
+      // tries to cancel a provider response that no longer exists.
+      finishResponse();
     }
     if (protocolRecoveryAttempts++ === 0) {
       // Keep the complete session prompt and business facts, but prevent the
       // malformed retry from attempting another tool call.
-      enqueueResponse((requestId) => requestToolResultResponse(channel, requestId));
+      enqueueResponse(
+        (requestId) => requestToolResultResponse(channel, requestId),
+        recoveryGeneration,
+      );
       return;
     }
     if (protocolRecoveryAttempts === 2) {
@@ -922,7 +993,7 @@ export async function connectOpenAiRealtime(options: {
         channel,
         localizedProcessingFailure(options.responseLanguage),
         requestId,
-      ));
+      ), recoveryGeneration);
       return;
     }
     options.callbacks.onError("The voice provider returned an invalid internal protocol response.");
@@ -1202,6 +1273,7 @@ export async function connectOpenAiRealtime(options: {
         completed.hasPhases,
         completed.finalAnswerText,
       );
+      const providerDetails = providerResponseDiagnosticDetails(event);
       diagnostic("response_completed", {
         responseId: eventResponseId || currentResponseId,
         requestId: currentResponseRequest?.requestId ?? "",
@@ -1219,15 +1291,18 @@ export async function connectOpenAiRealtime(options: {
         outputTextChars: completed.hasPhases
           ? completed.finalAnswerText.length
           : agentTranscript.length,
-        ...providerResponseDiagnosticDetails(event),
+        ...providerDetails,
       }, completed.status === "completed" ? "info" : "error");
       if (!isAuxiliaryResponse
         && (completed.status === "failed" || completed.status === "incomplete")
         && !completed.hasToolCall && !hasCallerFacingResponse) {
-        const retrying = retryFailedMainResponse(
-          currentResponseRequest,
-          currentResponseGeneration,
-        );
+        const failedRequest = currentResponseRequest;
+        const failedGeneration = currentResponseGeneration;
+        const rateLimited = providerDetails.providerErrorCode === "rate_limit_exceeded";
+        const rateLimitRetryDelayMs = realtimeRateLimitRetryDelayMs(event);
+        const retrying = rateLimited
+          ? scheduleRateLimitRetry(failedRequest, failedGeneration, rateLimitRetryDelayMs)
+          : retryFailedMainResponse(failedRequest, failedGeneration);
         if (!retrying) {
           diagnostic("response_failure_exhausted", {
             responseId: eventResponseId || currentResponseId,
@@ -1238,9 +1313,15 @@ export async function connectOpenAiRealtime(options: {
           deliverAgentSpeech({
             id: eventResponseId || currentResponseId || `response-failed:${currentResponseGeneration}`,
             generation: currentResponseGeneration,
-            text: localizedProcessingFailure(options.responseLanguage),
+            text: rateLimited
+              ? localizedRateLimitFailure(options.responseLanguage)
+              : localizedProcessingFailure(options.responseLanguage),
           });
-          options.callbacks.onError("The voice provider could not complete its response after retrying.");
+          options.callbacks.onError(rateLimited
+            ? "The voice provider remained rate limited after one delayed retry."
+            : failedRequest?.retryOnFailure
+              ? "The voice provider could not complete its response after retrying."
+              : "The voice provider could not complete its response.");
         }
         textCompletionSent = true;
       }
@@ -1304,6 +1385,7 @@ export async function connectOpenAiRealtime(options: {
       textCompletionSent = true;
     }
     if (type === "input_audio_buffer.speech_started") {
+      clearRateLimitRetryTimers("caller_speech_started");
       const pendingTurnKey = beginPendingCallerTurn(event);
       callerSpeechActive = true;
       callerTurnAgentWasResponding = responseActive || responseRequestInFlight;
@@ -1526,6 +1608,7 @@ export async function connectOpenAiRealtime(options: {
       window.clearTimeout(toolResponseSettleTimer);
       businessActionProgressTimers.forEach((timer) => window.clearTimeout(timer));
       businessActionProgressTimers.clear();
+      clearRateLimitRetryTimers("runtime_closed");
       activeBusinessActionProgress.clear();
       toolExecutions.clear();
       completedToolExecutionKeys.clear();
@@ -1730,6 +1813,32 @@ function localizedProcessingFailure(language?: string) {
     case "ar": return "عذراً، لم أتمكن من إكمال هذا الطلب. لم يتم تغيير أي شيء. هل تريدني أن أحاول مرة أخرى؟";
     case "sw": return "Samahani, sikuweza kukamilisha ombi hilo. Hakuna kilichobadilishwa. Ungependa nijaribu tena?";
     default: return "I'm sorry, I couldn't finish processing that request. Nothing was changed. Would you like me to try again?";
+  }
+}
+
+function localizedRateLimitProgress(language?: string) {
+  switch (language?.toLocaleLowerCase()) {
+    case "fr":
+      return "Je suis desole pour l'attente. Le service vocal est temporairement occupe, mais je poursuis votre demande.";
+    case "ar":
+      return "\u0639\u0630\u0631\u0627\u064b \u0639\u0644\u0649 \u0627\u0644\u0627\u0646\u062a\u0638\u0627\u0631. \u062e\u062f\u0645\u0629 \u0627\u0644\u0635\u0648\u062a \u0645\u0634\u063a\u0648\u0644\u0629 \u0645\u0624\u0642\u062a\u0627\u064b\u060c \u0644\u0643\u0646\u0646\u064a \u0645\u0627 \u0632\u0644\u062a \u0623\u0639\u0645\u0644 \u0639\u0644\u0649 \u0637\u0644\u0628\u0643.";
+    case "sw":
+      return "Samahani kwa kusubiri. Huduma ya sauti ina shughuli kwa muda, lakini bado ninaendelea na ombi lako.";
+    default:
+      return "I'm sorry for the wait. The voice service is temporarily busy, but I'm still working on your request.";
+  }
+}
+
+function localizedRateLimitFailure(language?: string) {
+  switch (language?.toLocaleLowerCase()) {
+    case "fr":
+      return "Je suis desole, le service vocal est toujours occupe et je n'ai pas pu terminer la reponse. Veuillez reessayer dans un instant.";
+    case "ar":
+      return "\u0639\u0630\u0631\u0627\u064b\u060c \u062e\u062f\u0645\u0629 \u0627\u0644\u0635\u0648\u062a \u0645\u0627 \u0632\u0627\u0644\u062a \u0645\u0634\u063a\u0648\u0644\u0629\u060c \u0644\u0630\u0644\u0643 \u0644\u0645 \u0623\u062a\u0645\u0643\u0646 \u0645\u0646 \u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0631\u062f. \u064a\u0631\u062c\u0649 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629 \u0628\u0639\u062f \u0644\u062d\u0638\u0627\u062a.";
+    case "sw":
+      return "Samahani, huduma ya sauti bado ina shughuli na sikuweza kukamilisha jibu. Tafadhali jaribu tena baada ya muda mfupi.";
+    default:
+      return "I'm sorry, the voice service is still busy, so I couldn't complete the response. Please try again in a moment.";
   }
 }
 

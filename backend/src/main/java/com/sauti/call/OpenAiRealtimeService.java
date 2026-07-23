@@ -35,6 +35,7 @@ public class OpenAiRealtimeService {
     private final String callsUrl;
     private final String model;
     private final String transcriptionModel;
+    private final int maxOutputTokens;
 
     public OpenAiRealtimeService(
             ObjectMapper objectMapper,
@@ -44,7 +45,8 @@ public class OpenAiRealtimeService {
             @Value("${spring.ai.openai.api-key:}") String apiKey,
             @Value("${sauti.realtime.openai.calls-url:https://api.openai.com/v1/realtime/calls}") String callsUrl,
             @Value("${sauti.realtime.openai.model:gpt-realtime-1.5}") String model,
-            @Value("${sauti.realtime.openai.transcription-model:gpt-4o-mini-transcribe}") String transcriptionModel
+            @Value("${sauti.realtime.openai.transcription-model:gpt-4o-mini-transcribe}") String transcriptionModel,
+            @Value("${sauti.realtime.openai.max-output-tokens:512}") int maxOutputTokens
     ) {
         this.objectMapper = objectMapper;
         this.conversationOrchestrator = conversationOrchestrator;
@@ -54,6 +56,7 @@ public class OpenAiRealtimeService {
         this.callsUrl = callsUrl;
         this.model = model;
         this.transcriptionModel = transcriptionModel;
+        this.maxOutputTokens = Math.max(64, Math.min(4096, maxOutputTokens));
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
     }
 
@@ -188,10 +191,11 @@ public class OpenAiRealtimeService {
         session.put("model", model);
         session.put("instructions", conversationOrchestrator.realtimeInstructions(call, call.getLanguageDetected()));
         session.put("output_modalities", List.of("text"));
-        // Audio responses consume substantially more tokens than their transcript.
-        // An artificially small cap can cut audible speech in the middle of a word.
-        // Conversational brevity is enforced by the prompt instead.
-        session.put("max_output_tokens", "inf");
+        // Sauti requests text only and synthesizes it after validation. A finite
+        // budget is therefore safe for normal voice replies and tool arguments,
+        // and avoids reserving the model's maximum output allowance on every
+        // turn in a long-lived Realtime session.
+        session.put("max_output_tokens", maxOutputTokens);
         // OpenAI supplies audio understanding and VAD. Validated response text
         // is synthesized only after the client has accepted a message item.
         session.put("audio", Map.of("input", input));

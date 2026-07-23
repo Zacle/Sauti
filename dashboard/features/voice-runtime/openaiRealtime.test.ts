@@ -13,6 +13,8 @@ import {
   newRealtimeChainedCallId,
   REALTIME_CALL_ID_MAX_LENGTH,
   realtimeCancellationDecision,
+  realtimeRateLimitRetryDelayMs,
+  releaseTerminalResponseForProtocolRecovery,
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
   ownsOriginatingToolResponse,
@@ -254,6 +256,48 @@ test("defers cancellation until an in-flight response has been created", () => {
     pending: false,
     cancelProviderNow: false,
   });
+});
+
+test("releases a terminal response before protocol recovery is queued", () => {
+  assert.equal(releaseTerminalResponseForProtocolRecovery(false), true);
+  assert.equal(releaseTerminalResponseForProtocolRecovery(true), false);
+});
+
+test("honors a bounded provider rate-limit retry delay", () => {
+  const event = {
+    response: {
+      status: "failed",
+      status_details: {
+        error: {
+          code: "rate_limit_exceeded",
+          message: "Please try again in 7.722s.",
+        },
+      },
+    },
+  };
+
+  assert.equal(realtimeRateLimitRetryDelayMs(event), 7_972);
+  assert.equal(realtimeRateLimitRetryDelayMs({
+    response: {
+      status_details: {
+        error: { code: "rate_limit_exceeded", message: "Please retry shortly." },
+      },
+    },
+  }), 2_000);
+  assert.equal(realtimeRateLimitRetryDelayMs({
+    response: {
+      status_details: {
+        error: { code: "rate_limit_exceeded", message: "Please try again in 45s." },
+      },
+    },
+  }), 0);
+  assert.equal(realtimeRateLimitRetryDelayMs({
+    response: {
+      status_details: {
+        error: { code: "server_error", message: "Please try again in 2s." },
+      },
+    },
+  }), 0);
 });
 
 test("correlates created responses with Sauti request metadata", () => {

@@ -12,6 +12,8 @@ export type AuthorizedNextToolRequest = {
 export const SAUTI_REALTIME_REQUEST_ID = "sauti_request_id";
 export const AUTHORITATIVE_TRANSCRIPT_PREFIX = "SAUTI_INPUT_TRANSCRIPT";
 export const REALTIME_CALL_ID_MAX_LENGTH = 32;
+const DEFAULT_RATE_LIMIT_RETRY_DELAY_MS = 2_000;
+const MAX_RATE_LIMIT_RETRY_DELAY_MS = 20_000;
 
 const IMMEDIATE_TOOL_NAMES = new Set([
   "update_conversation_state",
@@ -188,6 +190,39 @@ export function realtimeCancellationDecision(
   };
 }
 
+/**
+ * A recovery raised while processing response.done owns a provider-terminal
+ * response and must release local queue ownership immediately. A recovery
+ * raised by an unexpected streaming audio event must instead wait for the
+ * requested provider cancellation to settle.
+ */
+export function releaseTerminalResponseForProtocolRecovery(cancelProviderResponse: boolean) {
+  return !cancelProviderResponse;
+}
+
+/**
+ * Realtime rate-limit failures include a provider-recommended retry delay in
+ * status_details.error.message. Honor that delay instead of immediately
+ * sending the same request into the same rolling rate-limit window.
+ *
+ * A zero result means this is not a rate-limit failure, or that the requested
+ * wait is too long for a live caller. Callers should receive a truthful final
+ * failure in that case instead of being left waiting indefinitely.
+ */
+export function realtimeRateLimitRetryDelayMs(event: Record<string, unknown>) {
+  const response = asRecord(event.response);
+  const statusDetails = asRecord(response.status_details);
+  const error = asRecord(statusDetails.error);
+  if (String(error.code ?? "").trim().toLocaleLowerCase() !== "rate_limit_exceeded") return 0;
+
+  const message = String(error.message ?? "");
+  const retrySeconds = Number(message.match(/try again in\s+(\d+(?:\.\d+)?)s\b/iu)?.[1]);
+  if (!Number.isFinite(retrySeconds)) return DEFAULT_RATE_LIMIT_RETRY_DELAY_MS;
+
+  const delayMs = Math.ceil(retrySeconds * 1_000) + 250;
+  return delayMs >= 1_000 && delayMs <= MAX_RATE_LIMIT_RETRY_DELAY_MS ? delayMs : 0;
+}
+
 export function authorizedNextToolRequest(
   toolResult: Record<string, unknown>,
 ): AuthorizedNextToolRequest | null {
@@ -256,4 +291,10 @@ export function completedRealtimeToolCalls(
   }
 
   return calls;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }

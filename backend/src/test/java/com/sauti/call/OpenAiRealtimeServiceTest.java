@@ -41,7 +41,8 @@ class OpenAiRealtimeServiceTest {
         var mapper = new ObjectMapper();
         var service = new OpenAiRealtimeService(
                 mapper, orchestrator, loader, mock(ToolFulfillmentRouter.class),
-                "server-secret", "http://localhost/unused", "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
+                "server-secret", "http://localhost/unused", "gpt-realtime-1.5",
+                "gpt-4o-mini-transcribe", 512
         );
 
         var configurationNode = mapper.valueToTree(service.telephonySessionConfiguration(call));
@@ -87,7 +88,7 @@ class OpenAiRealtimeServiceTest {
             var service = new OpenAiRealtimeService(
                     new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
                     "server-secret", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/realtime/calls",
-                    "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
+                    "gpt-realtime-1.5", "gpt-4o-mini-transcribe", 512
             );
 
             var answer = service.createWebRtcSession(call, "v=0\r\ns=sauti-offer\r\n");
@@ -99,7 +100,7 @@ class OpenAiRealtimeServiceTest {
                     .contains("gpt-realtime-1.5")
                     .contains("\"output_modalities\":[\"text\"]")
                     .contains("\"audio\":{\"input\":")
-                    .contains("\"max_output_tokens\":\"inf\"")
+                    .contains("\"max_output_tokens\":512")
                     .contains("\"threshold\":0.6")
                     .contains("\"silence_duration_ms\":520")
                     .contains("\"create_response\":false")
@@ -138,7 +139,7 @@ class OpenAiRealtimeServiceTest {
             var service = new OpenAiRealtimeService(
                     new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
                     "server-secret", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/realtime/calls",
-                    "gpt-realtime-1.5", "gpt-4o-mini-transcribe"
+                    "gpt-realtime-1.5", "gpt-4o-mini-transcribe", 512
             );
 
             assertThat(service.createWebRtcSession(call, "v=0\r\ns=hybrid-offer\r\n"))

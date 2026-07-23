@@ -4834,3 +4834,33 @@ Expected:
   - `npm.cmd run typecheck` - passed.
   - `npm.cmd run test:voice` - passed; 34 regressions.
 - Deployment status: not deployed. The correction remains uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+
+### 2026-07-23 - Correct terminal recovery and Realtime token-rate exhaustion
+
+- Diagnosed the attached privacy-safe call report `a64130b4-9061-49f2-9645-06e0b03c41fa` from the first causal event rather than the final UI fallback. `update_conversation_state` completed in 385 ms and authorized `get_business_hours`, but the required-tool response completed with two characters and no tool call. Sauti queued protocol recovery while still owning the already-terminal provider response, so the recovery could not dispatch; the watchdog then attempted to cancel a response OpenAI correctly reported as inactive.
+- Terminal protocol recovery now captures the originating generation, releases the completed response before it queues recovery, and therefore lets the recovery request dispatch immediately. Streaming protocol recovery still waits for provider cancellation because that response is not terminal yet.
+- The same report showed two independent `rate_limit_exceeded` failures against a 40,000 TPM limit. Each response requested roughly 10,300-10,700 tokens. Sauti had configured `max_output_tokens` as `inf` even though the session is text-only.
+- Added `OPENAI_REALTIME_MAX_OUTPUT_TOKENS`, defaulting to 512 and clamped to 64-4096. The bounded value applies to both browser and telephony Realtime session configurations. This limits response/tool-argument output allocation but does not remove input tokens from the large session prompt or replace the need for an appropriate production OpenAI usage tier.
+- Rate-limit failures now receive one provider-directed delayed retry by parsing the provider's `try again in ...s` value. Sauti immediately speaks a brief operational apology through the already-connected external TTS path, does not ask the caller a question, and resumes automatically when the delay expires. Caller speech or runtime closure cancels the delayed retry so an old turn cannot speak later. Delays over 20 seconds are not imposed on a live caller.
+- A second rate-limit failure produces a truthful capacity-specific message. The generic UI error no longer claims a retry occurred when the failed response was not retryable. These outage phrases are intentionally deterministic because asking the rate-limited model to generate its own outage message would consume another model request.
+- Added diagnostics for rate-limit retry scheduling, dispatch, cancellation, and abandonment.
+- Files touched:
+  - `.env.example`, `deploy/.env.production.example`
+  - `backend/src/main/java/com/sauti/call/OpenAiRealtimeService.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/call/OpenAiRealtimeServiceTest.java`
+  - `dashboard/features/voice-runtime/{openaiRealtime,realtimeProtocol,openaiRealtime.test}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run test:voice` - passed; 36 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - focused `OpenAiRealtimeServiceTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `git diff --check` - passed before this handoff update (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification:
+  - Repeat the business-hours flow that previously generated the two-character malformed response. Diagnostics should show `provider_protocol_recovery` followed immediately by `response_dispatched`, with no eight-second watchdog and no `response_cancel_not_active`.
+  - Run at least seven caller turns inside one minute. Record `providerErrorCode`, requested TPM from any provider failure, and whether the new 512-token cap keeps the call below the current organization limit. If the input prompt and tool schemas still exceed the 40,000 TPM tier, compact them or raise the usage tier based on measured tokens rather than increasing watchdogs.
+  - If a rate limit is deliberately reproduced, verify one progress apology, automatic delayed resumption without caller input, and cancellation of that retry when the caller starts a new turn.
