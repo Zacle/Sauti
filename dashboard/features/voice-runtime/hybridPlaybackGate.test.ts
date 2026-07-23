@@ -27,6 +27,5 @@ test("uses a jitter buffer that grows after a real PCM underrun", () => {
   assert.equal(profile.initialBufferFrames, 13_440);
   assert.equal(profile.underrunStepFrames, 3_840);
   assert.equal(profile.maxBufferFrames, 34_560);
-  assert.equal(profile.arrivalJitterHeadroomFrames, 1_920);
   assert.ok(profile.initialBufferFrames < profile.maxBufferFrames);
 });

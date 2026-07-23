@@ -4681,3 +4681,58 @@ Expected:
   - `npm.cmd run build` - passed; 50 routes generated.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: run a multi-turn live Cartesia call after deployment and inspect `sauti.voice.playback.underruns` plus `sauti.voice.playback.rebuffer.target`. The first truly novel jitter spike can still cause one rebuffer before the session learns it; later replies on the same call should remain continuous. If underruns occur while the target is already at 720 ms, investigate Cartesia/backend WebSocket stalls or host saturation instead of increasing the buffer again.
+
+### 2026-07-23 - Roll back adaptive PCM accumulation after live regression
+
+- Live testing of commit `15e614c` showed that the adaptive browser buffer made the experience worse: completed assistant text appeared several seconds before speech, while the relayed raw PCM still broke up. This proves that adding more custom accumulation does not repair the underlying browser media transport.
+- Reverted the adaptive target retention, arrival-gap learning, extra telemetry plumbing, and direct AudioWorklet regression harness to restore the pre-`15e614c` playback behavior while a maintained transport replaces it. This rollback is risk containment, not a claim that the earlier custom PCM path is production-quality.
+- Selected the official `@cartesia/cartesia-js` SDK as the next browser-path implementation. Its current stable release supports short-lived TTS-only browser tokens and a direct Cartesia context/WebSocket client, but no longer exports the older `WebPlayer`. The maintained `@speechmatics/web-pcm-player` package is used for browser Web Audio scheduling instead of copying or extending another custom player.
+- Caption persistence and caption presentation must be separated in that replacement: persist the completed assistant text immediately, but reveal it only when provider playback begins (or progressively from Cartesia word timestamps). This addresses the visible text-before-audio mismatch independently of synthesis latency.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{HybridVoiceSessionService,VoiceRuntimeMetrics}.java`
+  - `backend/src/test/java/com/sauti/call/HybridVoiceSessionServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/features/voice-runtime/{hybridPlaybackGate.test,pcmPlaybackBuffer,pcmStreamPlayer}.ts`
+  - removed `dashboard/features/voice-runtime/pcmStreamPlayerWorklet.test.ts`
+  - `dashboard/package.json`
+  - `dashboard/public/pcm-stream-player.js`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - focused `HybridVoiceSessionServiceTest` - passed; 10 tests.
+  - `npm.cmd run test:voice` - passed; 30 regressions.
+  - `npm.cmd run typecheck` - passed.
+- Deployment status: not deployed. The rollback remains uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: the rollback returns to the earlier 280 ms custom PCM path and therefore does not resolve the original breakup. Do not continue tuning this worklet. Replace the browser hybrid path with the official Cartesia SDK and short-lived access tokens; retain the server-side Cartesia client only for telephony and other trusted server channels.
+
+### 2026-07-23 - Replace hybrid browser PCM relay with maintained Cartesia and Speechmatics clients
+
+- Replaced the Sauti + Cartesia browser media path in Agent Studio and public Web Voice. OpenAI Realtime still owns conversation, transcription, and tools, but completed validated speech now goes directly from the browser to Cartesia through `@cartesia/cartesia-js`; audio no longer crosses Sauti's hybrid backend WebSocket on this path.
+- Added server-minted Cartesia browser sessions. The backend exchanges the private API key for a short-lived access token with only the `tts` grant, clamps its lifetime to one hour, and returns only that token plus the selected voice/model metadata. Account API keys remain server-side. Token minting runs concurrently with cached-greeting lookup to avoid adding the two waits together.
+- Added `@speechmatics/web-pcm-player` for maintained browser PCM scheduling. Cartesia supplies 48 kHz mono s16le audio matching the requested browser `AudioContext`, avoiding Sauti resampling and reducing transport bandwidth relative to float PCM. Split provider samples are reassembled before they reach the player.
+- Added a real interruption lifecycle: caller speech clears queued utterances, cancels the active Cartesia context, stops scheduled sources, and resolves any pending drain wait. Speech generated while the direct provider socket is still connecting is queued instead of being silently lost.
+- Separated transcript persistence from visible captions. Completed assistant text is persisted immediately, while Agent Studio/public captions appear only when audible Cartesia playback starts. Cached greetings follow the same rule, removing the misleading sentence-first/audio-seconds-later presentation.
+- Kept the server Cartesia client and legacy PCM handling for telephony and compatibility transports. This change is scoped to browser `hybrid_realtime` sessions and does not alter Vapi or non-hybrid runtime behavior.
+- Added the optional `CARTESIA_ACCESS_TOKEN_URL` configuration with the production default `https://api.cartesia.ai/access-token`.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/{CallController,PublicWebVoiceController}.java`
+  - `backend/src/main/java/com/sauti/call/{CallDtos,WebVoiceDtos,CartesiaRealtimeTextToSpeechClient}.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/call/CartesiaRealtimeTextToSpeechClientTest.java`
+  - `dashboard/features/voice-runtime/{cartesiaBrowserTts,cartesiaBrowserTts.test}.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/lib/api/public-web-voice.ts`
+  - `dashboard/types/api.ts`
+  - `dashboard/{package.json,package-lock.json}`
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+  - plus the preceding uncommitted adaptive-PCM rollback files documented above.
+- Verification:
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run test:voice` - passed; 33 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: a live provider call is still required because automated tests cannot reproduce the caller's browser/network jitter or Cartesia service timing. Verify greeting first audio, at least five normal turns, a mid-sentence interruption, a slow tool completion, and call ending. The direct path removes the known double-WebSocket/backend relay and custom worklet scheduler, but it cannot eliminate Cartesia synthesis or internet latency.

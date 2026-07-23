@@ -1,7 +1,6 @@
 package com.sauti.call;
 
 import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -50,22 +49,11 @@ public class VoiceRuntimeMetrics {
         counter("sauti.voice.interruptions", runtime, channel, "reason", "caller_speech").increment();
     }
 
-    public void playbackUnderrun(String runtime, String channel, int targetBufferMs) {
+    public void playbackUnderrun(String runtime, String channel) {
         Counter.builder("sauti.voice.playback.underruns")
                 .description("Audible playback buffers that ran dry before provider completion")
                 .tag("runtime", runtime).tag("channel", channel)
                 .register(registry).increment();
-        if (targetBufferMs > 0) {
-            DistributionSummary.builder("sauti.voice.playback.rebuffer.target")
-                    .description("Adaptive PCM target selected after a playback underrun")
-                    .baseUnit("milliseconds")
-                    .tag("runtime", runtime).tag("channel", channel)
-                    .publishPercentileHistogram()
-                    .minimumExpectedValue(100.0)
-                    .maximumExpectedValue(1_000.0)
-                    .register(registry)
-                    .record(targetBufferMs);
-        }
     }
 
     public void fallback(String runtime, String channel, String reason) {

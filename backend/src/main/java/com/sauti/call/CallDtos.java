@@ -89,7 +89,16 @@ public final class CallDtos {
             int inputSampleRate,
             String mode,
             boolean availabilityToolEnabled,
-            BrowserVoiceRuntimeSession runtime
+            BrowserVoiceRuntimeSession runtime,
+            BrowserTtsSession browserTts
+    ) {
+    }
+
+    public record BrowserTtsSession(
+            String provider,
+            String clientToken,
+            String voiceId,
+            String modelId
     ) {
     }
 

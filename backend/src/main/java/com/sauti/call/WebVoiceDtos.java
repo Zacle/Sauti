@@ -1,5 +1,6 @@
 package com.sauti.call;
 
+import com.sauti.call.CallDtos.BrowserTtsSession;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,7 +36,8 @@ public final class WebVoiceDtos {
             int inputSampleRate,
             String language,
             String mode,
-            boolean availabilityToolEnabled
+            boolean availabilityToolEnabled,
+            BrowserTtsSession browserTts
     ) {
     }
 

@@ -304,6 +304,13 @@ export type BrowserVoiceRuntimeSession = {
   configuration: Record<string, unknown>;
 };
 
+export type BrowserTtsSession = {
+  provider: "cartesia";
+  clientToken: string;
+  voiceId: string;
+  modelId: string;
+};
+
 export type StartTestCallResponse = {
   call: Call;
   greeting: string;
@@ -314,6 +321,7 @@ export type StartTestCallResponse = {
   mode: string;
   availabilityToolEnabled: boolean;
   runtime: BrowserVoiceRuntimeSession | null;
+  browserTts: BrowserTtsSession | null;
   settings: {
     bargeInSensitivity: number;
     bargeInGraceMs: number;

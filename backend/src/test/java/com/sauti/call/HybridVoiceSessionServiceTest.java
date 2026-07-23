@@ -64,7 +64,7 @@ class HybridVoiceSessionServiceTest {
         listener.getValue().onPcmAudio(new byte[640]);
         listener.getValue().onComplete();
         service.accept("test-hybrid", "{\"type\":\"playback_started\",\"generation\":0,\"id\":\"legacy-1\"}");
-        service.accept("test-hybrid", "{\"type\":\"playback_underrun\",\"targetBufferMs\":360}");
+        service.accept("test-hybrid", "{\"type\":\"playback_underrun\"}");
 
         var writes = inOrder(tts);
         writes.verify(tts).speak("Bonjour, je peux vous aider avec votre rendez-vous.", true);
@@ -79,8 +79,6 @@ class HybridVoiceSessionServiceTest {
         assertThat(registry.find("sauti.voice.latency")
                 .tag("stage", "transcript_to_playback").timer().count()).isEqualTo(1);
         assertThat(registry.find("sauti.voice.playback.underruns").counter().count()).isEqualTo(1);
-        assertThat(registry.find("sauti.voice.playback.rebuffer.target").summary().count()).isEqualTo(1);
-        assertThat(registry.find("sauti.voice.playback.rebuffer.target").summary().max()).isEqualTo(360);
     }
 
     @Test

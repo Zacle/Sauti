@@ -24,6 +24,10 @@ import {
 } from "@/features/voice-runtime/browserVoiceRuntime";
 import { HybridPlaybackGate } from "@/features/voice-runtime/hybridPlaybackGate";
 import { PcmStreamPlayer } from "@/features/voice-runtime/pcmStreamPlayer";
+import {
+  CartesiaBrowserTts,
+  type BrowserAgentSpeech,
+} from "@/features/voice-runtime/cartesiaBrowserTts";
 import { confirmedEndCallResult } from "@/features/voice-runtime/realtimeProtocol";
 import { mergeVapiTranscript } from "@/features/voice-runtime/vapiTranscript";
 
@@ -121,6 +125,8 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   const pcmPrerollRef = useRef(REALTIME_PCM_INITIAL_PREROLL_SECONDS);
   const pcmPlaybackActiveRef = useRef(false);
   const pcmPlayerRef = useRef<PcmStreamPlayer | null>(null);
+  const cartesiaBrowserTtsRef = useRef<CartesiaBrowserTts | null>(null);
+  const pendingCartesiaSpeechRef = useRef<BrowserAgentSpeech[]>([]);
   const activeHybridSpeechRef = useRef<{ id: string; generation: number } | null>(null);
   const hybridPlaybackGateRef = useRef(new HybridPlaybackGate());
   const openAiConnectionRef = useRef<OpenAiRealtimeConnection | null>(null);
@@ -192,20 +198,17 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           autoGainControl: true,
         },
       });
-      await prepareAudio(stream);
+      await prepareAudio(stream, started.mode !== "hybrid_realtime");
       if (started.mode === "openai_realtime" || started.mode === "hybrid_realtime") {
         nativeRealtimeRef.current = true;
         hybridRealtimeRef.current = started.mode === "hybrid_realtime";
         const hybrid = hybridRealtimeRef.current;
         const cachedGreeting = hybrid ? started.greetingAudioBase64 : null;
-        if (cachedGreeting && started.greeting) {
-          setMessages([{ id: crypto.randomUUID(), role: "agent", text: started.greeting }]);
-        }
         const greetingPlayback = cachedGreeting
-          ? playEncodedAgentAudio(cachedGreeting)
+          ? playEncodedAgentAudio(cachedGreeting, started.greeting)
           : Promise.resolve(false);
         await Promise.all([
-          hybrid ? connectHybridVoice(started) : Promise.resolve(),
+          hybrid ? connectCartesiaBrowserTts(started) : Promise.resolve(),
           connectNativeRealtime(started, stream, hybrid, cachedGreeting ? "" : started.greeting),
         ]);
         const greetingPlayed = await greetingPlayback;
@@ -295,31 +298,45 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     });
   }
 
-  async function connectHybridVoice(started: StartTestCallResponse) {
-    const socket = new WebSocket(started.websocketUrl);
-    socket.binaryType = "arraybuffer";
-    socketRef.current = socket;
-    socket.onmessage = (event) => {
-      if (event.data instanceof ArrayBuffer) {
-        playRealtimePcm(event.data);
-        return;
-      }
-      handleRealtimeEvent(JSON.parse(String(event.data)) as VoiceEvent);
-    };
-    socket.onclose = () => {
-      if (!endingRef.current && callIdRef.current) setError("The Cartesia voice connection ended unexpectedly.");
-    };
-    await new Promise<void>((resolve, reject) => {
-      const timeout = window.setTimeout(() => reject(new Error("The Cartesia voice connection timed out.")), 8000);
-      socket.onopen = () => {
-        window.clearTimeout(timeout);
-        resolve();
-      };
-      socket.onerror = () => {
-        window.clearTimeout(timeout);
-        reject(new Error("The Cartesia voice connection could not be opened."));
-      };
+  async function connectCartesiaBrowserTts(started: StartTestCallResponse) {
+    const context = audioContextRef.current;
+    const configuration = started.browserTts;
+    if (!context || !configuration || configuration.provider !== "cartesia") {
+      throw new Error("The secure Cartesia browser voice session was not configured.");
+    }
+    cartesiaBrowserTtsRef.current = await CartesiaBrowserTts.connect({
+      audioContext: context,
+      configuration,
+      language: started.call.languageDetected ?? "en",
+      recordingDestination: recordingDestinationRef.current,
+      callbacks: {
+        onPlaybackStarted: (speech) => {
+          activeHybridSpeechRef.current = { id: speech.id, generation: speech.generation };
+          rememberAgentPrompt(speech.text);
+          setMessages((current) => [
+            ...current,
+            { id: crypto.randomUUID(), role: "agent", text: speech.text },
+          ]);
+          if (!endingRef.current) updateStatus("speaking");
+        },
+        onPlaybackEnded: () => {
+          activeHybridSpeechRef.current = null;
+          if (endingRef.current) return;
+          updateStatus(businessActionPendingRef.current ? "working" : "listening");
+          if (nativeEndPendingRef.current) {
+            nativeEndPendingRef.current = false;
+            window.setTimeout(() => void endCall("completed"), 180);
+          }
+        },
+        onError: (message) => {
+          activeHybridSpeechRef.current = null;
+          setError(message);
+          if (!endingRef.current) updateStatus("listening");
+        },
+      },
     });
+    const pendingSpeech = pendingCartesiaSpeechRef.current.splice(0);
+    pendingSpeech.forEach((speech) => cartesiaBrowserTtsRef.current?.speak(speech));
   }
 
   async function connectNativeRealtime(
@@ -351,7 +368,9 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
         },
         onAgentTranscript: (text, interrupted) => {
           rememberAgentPrompt(text);
-          setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text }]);
+          if (!hybrid) {
+            setMessages((current) => [...current, { id: crypto.randomUUID(), role: "agent", text }]);
+          }
           queueTranscriptWrite(() => recordTestRealtimeTranscript(started.call.id, "agent", text, interrupted));
           if (nativeEndAuthorizedRef.current) {
             nativeEndAuthorizedRef.current = false;
@@ -359,8 +378,9 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           }
         },
         onAgentSpeech: hybrid ? (speech) => {
-          activeHybridSpeechRef.current = { id: speech.id, generation: speech.generation };
-          sendHybridEvent({ type: "speak", ...speech });
+          const browserSpeech = speech as BrowserAgentSpeech;
+          if (cartesiaBrowserTtsRef.current) cartesiaBrowserTtsRef.current.speak(browserSpeech);
+          else pendingCartesiaSpeechRef.current.push(browserSpeech);
         } : undefined,
         onBusinessActionPending: (pending) => {
           businessActionPendingRef.current = pending;
@@ -429,14 +449,24 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
 
   function interruptHybridResponse(cancelModel: boolean, generation?: number) {
     if (cancelModel) openAiConnectionRef.current?.cancelResponse();
+    pendingCartesiaSpeechRef.current = [];
+    cartesiaBrowserTtsRef.current?.interrupt();
+    try {
+      agentAudioSourceRef.current?.stop();
+    } catch {
+      // Cached greeting playback may already have ended.
+    }
+    agentAudioSourceRef.current = null;
     hybridPlaybackGateRef.current.clear();
     clearRealtimePlayback();
-    sendHybridEvent({ type: "interrupt", ...(generation === undefined ? {} : { generation }) });
+    if (!cartesiaBrowserTtsRef.current) {
+      sendHybridEvent({ type: "interrupt", ...(generation === undefined ? {} : { generation }) });
+    }
   }
 
-  async function prepareAudio(stream: MediaStream) {
+  async function prepareAudio(stream: MediaStream, initializeLegacyPcm = true) {
     streamRef.current = stream;
-    const context = new AudioContext();
+    const context = new AudioContext({ sampleRate: 48000 });
     await context.resume();
     const destination = context.createMediaStreamDestination();
     const microphone = context.createMediaStreamSource(stream);
@@ -460,6 +490,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     recordingDestinationRef.current = destination;
     analyserRef.current = analyser;
     recorderRef.current = recorder;
+    if (!initializeLegacyPcm) return;
     try {
       pcmPlayerRef.current = await PcmStreamPlayer.create(context, {
         recordingDestination: destination,
@@ -479,10 +510,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           }
         },
         onPlaybackStalled: () => sendHybridEvent({ type: "playback_stalled" }),
-        onPlaybackUnderrun: (targetBufferMs) => sendHybridEvent({
-          type: "playback_underrun",
-          targetBufferMs,
-        }),
+        onPlaybackUnderrun: () => sendHybridEvent({ type: "playback_underrun" }),
       });
     } catch {
       // Keep the existing scheduler as a compatibility fallback when a browser
@@ -902,13 +930,13 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     }
   }
 
-  async function playEncodedAgentAudio(encoded: string): Promise<boolean> {
+  async function playEncodedAgentAudio(encoded: string, caption = ""): Promise<boolean> {
     updateStatus("speaking");
     try {
       const binary = window.atob(encoded);
       const bytes = new Uint8Array(binary.length);
       for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
-      await playAgentAudio(bytes.buffer);
+      await playAgentAudio(bytes.buffer, caption);
       return true;
     } catch {
       // Text remains available when browser audio decoding fails.
@@ -922,7 +950,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     }
   }
 
-  async function playAgentAudio(audio: ArrayBuffer) {
+  async function playAgentAudio(audio: ArrayBuffer, caption = "") {
     const context = audioContextRef.current;
     if (!context) return;
     updateStatus("speaking");
@@ -934,6 +962,12 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     agentAudioSourceRef.current = source;
     await new Promise<void>((resolve) => {
       source.onended = () => resolve();
+      if (caption) {
+        setMessages((current) => [
+          ...current,
+          { id: crypto.randomUUID(), role: "agent", text: caption },
+        ]);
+      }
       source.start();
     });
     if (agentAudioSourceRef.current === source) agentAudioSourceRef.current = null;
@@ -1164,6 +1198,9 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     agentAudioSourceRef.current = null;
     pcmPlayerRef.current?.close();
     pcmPlayerRef.current = null;
+    cartesiaBrowserTtsRef.current?.close();
+    cartesiaBrowserTtsRef.current = null;
+    pendingCartesiaSpeechRef.current = [];
     void audioContextRef.current?.close();
     audioContextRef.current = null;
     analyserRef.current = null;

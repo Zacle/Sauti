@@ -19,6 +19,12 @@ export type WebVoiceSession = {
   language: string;
   mode: "openai_realtime" | "hybrid_realtime" | "realtime" | "turn";
   availabilityToolEnabled: boolean;
+  browserTts: {
+    provider: "cartesia";
+    clientToken: string;
+    voiceId: string;
+    modelId: string;
+  } | null;
 };
 
 export type WebVoiceAudioTurn = {

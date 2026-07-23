@@ -116,7 +116,9 @@ public class PublicWebVoiceController {
         var mode = realtimeMode(call);
         var websocketPath = "hybrid_realtime".equals(mode) ? "/ws/hybrid-voice/" : "/ws/web-voice/";
         var greeting = callPipelineService.openingGreeting(call);
+        var browserTtsFuture = CompletableFuture.supplyAsync(() -> browserTts(call, mode));
         var greetingAudio = cachedHybridGreeting(call, greeting, language, mode);
+        var browserTts = browserTtsFuture.join();
         return new StartWebVoiceSessionResponse(
                 call.getId(),
                 call.getTwilioCallSid(),
@@ -127,7 +129,19 @@ public class PublicWebVoiceController {
                 16000,
                 language,
                 mode,
-                openAiRealtimeService.hasTool(call, "check_availability")
+                openAiRealtimeService.hasTool(call, "check_availability"),
+                browserTts
+        );
+    }
+
+    private com.sauti.call.CallDtos.BrowserTtsSession browserTts(
+            com.sauti.call.Call call,
+            String mode
+    ) {
+        if (!"hybrid_realtime".equals(mode) || !openAiRealtimeService.usesCartesiaVoice(call)) return null;
+        return cartesiaClient.createBrowserSession(
+                call.getAgent().getTtsVoiceId(),
+                call.getAgent().getMaxCallDurationSeconds() + 120
         );
     }
 

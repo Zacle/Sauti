@@ -7,13 +7,15 @@
     "build": "next build",
     "start": "next start -p 8088",
     "lint": "eslint . --max-warnings=0",
-    "test:voice": "node --experimental-strip-types --test features/voice-runtime/realtimeTurnGate.test.ts features/voice-runtime/hybridPlaybackGate.test.ts features/voice-runtime/pcmStreamPlayerWorklet.test.ts features/voice-runtime/openaiRealtime.test.ts features/voice-runtime/vapiErrors.test.ts features/voice-runtime/vapiTranscript.test.ts",
+    "test:voice": "node --experimental-strip-types --test features/voice-runtime/cartesiaBrowserTts.test.ts features/voice-runtime/realtimeTurnGate.test.ts features/voice-runtime/hybridPlaybackGate.test.ts features/voice-runtime/openaiRealtime.test.ts features/voice-runtime/vapiErrors.test.ts features/voice-runtime/vapiTranscript.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@cartesia/cartesia-js": "^3.5.0",
     "@radix-ui/react-popover": "^1.1.19",
     "@radix-ui/react-select": "^2.3.3",
     "@radix-ui/react-slider": "^1.4.3",
+    "@speechmatics/web-pcm-player": "^1.1.0",
     "@vapi-ai/web": "^2.6.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",

@@ -1,6 +1,7 @@
 package com.sauti.call;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sauti.call.CallDtos.BrowserTtsSession;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -30,6 +31,7 @@ public class CartesiaRealtimeTextToSpeechClient {
     private final String version;
     private final String websocketUrl;
     private final String bytesUrl;
+    private final String accessTokenUrl;
     private final String modelId;
     private final String outputContainer;
     private final String outputEncoding;
@@ -45,6 +47,7 @@ public class CartesiaRealtimeTextToSpeechClient {
             @Value("${sauti.tts.cartesia.version:2026-03-01}") String version,
             @Value("${sauti.tts.cartesia.websocket-url:wss://api.cartesia.ai/tts/websocket}") String websocketUrl,
             @Value("${sauti.tts.cartesia.bytes-url:https://api.cartesia.ai/tts/bytes}") String bytesUrl,
+            @Value("${sauti.tts.cartesia.access-token-url:https://api.cartesia.ai/access-token}") String accessTokenUrl,
             @Value("${sauti.tts.cartesia.model-id:sonic-3.5}") String modelId,
             @Value("${sauti.tts.cartesia.output-container:raw}") String outputContainer,
             @Value("${sauti.tts.cartesia.output-encoding:pcm_s16le}") String outputEncoding,
@@ -59,6 +62,7 @@ public class CartesiaRealtimeTextToSpeechClient {
         this.version = version;
         this.websocketUrl = websocketUrl;
         this.bytesUrl = bytesUrl;
+        this.accessTokenUrl = accessTokenUrl;
         this.modelId = modelId;
         this.outputContainer = outputContainer;
         this.outputEncoding = outputEncoding;
@@ -72,6 +76,47 @@ public class CartesiaRealtimeTextToSpeechClient {
 
     public boolean isConfigured() {
         return !apiKey.isBlank();
+    }
+
+    /**
+     * Mint a short-lived, TTS-only credential for a browser voice session.
+     * The account API key remains server-side and the returned token cannot
+     * access STT, agents, or account administration.
+     */
+    public BrowserTtsSession createBrowserSession(String voiceId, int requestedTtlSeconds) {
+        if (!isConfigured()) {
+            throw new IllegalStateException("Cartesia TTS is not configured");
+        }
+        var ttlSeconds = Math.max(60, Math.min(3600, requestedTtlSeconds));
+        try {
+            var body = objectMapper.createObjectNode().put("expires_in", ttlSeconds);
+            body.set("grants", objectMapper.createObjectNode().put("tts", true));
+            var request = HttpRequest.newBuilder(URI.create(accessTokenUrl))
+                    .timeout(Duration.ofSeconds(5))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Cartesia-Version", version)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                    .build();
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new IllegalStateException(
+                        "Cartesia browser access token request failed with status " + response.statusCode()
+                );
+            }
+            var token = objectMapper.readTree(response.body()).path("token").asText("").trim();
+            if (token.isBlank()) {
+                throw new IllegalStateException("Cartesia browser access token response did not contain a token");
+            }
+            return new BrowserTtsSession("cartesia", token, providerVoiceId(voiceId), modelId);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Cartesia browser access token request was interrupted", exception);
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Unable to create a Cartesia browser voice session", exception);
+        }
     }
 
     public CompletableFuture<RealtimeTtsSession> open(String language, String voiceId, TtsAudioListener listener) {

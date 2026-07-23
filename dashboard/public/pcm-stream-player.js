@@ -5,12 +5,7 @@ class SautiPcmStreamPlayer extends AudioWorkletProcessor {
     this.initialBufferFrames = Math.max(128, configured.initialBufferFrames || Math.round(sampleRate * 0.28));
     this.maxBufferFrames = Math.max(this.initialBufferFrames, configured.maxBufferFrames || Math.round(sampleRate * 0.72));
     this.underrunStepFrames = Math.max(128, configured.underrunStepFrames || Math.round(sampleRate * 0.08));
-    this.arrivalJitterHeadroomFrames = Math.max(
-      128,
-      configured.arrivalJitterHeadroomFrames || Math.round(sampleRate * 0.04),
-    );
-    this.learnedBufferFrames = this.initialBufferFrames;
-    this.targetBufferFrames = this.learnedBufferFrames;
+    this.targetBufferFrames = this.initialBufferFrames;
     this.chunks = [];
     this.chunkOffset = 0;
     this.bufferedFrames = 0;
@@ -19,8 +14,6 @@ class SautiPcmStreamPlayer extends AudioWorkletProcessor {
     this.complete = false;
     this.drainedNotified = false;
     this.rampFramesRemaining = 0;
-    this.lastPushAtFrame = -1;
-    this.lastPushFrames = 0;
     this.port.onmessage = (message) => this.handle(message.data || {});
   }
 
@@ -28,15 +21,12 @@ class SautiPcmStreamPlayer extends AudioWorkletProcessor {
     if (message.type === "begin") {
       this.complete = false;
       this.drainedNotified = false;
-      this.lastPushAtFrame = -1;
-      this.lastPushFrames = 0;
       if (!this.started && this.bufferedFrames === 0) {
-        this.targetBufferFrames = this.learnedBufferFrames;
+        this.targetBufferFrames = this.initialBufferFrames;
       }
       return;
     }
     if (message.type === "push" && message.samples?.length) {
-      this.learnFromArrival(message.samples.length);
       this.chunks.push(message.samples);
       this.bufferedFrames += message.samples.length;
       this.drainedNotified = false;
@@ -58,30 +48,7 @@ class SautiPcmStreamPlayer extends AudioWorkletProcessor {
     this.complete = false;
     this.drainedNotified = false;
     this.rampFramesRemaining = 0;
-    this.lastPushAtFrame = -1;
-    this.lastPushFrames = 0;
-    // Clearing an interrupted utterance must not discard what this call has
-    // already learned about its provider/network jitter.
-    this.targetBufferFrames = this.learnedBufferFrames;
-  }
-
-  learnFromArrival(pushedFrames) {
-    if (this.lastPushAtFrame >= 0) {
-      const arrivalGapFrames = Math.max(0, currentFrame - this.lastPushAtFrame);
-      const uncoveredGapFrames = Math.max(0, arrivalGapFrames - this.lastPushFrames);
-      if (uncoveredGapFrames > this.arrivalJitterHeadroomFrames) {
-        const observedTarget = Math.min(
-          this.maxBufferFrames,
-          this.initialBufferFrames + uncoveredGapFrames + this.arrivalJitterHeadroomFrames,
-        );
-        this.learnedBufferFrames = Math.max(this.learnedBufferFrames, observedTarget);
-        if (!this.playing) {
-          this.targetBufferFrames = Math.max(this.targetBufferFrames, this.learnedBufferFrames);
-        }
-      }
-    }
-    this.lastPushAtFrame = currentFrame;
-    this.lastPushFrames = pushedFrames;
+    this.targetBufferFrames = this.initialBufferFrames;
   }
 
   process(_inputs, outputs) {
@@ -133,11 +100,10 @@ class SautiPcmStreamPlayer extends AudioWorkletProcessor {
       if (this.complete) {
         this.notifyDrainedIfComplete();
       } else {
-        this.learnedBufferFrames = Math.min(
+        this.targetBufferFrames = Math.min(
           this.maxBufferFrames,
-          Math.max(this.learnedBufferFrames, this.targetBufferFrames) + this.underrunStepFrames,
+          this.targetBufferFrames + this.underrunStepFrames,
         );
-        this.targetBufferFrames = this.learnedBufferFrames;
         this.port.postMessage({ type: "underrun", targetBufferFrames: this.targetBufferFrames });
       }
     }
@@ -148,11 +114,7 @@ class SautiPcmStreamPlayer extends AudioWorkletProcessor {
     if (!this.complete || this.bufferedFrames > 0 || this.drainedNotified) return;
     this.drainedNotified = true;
     this.started = false;
-    this.lastPushAtFrame = -1;
-    this.lastPushFrames = 0;
-    // Retain the adaptive target for the rest of the call. Resetting it here
-    // made every sentence repeat the same first underrun.
-    this.targetBufferFrames = this.learnedBufferFrames;
+    this.targetBufferFrames = this.initialBufferFrames;
     this.port.postMessage({ type: "drained" });
   }
 }
