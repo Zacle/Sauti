@@ -65,6 +65,14 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         when(session.dispatchedGeneration()).thenReturn(0L);
         when(session.dispatchedPurpose()).thenReturn("conversation");
         when(session.dispatchedRequiredToolName()).thenReturn("update_conversation_state");
+        var definition = Map.<String, Object>of(
+                "type", "function",
+                "name", "update_conversation_state",
+                "description", "Interpret the latest caller turn.",
+                "parameters", Map.of("type", "object")
+        );
+        when(session.dispatchedRequiredToolDefinition()).thenReturn(definition);
+        when(session.dispatchedRequiredToolTranscript()).thenReturn("Everything is right.");
         socketListener.attach(session);
         var webSocket = mock(WebSocket.class);
 
@@ -80,7 +88,9 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 true);
 
         assertThat(events).isEmpty();
-        verify(session).requestResponseWithRequiredTool("update_conversation_state", 0L);
+        verify(session).requestResponseWithRequiredTool(
+                "update_conversation_state", definition, "Everything is right.", 0L
+        );
         verify(session, never()).requestToolResultResponse(0L);
     }
 
@@ -1631,6 +1641,51 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         assertThat(event.path("response").path("instructions").asText())
                 .contains("Respond in fr", "requested booking was not saved")
                 .doesNotContain("voice service is temporarily busy");
+    }
+
+    @Test
+    void requiredSemanticToolUsesOnlyItsSchemaAndLatestCallerTurn() throws Exception {
+        var webSocket = mock(WebSocket.class);
+        when(webSocket.sendText(anyString(), eq(true)))
+                .thenReturn(CompletableFuture.completedFuture(webSocket));
+        var executor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> keepAlive = mock(ScheduledFuture.class);
+        when(executor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenAnswer(ignored -> keepAlive);
+        var session = new OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession(
+                webSocket, new ObjectMapper(), executor
+        );
+        var definition = Map.<String, Object>of(
+                "type", "function",
+                "name", "update_conversation_state",
+                "description", "Interpret the latest caller turn.",
+                "parameters", Map.of(
+                        "type", "object",
+                        "properties", Map.of("review_decision", Map.of("type", "string"))
+                )
+        );
+
+        session.requestResponseWithRequiredTool(
+                "update_conversation_state",
+                definition,
+                "Everything is right right now.",
+                0L
+        );
+
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(webSocket, timeout(1_000)).sendText(payload.capture(), eq(true));
+        var event = new ObjectMapper().readTree(payload.getValue());
+        assertThat(event.path("response").path("conversation").asText()).isEqualTo("none");
+        assertThat(event.path("response").path("max_output_tokens").asInt()).isEqualTo(256);
+        assertThat(event.path("response").path("tools")).hasSize(1);
+        assertThat(event.path("response").path("tools").path(0).path("name").asText())
+                .isEqualTo("update_conversation_state");
+        assertThat(event.path("response").path("input").path(0).path("content").path(0).path("text").asText())
+                .contains("Everything is right right now.");
+        assertThat(event.path("response").path("instructions").asText())
+                .contains("question, condition, hesitation", "do not rely on fixed phrases");
+        assertThat(session.dispatchedRequiredToolDefinition()).isEqualTo(definition);
+        assertThat(session.dispatchedRequiredToolTranscript()).isEqualTo("Everything is right right now.");
     }
 
     @Test

@@ -18,6 +18,7 @@ import {
   realtimeRateLimitRetryDelayMs,
   releaseTerminalResponseForProtocolRecovery,
   realtimeResponseRequestId,
+  realtimeToolResultOutput,
   realtimeTranscriptMirrorItem,
   ownsOriginatingToolResponse,
   protocolRecoveryResponseRequest,
@@ -175,6 +176,67 @@ test("executes server-authorized availability arguments without another model re
   }), null);
 });
 
+test("accepts only the exact server-supplied definition for a required next tool", () => {
+  const definition = {
+    type: "function",
+    name: "update_conversation_state",
+    description: "Interpret the latest caller turn.",
+    parameters: {
+      type: "object",
+      properties: { review_decision: { type: "string" } },
+    },
+  };
+  assert.deepEqual(authorizedNextToolRequest({
+    success: true,
+    result: {
+      nextTool: "update_conversation_state",
+      nextToolAuthorized: true,
+      nextToolDefinition: definition,
+    },
+  }), {
+    name: "update_conversation_state",
+    argumentsJson: "",
+    definition,
+  });
+  assert.deepEqual(authorizedNextToolRequest({
+    success: true,
+    result: {
+      nextTool: "update_conversation_state",
+      nextToolAuthorized: true,
+      nextToolDefinition: { ...definition, name: "book_slot" },
+    },
+  }), {
+    name: "update_conversation_state",
+    argumentsJson: "",
+  });
+});
+
+test("does not retain the temporary required-tool schema in conversation history", () => {
+  const output = JSON.parse(realtimeToolResultOutput({
+    success: true,
+    result: {
+      nextTool: "update_conversation_state",
+      nextToolAuthorized: true,
+      nextToolDefinition: {
+        type: "function",
+        name: "update_conversation_state",
+        description: "large transient schema",
+        parameters: { type: "object" },
+      },
+      status: "booking_review_decision_required",
+    },
+  })) as Record<string, unknown>;
+
+  assert.deepEqual(output, {
+    success: true,
+    result: {
+      nextTool: "update_conversation_state",
+      nextToolAuthorized: true,
+      status: "booking_review_decision_required",
+    },
+  });
+});
+
 test("asks the model for contextual delayed-operation speech instead of a translated template", () => {
   const booking = businessActionProgressInstruction("book_slot");
   const availability = businessActionProgressInstruction("check_availability");
@@ -323,6 +385,43 @@ test("preserves a mandatory state tool during terminal protocol recovery", () =>
       },
     },
   );
+});
+
+test("isolates a required semantic transition from the full call context", () => {
+  const definition = {
+    type: "function" as const,
+    name: "update_conversation_state",
+    description: "Interpret the latest caller turn.",
+    parameters: {
+      type: "object",
+      properties: {
+        review_decision: { type: "string" },
+        action_authorization: { type: "string" },
+      },
+    },
+  };
+  const request = protocolRecoveryResponseRequest(
+    "update_conversation_state",
+    "required-state-18",
+    definition,
+    "Everything is right right now.",
+  );
+
+  assert.equal(request.response.conversation, "none");
+  assert.equal(request.response.max_output_tokens, 256);
+  assert.deepEqual(request.response.tools, [definition]);
+  assert.deepEqual(request.response.tool_choice, {
+    type: "function",
+    name: "update_conversation_state",
+  });
+  assert.ok(request.response.input);
+  assert.ok(request.response.instructions);
+  assert.match(
+    request.response.input[0].content[0].text,
+    /Everything is right right now\./,
+  );
+  assert.match(request.response.instructions, /question, condition, hesitation/i);
+  assert.doesNotMatch(request.response.instructions, /approve_review/i);
 });
 
 test("honors a bounded provider rate-limit retry delay", () => {

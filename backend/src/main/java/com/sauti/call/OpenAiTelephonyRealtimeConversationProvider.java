@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -248,6 +249,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private String currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
         private String currentBusinessActionProgressKey = "";
         private String currentResponseRequiredToolName = "";
+        private Map<String, Object> currentResponseRequiredToolDefinition = Map.of();
+        private String currentResponseRequiredToolTranscript = "";
 
         RealtimeWebSocketListener(
                 ObjectMapper objectMapper,
@@ -376,6 +379,18 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     currentResponseRequiredToolName = dispatchedRequiredToolName == null
                             ? ""
                             : dispatchedRequiredToolName;
+                    var dispatchedRequiredToolDefinition = activeSession == null
+                            ? null
+                            : activeSession.dispatchedRequiredToolDefinition();
+                    currentResponseRequiredToolDefinition = dispatchedRequiredToolDefinition == null
+                            ? Map.of()
+                            : dispatchedRequiredToolDefinition;
+                    var dispatchedRequiredToolTranscript = activeSession == null
+                            ? null
+                            : activeSession.dispatchedRequiredToolTranscript();
+                    currentResponseRequiredToolTranscript = dispatchedRequiredToolTranscript == null
+                            ? ""
+                            : dispatchedRequiredToolTranscript;
                     currentResponseId = eventResponseId;
                     currentResponseCreatedAtNanos = System.nanoTime();
                     lifecycle(
@@ -614,6 +629,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
                         currentBusinessActionProgressKey = "";
                         currentResponseRequiredToolName = "";
+                        currentResponseRequiredToolDefinition = Map.of();
+                        currentResponseRequiredToolTranscript = "";
                     }
                     case "response.cancelled" -> {
                         lifecycle(
@@ -635,6 +652,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
                         currentBusinessActionProgressKey = "";
                         currentResponseRequiredToolName = "";
+                        currentResponseRequiredToolDefinition = Map.of();
+                        currentResponseRequiredToolTranscript = "";
                     }
                     case "error" -> {
                         var error = event.path("error");
@@ -1005,7 +1024,10 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     // no-tools recovery would ask the caller to reconfirm an
                     // approval that the caller already gave.
                     activeSession.requestResponseWithRequiredTool(
-                            currentResponseRequiredToolName, generation
+                            currentResponseRequiredToolName,
+                            currentResponseRequiredToolDefinition,
+                            currentResponseRequiredToolTranscript,
+                            generation
                     );
                 } else {
                     // Retry an ordinary malformed follow-up with tools disabled.
@@ -1034,6 +1056,14 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 String arguments,
                 long generation
         ) {
+            if (name.equals(currentResponseRequiredToolName)
+                    && !currentResponseRequiredToolDefinition.isEmpty()
+                    && !currentResponseRequiredToolTranscript.isBlank()) {
+                // A compact required-tool response is out of band. Seed its
+                // validated call into the default conversation before the
+                // function output so later turns retain a complete tool pair.
+                publishAuthorizedFunctionCall(webSocket, callId, name, arguments);
+            }
             var executionKey = name + ":" + canonicalJson(arguments);
             armBusinessActionProgress(executionKey, name, generation);
             var executionObservedAt = System.nanoTime();
@@ -1072,7 +1102,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         "item", Map.of(
                                 "type", "function_call_output",
                                 "call_id", callId,
-                                "output", write(result)
+                                "output", writeToolResultForConversation(result)
                         )
                 ));
                 if (!isCurrentGeneration(generation)) {
@@ -1114,7 +1144,14 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         );
                     } else {
                         var activeSession = session;
-                        if (activeSession != null) activeSession.requestResponseWithRequiredTool(nextTool);
+                        if (activeSession != null) {
+                            activeSession.requestResponseWithRequiredTool(
+                                    nextTool,
+                                    toolNextToolDefinition(result, nextTool),
+                                    lastCallerTranscript,
+                                    generation
+                            );
+                        }
                     }
                     return;
                 }
@@ -1277,6 +1314,25 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             return value instanceof Map<?, ?> ? write(value) : "";
         }
 
+        private Map<String, Object> toolNextToolDefinition(
+                com.sauti.llm.LlmToolResult result,
+                String expectedName
+        ) {
+            var value = result.result().get("nextToolDefinition");
+            if (!(value instanceof Map<?, ?> raw)
+                    || !"function".equals(raw.get("type"))
+                    || !expectedName.equals(raw.get("name"))
+                    || !(raw.get("description") instanceof String)
+                    || !(raw.get("parameters") instanceof Map<?, ?>)) {
+                return Map.of();
+            }
+            var definition = new LinkedHashMap<String, Object>();
+            raw.forEach((key, entry) -> {
+                if (key instanceof String name) definition.put(name, entry);
+            });
+            return Map.copyOf(definition);
+        }
+
         private boolean toolRequiresBusinessAction(com.sauti.llm.LlmToolResult result) {
             return "use_business_tool".equals(result.result().get("nextAction"));
         }
@@ -1287,6 +1343,20 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             } catch (Exception exception) {
                 return "{\"success\":false}";
             }
+        }
+
+        private String writeToolResultForConversation(com.sauti.llm.LlmToolResult result) {
+            var payload = new LinkedHashMap<String, Object>(result.result());
+            // This schema exists only to construct one compact required-tool
+            // response. Keeping it in normal history would inflate later turns.
+            payload.remove("nextToolDefinition");
+            return write(new com.sauti.llm.LlmToolResult(
+                    result.toolCallId(),
+                    result.name(),
+                    result.success(),
+                    Map.copyOf(payload),
+                    result.error()
+            ));
         }
 
         private void send(WebSocket webSocket, Map<String, ?> event) {
@@ -1491,15 +1561,52 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         void requestResponseWithRequiredTool(String toolName) {
-            requestResponseWithRequiredTool(toolName, currentGeneration());
+            requestResponseWithRequiredTool(toolName, Map.of(), "", currentGeneration());
         }
 
         void requestResponseWithRequiredTool(String toolName, long expectedGeneration) {
+            requestResponseWithRequiredTool(toolName, Map.of(), "", expectedGeneration);
+        }
+
+        void requestResponseWithRequiredTool(
+                String toolName,
+                Map<String, Object> definition,
+                String latestCallerTranscript,
+                long expectedGeneration
+        ) {
+            var response = new LinkedHashMap<String, Object>();
+            var compact = definition != null
+                    && "function".equals(definition.get("type"))
+                    && toolName.equals(definition.get("name"))
+                    && definition.get("parameters") instanceof Map<?, ?>
+                    && latestCallerTranscript != null
+                    && !latestCallerTranscript.isBlank();
+            if (compact) {
+                response.put("conversation", "none");
+                response.put("input", java.util.List.of(Map.of(
+                        "type", "message",
+                        "role", "user",
+                        "content", java.util.List.of(Map.of(
+                                "type", "input_text",
+                                "text", "LATEST_ACCEPTED_CALLER_TURN:\n" + latestCallerTranscript.trim()
+                        ))
+                )));
+                response.put(
+                        "instructions",
+                        "Perform only the required semantic state transition from the latest accepted caller turn. "
+                                + "The server retains the authoritative workflow state and will merge only explicit changes. "
+                                + "Interpret meaning in the caller's language; do not rely on fixed phrases. "
+                                + "A question, condition, hesitation, correction, rejection, or contradictory instruction "
+                                + "must block unconditional authorization. "
+                                + "Call the required function exactly once and do not produce caller-facing text."
+                );
+                response.put("tools", java.util.List.of(definition));
+                response.put("max_output_tokens", 256);
+            }
+            response.put("tool_choice", Map.of("type", "function", "name", toolName));
             enqueueResponse(Map.of(
                     "type", "response.create",
-                    "response", Map.of(
-                            "tool_choice", Map.of("type", "function", "name", toolName)
-                    )
+                    "response", Map.copyOf(response)
             ), expectedGeneration, RESPONSE_PURPOSE_CONVERSATION, "");
         }
 
@@ -1661,6 +1768,39 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             if (!(toolChoiceValue instanceof Map<?, ?> toolChoice)) return "";
             var name = toolChoice.get("name");
             return name == null ? "" : name.toString().trim();
+        }
+
+        synchronized Map<String, Object> dispatchedRequiredToolDefinition() {
+            if (inFlightResponse == null) return Map.of();
+            var responseValue = inFlightResponse.payload().get("response");
+            if (!(responseValue instanceof Map<?, ?> response)
+                    || !(response.get("tools") instanceof java.util.List<?> tools)
+                    || tools.size() != 1
+                    || !(tools.get(0) instanceof Map<?, ?> raw)) {
+                return Map.of();
+            }
+            var definition = new LinkedHashMap<String, Object>();
+            raw.forEach((key, value) -> {
+                if (key instanceof String name) definition.put(name, value);
+            });
+            return Map.copyOf(definition);
+        }
+
+        synchronized String dispatchedRequiredToolTranscript() {
+            if (inFlightResponse == null) return "";
+            var responseValue = inFlightResponse.payload().get("response");
+            if (!(responseValue instanceof Map<?, ?> response)
+                    || !(response.get("input") instanceof java.util.List<?> input)
+                    || input.size() != 1
+                    || !(input.get(0) instanceof Map<?, ?> message)
+                    || !(message.get("content") instanceof java.util.List<?> content)
+                    || content.size() != 1
+                    || !(content.get(0) instanceof Map<?, ?> part)
+                    || !(part.get("text") instanceof String text)) {
+                return "";
+            }
+            var separator = text.indexOf('\n');
+            return separator < 0 ? "" : text.substring(separator + 1).trim();
         }
 
         synchronized String cancelBusinessActionProgress(String progressKey) {

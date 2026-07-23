@@ -4937,3 +4937,35 @@ Expected:
   - `git diff --check` - passed before this handoff update (line-ending notices only).
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: repeat the reported late-call flow through availability, review approval, save, booking-number repetition, and goodbye. Diagnostics should show auxiliary `recovery_speech` or `business_progress` responses as compact out-of-band requests, no direct `rate-limit-progress:*` speech, automatic continuation without another caller utterance, and no second confirmation after an already accepted approval. A model-generated operational sentence may vary naturally between calls. If even the compact auxiliary request is refused because the account has no remaining capacity, Sauti intentionally does not speak a fabricated fallback; inspect the retained provider diagnostic and the original retry/result lifecycle.
+
+### 2026-07-23 - Isolate required semantic tool transitions from Realtime call history
+
+- Diagnosed privacy-safe report `ff5f42f3-6c90-4c3e-b77f-6b09db4cebf6`. It confirms the preceding AI-authored operational speech change worked: both the wait update and terminal failure were model-generated compact `recovery_speech` responses. The calendar was not slow or unavailable. The live availability lookup completed in 447 ms and the booking-review tool completed in 332 ms.
+- The actual failure followed `Everything is right right now.` The conversational model called `book_slot` before recording the approval through `update_conversation_state`. Sauti correctly refused to trust that direct mutation and authorized the required semantic state tool. That required-tool response still inherited the complete Realtime session, however. The model first returned 319 characters of caller-facing text instead of the mandatory tool, and its preserved-tool recovery then failed at the 40,000 TPM limit with 30,835 used plus 9,975 requested. The delayed retry requested the same 9,975 tokens and failed again with 30,114 already used.
+- Generalized server-authorized missing-argument transitions. `OpenAiRealtimeService` now attaches the exact configured definition of the one authorized next tool to its HTTP result. It does not expose any credential or unrelated tool definition.
+- Browser and telephony Realtime now execute that semantic transition as a compact out-of-band response using:
+  - `conversation: "none"`,
+  - only the latest accepted caller transcript as input,
+  - only the one server-authorized tool definition,
+  - an exact required tool choice,
+  - a 256-token output ceiling,
+  - compact multilingual semantic safety instructions that block unconditional authorization when the caller also asks a question, rejects, corrects, hesitates, adds a condition, or contradicts the action.
+- The change is workflow-generic rather than booking-phrase-specific. Any configured server-authorized next tool that still requires model-supplied arguments can use the same isolated transition. Tools with complete server-owned arguments continue executing directly without another model response.
+- Out-of-band tool calls are inserted into normal Realtime history before their function outputs so subsequent turns retain a valid native tool pair. The temporary tool schema is removed from the stored function result, preventing it from inflating every later conversational request.
+- Existing signed booking-review state, server-side authorization, and conversation-state merging remain authoritative. This reduces tokens without bypassing the safeguard that prevented an unverified direct booking.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{OpenAiRealtimeService,OpenAiTelephonyRealtimeConversationProvider}.java`
+  - `backend/src/test/java/com/sauti/call/{OpenAiRealtimeServiceTest,OpenAiTelephonyRealtimeConversationProviderTest}.java`
+  - `dashboard/features/voice-runtime/{openaiRealtime,realtimeProtocol}.ts`
+  - `dashboard/features/voice-runtime/openaiRealtime.test.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run test:voice` - passed; 42 regressions.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - focused `OpenAiRealtimeServiceTest` and `OpenAiTelephonyRealtimeConversationProviderTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `git diff --check` - passed before this handoff update (line-ending notices only).
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: repeat a review approval near the end of a similarly long call. Diagnostics should show `response_enqueued`/`response_dispatched` with `requiredToolName=update_conversation_state` and `compactRequiredTool=true`, followed by that tool executing and the server-authorized `book_slot` chain. It should not show a 319-character protocol response, a 9,975-token required-tool request, the operational wait/failure pair, or a caller-dependent retry. Also test a compound approval plus question and a correction; neither may save until the question/correction is handled and a fresh unconditional approval is received.

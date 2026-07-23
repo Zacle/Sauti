@@ -1,12 +1,14 @@
 package com.sauti.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.Agent;
 import com.sauti.llm.ConversationOrchestrator;
+import com.sauti.llm.LlmToolResult;
 import com.sauti.tool.AgentToolLoader;
 import com.sauti.tool.ToolFulfillmentRouter;
 import com.sun.net.httpserver.HttpServer;
@@ -19,6 +21,46 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class OpenAiRealtimeServiceTest {
+    @Test
+    void attachesOnlyTheRequiredNextToolDefinitionWhenArgumentsNeedModelInterpretation() {
+        var orchestrator = mock(ConversationOrchestrator.class);
+        var loader = mock(AgentToolLoader.class);
+        var router = mock(ToolFulfillmentRouter.class);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        var stateDefinition = com.sauti.tool.ConversationStateTool.definition();
+        when(loader.loadForAgent(agentId)).thenReturn(List.of(stateDefinition));
+        when(router.route(any(), any())).thenReturn(new LlmToolResult(
+                "booking-review",
+                "book_slot",
+                true,
+                Map.of(
+                        "nextTool", "update_conversation_state",
+                        "nextToolAuthorized", true
+                ),
+                ""
+        ));
+        var service = new OpenAiRealtimeService(
+                new ObjectMapper(), orchestrator, loader, router,
+                "server-secret", "http://localhost/unused", "gpt-realtime-1.5",
+                "gpt-4o-mini-transcribe", 512, 1_000, 0.8
+        );
+
+        var result = service.executeTool(
+                call, "booking-review", "book_slot", "{\"review_action\":\"approve_review\"}"
+        );
+
+        assertThat(result.result().get("nextToolDefinition"))
+                .isInstanceOfSatisfying(Map.class, definition -> {
+                    assertThat(definition.get("type")).isEqualTo("function");
+                    assertThat(definition.get("name")).isEqualTo("update_conversation_state");
+                    assertThat(definition.get("parameters")).isEqualTo(stateDefinition.inputSchema());
+                });
+    }
+
     @Test
     void configuresTelephonyPcmAndAgentSpecificTurnDetectionForCartesia() throws Exception {
         var orchestrator = mock(ConversationOrchestrator.class);

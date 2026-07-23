@@ -16,7 +16,9 @@ import {
   releaseTerminalResponseForProtocolRecovery,
   newRealtimeChainedCallId,
   realtimeResponseRequestId,
+  realtimeToolResultOutput,
   realtimeTranscriptMirrorItem,
+  type RealtimeFunctionToolDefinition,
   SAUTI_REALTIME_REQUEST_ID,
 } from "./realtimeProtocol";
 import {
@@ -72,6 +74,8 @@ type PendingResponseRequest = {
   progressKey: string;
   retryOnFailure: boolean;
   requiredToolName: string;
+  requiredToolDefinition?: RealtimeFunctionToolDefinition;
+  requiredToolTranscript: string;
 };
 
 type ResponsePhase = "idle" | "awaiting_response" | "generating_message" | "generating_tool";
@@ -203,6 +207,7 @@ export async function connectOpenAiRealtime(options: {
       retryWithoutTools: request.retryWithoutTools,
       retryOnFailure: request.retryOnFailure,
       requiredToolName: request.requiredToolName,
+      compactRequiredTool: Boolean(request.requiredToolDefinition && request.requiredToolTranscript),
       queueDepth: pendingResponseRequests.length,
     });
     request.send(request.requestId);
@@ -222,6 +227,8 @@ export async function connectOpenAiRealtime(options: {
     progressKey = "",
     retryOnFailure = false,
     requiredToolName = "",
+    requiredToolDefinition?: RealtimeFunctionToolDefinition,
+    requiredToolTranscript = "",
   ) => {
     if (generation !== outputGeneration) {
       diagnostic("response_enqueue_rejected_stale_generation", {
@@ -241,6 +248,8 @@ export async function connectOpenAiRealtime(options: {
       progressKey,
       retryOnFailure,
       requiredToolName,
+      requiredToolDefinition,
+      requiredToolTranscript,
     });
     diagnostic("response_enqueued", {
       requestId,
@@ -249,6 +258,7 @@ export async function connectOpenAiRealtime(options: {
       retryWithoutTools,
       retryOnFailure,
       requiredToolName,
+      compactRequiredTool: Boolean(requiredToolDefinition && requiredToolTranscript),
       queueDepth: pendingResponseRequests.length,
     });
     drainResponseQueue();
@@ -275,6 +285,8 @@ export async function connectOpenAiRealtime(options: {
       request.progressKey,
       false,
       request.requiredToolName,
+      request.requiredToolDefinition,
+      request.requiredToolTranscript,
     );
     return true;
   };
@@ -336,6 +348,8 @@ export async function connectOpenAiRealtime(options: {
         request.progressKey,
         false,
         request.requiredToolName,
+        request.requiredToolDefinition,
+        request.requiredToolTranscript,
       );
     }, delayMs);
     rateLimitRetryTimers.set(generation, timer);
@@ -441,6 +455,8 @@ export async function connectOpenAiRealtime(options: {
           timedOutRequest.progressKey,
           false,
           timedOutRequest.requiredToolName,
+          timedOutRequest.requiredToolDefinition,
+          timedOutRequest.requiredToolTranscript,
         );
         return;
       }
@@ -809,10 +825,22 @@ export async function connectOpenAiRealtime(options: {
     originatingResponseId = currentResponseId,
   ) => {
     const executionKey = `${name}:${canonicalJson(argumentsJson)}`;
+    const compactRequiredTool = currentResponseRequest?.requiredToolName === name
+      && Boolean(currentResponseRequest.requiredToolDefinition)
+      && Boolean(currentResponseRequest.requiredToolTranscript);
     armBusinessActionProgress(executionKey, name, generation);
     let execution = toolExecutions.get(executionKey);
     const executionStartedAt = performance.now();
     if (!execution) {
+      if (compactRequiredTool) {
+        // Out-of-band responses are not inserted into the default Realtime
+        // conversation. Publish the validated function call before its output
+        // so subsequent turns retain one complete, native tool history pair.
+        send(channel, {
+          type: "conversation.item.create",
+          item: realtimeAuthorizedFunctionCallItem(callId, name, argumentsJson),
+        });
+      }
       if (callerWaitExpected(name)) {
         const wasEmpty = pendingBusinessActionExecutions.size === 0;
         pendingBusinessActionExecutions.add(executionKey);
@@ -856,7 +884,11 @@ export async function connectOpenAiRealtime(options: {
         clearBusinessActionProgress(executionKey);
         send(channel, {
           type: "conversation.item.create",
-          item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) },
+          item: {
+            type: "function_call_output",
+            call_id: callId,
+            output: realtimeToolResultOutput(result),
+          },
         });
         const completionGeneration = outputGeneration;
         const callerSpokeWhileWaiting = generation !== completionGeneration;
@@ -891,13 +923,21 @@ export async function connectOpenAiRealtime(options: {
             );
           } else {
             enqueueResponse(
-              (requestId) => requestRequiredToolResponse(channel, nextTool.name, requestId),
+              (requestId) => requestRequiredToolResponse(
+                channel,
+                nextTool.name,
+                requestId,
+                nextTool.definition,
+                lastCallerTranscript,
+              ),
               completionGeneration,
               false,
               "conversation",
               "",
               true,
               nextTool.name,
+              nextTool.definition,
+              lastCallerTranscript,
             );
           }
           return;
@@ -997,6 +1037,11 @@ export async function connectOpenAiRealtime(options: {
     const recoveryRequiredTool = currentResponseRequest?.requiredToolName
       ?? dispatchedResponseRequest?.requiredToolName
       ?? "";
+    const recoveryRequiredDefinition = currentResponseRequest?.requiredToolDefinition
+      ?? dispatchedResponseRequest?.requiredToolDefinition;
+    const recoveryRequiredTranscript = currentResponseRequest?.requiredToolTranscript
+      ?? dispatchedResponseRequest?.requiredToolTranscript
+      ?? "";
     diagnostic("provider_protocol_recovery", {
       responseId: currentResponseId,
       generation: recoveryGeneration,
@@ -1027,6 +1072,8 @@ export async function connectOpenAiRealtime(options: {
           channel,
           recoveryRequiredTool,
           requestId,
+          recoveryRequiredDefinition,
+          recoveryRequiredTranscript,
         ),
         recoveryGeneration,
         false,
@@ -1034,6 +1081,8 @@ export async function connectOpenAiRealtime(options: {
         "",
         Boolean(recoveryRequiredTool),
         recoveryRequiredTool,
+        recoveryRequiredDefinition,
+        recoveryRequiredTranscript,
       );
       return;
     }
@@ -1728,18 +1777,30 @@ function requestProtocolRecoveryResponse(
   channel: RTCDataChannel,
   requiredToolName: string,
   requestId: string,
+  definition?: RealtimeFunctionToolDefinition,
+  latestCallerTranscript = "",
 ) {
-  send(channel, protocolRecoveryResponseRequest(requiredToolName, requestId));
+  send(channel, protocolRecoveryResponseRequest(
+    requiredToolName,
+    requestId,
+    definition,
+    latestCallerTranscript,
+  ));
 }
 
-function requestRequiredToolResponse(channel: RTCDataChannel, toolName: string, requestId: string) {
-  send(channel, {
-    type: "response.create",
-    response: {
-      tool_choice: { type: "function", name: toolName },
-      metadata: responseRequestMetadata(requestId),
-    },
-  });
+function requestRequiredToolResponse(
+  channel: RTCDataChannel,
+  toolName: string,
+  requestId: string,
+  definition?: RealtimeFunctionToolDefinition,
+  latestCallerTranscript = "",
+) {
+  send(channel, protocolRecoveryResponseRequest(
+    toolName,
+    requestId,
+    definition,
+    latestCallerTranscript,
+  ));
 }
 
 function requestBusinessActionProgress(

@@ -7,6 +7,14 @@ export type CompletedRealtimeToolCall = {
 export type AuthorizedNextToolRequest = {
   name: string;
   argumentsJson: string;
+  definition?: RealtimeFunctionToolDefinition;
+};
+
+export type RealtimeFunctionToolDefinition = {
+  type: "function";
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
 };
 
 export type AiRecoverySpeechKind =
@@ -137,13 +145,39 @@ export function realtimeAuthorizedFunctionCallItem(
 export function protocolRecoveryResponseRequest(
   requiredToolName: string,
   requestId: string,
+  definition?: RealtimeFunctionToolDefinition,
+  latestCallerTranscript = "",
 ) {
   const normalizedToolName = /^[A-Za-z][A-Za-z0-9_]{1,63}$/.test(requiredToolName)
     ? requiredToolName
     : "";
+  const compactDefinition = definition?.name === normalizedToolName ? definition : undefined;
+  const transcript = latestCallerTranscript.trim();
   return {
     type: "response.create",
     response: {
+      ...(compactDefinition && transcript
+        ? {
+            conversation: "none",
+            input: [{
+              type: "message",
+              role: "user",
+              content: [{
+                type: "input_text",
+                text: `LATEST_ACCEPTED_CALLER_TURN:\n${transcript}`,
+              }],
+            }],
+            instructions: [
+              "Perform only the required semantic state transition from the latest accepted caller turn.",
+              "The server retains the authoritative workflow state and will merge only explicit changes.",
+              "Interpret meaning in the caller's language; do not rely on fixed phrases.",
+              "A question, condition, hesitation, correction, rejection, or contradictory instruction must block unconditional authorization.",
+              "Call the required function exactly once and do not produce caller-facing text.",
+            ].join(" "),
+            tools: [compactDefinition],
+            max_output_tokens: 256,
+          }
+        : {}),
       tool_choice: normalizedToolName
         ? { type: "function", name: normalizedToolName }
         : "none",
@@ -343,7 +377,45 @@ export function authorizedNextToolRequest(
     && rawArguments && typeof rawArguments === "object" && !Array.isArray(rawArguments)
     ? JSON.stringify(rawArguments)
     : "";
-  return { name, argumentsJson };
+  const definition = realtimeFunctionToolDefinition(values.nextToolDefinition, name);
+  return definition ? { name, argumentsJson, definition } : { name, argumentsJson };
+}
+
+export function realtimeToolResultOutput(toolResult: Record<string, unknown>) {
+  const payload = toolResult.result;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return JSON.stringify(toolResult);
+  }
+  const callerVisibleResult = { ...(payload as Record<string, unknown>) };
+  // The client needs this schema to create one compact required-tool response,
+  // but repeating it in function-call history would increase every later turn.
+  delete callerVisibleResult.nextToolDefinition;
+  return JSON.stringify({ ...toolResult, result: callerVisibleResult });
+}
+
+function realtimeFunctionToolDefinition(
+  rawDefinition: unknown,
+  expectedName: string,
+): RealtimeFunctionToolDefinition | undefined {
+  if (!rawDefinition || typeof rawDefinition !== "object" || Array.isArray(rawDefinition)) {
+    return undefined;
+  }
+  const values = rawDefinition as Record<string, unknown>;
+  const parameters = values.parameters;
+  if (values.type !== "function"
+      || values.name !== expectedName
+      || typeof values.description !== "string"
+      || !parameters
+      || typeof parameters !== "object"
+      || Array.isArray(parameters)) {
+    return undefined;
+  }
+  return {
+    type: "function",
+    name: expectedName,
+    description: values.description,
+    parameters: parameters as Record<string, unknown>,
+  };
 }
 
 export function callerGuidanceInstruction(

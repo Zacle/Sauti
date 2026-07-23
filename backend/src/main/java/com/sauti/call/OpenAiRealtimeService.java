@@ -123,7 +123,7 @@ public class OpenAiRealtimeService {
                     ? Map.of()
                     : objectMapper.readValue(argumentsJson, new TypeReference<>() { });
             var toolCall = new LlmToolCall(callId, name, arguments);
-            var result = toolRouter.route(call, toolCall);
+            var result = attachRequiredNextToolDefinition(call, toolRouter.route(call, toolCall));
             if (!result.success()) {
                 LOGGER.warn("Realtime tool failed callId={} tool={} reason={}", call.getId(), name, result.error());
             }
@@ -132,6 +132,31 @@ public class OpenAiRealtimeService {
             LOGGER.warn("Realtime tool execution failed callId={} tool={}", call.getId(), name, exception);
             return new LlmToolResult(callId, name, false, Map.of(), "The requested action could not be completed");
         }
+    }
+
+    private LlmToolResult attachRequiredNextToolDefinition(Call call, LlmToolResult result) {
+        if (!result.success()
+                || !Boolean.TRUE.equals(result.result().get("nextToolAuthorized"))
+                || result.result().containsKey("nextToolArguments")) {
+            return result;
+        }
+        var nextToolName = result.result().get("nextTool");
+        if (nextToolName == null
+                || !nextToolName.toString().matches("[A-Za-z][A-Za-z0-9_]{1,63}")) {
+            return result;
+        }
+        var definition = agentToolLoader.loadForAgent(call.getAgent().getId()).stream()
+                .filter(tool -> nextToolName.toString().equals(tool.name()))
+                .findFirst()
+                .map(this::realtimeToolDefinition)
+                .orElse(null);
+        if (definition == null) return result;
+
+        var facts = new LinkedHashMap<String, Object>(result.result());
+        facts.put("nextToolDefinition", definition);
+        return new LlmToolResult(
+                result.toolCallId(), result.name(), true, Map.copyOf(facts), result.error()
+        );
     }
 
     Map<String, Object> telephonySessionConfiguration(Call call) {
@@ -182,16 +207,7 @@ public class OpenAiRealtimeService {
                 );
             }
         }
-        var tools = loadedTools.stream()
-                .map(tool -> {
-                    var definition = new LinkedHashMap<String, Object>();
-                    definition.put("type", "function");
-                    definition.put("name", tool.name());
-                    definition.put("description", tool.description() == null ? "" : tool.description());
-                    definition.put("parameters", tool.inputSchema() == null ? Map.of("type", "object") : tool.inputSchema());
-                    return definition;
-                })
-                .toList();
+        var tools = loadedTools.stream().map(this::realtimeToolDefinition).toList();
         var session = new LinkedHashMap<String, Object>();
         session.put("type", "realtime");
         session.put("model", model);
@@ -223,6 +239,18 @@ public class OpenAiRealtimeService {
             session.put("parallel_tool_calls", false);
         }
         return session;
+    }
+
+    private Map<String, Object> realtimeToolDefinition(com.sauti.llm.LlmToolDefinition tool) {
+        var definition = new LinkedHashMap<String, Object>();
+        definition.put("type", "function");
+        definition.put("name", tool.name());
+        definition.put("description", tool.description() == null ? "" : tool.description());
+        definition.put(
+                "parameters",
+                tool.inputSchema() == null ? Map.of("type", "object") : tool.inputSchema()
+        );
+        return Map.copyOf(definition);
     }
 
     private byte[] multipart(String boundary, String sdp, String sessionJson) {
