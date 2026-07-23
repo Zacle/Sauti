@@ -7,7 +7,6 @@ import {
   callerWaitExpected,
   callerGuidanceInstruction,
   confirmedEndCallResult,
-  completedResponseText,
   completedRealtimeToolCalls,
   hasUsableCallerFacingResponse,
   realtimeAuthorizedFunctionCallItem,

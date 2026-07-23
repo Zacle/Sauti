@@ -4822,3 +4822,15 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required next step: after deployment, reproduce one failing Sauti + Cartesia call, end it if possible, click **Download last diagnostics**, and attach the JSON. Diagnose from the first error/timeout and its correlated request, response, tool, and TTS events before changing behavior again. For a carrier call, retrieve backend lines containing `voice_lifecycle` and the call UUID.
+
+### 2026-07-23 - Clear the diagnostics CI lint warning
+
+- Removed the stale `completedResponseText` import left in `openaiRealtime.test.ts` after the unsafe generic slow-response tests were deleted. GitHub Actions runs ESLint with `--max-warnings=0`, so the unused import correctly failed CI even though TypeScript and the voice tests passed.
+- Files touched:
+  - `dashboard/features/voice-runtime/openaiRealtime.test.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run test:voice` - passed; 34 regressions.
+- Deployment status: not deployed. The correction remains uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
