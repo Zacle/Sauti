@@ -36,6 +36,8 @@ public class OpenAiRealtimeService {
     private final String model;
     private final String transcriptionModel;
     private final int maxOutputTokens;
+    private final int contextTokenLimit;
+    private final double contextRetentionRatio;
 
     public OpenAiRealtimeService(
             ObjectMapper objectMapper,
@@ -46,7 +48,9 @@ public class OpenAiRealtimeService {
             @Value("${sauti.realtime.openai.calls-url:https://api.openai.com/v1/realtime/calls}") String callsUrl,
             @Value("${sauti.realtime.openai.model:gpt-realtime-1.5}") String model,
             @Value("${sauti.realtime.openai.transcription-model:gpt-4o-mini-transcribe}") String transcriptionModel,
-            @Value("${sauti.realtime.openai.max-output-tokens:512}") int maxOutputTokens
+            @Value("${sauti.realtime.openai.max-output-tokens:512}") int maxOutputTokens,
+            @Value("${sauti.realtime.openai.context-token-limit:1000}") int contextTokenLimit,
+            @Value("${sauti.realtime.openai.context-retention-ratio:0.8}") double contextRetentionRatio
     ) {
         this.objectMapper = objectMapper;
         this.conversationOrchestrator = conversationOrchestrator;
@@ -57,6 +61,8 @@ public class OpenAiRealtimeService {
         this.model = model;
         this.transcriptionModel = transcriptionModel;
         this.maxOutputTokens = Math.max(64, Math.min(4096, maxOutputTokens));
+        this.contextTokenLimit = Math.max(500, Math.min(16_000, contextTokenLimit));
+        this.contextRetentionRatio = Math.max(0.5, Math.min(0.95, contextRetentionRatio));
         this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
     }
 
@@ -196,6 +202,15 @@ public class OpenAiRealtimeService {
         // and avoids reserving the model's maximum output allowance on every
         // turn in a long-lived Realtime session.
         session.put("max_output_tokens", maxOutputTokens);
+        // Keep the current server-owned state and recent exchange while
+        // preventing every long call from resending its complete transcript.
+        // This directly bounds rolling TPM consumption; max_output_tokens does
+        // not limit input/history tokens.
+        session.put("truncation", Map.of(
+                "type", "retention_ratio",
+                "retention_ratio", contextRetentionRatio,
+                "token_limits", Map.of("post_instructions", contextTokenLimit)
+        ));
         // OpenAI supplies audio understanding and VAD. Validated response text
         // is synthesized only after the client has accepted a message item.
         session.put("audio", Map.of("input", input));

@@ -330,7 +330,13 @@ public class CallPipelineService {
         if (!call.isActive()) return;
         var normalized = text.trim();
         if ("caller".equalsIgnoreCase(role)) {
-            realtimeCallerTranscripts.put(callId, normalized);
+            // Several VAD items may belong to one caller answer (phone numbers
+            // are commonly split at short pauses). Preserve every accepted
+            // fragment until the next agent response instead of retaining only
+            // the last fragment in the durable transcript.
+            realtimeCallerTranscripts.merge(callId, normalized, (existing, fragment) ->
+                    existing.isBlank() ? fragment : existing + " " + fragment
+            );
             callSessionStore.appendUserMessage(call.getTwilioCallSid(), normalized);
             return;
         }
@@ -363,6 +369,7 @@ public class CallPipelineService {
     public void completeActiveCall(String twilioCallSid, String outcome) {
         callRepository.findByTwilioCallSid(twilioCallSid)
                 .ifPresent(call -> {
+                    realtimeCallerTranscripts.remove(call.getId());
                     if (call.isActive()) {
                         call.complete(outcome);
                     }

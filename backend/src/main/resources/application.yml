@@ -83,6 +83,8 @@ sauti:
       model: ${OPENAI_REALTIME_CONVERSATION_MODEL:gpt-realtime-1.5}
       transcription-model: ${OPENAI_REALTIME_TRANSCRIPTION_MODEL:gpt-4o-mini-transcribe}
       max-output-tokens: ${OPENAI_REALTIME_MAX_OUTPUT_TOKENS:512}
+      context-token-limit: ${OPENAI_REALTIME_CONTEXT_TOKEN_LIMIT:1000}
+      context-retention-ratio: ${OPENAI_REALTIME_CONTEXT_RETENTION_RATIO:0.8}
       telephony-enabled: ${OPENAI_REALTIME_TELEPHONY_ENABLED:true}
       speech-url: ${OPENAI_SPEECH_URL:https://api.openai.com/v1/audio/speech}
       preview-model: ${OPENAI_TTS_PREVIEW_MODEL:gpt-4o-mini-tts}

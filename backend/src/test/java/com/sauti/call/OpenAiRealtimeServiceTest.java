@@ -42,7 +42,7 @@ class OpenAiRealtimeServiceTest {
         var service = new OpenAiRealtimeService(
                 mapper, orchestrator, loader, mock(ToolFulfillmentRouter.class),
                 "server-secret", "http://localhost/unused", "gpt-realtime-1.5",
-                "gpt-4o-mini-transcribe", 512
+                "gpt-4o-mini-transcribe", 512, 1_000, 0.8
         );
 
         var configurationNode = mapper.valueToTree(service.telephonySessionConfiguration(call));
@@ -58,6 +58,9 @@ class OpenAiRealtimeServiceTest {
                 .contains("\"threshold\":0.6");
         assertThat(configurationNode.at("/audio/input/format/type").asText()).isEqualTo("audio/pcm");
         assertThat(configurationNode.at("/audio/input/format/rate").asInt()).isEqualTo(24000);
+        assertThat(configurationNode.at("/truncation/type").asText()).isEqualTo("retention_ratio");
+        assertThat(configurationNode.at("/truncation/retention_ratio").asDouble()).isEqualTo(0.8);
+        assertThat(configurationNode.at("/truncation/token_limits/post_instructions").asInt()).isEqualTo(1_000);
     }
 
     @Test
@@ -88,7 +91,7 @@ class OpenAiRealtimeServiceTest {
             var service = new OpenAiRealtimeService(
                     new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
                     "server-secret", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/realtime/calls",
-                    "gpt-realtime-1.5", "gpt-4o-mini-transcribe", 512
+                    "gpt-realtime-1.5", "gpt-4o-mini-transcribe", 512, 1_000, 0.8
             );
 
             var answer = service.createWebRtcSession(call, "v=0\r\ns=sauti-offer\r\n");
@@ -101,6 +104,8 @@ class OpenAiRealtimeServiceTest {
                     .contains("\"output_modalities\":[\"text\"]")
                     .contains("\"audio\":{\"input\":")
                     .contains("\"max_output_tokens\":512")
+                    .contains("\"truncation\":{\"")
+                    .contains("\"post_instructions\":1000")
                     .contains("\"threshold\":0.6")
                     .contains("\"silence_duration_ms\":520")
                     .contains("\"create_response\":false")
@@ -139,7 +144,7 @@ class OpenAiRealtimeServiceTest {
             var service = new OpenAiRealtimeService(
                     new ObjectMapper(), orchestrator, loader, mock(ToolFulfillmentRouter.class),
                     "server-secret", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/realtime/calls",
-                    "gpt-realtime-1.5", "gpt-4o-mini-transcribe", 512
+                    "gpt-realtime-1.5", "gpt-4o-mini-transcribe", 512, 1_000, 0.8
             );
 
             assertThat(service.createWebRtcSession(call, "v=0\r\ns=hybrid-offer\r\n"))

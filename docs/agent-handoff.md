@@ -4890,3 +4890,24 @@ Expected:
   - `.\gradlew.bat :backend:test` - passed; 343 tests.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: repeat a booking through final approval and a caller-initiated goodbye. The diagnostic should contain no `post_booking_guidance` response, no model response after successful `end_call`, no generic capacity message after thanks, and no save when a review response is contradictory or conditional. The current OpenAI organization limit remains 40,000 TPM; these changes remove measured redundant requests but do not raise that provider limit. If ordinary necessary turns still exhaust it, the next evidence-based step is prompt/tool-schema compaction or a higher OpenAI usage tier, not longer UI watchdogs.
+
+### 2026-07-23 - Bound Realtime input history and preserve fragmented caller transcripts
+
+- Diagnosed privacy-safe report `df8c2c32-7805-4aa8-be83-8c5f532be81e`. It confirms the preceding closing fix is deployed: `end_call` returned deterministic speech and did not request a post-tool farewell response. There was also no `post_booking_guidance` response.
+- The goodbye still paused because the necessary conversational turn that decides to call `end_call` was itself rate-limited before any tool call. OpenAI reported a 40,000 TPM limit with 27,170 tokens already used and 15,481 requested. Earlier adjacent caller fragments similarly requested 13,751 and 13,858 tokens. The configured 512 output cap did not constrain these input/history tokens.
+- Added the official Realtime truncation configuration to every browser and telephony session: `type=retention_ratio`, configurable `token_limits.post_instructions` (default 1,000), and configurable retention ratio (default 0.8). OpenAI documents this as the mechanism for setting a smaller conversation-token window to control Realtime token usage and cost. The fixed platform instructions remain present; the server-owned full conversation state in recent tool output keeps booking facts available while older dialogue items are dropped.
+- Added `OPENAI_REALTIME_CONTEXT_TOKEN_LIMIT` and `OPENAI_REALTIME_CONTEXT_RETENTION_RATIO` to application configuration and both environment examples. These are operational tuning values, not secrets, and production receives the safe defaults even when CI/CD does not set them.
+- The apparent phone hallucination was a durable-transcript bug. Diagnostics showed three accepted caller transcription items before the next agent response: 37 characters, then 4, then 3. OpenAI saw all three and used them during state interpretation, but `CallPipelineService` stored pending caller text with `Map.put`, so each fragment overwrote the prior one and the final call transcript retained only the last `550`.
+- Pending Realtime caller transcripts now merge every accepted fragment in order until the next agent response. This makes the durable/displayed transcript match the conversation items the model received, including phone numbers split by VAD at natural pauses. Pending fragments are also cleared when an active call completes.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/call/{CallPipelineService,OpenAiRealtimeService}.java`
+  - `backend/src/test/java/com/sauti/call/{CallPipelineServiceTest,OpenAiRealtimeServiceTest}.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `OpenAiRealtimeServiceTest` and `CallPipelineServiceTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed; 344 tests.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: reproduce at least twelve conversational generations, including a phone number spoken with two short pauses and a caller-initiated goodbye. The displayed transcript must retain every phone fragment. In diagnostics, compare every `rate_limit_exceeded` request with this report's 13,751-15,481 requested-token range; those requests should be materially lower, and the agent should reach `end_call` without the capacity apology. If the fixed instructions and tool schemas alone still keep rolling requests above the 40,000 TPM tier, compact those fixed definitions or raise the OpenAI usage tier based on the new measured request sizes.

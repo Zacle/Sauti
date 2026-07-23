@@ -339,6 +339,50 @@ class CallPipelineServiceTest {
     }
 
     @Test
+    void keepsEveryCallerFragmentUntilTheNextRealtimeAgentResponse() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                mock(LanguageDetector.class),
+                mock(ConversationOrchestrator.class),
+                mock(StreamingTtsProvider.class),
+                callSessionStore,
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var call = activeCall("CA-fragmented-phone");
+        when(callRepository.findByIdAndTenantId(call.getId(), call.getTenant().getId()))
+                .thenReturn(Optional.of(call));
+        when(callTurnRepository.countByCall_Id(call.getId())).thenReturn(0);
+
+        service.recordRealtimeTranscript(
+                call.getTenant().getId(), call.getId(), "caller", "zero one one three four four one", false
+        );
+        service.recordRealtimeTranscript(
+                call.getTenant().getId(), call.getId(), "caller", "five", false
+        );
+        service.recordRealtimeTranscript(
+                call.getTenant().getId(), call.getId(), "caller", "550", false
+        );
+        service.recordRealtimeTranscript(
+                call.getTenant().getId(), call.getId(), "agent", "Let me read that number back.", false
+        );
+
+        var turn = ArgumentCaptor.forClass(CallTurn.class);
+        verify(callTurnRepository).save(turn.capture());
+        assertThat(turn.getValue().getCallerTranscript())
+                .isEqualTo("zero one one three four four one five 550");
+        assertThat(turn.getValue().getAgentResponse())
+                .isEqualTo("Let me read that number back.");
+    }
+
+    @Test
     void ignoresPunctuationOnlyLiveTranscript() {
         var callRepository = mock(CallRepository.class);
         var callTurnRepository = mock(CallTurnRepository.class);
