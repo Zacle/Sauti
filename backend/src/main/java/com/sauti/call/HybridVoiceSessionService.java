@@ -94,7 +94,11 @@ public class HybridVoiceSessionService {
                     );
                     case "stop_playback" -> stopPlayback(state);
                     case "playback_stalled" -> recoverPlaybackStall(state);
-                    case "playback_underrun" -> metrics.playbackUnderrun("hybrid", state.call.getDirection());
+                    case "playback_underrun" -> metrics.playbackUnderrun(
+                            "hybrid",
+                            state.call.getDirection(),
+                            message.path("targetBufferMs").asInt(0)
+                    );
                     case "turn_started" -> rememberTurnStart(state, message.path("generation").asLong(-1L));
                     case "playback_started" -> recordPlaybackStart(
                             state,

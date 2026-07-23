@@ -4656,3 +4656,28 @@ Expected:
   - `git diff --check` - passed after this handoff update.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: live testing should use a deliberately delayed read and write. Stay silent after the progress update and verify the final result arrives automatically; then repeat while interrupting the progress update and verify exactly one factual outcome and one mutation.
+
+### 2026-07-23 - Retain adaptive Cartesia playback jitter across the call
+
+- Traced the remaining repeated audio breakup past the original 280 ms buffer change. The AudioWorklet increased its buffer after an underrun but reset that learned target to 280 ms whenever a sentence drained or playback was interrupted. Every later response could therefore repeat the same first underrun on the same provider/network path.
+- Kept the learned PCM target for the lifetime of the browser call. The worklet now also measures PCM arrival gaps against the duration of the preceding chunk and raises the next playout target when the transport leaves an uncovered gap. The existing 720 ms ceiling still bounds the latency tradeoff.
+- Extended the browser's false-stall threshold from 1.2 seconds to 10 seconds. The backend already owns Cartesia liveness with an eight-second watchdog; the shorter browser timer was able to truncate a valid utterance during temporary provider or WebSocket jitter and reject its later audio.
+- Added operational telemetry for both underrun count and the adaptive target selected after an underrun. This distinguishes downstream PCM starvation from model/tool response latency in production.
+- Bumped the AudioWorklet asset version so deployed browsers load the correction.
+- Files touched:
+  - `dashboard/public/pcm-stream-player.js`
+  - `dashboard/features/voice-runtime/{pcmPlaybackBuffer,pcmStreamPlayer,pcmStreamPlayerWorklet.test,hybridPlaybackGate.test}.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/package.json`
+  - `backend/src/main/java/com/sauti/call/{HybridVoiceSessionService,VoiceRuntimeMetrics}.java`
+  - `backend/src/test/java/com/sauti/call/HybridVoiceSessionServiceTest.java`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - `npm.cmd run test:voice` - passed; 32 regressions including direct AudioWorklet lifecycle tests.
+  - `npm.cmd run typecheck` - passed.
+  - focused `HybridVoiceSessionServiceTest` - passed; 10 tests.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: run a multi-turn live Cartesia call after deployment and inspect `sauti.voice.playback.underruns` plus `sauti.voice.playback.rebuffer.target`. The first truly novel jitter spike can still cause one rebuffer before the session learns it; later replies on the same call should remain continuous. If underruns occur while the target is already at 720 ms, investigate Cartesia/backend WebSocket stalls or host saturation instead of increasing the buffer again.

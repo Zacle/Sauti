@@ -2,6 +2,7 @@ export type PcmPlaybackBufferProfile = {
   initialBufferFrames: number;
   maxBufferFrames: number;
   underrunStepFrames: number;
+  arrivalJitterHeadroomFrames: number;
 };
 
 export function pcmPlaybackBufferProfile(sampleRate: number): PcmPlaybackBufferProfile {
@@ -13,5 +14,6 @@ export function pcmPlaybackBufferProfile(sampleRate: number): PcmPlaybackBufferP
     initialBufferFrames: Math.round(0.28 * safeRate),
     maxBufferFrames: Math.round(0.72 * safeRate),
     underrunStepFrames: Math.round(0.08 * safeRate),
+    arrivalJitterHeadroomFrames: Math.round(0.04 * safeRate),
   };
 }

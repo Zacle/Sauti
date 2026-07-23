@@ -5,14 +5,18 @@ type PcmStreamPlayerOptions = {
   onPlaybackStarted: () => void;
   onPlaybackDrained: () => void;
   onPlaybackStalled: () => void;
-  onPlaybackUnderrun?: () => void;
+  onPlaybackUnderrun?: (targetBufferMs: number) => void;
 };
 
 type PlaybackEvent = {
   type?: "started" | "drained" | "underrun";
+  targetBufferFrames?: number;
 };
 
-const STALL_RECOVERY_MS = 1_200;
+// The backend owns Cartesia liveness with an eight-second provider watchdog.
+// A shorter browser timer used to truncate healthy speech during a temporary
+// provider/network gap and then reject the late audio as stale.
+const STALL_RECOVERY_MS = 10_000;
 
 /**
  * Feeds streamed 16 kHz PCM into one continuous audio render loop.
@@ -46,7 +50,10 @@ export class PcmStreamPlayer {
         if (this.inputComplete) this.resetResampler();
         this.options.onPlaybackDrained();
       } else if (message.data.type === "underrun") {
-        this.options.onPlaybackUnderrun?.();
+        const targetBufferFrames = Math.max(0, message.data.targetBufferFrames ?? 0);
+        this.options.onPlaybackUnderrun?.(
+          Math.round(targetBufferFrames * 1_000 / this.outputSampleRate),
+        );
         this.armStallRecovery();
       }
     };
@@ -56,7 +63,7 @@ export class PcmStreamPlayer {
     context: AudioContext,
     options: PcmStreamPlayerOptions,
   ): Promise<PcmStreamPlayer> {
-    await context.audioWorklet.addModule("/pcm-stream-player.js?v=20260723-1");
+    await context.audioWorklet.addModule("/pcm-stream-player.js?v=20260723-2");
     const bufferProfile = pcmPlaybackBufferProfile(context.sampleRate);
     const node = new AudioWorkletNode(context, "sauti-pcm-stream-player", {
       numberOfInputs: 0,
@@ -159,9 +166,8 @@ export class PcmStreamPlayer {
     this.stallTimer = window.setTimeout(() => {
       this.stallTimer = 0;
       if (this.closed) return;
-      // If the provider omitted its terminal event, stop displaying/sending a
-      // response that has no audible samples left and reset the server TTS
-      // context before the next caller turn.
+      // This is only a last-resort recovery if the backend watchdog event was
+      // itself lost. Normal provider jitter must never end the utterance.
       this.complete();
       this.options.onPlaybackStalled();
     }, STALL_RECOVERY_MS);

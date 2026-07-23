@@ -128,7 +128,10 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
                 }
               },
               onPlaybackStalled: () => sendHybridEvent({ type: "playback_stalled" }),
-              onPlaybackUnderrun: () => sendHybridEvent({ type: "playback_underrun" }),
+              onPlaybackUnderrun: (targetBufferMs) => sendHybridEvent({
+                type: "playback_underrun",
+                targetBufferMs,
+              }),
             });
           } catch {
             return null;

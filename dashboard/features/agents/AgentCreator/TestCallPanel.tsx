@@ -479,7 +479,10 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           }
         },
         onPlaybackStalled: () => sendHybridEvent({ type: "playback_stalled" }),
-        onPlaybackUnderrun: () => sendHybridEvent({ type: "playback_underrun" }),
+        onPlaybackUnderrun: (targetBufferMs) => sendHybridEvent({
+          type: "playback_underrun",
+          targetBufferMs,
+        }),
       });
     } catch {
       // Keep the existing scheduler as a compatibility fallback when a browser
