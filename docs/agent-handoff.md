@@ -4610,3 +4610,49 @@ Expected:
   - `git diff --check` - passed before this handoff update.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: live testing is still required on both stable and jittery networks. Compare the `sauti.voice.playback.underruns` metric before and after deployment. If underruns remain, tune the initial target from observed telemetry rather than increasing Cartesia text buffering or changing the model pipeline.
+
+### 2026-07-23 - Ground server-authorized Realtime tool chains and suppress false timeout replies
+
+- Diagnosed the reported business-hours failure as two connected protocol bugs rather than slow database access. `update_conversation_state` correctly selected `get_business_hours`, but Sauti executed that chained tool without inserting its call/output into Realtime history. The follow-up model therefore had no schedule data and improvised a “let me check” preamble. OpenAI then marked that otherwise usable response `incomplete`; the browser treated it as empty, silently retried it, and the retry watchdog spoke the misleading failure shown in Agent Studio.
+- Represented every server-authorized chained operation as a native Realtime `function_call` item followed by its matching `function_call_output` in both browser and telephony paths. Fast reads, availability, and approved create/update/delete operations now share the same factual history contract; the model can answer from the actual tool result without hard-coded business phrases or translated response tables.
+- Tightened browser incomplete-response recovery. A failed/incomplete response is retried only when it has no caller-facing text and no tool call. If a usable sentence was already delivered, Sauti finishes that response once instead of producing a second fallback. Phase-aware responses still require a real `final_answer`, so internal commentary cannot leak as speech.
+- Removed the obsolete switch that deliberately hid chained tool outputs from Realtime history.
+- Files touched for this change:
+  - `dashboard/features/voice-runtime/{openaiRealtime,realtimeProtocol}.ts`
+  - `dashboard/features/voice-runtime/openaiRealtime.test.ts`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - focused `OpenAiTelephonyRealtimeConversationProviderTest` - passed.
+  - `npm.cmd run test:voice` - passed; 29 regressions.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed after this handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: live provider testing is still required after deployment. Re-run the compound turn “Yes, please, but when are you open?” and confirm one factual hours answer, no “try again” fallback, and no provider timeout banner. Also test one chained availability read and one approved booking/cancellation so the native call/output history is exercised across reads and writes.
+
+### 2026-07-23 - Make slow-operation completion proactive after progress speech
+
+- Formalized progress speech as an out-of-band lifecycle notification in browser and telephony OpenAI Realtime paths. Business-action progress responses now use `conversation: none`, so “I’m still working on that” is not added as an assistant turn and never implies that the caller must answer.
+- When the underlying operation settles, Sauti now removes queued progress updates and preempts a progress response that is still being created or generated. The factual result can therefore speak or generate immediately instead of waiting behind a stale progress response or its watchdog.
+- Preserved full-duplex behavior: the microphone remains open and the caller may interrupt, but caller silence does not block completion. The accepted tool future owns the continuation and triggers the final outcome itself.
+- Added an explicit Agent Studio `working` state. After progress speech finishes, the panel says `Still working on your request…` rather than reverting to a misleading idle-looking `Listening` state; it transitions to response preparation when the result becomes ready.
+- Added regression coverage that starts a blocked booking, starts a progress response, completes the booking without emitting any caller event, verifies the progress response is cancelled, and verifies the booking confirmation is spoken automatically.
+- Files touched for this change:
+  - `dashboard/features/voice-runtime/{openaiRealtime,realtimeProtocol}.ts`
+  - `dashboard/features/voice-runtime/openaiRealtime.test.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - focused `OpenAiTelephonyRealtimeConversationProviderTest` - passed; 48 tests.
+  - `npm.cmd run test:voice` - passed; 30 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `.\gradlew.bat :backend:test` - passed; 337 tests.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `git diff --check` - passed after this handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: live testing should use a deliberately delayed read and write. Stay silent after the progress update and verify the final result arrives automatically; then repeat while interrupting the progress update and verify exactly one factual outcome and one mutation.

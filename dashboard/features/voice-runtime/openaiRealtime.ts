@@ -1,13 +1,15 @@
 import { RealtimeTurnGate } from "./realtimeTurnGate";
 import {
   authorizedNextToolRequest,
-  businessActionProgressInstruction,
+  businessActionProgressRequest,
   callerWaitExpected,
   callerGuidanceInstruction,
   completedResponseText,
   completedRealtimeToolCalls,
+  hasUsableCallerFacingResponse,
   isSlowResponseProgressEvent,
   realtimeCancellationDecision,
+  realtimeAuthorizedFunctionCallItem,
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
   SAUTI_REALTIME_REQUEST_ID,
@@ -31,6 +33,7 @@ export type OpenAiRealtimeCallbacks = {
   onCallerAudioAbandoned?: () => void;
   onCallerSpeechStarted: (agentWasResponding: boolean, generation: number) => void;
   onAgentSpeech?: (speech: { id: string; generation: number; text: string }) => void;
+  onBusinessActionPending?: (pending: boolean) => void;
   onError: (message: string) => void;
   executeTool: (callId: string, name: string, argumentsJson: string) => Promise<Record<string, unknown>>;
 };
@@ -135,6 +138,7 @@ export async function connectOpenAiRealtime(options: {
   const completedToolExecutionKeys = new Set<string>();
   const businessActionProgressTimers = new Map<string, number>();
   const activeBusinessActionProgress = new Set<string>();
+  const pendingBusinessActionExecutions = new Set<string>();
   const toolFollowupGenerations = new Set<number>();
   const noToolRecoveryGenerations = new Set<number>();
   const slowResponseRetryGenerations = new Set<number>();
@@ -576,6 +580,31 @@ export async function connectOpenAiRealtime(options: {
     businessActionProgressTimers.set(executionKey, timer);
   };
 
+  const preemptBusinessActionProgressResponse = (executionKey: string) => {
+    const activeProgress = responseActive
+      && currentResponsePurpose === "business_progress"
+      && currentBusinessActionProgressKey === executionKey;
+    const requestedProgress = responseRequestInFlight
+      && dispatchedResponseRequest?.purpose === "business_progress"
+      && dispatchedResponseRequest.progressKey === executionKey;
+    if (!activeProgress && !requestedProgress) return;
+
+    if (requestedProgress && dispatchedResponseRequest) {
+      abandonedResponseRequestIds.add(dispatchedResponseRequest.requestId);
+      expectedResponses = Math.max(0, expectedResponses - 1);
+    }
+    if (activeProgress) {
+      if (currentResponseId) ignoredResponseIds.add(currentResponseId);
+      send(channel, currentResponseId
+        ? { type: "response.cancel", response_id: currentResponseId }
+        : { type: "response.cancel" });
+    }
+    // The factual result is about to be delivered or enqueued. Release the
+    // response queue immediately instead of making it wait for a stale progress
+    // generation to finish or time out.
+    finishResponse();
+  };
+
   const clearBusinessActionProgress = (executionKey: string) => {
     const timer = businessActionProgressTimers.get(executionKey);
     if (timer !== undefined) window.clearTimeout(timer);
@@ -587,6 +616,11 @@ export async function connectOpenAiRealtime(options: {
         pendingResponseRequests.splice(index, 1);
       }
     }
+    preemptBusinessActionProgressResponse(executionKey);
+    if (pendingBusinessActionExecutions.delete(executionKey)
+      && pendingBusinessActionExecutions.size === 0) {
+      options.callbacks.onBusinessActionPending?.(false);
+    }
   };
 
   const executeToolCall = (
@@ -594,13 +628,17 @@ export async function connectOpenAiRealtime(options: {
     name: string,
     argumentsJson: string,
     generation: number,
-    publishFunctionOutput = true,
   ) => {
     cancelSlowResponseProgress(generation);
     const executionKey = `${name}:${canonicalJson(argumentsJson)}`;
     armBusinessActionProgress(executionKey, name, generation);
     let execution = toolExecutions.get(executionKey);
     if (!execution) {
+      if (callerWaitExpected(name)) {
+        const wasEmpty = pendingBusinessActionExecutions.size === 0;
+        pendingBusinessActionExecutions.add(executionKey);
+        if (wasEmpty) options.callbacks.onBusinessActionPending?.(true);
+      }
       // Do not race the real operation against a conversational timer. A
       // booking or CRM write may complete after the caller-facing threshold;
       // the progress response handles that wait while this promise retains the
@@ -612,12 +650,10 @@ export async function connectOpenAiRealtime(options: {
     void execution
       .then((result) => {
         clearBusinessActionProgress(executionKey);
-        if (publishFunctionOutput) {
-          send(channel, {
-            type: "conversation.item.create",
-            item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) },
-          });
-        }
+        send(channel, {
+          type: "conversation.item.create",
+          item: { type: "function_call_output", call_id: callId, output: JSON.stringify(result) },
+        });
         const completionGeneration = outputGeneration;
         const callerSpokeWhileWaiting = generation !== completionGeneration;
         if (result.success === false) {
@@ -638,12 +674,20 @@ export async function connectOpenAiRealtime(options: {
         const nextTool = authorizedNextToolRequest(result);
         if (nextTool) {
           if (nextTool.argumentsJson) {
+            const chainedCallId = `sauti-chain:${callId}:${nextTool.name}`;
+            send(channel, {
+              type: "conversation.item.create",
+              item: realtimeAuthorizedFunctionCallItem(
+                chainedCallId,
+                nextTool.name,
+                nextTool.argumentsJson,
+              ),
+            });
             executeToolCall(
-              `sauti-chain:${callId}:${nextTool.name}`,
+              chainedCallId,
               nextTool.name,
               nextTool.argumentsJson,
               completionGeneration,
-              false,
             );
           } else {
             enqueueResponse(
@@ -995,9 +1039,15 @@ export async function connectOpenAiRealtime(options: {
         agentTranscript = completed.finalAnswerText;
         textCompletionSent = !completed.finalAnswerText.trim();
       }
+      const hasCallerFacingResponse = hasUsableCallerFacingResponse(
+        event,
+        agentTranscript,
+        completed.hasPhases,
+        completed.finalAnswerText,
+      );
       if (!isAuxiliaryResponse
         && (completed.status === "failed" || completed.status === "incomplete")
-        && !completed.hasToolCall && !completed.finalAnswerText.trim()) {
+        && !completed.hasToolCall && !hasCallerFacingResponse) {
         const retrying = retryFailedMainResponse(
           currentResponseRequest,
           currentResponseGeneration,
@@ -1314,15 +1364,7 @@ function requestBusinessActionProgress(
   toolName: string,
   requestId: string,
 ) {
-  send(channel, {
-    type: "response.create",
-    response: {
-      instructions: businessActionProgressInstruction(toolName),
-      tool_choice: "none",
-      output_modalities: ["text"],
-      metadata: responseRequestMetadata(requestId),
-    },
-  });
+  send(channel, businessActionProgressRequest(toolName, requestId));
 }
 
 function requestPostBookingGuidance(

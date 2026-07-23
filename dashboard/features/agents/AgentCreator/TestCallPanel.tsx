@@ -40,7 +40,7 @@ type Message = {
   text: string;
 };
 
-type CallStatus = "idle" | "connecting" | "listening" | "capturing" | "thinking" | "speaking" | "ending";
+type CallStatus = "idle" | "connecting" | "listening" | "capturing" | "thinking" | "working" | "speaking" | "ending";
 type TestRuntime = "cartesia" | "vapi";
 type TestSettings = StartTestCallResponse["settings"];
 type VoiceEvent = {
@@ -128,6 +128,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   const nativeRealtimeRef = useRef(false);
   const hybridRealtimeRef = useRef(false);
   const nativeEndPendingRef = useRef(false);
+  const businessActionPendingRef = useRef(false);
   const nativeEndAuthorizedRef = useRef(false);
   const transcriptWriteRef = useRef<Promise<void>>(Promise.resolve());
   const managedAgentTranscriptRef = useRef<{ text: string; interrupted: boolean } | null>(null);
@@ -169,6 +170,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       managedAgentTranscriptRef.current = null;
       managedAgentCaptionRef.current = null;
       remoteEndPendingRef.current = false;
+      businessActionPendingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
       if (testRuntime === "cartesia" && started.mode !== "hybrid_realtime") {
         throw new Error(
@@ -360,8 +362,16 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           activeHybridSpeechRef.current = { id: speech.id, generation: speech.generation };
           sendHybridEvent({ type: "speak", ...speech });
         } : undefined,
+        onBusinessActionPending: (pending) => {
+          businessActionPendingRef.current = pending;
+          if (pending) {
+            updateStatus("working");
+          } else if (!endingRef.current && statusRef.current !== "speaking") {
+            updateStatus("thinking");
+          }
+        },
         onSpeaking: (value) => {
-          updateStatus(value ? "speaking" : "listening");
+          updateStatus(value ? "speaking" : businessActionPendingRef.current ? "working" : "listening");
           if (!value && nativeEndPendingRef.current) {
             nativeEndPendingRef.current = false;
             window.setTimeout(() => void endCall("completed"), 220);
@@ -1166,6 +1176,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
     hybridPlaybackGateRef.current.clear();
     nativeEndPendingRef.current = false;
     nativeEndAuthorizedRef.current = false;
+    businessActionPendingRef.current = false;
     const socket = socketRef.current;
     socketRef.current = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "Test call ended");
@@ -1230,14 +1241,20 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
                 {message.role === "agent" && <Volume2 size={12} />}
               </div>
             ))}
-            {(status === "thinking" || status === "speaking") && (
-              <div className="test-call-activity"><LoaderCircle className="spin" size={14} /> {status === "thinking" ? "Agent is thinking" : "Agent is speaking"}</div>
+            {(status === "thinking" || status === "working" || status === "speaking") && (
+              <div className="test-call-activity"><LoaderCircle className="spin" size={14} /> {
+                status === "thinking"
+                  ? "Agent is thinking"
+                  : status === "working"
+                    ? "Agent is still working"
+                    : "Agent is speaking"
+              }</div>
             )}
           </div>
           <div className="test-call-auto-state">
-            <span className={status === "capturing" ? "hearing" : status === "thinking" ? "thinking" : ""}><Mic size={17} /></span>
+            <span className={status === "capturing" ? "hearing" : status === "thinking" || status === "working" ? "thinking" : ""}><Mic size={17} /></span>
             <div>
-              <strong>{status === "capturing" ? "Hearing you…" : status === "listening" ? "Listening" : status === "speaking" ? `${agentName} is speaking` : "Preparing a response…"}</strong>
+              <strong>{status === "capturing" ? "Hearing you…" : status === "listening" ? "Listening" : status === "working" ? "Still working on your request…" : status === "speaking" ? `${agentName} is speaking` : "Preparing a response…"}</strong>
               <small>{status === "speaking" ? "Speak at any time to interrupt." : "Hands-free mode is active. Just speak naturally."}</small>
             </div>
           </div>

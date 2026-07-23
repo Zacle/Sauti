@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   authorizedNextToolRequest,
+  businessActionProgressRequest,
   businessActionProgressInstruction,
   callerWaitExpected,
   callerGuidanceInstruction,
   confirmedEndCallResult,
   completedResponseText,
   completedRealtimeToolCalls,
+  hasUsableCallerFacingResponse,
+  realtimeAuthorizedFunctionCallItem,
   realtimeCancellationDecision,
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
@@ -51,6 +54,48 @@ test("retries one delayed main response without surfacing a false repeat request
   assert.equal(shouldRetrySlowResponse(true, false), true);
   assert.equal(shouldRetrySlowResponse(true, true), false);
   assert.equal(shouldRetrySlowResponse(false, false), false);
+});
+
+test("does not retry an incomplete response that already delivered caller-facing text", () => {
+  const incompleteWithText = {
+    response: {
+      status: "incomplete",
+      output: [{
+        type: "message",
+        content: [{ type: "output_text", text: "We are open Monday through Friday." }],
+      }],
+    },
+  };
+
+  assert.equal(
+    hasUsableCallerFacingResponse(incompleteWithText, "", false, ""),
+    true,
+  );
+  assert.equal(
+    hasUsableCallerFacingResponse({ response: { status: "incomplete", output: [] } }, "", false, ""),
+    false,
+  );
+  assert.equal(
+    hasUsableCallerFacingResponse(incompleteWithText, "private preamble", true, ""),
+    false,
+  );
+});
+
+test("represents a server-authorized chained tool as a native realtime function call", () => {
+  assert.deepEqual(
+    realtimeAuthorizedFunctionCallItem(
+      "sauti-chain:semantic:hours",
+      "get_business_hours",
+      "{\"question\":\"When are you open?\"}",
+    ),
+    {
+      type: "function_call",
+      status: "completed",
+      call_id: "sauti-chain:semantic:hours",
+      name: "get_business_hours",
+      arguments: "{\"question\":\"When are you open?\"}",
+    },
+  );
 });
 
 test("authorizes browser call closure only from a successful end-call tool result", () => {
@@ -137,6 +182,16 @@ test("asks the model for contextual delayed-operation speech instead of a transl
   assert.match(availability, /still checking the live schedule/i);
   assert.match(reschedule, /still rescheduling the appointment/i);
   assert.match(cancellation, /still cancelling the appointment/i);
+});
+
+test("keeps delayed-operation progress outside the caller conversation", () => {
+  const request = businessActionProgressRequest("book_slot", "business-progress-4");
+
+  assert.equal(request.response.conversation, "none");
+  assert.equal(request.response.tool_choice, "none");
+  assert.equal(request.response.metadata.sauti_request_id, "business-progress-4");
+  assert.match(request.response.instructions, /still saving the appointment/i);
+  assert.match(request.response.instructions, /ask a question/i);
 });
 
 test("arms delayed progress for configured remote tools without business-name lists", () => {

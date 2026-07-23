@@ -93,6 +93,45 @@ export function completedResponseText(event: Record<string, unknown>) {
   return parts.join("\n").trim();
 }
 
+/**
+ * A Realtime response can be marked incomplete after it already emitted a
+ * usable caller-facing sentence (for example, when a provider-side limit is
+ * reached after the final text item). Do not turn that into a second response
+ * and a false failure message. Phase-aware responses remain strict so private
+ * commentary is never mistaken for the final answer.
+ */
+export function hasUsableCallerFacingResponse(
+  event: Record<string, unknown>,
+  streamedText: string,
+  hasPhases: boolean,
+  finalAnswerText: string,
+) {
+  const text = hasPhases
+    ? finalAnswerText
+    : streamedText.trim() || completedResponseText(event);
+  return Boolean(text.trim());
+}
+
+/**
+ * Server-authorized chained tools still need a native function-call item in
+ * Realtime history before their function-call output is published. This keeps
+ * the model grounded in the factual tool result instead of asking it to infer
+ * what an invisible server-side operation returned.
+ */
+export function realtimeAuthorizedFunctionCallItem(
+  callId: string,
+  name: string,
+  argumentsJson: string,
+) {
+  return {
+    type: "function_call",
+    status: "completed",
+    call_id: callId,
+    name,
+    arguments: argumentsJson,
+  };
+}
+
 export function businessActionProgressInstruction(toolName: string) {
   const operation = toolName === "book_slot"
     ? "saving the appointment"
@@ -107,6 +146,23 @@ export function businessActionProgressInstruction(toolName: string) {
     + "Give one brief, natural, professional progress update in the caller's current language. "
     + "Include a short apology for the wait and make clear that you are still working on it. "
     + "Do not claim success or failure, invent a result, repeat booking details, ask a question, or call a tool.";
+}
+
+export function businessActionProgressRequest(toolName: string, requestId: string) {
+  return {
+    type: "response.create",
+    response: {
+      // A progress update is an out-of-band lifecycle notification, not an
+      // assistant turn that waits for a caller reply.
+      conversation: "none",
+      instructions: businessActionProgressInstruction(toolName),
+      tool_choice: "none",
+      output_modalities: ["text"],
+      metadata: {
+        [SAUTI_REALTIME_REQUEST_ID]: requestId,
+      },
+    },
+  };
 }
 
 export function realtimeTranscriptMirrorItem(transcript: string) {

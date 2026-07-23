@@ -973,17 +973,6 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 String arguments,
                 long generation
         ) {
-            executeTool(webSocket, callId, name, arguments, generation, true);
-        }
-
-        private void executeTool(
-                WebSocket webSocket,
-                String callId,
-                String name,
-                String arguments,
-                long generation,
-                boolean publishFunctionOutput
-        ) {
             var executionKey = name + ":" + canonicalJson(arguments);
             armBusinessActionProgress(executionKey, name, generation);
             var execution = toolExecutions.computeIfAbsent(executionKey, ignored -> CompletableFuture.supplyAsync(() -> {
@@ -997,16 +986,14 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             }));
             execution.thenAccept(result -> {
                 clearBusinessActionProgress(executionKey);
-                if (publishFunctionOutput) {
-                    send(webSocket, Map.of(
-                            "type", "conversation.item.create",
-                            "item", Map.of(
-                                    "type", "function_call_output",
-                                    "call_id", callId,
-                                    "output", write(result)
-                            )
-                    ));
-                }
+                send(webSocket, Map.of(
+                        "type", "conversation.item.create",
+                        "item", Map.of(
+                                "type", "function_call_output",
+                                "call_id", callId,
+                                "output", write(result)
+                        )
+                ));
                 if (!isCurrentGeneration(generation)) {
                     var activeSession = session;
                     if (activeSession != null) {
@@ -1039,13 +1026,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 if (!nextTool.isBlank()) {
                     var nextArguments = toolNextToolArguments(result);
                     if (!nextArguments.isBlank()) {
+                        var chainedCallId = "sauti-chain:" + callId + ":" + nextTool;
+                        publishAuthorizedFunctionCall(
+                                webSocket, chainedCallId, nextTool, nextArguments
+                        );
                         executeTool(
                                 webSocket,
-                                "sauti-chain:" + callId + ":" + nextTool,
+                                chainedCallId,
                                 nextTool,
                                 nextArguments,
-                                generation,
-                                false
+                                generation
                         );
                     } else {
                         var activeSession = session;
@@ -1085,6 +1075,24 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     send(webSocket, Map.of("type", "response.create"));
                 }
             });
+        }
+
+        private void publishAuthorizedFunctionCall(
+                WebSocket webSocket,
+                String callId,
+                String name,
+                String arguments
+        ) {
+            send(webSocket, Map.of(
+                    "type", "conversation.item.create",
+                    "item", Map.of(
+                            "type", "function_call",
+                            "status", "completed",
+                            "call_id", callId,
+                            "name", name,
+                            "arguments", arguments
+                    )
+            ));
         }
 
         private synchronized void armBusinessActionProgress(
@@ -1128,7 +1136,25 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             if (timer != null) timer.cancel(false);
             activeBusinessActionProgress.remove(executionKey);
             var activeSession = session;
-            if (activeSession != null) activeSession.cancelPendingBusinessActionProgress(executionKey);
+            if (activeSession == null) return;
+            var abandonedRequestId = activeSession.cancelBusinessActionProgress(executionKey);
+            if (abandonedRequestId != null && !abandonedRequestId.isBlank()) {
+                abandonedResponseRequestIds.add(abandonedRequestId);
+            }
+            if (RESPONSE_PURPOSE_BUSINESS_PROGRESS.equals(currentResponsePurpose)
+                    && executionKey.equals(currentBusinessActionProgressKey)) {
+                if (!currentResponseId.isBlank()) ignoredResponseIds.add(currentResponseId);
+                activeSession.cancelProviderResponse(currentResponseId);
+                currentResponseId = "";
+                discardCurrentResponseOutput = false;
+                responseCancellationPending = false;
+                responseActive = false;
+                responseInterrupted = false;
+                textCompleted = true;
+                agentText.setLength(0);
+                currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
+                currentBusinessActionProgressKey = "";
+            }
         }
 
         private synchronized boolean isBusinessActionProgressActive(String executionKey) {
@@ -1435,6 +1461,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             enqueueResponse(Map.of(
                     "type", "response.create",
                     "response", Map.of(
+                            "conversation", "none",
                             "instructions", businessActionProgressInstruction(toolName),
                             "tool_choice", "none",
                             "output_modalities", java.util.List.of("text")
@@ -1591,10 +1618,22 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             return inFlightResponse == null ? "" : inFlightResponse.progressKey();
         }
 
-        synchronized void cancelPendingBusinessActionProgress(String progressKey) {
-            if (progressKey == null || progressKey.isBlank()) return;
+        synchronized String cancelBusinessActionProgress(String progressKey) {
+            if (progressKey == null || progressKey.isBlank()) return "";
             pendingResponses.removeIf(response -> RESPONSE_PURPOSE_BUSINESS_PROGRESS.equals(response.purpose())
                     && progressKey.equals(response.progressKey()));
+            if (inFlightResponse == null
+                    || !RESPONSE_PURPOSE_BUSINESS_PROGRESS.equals(inFlightResponse.purpose())
+                    || !progressKey.equals(inFlightResponse.progressKey())) {
+                return "";
+            }
+            var abandonedRequestId = inFlightResponse.requestId();
+            cancelSlowResponseProgress();
+            expectedResponses.updateAndGet(current -> Math.max(0, current - 1));
+            responseOutstanding = false;
+            inFlightResponse = null;
+            dispatchNextResponse();
+            return abandonedRequestId;
         }
 
         synchronized boolean isDispatchedRequest(String requestId) {
