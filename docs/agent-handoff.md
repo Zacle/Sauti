@@ -4773,3 +4773,52 @@ Expected:
   - `npm.cmd run build` - passed; 50 routes generated.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: live verification should repeat both a server-authorized availability read and a booking/update/cancellation chain. No `item.call_id` validation error, generic processing fallback, or caller-dependent resume should occur.
+
+### 2026-07-23 - Remove competing thinking responses and isolate tool cleanup
+
+- Diagnosed a second live failure after the 32-character call-ID fix was deployed. Simple confirmations such as accepting an offered time or providing the recipient name could still end in `The voice provider could not complete its response after retrying`, even when the preceding availability result was valid.
+- Removed the general 2.5-second model-generated “still working” response from both browser and telephony OpenAI Realtime paths. That path created a second out-of-band model inference while the main model response was still pending. It did not represent accepted external work, added provider load on already-slow turns, and introduced another response lifecycle that could collide with the caller-facing answer.
+- Preserved the operation-aware progress lifecycle for accepted remote tools. Availability, booking, update, cancellation, CRM, payment, messaging, and other non-immediate tools still receive a brief model-generated progress update after 1.5 seconds, do not ask the caller a question, and continue automatically from the accepted tool future when the result arrives. Immediate conversation-state, configured-hours, and end-call tools do not manufacture progress speech.
+- Preserved one silent automatic retry for a failed or timed-out main browser response. Retry authorization is now independent of progress speech, so removing the competing filler response does not make callers repeat an accepted transcript.
+- Fixed a separate browser race in completed-tool cleanup. The 500 ms settlement timer previously checked only the caller-turn generation; if a follow-up response began in the same generation, the old timer could cancel that newer response. Cleanup is now bound to the exact originating provider response ID as well as generation and tool state.
+- Added a regression proving that tool settlement owns only its originating response and cannot match a newer response in the same caller generation. Removed tests for the unsafe general slow-response mechanism while retaining the business-operation progress coverage.
+- Files touched:
+  - `dashboard/features/voice-runtime/{openaiRealtime,realtimeProtocol}.ts`
+  - `dashboard/features/voice-runtime/openaiRealtime.test.ts`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run test:voice` - passed; 32 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - focused `OpenAiTelephonyRealtimeConversationProviderTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: live verification is required after deployment. Repeat the reported flow through availability, time clarification, confirmation, name capture, and save. A slow accepted remote tool should produce progress and then its factual result without caller input; an ordinary model turn should never start a competing filler response; no prior tool timer should cancel the next response. If OpenAI still returns `failed` or `incomplete`, capture its `response.status_details` because that would identify a remaining provider-side limit rather than this lifecycle race.
+
+### 2026-07-23 - Add downloadable, privacy-safe voice lifecycle diagnostics
+
+- Stopped treating a passing automated suite as proof of live provider behavior. Agent Studio now records an evidence trail for every browser test call and exposes **Logs** during the call plus **Download last diagnostics** after it ends. The JSON remains available after normal completion or startup/runtime failure so the exact failed run can be attached for analysis.
+- Correlated WebRTC negotiation, data-channel lifecycle, caller VAD/transcription completion, response queue/dispatch/create/done/cancel/retry/watchdog events, tool execution and HTTP timing, business-progress lifecycle, Cartesia connection/synthesis/first-audio/drain/interruption, UI state changes, call completion, and basic Vapi lifecycle events.
+- Captured OpenAI terminal `status`, `status_details.reason`, and error type/code/parameter instead of reducing all failures to the customer-facing fallback. Response/request IDs, generations, purposes, elapsed times, output character counts, and payload byte counts make races and latency boundaries reconstructable.
+- Kept the report content-free: it does not contain caller or agent text, phone numbers, emails, tool arguments, tool results, API keys, or tokens. Provider error messages are truncated and redact contact data, URLs, and credential-shaped values. Added tests for both status-detail extraction and redaction.
+- Added structured telephone logs with the prefix `voice_lifecycle`, Sauti call UUID, response purpose/generation/ID, response status/reason/code and duration, transcription character counts, tool name/call ID/success/duration, and connection/error boundaries. Telephone logs likewise omit transcripts and tool payloads.
+- Avoided lifecycle logging while holding the telephony progress scheduler lock after a focused regression exposed lock-sensitive timing. The created/completed business-progress response remains observable without adding blocking I/O inside that critical section.
+- Files touched:
+  - `dashboard/features/voice-runtime/{voiceDiagnostics,voiceDiagnostics.test,openaiRealtime,cartesiaBrowserTts}.ts`
+  - `dashboard/features/agents/AgentCreator/{TestCallPanel.tsx,AgentCreator.css}`
+  - `dashboard/package.json`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `docs/{voice-runtime-providers,agent-handoff}.md`
+  - plus the preceding uncommitted Realtime lifecycle corrections documented above.
+- Verification:
+  - `npm.cmd run test:voice` - passed; 34 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - focused `OpenAiTelephonyRealtimeConversationProviderTest` - passed; 47 tests.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `git diff --check` - passed before this handoff update.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required next step: after deployment, reproduce one failing Sauti + Cartesia call, end it if possible, click **Download last diagnostics**, and attach the JSON. Diagnose from the first error/timeout and its correlated request, response, tool, and TTS events before changing behavior again. For a carrier call, retrieve backend lines containing `voice_lifecycle` and the call UUID.

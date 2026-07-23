@@ -4,26 +4,29 @@ import {
   businessActionProgressRequest,
   callerWaitExpected,
   callerGuidanceInstruction,
-  completedResponseText,
   completedRealtimeToolCalls,
   hasUsableCallerFacingResponse,
-  isSlowResponseProgressEvent,
+  ownsOriginatingToolResponse,
   realtimeCancellationDecision,
   realtimeAuthorizedFunctionCallItem,
   newRealtimeChainedCallId,
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
   SAUTI_REALTIME_REQUEST_ID,
-  shouldRetrySlowResponse,
-  slowResponseProgressRequest,
 } from "./realtimeProtocol";
+import {
+  compactDiagnosticDetails,
+  diagnosticMessage,
+  providerErrorDiagnosticDetails,
+  providerResponseDiagnosticDetails,
+  type VoiceRuntimeDiagnostic,
+} from "./voiceDiagnostics";
 
 const PRIMARY_RESPONSE_WATCHDOG_MS = 8_000;
 const RECOVERY_RESPONSE_WATCHDOG_MS = 6_000;
 const TOOL_EXECUTION_TIMEOUT_MS = 12_000;
 const BUSINESS_ACTION_PROGRESS_DELAY_MS = 1_500;
 const BUSINESS_ACTION_PROGRESS_REPEAT_MS = 8_000;
-const SLOW_RESPONSE_PROGRESS_DELAY_MS = 2_500;
 const RESPONSE_CANCELLATION_WATCHDOG_MS = 2_000;
 
 export type OpenAiRealtimeCallbacks = {
@@ -35,6 +38,7 @@ export type OpenAiRealtimeCallbacks = {
   onCallerSpeechStarted: (agentWasResponding: boolean, generation: number) => void;
   onAgentSpeech?: (speech: { id: string; generation: number; text: string }) => void;
   onBusinessActionPending?: (pending: boolean) => void;
+  onDiagnostic?: (diagnostic: VoiceRuntimeDiagnostic) => void;
   onError: (message: string) => void;
   executeTool: (callId: string, name: string, argumentsJson: string) => Promise<Record<string, unknown>>;
 };
@@ -61,14 +65,7 @@ type PendingResponseRequest = {
   retryWithoutTools: boolean;
   purpose: "conversation" | "business_progress" | "post_booking_guidance";
   progressKey: string;
-  progressOnDelay: boolean;
-};
-
-type SlowResponseProgress = {
-  requestId: string;
-  generation: number;
-  responseId: string;
-  active: boolean;
+  retryOnFailure: boolean;
 };
 
 type ResponsePhase = "idle" | "awaiting_response" | "generating_message" | "generating_tool";
@@ -85,6 +82,22 @@ export async function connectOpenAiRealtime(options: {
   recordCallerTranscript?: (text: string) => Promise<unknown>;
   responseLanguage?: string;
 }): Promise<OpenAiRealtimeConnection> {
+  const runtimeStartedAt = performance.now();
+  const diagnostic = (
+    event: string,
+    details: Record<string, string | number | boolean | null | undefined> = {},
+    level: VoiceRuntimeDiagnostic["level"] = "info",
+  ) => {
+    options.callbacks.onDiagnostic?.({
+      component: "openai_realtime",
+      event,
+      level,
+      details: compactDiagnosticDetails({
+        runtimeElapsedMs: Math.round(performance.now() - runtimeStartedAt),
+        ...details,
+      }),
+    });
+  };
   if ((options.outputMode ?? "text") === "audio") {
     throw new Error("Native Realtime audio is disabled because agent speech must be validated before playback.");
   }
@@ -142,15 +155,13 @@ export async function connectOpenAiRealtime(options: {
   const pendingBusinessActionExecutions = new Set<string>();
   const toolFollowupGenerations = new Set<number>();
   const noToolRecoveryGenerations = new Set<number>();
-  const slowResponseRetryGenerations = new Set<number>();
-  const slowResponseProgress = new Map<string, SlowResponseProgress>();
-  const slowResponseProgressResponseIds = new Set<string>();
+  const failedResponseRetryGenerations = new Set<number>();
   const pendingResponseRequests: PendingResponseRequest[] = [];
   let dispatchedResponseRequest: PendingResponseRequest | null = null;
   let currentResponseRequest: PendingResponseRequest | null = null;
   let responseRequestSequence = 0;
-  let slowResponseProgressSequence = 0;
-  let slowResponseProgressTimer = 0;
+  let responseDispatchedAt = 0;
+  let responseCreatedAt = 0;
   let callerTranscriptWriteChain = Promise.resolve();
   const callerSpeechGate = new RealtimeTurnGate();
 
@@ -162,78 +173,6 @@ export async function connectOpenAiRealtime(options: {
   const activeMainResponseRequest = () => responseActive
     ? currentResponseRequest
     : responseRequestInFlight ? dispatchedResponseRequest : null;
-
-  const cancelSlowResponseProgress = (generation?: number) => {
-    window.clearTimeout(slowResponseProgressTimer);
-    slowResponseProgressTimer = 0;
-    slowResponseProgress.forEach((progress) => {
-      if (generation !== undefined && progress.generation !== generation) return;
-      progress.active = false;
-      if (progress.responseId && channel.readyState === "open") {
-        send(channel, { type: "response.cancel", response_id: progress.responseId });
-      }
-    });
-  };
-
-  const armSlowResponseProgress = (request: PendingResponseRequest) => {
-    window.clearTimeout(slowResponseProgressTimer);
-    slowResponseProgressTimer = 0;
-    if (!request.progressOnDelay) return;
-    slowResponseProgressTimer = window.setTimeout(() => {
-      slowResponseProgressTimer = 0;
-      const active = activeMainResponseRequest();
-      if (request.generation !== outputGeneration || active?.requestId !== request.requestId) return;
-      const requestId = `browser-progress-${request.generation}-${++slowResponseProgressSequence}`;
-      slowResponseProgress.set(requestId, {
-        requestId,
-        generation: request.generation,
-        responseId: "",
-        active: true,
-      });
-      send(channel, slowResponseProgressRequest(requestId));
-      window.setTimeout(() => {
-        const pending = slowResponseProgress.get(requestId);
-        if (pending && !pending.responseId) slowResponseProgress.delete(requestId);
-      }, 15_000);
-    }, SLOW_RESPONSE_PROGRESS_DELAY_MS);
-  };
-
-  const handleSlowResponseProgressEvent = (event: Record<string, unknown>) => {
-    if (!isSlowResponseProgressEvent(event, slowResponseProgressResponseIds)) return false;
-    const type = String(event.type ?? "");
-    const response = event.response as {
-      id?: unknown;
-      metadata?: Record<string, unknown>;
-    } | undefined;
-    const eventResponseId = String(event.response_id ?? response?.id ?? "").trim();
-    const requestId = String(response?.metadata?.[SAUTI_REALTIME_REQUEST_ID] ?? "").trim();
-    const progress = slowResponseProgress.get(requestId)
-      ?? [...slowResponseProgress.values()].find((candidate) => candidate.responseId === eventResponseId);
-    if (type === "response.created" && progress && eventResponseId) {
-      progress.responseId = eventResponseId;
-      slowResponseProgressResponseIds.add(eventResponseId);
-      if (!progress.active || progress.generation !== outputGeneration) {
-        send(channel, { type: "response.cancel", response_id: eventResponseId });
-      }
-    } else if (type === "response.created" && !progress && eventResponseId) {
-      send(channel, { type: "response.cancel", response_id: eventResponseId });
-    }
-    if ((type === "response.done" || type === "response.cancelled") && progress) {
-      const speech = sanitizeVoiceOutput(completedResponseText(event));
-      if (type === "response.done" && progress.active
-        && progress.generation === outputGeneration
-        && activeMainResponseRequest() && speech) {
-        deliverAgentSpeech({
-          id: eventResponseId || `slow-progress:${progress.requestId}`,
-          generation: progress.generation,
-          text: speech,
-        });
-      }
-      slowResponseProgress.delete(progress.requestId);
-      if (eventResponseId) slowResponseProgressResponseIds.delete(eventResponseId);
-    }
-    return true;
-  };
 
   const drainResponseQueue = () => {
     if (responseActive || responseRequestInFlight || responseCancellationPending) return;
@@ -247,8 +186,17 @@ export async function connectOpenAiRealtime(options: {
     expectedResponses += 1;
     responseHasToolCall = false;
     responsePhase = "awaiting_response";
+    responseDispatchedAt = performance.now();
+    responseCreatedAt = 0;
+    diagnostic("response_dispatched", {
+      requestId: request.requestId,
+      generation: request.generation,
+      purpose: request.purpose,
+      retryWithoutTools: request.retryWithoutTools,
+      retryOnFailure: request.retryOnFailure,
+      queueDepth: pendingResponseRequests.length,
+    });
     request.send(request.requestId);
-    armSlowResponseProgress(request);
     armResponseWatchdog(
       request.generation,
       noToolRecoveryGenerations.has(request.generation)
@@ -263,17 +211,33 @@ export async function connectOpenAiRealtime(options: {
     retryWithoutTools = false,
     purpose: PendingResponseRequest["purpose"] = "conversation",
     progressKey = "",
-    progressOnDelay = false,
+    retryOnFailure = false,
   ) => {
-    if (generation !== outputGeneration) return;
+    if (generation !== outputGeneration) {
+      diagnostic("response_enqueue_rejected_stale_generation", {
+        generation,
+        activeGeneration: outputGeneration,
+        purpose,
+      }, "warn");
+      return;
+    }
+    const requestId = `browser-${generation}-${++responseRequestSequence}`;
     pendingResponseRequests.push({
-      requestId: `browser-${generation}-${++responseRequestSequence}`,
+      requestId,
       generation,
       send: request,
       retryWithoutTools,
       purpose,
       progressKey,
-      progressOnDelay,
+      retryOnFailure,
+    });
+    diagnostic("response_enqueued", {
+      requestId,
+      generation,
+      purpose,
+      retryWithoutTools,
+      retryOnFailure,
+      queueDepth: pendingResponseRequests.length,
     });
     drainResponseQueue();
   };
@@ -283,11 +247,14 @@ export async function connectOpenAiRealtime(options: {
     generation: number,
   ) => {
     if (!request || isAuxiliaryResponsePurpose(request.purpose)
-      || !shouldRetrySlowResponse(
-        request.progressOnDelay,
-        slowResponseRetryGenerations.has(generation),
-      )) return false;
-    slowResponseRetryGenerations.add(generation);
+      || !request.retryOnFailure
+      || failedResponseRetryGenerations.has(generation)) return false;
+    failedResponseRetryGenerations.add(generation);
+    diagnostic("response_retry_scheduled", {
+      failedRequestId: request.requestId,
+      generation,
+      purpose: request.purpose,
+    }, "warn");
     enqueueResponse(
       request.send,
       generation,
@@ -299,7 +266,7 @@ export async function connectOpenAiRealtime(options: {
     return true;
   };
 
-  const finishResponse = (preserveSlowProgress = false) => {
+  const finishResponse = () => {
     window.clearTimeout(responseWatchdog);
     responseWatchdog = 0;
     window.clearTimeout(toolResponseSettleTimer);
@@ -315,7 +282,6 @@ export async function connectOpenAiRealtime(options: {
     currentResponseId = "";
     currentResponseRequest = null;
     currentResponseGeneration = outputGeneration;
-    if (!preserveSlowProgress) cancelSlowResponseProgress();
     window.setTimeout(drainResponseQueue, 0);
   };
 
@@ -323,6 +289,12 @@ export async function connectOpenAiRealtime(options: {
     window.clearTimeout(responseWatchdog);
     responseWatchdog = window.setTimeout(() => {
       if (responseCancellationPending) {
+        diagnostic("response_cancellation_watchdog_released", {
+          responseId: currentResponseId,
+          requestId: dispatchedResponseRequest?.requestId ?? currentResponseRequest?.requestId ?? "",
+          generation,
+          phase: responsePhase,
+        }, "warn");
         if (currentResponseId) ignoredResponseIds.add(currentResponseId);
         if (responseRequestInFlight && dispatchedResponseRequest) {
           abandonedResponseRequestIds.add(dispatchedResponseRequest.requestId);
@@ -336,11 +308,8 @@ export async function connectOpenAiRealtime(options: {
       if (generation !== outputGeneration || (!responseActive && !responseRequestInFlight)) return;
       const failedPhase = responsePhase;
       const timedOutRequest = activeMainResponseRequest();
-      const retrySlowResponse = Boolean(timedOutRequest)
-        && shouldRetrySlowResponse(
-          timedOutRequest?.progressOnDelay === true,
-          slowResponseRetryGenerations.has(generation),
-        );
+      const retryMainResponse = Boolean(timedOutRequest?.retryOnFailure)
+        && !failedResponseRetryGenerations.has(generation);
       const auxiliaryOnly = responseActive
         ? isAuxiliaryResponsePurpose(currentResponsePurpose)
         : isAuxiliaryResponsePurpose(dispatchedResponseRequest?.purpose);
@@ -349,6 +318,19 @@ export async function connectOpenAiRealtime(options: {
         && (currentResponseCanRetryWithoutTools
           || dispatchedResponseRequest?.retryWithoutTools === true);
       const providerResponseActive = responseActive;
+      diagnostic("response_watchdog_timeout", {
+        responseId: currentResponseId,
+        requestId: timedOutRequest?.requestId ?? "",
+        generation,
+        phase: failedPhase,
+        purpose: timedOutRequest?.purpose ?? currentResponsePurpose,
+        timeoutMs,
+        providerResponseActive,
+        responseRequestInFlight,
+        responseHasToolCall,
+        retryMainResponse,
+        canRetryWithoutTools,
+      }, "error");
       if (currentResponseId) ignoredResponseIds.add(currentResponseId);
       if (responseRequestInFlight) {
         if (dispatchedResponseRequest) {
@@ -366,10 +348,15 @@ export async function connectOpenAiRealtime(options: {
           ? { type: "response.cancel", response_id: currentResponseId }
           : { type: "response.cancel" });
       }
-      finishResponse(retrySlowResponse);
+      finishResponse();
       if (auxiliaryOnly) return;
-      if (retrySlowResponse && timedOutRequest && generation === outputGeneration) {
-        slowResponseRetryGenerations.add(generation);
+      if (retryMainResponse && timedOutRequest && generation === outputGeneration) {
+        failedResponseRetryGenerations.add(generation);
+        diagnostic("response_watchdog_retry_scheduled", {
+          failedRequestId: timedOutRequest.requestId,
+          generation,
+          phase: failedPhase,
+        }, "warn");
         enqueueResponse(
           timedOutRequest.send,
           generation,
@@ -382,6 +369,10 @@ export async function connectOpenAiRealtime(options: {
       }
       if (canRetryWithoutTools && generation === outputGeneration) {
         noToolRecoveryGenerations.add(generation);
+        diagnostic("response_watchdog_tool_recovery_scheduled", {
+          generation,
+          phase: failedPhase,
+        }, "warn");
         enqueueResponse((requestId) => requestToolResultResponse(channel, requestId), generation);
         return;
       }
@@ -403,6 +394,13 @@ export async function connectOpenAiRealtime(options: {
     const cancelledGeneration = responseRequestInFlight
       ? (dispatchedResponseRequest?.generation ?? currentResponseGeneration)
       : currentResponseGeneration;
+    diagnostic("response_cancellation_requested", {
+      responseId: currentResponseId,
+      requestId: dispatchedResponseRequest?.requestId ?? currentResponseRequest?.requestId ?? "",
+      generation: cancelledGeneration,
+      phase: responsePhase,
+      providerResponseCreated: decision.cancelProviderNow,
+    }, "warn");
     armResponseWatchdog(cancelledGeneration, RESPONSE_CANCELLATION_WATCHDOG_MS);
     if (decision.cancelProviderNow) {
       send(channel, currentResponseId
@@ -412,9 +410,14 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const invalidateOutputForCallerTurn = () => {
-    cancelSlowResponseProgress();
+    const previousGeneration = outputGeneration;
     outputGeneration += 1;
     callerTurnGeneration = outputGeneration;
+    diagnostic("caller_turn_generation_advanced", {
+      previousGeneration,
+      generation: outputGeneration,
+      agentResponseActive: responseActive || responseRequestInFlight,
+    });
     for (let index = pendingResponseRequests.length - 1; index >= 0; index -= 1) {
       if (pendingResponseRequests[index]?.generation !== outputGeneration) {
         pendingResponseRequests.splice(index, 1);
@@ -427,7 +430,7 @@ export async function connectOpenAiRealtime(options: {
     }
     toolFollowupGenerations.clear();
     noToolRecoveryGenerations.clear();
-    slowResponseRetryGenerations.clear();
+    failedResponseRetryGenerations.clear();
     // A caller interruption cancels speech, not an already accepted external
     // operation. Keep its promise alive so a late provider success is never
     // converted into a second execution or a false failure.
@@ -466,6 +469,11 @@ export async function connectOpenAiRealtime(options: {
     const speech = sanitizeVoiceOutput(candidate.text);
     if (!speech) return;
     protocolRecoveryAttempts = 0;
+    diagnostic("agent_speech_delivered_to_tts", {
+      speechId: candidate.id,
+      generation: candidate.generation,
+      textChars: speech.length,
+    });
     options.callbacks.onAgentSpeech?.({ ...candidate, text: speech });
     options.callbacks.onAgentTranscript(speech, false);
   };
@@ -480,6 +488,12 @@ export async function connectOpenAiRealtime(options: {
     deliveredSpeechIds.add(idKey);
     deliveredSpeechFingerprints.add(fingerprintKey);
     if (pendingCallerTurns.size > 0) {
+      diagnostic("agent_speech_deferred_for_caller_transcription", {
+        speechId: candidate.id,
+        generation: candidate.generation,
+        textChars: speech.length,
+        pendingCallerTurns: pendingCallerTurns.size,
+      });
       deferredAgentSpeech.push({ ...candidate, text: speech });
       return true;
     }
@@ -524,6 +538,11 @@ export async function connectOpenAiRealtime(options: {
     if (!key || !pendingCallerTurns.has(key)) return;
     window.clearTimeout(pendingCallerTurns.get(key) ?? 0);
     const watchdog = window.setTimeout(() => {
+      diagnostic("caller_transcription_watchdog_timeout", {
+        callerTurnKey: key,
+        timeoutMs,
+        deferredSpeech: deferredAgentSpeech.length,
+      }, "warn");
       pendingCallerTurns.delete(key);
       if (activeCallerTurnKey === key) {
         activeCallerTurnKey = "";
@@ -542,10 +561,31 @@ export async function connectOpenAiRealtime(options: {
     deliverAgentSpeech({ id: speechId, generation, text: failure });
   };
 
-  const settleCompletedToolResponse = (generation: number) => {
+  const settleCompletedToolResponse = (
+    generation: number,
+    originatingResponseId: string,
+  ) => {
     window.clearTimeout(toolResponseSettleTimer);
     toolResponseSettleTimer = window.setTimeout(() => {
-      if (generation !== outputGeneration || !responseActive || !responseHasToolCall) return;
+      const ownsResponse = ownsOriginatingToolResponse(
+        originatingResponseId,
+        currentResponseId,
+        generation,
+        currentResponseGeneration,
+        responseActive,
+        responseHasToolCall,
+      );
+      diagnostic(ownsResponse
+        ? "tool_originating_response_settled"
+        : "tool_settlement_ignored_newer_response", {
+        originatingResponseId,
+        activeResponseId: currentResponseId,
+        originatingGeneration: generation,
+        activeGeneration: currentResponseGeneration,
+        responseActive,
+        responseHasToolCall,
+      }, ownsResponse ? "info" : "warn");
+      if (!ownsResponse) return;
       if (currentResponseId) ignoredResponseIds.add(currentResponseId);
       send(channel, { type: "response.cancel" });
       finishResponse();
@@ -560,10 +600,26 @@ export async function connectOpenAiRealtime(options: {
   ) => {
     if (!callerWaitExpected(name)
       || businessActionProgressTimers.has(executionKey)) return;
+    diagnostic("tool_progress_armed", {
+      toolName: name,
+      generation,
+      delayMs,
+    });
     const timer = window.setTimeout(() => {
       businessActionProgressTimers.delete(executionKey);
-      if (generation !== outputGeneration) return;
+      if (generation !== outputGeneration) {
+        diagnostic("tool_progress_suppressed_stale_generation", {
+          toolName: name,
+          generation,
+          activeGeneration: outputGeneration,
+        }, "warn");
+        return;
+      }
       activeBusinessActionProgress.add(executionKey);
+      diagnostic("tool_progress_response_requested", {
+        toolName: name,
+        generation,
+      });
       enqueueResponse(
         (requestId) => requestBusinessActionProgress(channel, name, requestId),
         generation,
@@ -589,6 +645,12 @@ export async function connectOpenAiRealtime(options: {
       && dispatchedResponseRequest?.purpose === "business_progress"
       && dispatchedResponseRequest.progressKey === executionKey;
     if (!activeProgress && !requestedProgress) return;
+    diagnostic("tool_progress_preempted_for_result", {
+      activeProgress,
+      requestedProgress,
+      responseId: currentResponseId,
+      requestId: dispatchedResponseRequest?.requestId ?? "",
+    });
 
     if (requestedProgress && dispatchedResponseRequest) {
       abandonedResponseRequestIds.add(dispatchedResponseRequest.requestId);
@@ -629,11 +691,12 @@ export async function connectOpenAiRealtime(options: {
     name: string,
     argumentsJson: string,
     generation: number,
+    originatingResponseId = currentResponseId,
   ) => {
-    cancelSlowResponseProgress(generation);
     const executionKey = `${name}:${canonicalJson(argumentsJson)}`;
     armBusinessActionProgress(executionKey, name, generation);
     let execution = toolExecutions.get(executionKey);
+    const executionStartedAt = performance.now();
     if (!execution) {
       if (callerWaitExpected(name)) {
         const wasEmpty = pendingBusinessActionExecutions.size === 0;
@@ -645,11 +708,36 @@ export async function connectOpenAiRealtime(options: {
       // the progress response handles that wait while this promise retains the
       // factual result. Transport/provider timeouts belong in the integration
       // adapter, where their outcome is authoritative.
+      diagnostic("tool_execution_started", {
+        toolCallId: callId,
+        toolName: name,
+        generation,
+        originatingResponseId,
+        argumentsBytes: new TextEncoder().encode(argumentsJson).length,
+        callerWaitExpected: callerWaitExpected(name),
+      });
       execution = options.callbacks.executeTool(callId, name, argumentsJson);
       toolExecutions.set(executionKey, execution);
+    } else {
+      diagnostic("tool_execution_reused", {
+        toolCallId: callId,
+        toolName: name,
+        generation,
+      }, "warn");
     }
     void execution
       .then((result) => {
+        diagnostic("tool_execution_completed", {
+          toolCallId: callId,
+          toolName: name,
+          requestedGeneration: generation,
+          activeGeneration: outputGeneration,
+          durationMs: Math.round(performance.now() - executionStartedAt),
+          success: result.success !== false,
+          resultBytes: new TextEncoder().encode(JSON.stringify(result)).length,
+          hasAuthorizedNextTool: Boolean(authorizedNextToolRequest(result)),
+          hasDeterministicSpeech: Boolean(toolSpokenResponse(name, result)),
+        }, result.success === false ? "warn" : "info");
         clearBusinessActionProgress(executionKey);
         send(channel, {
           type: "conversation.item.create",
@@ -674,6 +762,12 @@ export async function connectOpenAiRealtime(options: {
         }
         const nextTool = authorizedNextToolRequest(result);
         if (nextTool) {
+          diagnostic("tool_authorized_next_action", {
+            toolCallId: callId,
+            toolName: name,
+            nextToolName: nextTool.name,
+            argumentsProvided: Boolean(nextTool.argumentsJson),
+          });
           if (nextTool.argumentsJson) {
             const chainedCallId = newRealtimeChainedCallId();
             send(channel, {
@@ -689,6 +783,7 @@ export async function connectOpenAiRealtime(options: {
               nextTool.name,
               nextTool.argumentsJson,
               completionGeneration,
+              "",
             );
           } else {
             enqueueResponse(
@@ -764,7 +859,15 @@ export async function connectOpenAiRealtime(options: {
           );
         }
       })
-      .catch(() => {
+      .catch((caught) => {
+        diagnostic("tool_execution_failed", {
+          toolCallId: callId,
+          toolName: name,
+          requestedGeneration: generation,
+          activeGeneration: outputGeneration,
+          durationMs: Math.round(performance.now() - executionStartedAt),
+          message: diagnosticMessage(caught instanceof Error ? caught.message : caught),
+        }, "error");
         clearBusinessActionProgress(executionKey);
         send(channel, {
           type: "conversation.item.create",
@@ -787,11 +890,18 @@ export async function connectOpenAiRealtime(options: {
       })
       .finally(() => {
         completedToolExecutionKeys.add(executionKey);
-        settleCompletedToolResponse(generation);
+        settleCompletedToolResponse(generation, originatingResponseId);
       });
   };
 
   const recoverProtocolOutput = (cancelResponse: boolean) => {
+    diagnostic("provider_protocol_recovery", {
+      responseId: currentResponseId,
+      generation: currentResponseGeneration,
+      attempt: protocolRecoveryAttempts + 1,
+      cancelResponse,
+      phase: responsePhase,
+    }, "warn");
     agentTranscript = "";
     textCompletionSent = true;
     if (currentOutputItemId) {
@@ -873,12 +983,15 @@ export async function connectOpenAiRealtime(options: {
   channel.onmessage = (message) => {
     let event: Record<string, unknown>;
     try { event = JSON.parse(String(message.data)) as Record<string, unknown>; } catch { return; }
-    if (handleSlowResponseProgressEvent(event)) return;
     const type = String(event.type ?? "");
     const eventResponseId = responseId(event);
     if (type === "response.created") {
       const createdRequestId = realtimeResponseRequestId(event);
       if (createdRequestId && abandonedResponseRequestIds.delete(createdRequestId)) {
+        diagnostic("response_created_for_abandoned_request", {
+          responseId: eventResponseId,
+          requestId: createdRequestId,
+        }, "warn");
         if (eventResponseId) ignoredResponseIds.add(eventResponseId);
         send(channel, eventResponseId
           ? { type: "response.cancel", response_id: eventResponseId }
@@ -887,6 +1000,11 @@ export async function connectOpenAiRealtime(options: {
       }
       if (createdRequestId && dispatchedResponseRequest
         && createdRequestId !== dispatchedResponseRequest.requestId) {
+        diagnostic("response_created_with_unexpected_request_id", {
+          responseId: eventResponseId,
+          requestId: createdRequestId,
+          expectedRequestId: dispatchedResponseRequest.requestId,
+        }, "error");
         if (eventResponseId) ignoredResponseIds.add(eventResponseId);
         send(channel, eventResponseId
           ? { type: "response.cancel", response_id: eventResponseId }
@@ -894,6 +1012,11 @@ export async function connectOpenAiRealtime(options: {
         return;
       }
       if (expectedResponses <= 0) {
+        diagnostic("response_created_without_expected_request", {
+          responseId: eventResponseId,
+          requestId: createdRequestId,
+          expectedResponses,
+        }, "error");
         if (eventResponseId) ignoredResponseIds.add(eventResponseId);
         send(channel, eventResponseId
           ? { type: "response.cancel", response_id: eventResponseId }
@@ -912,7 +1035,24 @@ export async function connectOpenAiRealtime(options: {
       responsePhase = "generating_message";
       currentResponseId = eventResponseId;
       currentResponseGeneration = requestedGeneration;
+      responseCreatedAt = performance.now();
+      diagnostic("response_created", {
+        responseId: eventResponseId,
+        requestId: currentResponseRequest?.requestId ?? createdRequestId,
+        generation: requestedGeneration,
+        purpose: currentResponsePurpose,
+        dispatchToCreatedMs: responseDispatchedAt
+          ? Math.round(responseCreatedAt - responseDispatchedAt)
+          : 0,
+      });
       if (responseCancellationPending || requestedGeneration !== outputGeneration) {
+        diagnostic("response_created_for_stale_or_cancelled_turn", {
+          responseId: eventResponseId,
+          requestId: currentResponseRequest?.requestId ?? createdRequestId,
+          requestedGeneration,
+          activeGeneration: outputGeneration,
+          responseCancellationPending,
+        }, "warn");
         if (eventResponseId) ignoredResponseIds.add(eventResponseId);
         discardCurrentResponseOutput = true;
         responseCancellationPending = true;
@@ -938,6 +1078,12 @@ export async function connectOpenAiRealtime(options: {
     const responseTerminal = type === "response.done" || type === "response.cancelled";
     const ignoredResponse = Boolean(eventResponseId && ignoredResponseIds.has(eventResponseId));
     if (ignoredResponse && responseTerminal) {
+      diagnostic("ignored_response_terminal", {
+        responseId: eventResponseId,
+        eventType: type,
+        generation: currentResponseGeneration,
+        ...providerResponseDiagnosticDetails(event),
+      }, "warn");
       if (!eventResponseId || currentResponseId === eventResponseId
         || (responseCancellationPending && !responseActive)) {
         currentResponseId = "";
@@ -964,6 +1110,12 @@ export async function connectOpenAiRealtime(options: {
     if (type === "conversation.item.input_audio_transcription.completed") {
       const transcript = String(event.transcript ?? "").trim();
       const meaningfulTranscript = isMeaningfulCallerTranscript(transcript);
+      diagnostic("caller_transcription_completed", {
+        itemId: String(event.item_id ?? ""),
+        textChars: transcript.length,
+        meaningful: meaningfulTranscript,
+        pendingCallerTurns: pendingCallerTurns.size,
+      });
       if (meaningfulTranscript && shouldProcessCallerTranscript(event, transcript)) {
         const speechStartGeneration = callerTurnGeneration;
         callerSpeechGate.confirmFinal(transcript);
@@ -982,6 +1134,10 @@ export async function connectOpenAiRealtime(options: {
       finishPendingCallerTranscription(event);
     }
     if (type === "conversation.item.input_audio_transcription.failed") {
+      diagnostic("caller_transcription_failed", {
+        itemId: String(event.item_id ?? ""),
+        ...providerErrorDiagnosticDetails(event),
+      }, "error");
       callerTurnGeneration = null;
       callerSpeechActive = false;
       callerTurnAgentWasResponding = false;
@@ -1046,6 +1202,25 @@ export async function connectOpenAiRealtime(options: {
         completed.hasPhases,
         completed.finalAnswerText,
       );
+      diagnostic("response_completed", {
+        responseId: eventResponseId || currentResponseId,
+        requestId: currentResponseRequest?.requestId ?? "",
+        generation: currentResponseGeneration,
+        purpose: currentResponsePurpose,
+        phase: responsePhase,
+        responseTotalMs: responseDispatchedAt
+          ? Math.round(performance.now() - responseDispatchedAt)
+          : 0,
+        createdToDoneMs: responseCreatedAt
+          ? Math.round(performance.now() - responseCreatedAt)
+          : 0,
+        hasToolCall: completed.hasToolCall || responseHasToolCall,
+        hasCallerFacingResponse,
+        outputTextChars: completed.hasPhases
+          ? completed.finalAnswerText.length
+          : agentTranscript.length,
+        ...providerResponseDiagnosticDetails(event),
+      }, completed.status === "completed" ? "info" : "error");
       if (!isAuxiliaryResponse
         && (completed.status === "failed" || completed.status === "incomplete")
         && !completed.hasToolCall && !hasCallerFacingResponse) {
@@ -1054,6 +1229,12 @@ export async function connectOpenAiRealtime(options: {
           currentResponseGeneration,
         );
         if (!retrying) {
+          diagnostic("response_failure_exhausted", {
+            responseId: eventResponseId || currentResponseId,
+            requestId: currentResponseRequest?.requestId ?? "",
+            generation: currentResponseGeneration,
+            ...providerResponseDiagnosticDetails(event),
+          }, "error");
           deliverAgentSpeech({
             id: eventResponseId || currentResponseId || `response-failed:${currentResponseGeneration}`,
             generation: currentResponseGeneration,
@@ -1065,7 +1246,7 @@ export async function connectOpenAiRealtime(options: {
       }
       if (completed.status === "completed") {
         noToolRecoveryGenerations.delete(currentResponseGeneration);
-        slowResponseRetryGenerations.delete(currentResponseGeneration);
+        failedResponseRetryGenerations.delete(currentResponseGeneration);
       }
     }
     // A completed response is a defensive flush for transports that omit the
@@ -1127,6 +1308,11 @@ export async function connectOpenAiRealtime(options: {
       callerSpeechActive = true;
       callerTurnAgentWasResponding = responseActive || responseRequestInFlight;
       callerSpeechGate.begin();
+      diagnostic("caller_speech_started", {
+        itemId: pendingTurnKey,
+        agentResponseActive: callerTurnAgentWasResponding,
+        generation: outputGeneration,
+      });
       armCallerTranscriptionWatchdog(pendingTurnKey, 15_000);
       const debounceMs = Math.max(180, options.bargeInDebounceMs ?? 0);
       window.clearTimeout(bargeInTimer);
@@ -1142,11 +1328,22 @@ export async function connectOpenAiRealtime(options: {
     }
     if (type === "input_audio_buffer.speech_stopped") {
       callerSpeechActive = false;
+      diagnostic("caller_speech_stopped", {
+        itemId: callerTurnKey(event) || activeCallerTurnKey,
+        generation: callerTurnGeneration ?? outputGeneration,
+      });
       window.clearTimeout(bargeInTimer);
       const pendingTurnKey = callerTurnKey(event) || activeCallerTurnKey;
       armCallerTranscriptionWatchdog(pendingTurnKey, 4_000);
     }
     if (type === "response.cancelled") {
+      diagnostic("response_cancelled", {
+        responseId: eventResponseId || currentResponseId,
+        requestId: currentResponseRequest?.requestId ?? "",
+        generation: currentResponseGeneration,
+        phase: responsePhase,
+        ...providerResponseDiagnosticDetails(event),
+      }, "warn");
       if (!eventResponseId || currentResponseId === eventResponseId || responseCancellationPending) {
         agentTranscript = "";
         agentInterrupted = false;
@@ -1197,8 +1394,15 @@ export async function connectOpenAiRealtime(options: {
       }
     }
     if (type === "error") {
-      const error = event.error as { message?: string } | undefined;
+      const error = event.error as { message?: string; code?: string; type?: string } | undefined;
       const message = error?.message ?? "The realtime voice session encountered an error.";
+      diagnostic("provider_error", {
+        responseId: eventResponseId || currentResponseId,
+        requestId: dispatchedResponseRequest?.requestId ?? currentResponseRequest?.requestId ?? "",
+        generation: dispatchedResponseRequest?.generation ?? currentResponseGeneration,
+        phase: responsePhase,
+        ...providerErrorDiagnosticDetails(event),
+      }, "error");
       if (/conversation already has an active response|active response in progress/i.test(message)) {
         if (dispatchedResponseRequest) pendingResponseRequests.unshift(dispatchedResponseRequest);
         dispatchedResponseRequest = null;
@@ -1230,9 +1434,20 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const opened = new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error("The OpenAI Realtime channel timed out.")), 10_000);
+    const timeout = window.setTimeout(() => {
+      diagnostic("data_channel_open_timeout", {
+        timeoutMs: 10_000,
+        peerConnectionState: peer.connectionState,
+        iceConnectionState: peer.iceConnectionState,
+      }, "error");
+      reject(new Error("The OpenAI Realtime channel timed out."));
+    }, 10_000);
     channel.onopen = () => {
       window.clearTimeout(timeout);
+      diagnostic("data_channel_open", {
+        peerConnectionState: peer.connectionState,
+        iceConnectionState: peer.iceConnectionState,
+      });
       options.callbacks.onConnected();
       if (options.greeting.trim()) {
         enqueueResponse(
@@ -1248,13 +1463,35 @@ export async function connectOpenAiRealtime(options: {
     };
     channel.onerror = () => {
       window.clearTimeout(timeout);
+      diagnostic("data_channel_error", {
+        peerConnectionState: peer.connectionState,
+        iceConnectionState: peer.iceConnectionState,
+      }, "error");
       reject(new Error("The OpenAI Realtime data channel could not be opened."));
+    };
+    channel.onclose = () => {
+      diagnostic("data_channel_closed", {
+        peerConnectionState: peer.connectionState,
+        iceConnectionState: peer.iceConnectionState,
+      }, "warn");
     };
   });
 
+  diagnostic("webrtc_offer_started", {
+    microphoneTracks: options.microphone.getAudioTracks().length,
+    outputMode: options.outputMode ?? "text",
+  });
+  const offerStartedAt = performance.now();
   const offer = await peer.createOffer();
   await peer.setLocalDescription(offer);
+  const connectStartedAt = performance.now();
   const answer = await options.connectSdp(offer.sdp ?? "");
+  diagnostic("webrtc_answer_received", {
+    localOfferMs: Math.round(connectStartedAt - offerStartedAt),
+    backendConnectMs: Math.round(performance.now() - connectStartedAt),
+    offerBytes: (offer.sdp ?? "").length,
+    answerBytes: answer.length,
+  });
   await peer.setRemoteDescription({ type: "answer", sdp: answer });
   await opened;
 
@@ -1277,12 +1514,16 @@ export async function connectOpenAiRealtime(options: {
     },
     cancelResponse: cancelActiveResponse,
     close: () => {
+      diagnostic("runtime_closed", {
+        generation: outputGeneration,
+        pendingResponses: pendingResponseRequests.length,
+        activeTools: toolExecutions.size,
+        responseActive,
+        responseRequestInFlight,
+      });
       window.clearTimeout(bargeInTimer);
       window.clearTimeout(responseWatchdog);
       window.clearTimeout(toolResponseSettleTimer);
-      cancelSlowResponseProgress();
-      slowResponseProgress.clear();
-      slowResponseProgressResponseIds.clear();
       businessActionProgressTimers.forEach((timer) => window.clearTimeout(timer));
       businessActionProgressTimers.clear();
       activeBusinessActionProgress.clear();

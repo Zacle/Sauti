@@ -105,6 +105,22 @@ Server-authorized chained tools are represented as a native Realtime `function_c
 
 An OpenAI response that finishes as `failed` or `incomplete` without caller-facing text or a tool call is retried once with the already accepted transcript. A response that already delivered a usable sentence is not retried merely because its terminal status is `incomplete`; this prevents a valid answer from being followed by a duplicate timeout fallback. Only a second genuinely empty terminal failure reaches the safety fallback, which states that nothing changed and offers a retry; it no longer asks the caller to repeat a question Sauti already received.
 
+## Voice lifecycle diagnostics
+
+Agent Studio records a privacy-safe lifecycle report for each browser test call. Use **Logs** during a call or **Download last diagnostics** after it ends to save the JSON report. The report correlates:
+
+- WebRTC offer, backend session creation, data-channel opening, and connection failures;
+- caller VAD and transcription completion without storing the transcript text;
+- every queued, dispatched, created, completed, cancelled, retried, or timed-out OpenAI response;
+- OpenAI `status`, `status_details.reason`, and provider error type/code/parameter;
+- tool name, opaque call ID, payload byte counts, HTTP duration, success state, progress scheduling, and chained actions without storing tool arguments or results;
+- Cartesia connection time, synthesis-to-first-audio latency, chunk and byte counts, audible drain completion, interruption, and provider errors;
+- Agent Studio state transitions, call completion, and basic Vapi lifecycle events.
+
+The report includes opaque request/response IDs so adjacent lifecycle events can be correlated. It excludes caller and agent text, phone numbers, emails, tool arguments, tool results, API keys, and provider tokens. Provider error messages are truncated and redact contact data, URLs, and credentials. Attach the JSON report to a debugging session instead of relying only on the displayed transcript or generic user-facing error.
+
+Telephone OpenAI Realtime sessions emit the same major boundaries as structured `voice_lifecycle` application log lines tagged with the Sauti call UUID. These server logs include response status/reason/code, response duration, tool duration, progress events, and character/byte counts, but not transcripts or tool payloads.
+
 ## Running Spring directly on Windows
 
 Spring Boot does not automatically import the repository `.env` when it is launched directly with Gradle. Use the repository helper so provider credentials become process environment variables without printing them:

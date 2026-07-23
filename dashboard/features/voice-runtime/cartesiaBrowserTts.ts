@@ -1,5 +1,10 @@
 import Cartesia from "@cartesia/cartesia-js";
 import { PCMPlayer } from "@speechmatics/web-pcm-player";
+import {
+  compactDiagnosticDetails,
+  diagnosticMessage,
+  type VoiceRuntimeDiagnostic,
+} from "./voiceDiagnostics.ts";
 
 export type BrowserAgentSpeech = {
   id: string;
@@ -17,6 +22,7 @@ type CartesiaBrowserTtsCallbacks = {
   onPlaybackStarted: (speech: BrowserAgentSpeech) => void;
   onPlaybackEnded: (speech: BrowserAgentSpeech) => void;
   onError: (message: string) => void;
+  onDiagnostic?: (diagnostic: VoiceRuntimeDiagnostic) => void;
 };
 
 const SUPPORTED_SAMPLE_RATES = [8000, 16000, 22050, 24000, 44100, 48000] as const;
@@ -69,6 +75,7 @@ export class CartesiaBrowserTts {
     callbacks: CartesiaBrowserTtsCallbacks;
     recordingDestination?: MediaStreamAudioDestinationNode | null;
   }) {
+    const connectionStartedAt = performance.now();
     const connection = new CartesiaBrowserTts(
       options.audioContext,
       options.configuration,
@@ -76,18 +83,44 @@ export class CartesiaBrowserTts {
       options.callbacks,
       options.recordingDestination,
     );
-    connection.socket = await connection.client.tts.websocket();
-    await connection.socket.connect();
-    return connection;
+    connection.diagnostic("connection_started", {
+      sampleRate: options.audioContext.sampleRate,
+      modelId: options.configuration.modelId,
+    });
+    try {
+      connection.socket = await connection.client.tts.websocket();
+      await connection.socket.connect();
+      connection.diagnostic("connection_ready", {
+        durationMs: Math.round(performance.now() - connectionStartedAt),
+      });
+      return connection;
+    } catch (caught) {
+      connection.diagnostic("connection_failed", {
+        durationMs: Math.round(performance.now() - connectionStartedAt),
+        message: diagnosticMessage(caught instanceof Error ? caught.message : caught),
+      }, "error");
+      throw caught;
+    }
   }
 
   speak(speech: BrowserAgentSpeech) {
     if (this.closed || !speech.text.trim()) return;
     this.pending.push(speech);
+    this.diagnostic("speech_queued", {
+      speechId: speech.id,
+      generation: speech.generation,
+      textChars: speech.text.length,
+      queueDepth: this.pending.length,
+    });
     void this.process();
   }
 
   interrupt() {
+    this.diagnostic("playback_interrupted", {
+      contextActive: Boolean(this.contextId),
+      queuedSpeech: this.pending.length,
+      epoch: this.epoch,
+    }, "warn");
     this.epoch += 1;
     this.pending.length = 0;
     this.finishDrainWait();
@@ -100,6 +133,10 @@ export class CartesiaBrowserTts {
 
   close() {
     if (this.closed) return;
+    this.diagnostic("connection_closed", {
+      contextActive: Boolean(this.contextId),
+      queuedSpeech: this.pending.length,
+    });
     this.closed = true;
     this.interrupt();
     this.socket?.close({ code: 1000, reason: "Browser voice session ended" });
@@ -133,8 +170,17 @@ export class CartesiaBrowserTts {
     this.contextId = contextId;
     let started = false;
     let pendingBytes = new Uint8Array(0);
+    let chunks = 0;
+    let audioBytes = 0;
+    const synthesisStartedAt = performance.now();
 
     try {
+      this.diagnostic("synthesis_started", {
+        speechId: speech.id,
+        generation: speech.generation,
+        textChars: speech.text.length,
+        contextId,
+      });
       const events = socket.generate({
         context_id: contextId,
         model_id: this.configuration.modelId,
@@ -157,9 +203,18 @@ export class CartesiaBrowserTts {
         const aligned = appendAlignedPcm16(pendingBytes, bytes);
         pendingBytes = aligned.remainder;
         if (aligned.samples.length === 0) continue;
+        chunks += 1;
+        audioBytes += bytes.length;
         if (!started) {
           started = true;
           this.scheduledUntil = Math.max(this.audioContext.currentTime, this.scheduledUntil);
+          this.diagnostic("first_audio_received", {
+            speechId: speech.id,
+            generation: speech.generation,
+            contextId,
+            synthesisToFirstAudioMs: Math.round(performance.now() - synthesisStartedAt),
+            firstChunkBytes: bytes.length,
+          });
           this.callbacks.onPlaybackStarted(speech);
         }
         this.player.playAudio(aligned.samples);
@@ -170,14 +225,34 @@ export class CartesiaBrowserTts {
       }
       if (!started || this.closed || epoch !== this.epoch) return;
       await this.waitUntilDrained(epoch);
-      if (!this.closed && epoch === this.epoch) this.callbacks.onPlaybackEnded(speech);
+      if (!this.closed && epoch === this.epoch) {
+        this.diagnostic("playback_completed", {
+          speechId: speech.id,
+          generation: speech.generation,
+          contextId,
+          totalMs: Math.round(performance.now() - synthesisStartedAt),
+          chunks,
+          audioBytes,
+        });
+        this.callbacks.onPlaybackEnded(speech);
+      }
     } catch (caught) {
       if (this.closed || epoch !== this.epoch) return;
       this.player.interrupt();
       this.scheduledUntil = this.audioContext.currentTime;
-      this.callbacks.onError(
-        caught instanceof Error ? caught.message : "Cartesia could not play the agent response.",
-      );
+      const message = caught instanceof Error
+        ? caught.message
+        : "Cartesia could not play the agent response.";
+      this.diagnostic("synthesis_failed", {
+        speechId: speech.id,
+        generation: speech.generation,
+        contextId,
+        durationMs: Math.round(performance.now() - synthesisStartedAt),
+        chunks,
+        audioBytes,
+        message: diagnosticMessage(message),
+      }, "error");
+      this.callbacks.onError(message);
     } finally {
       if (this.contextId === contextId) this.contextId = "";
     }
@@ -202,6 +277,19 @@ export class CartesiaBrowserTts {
     const resolve = this.drainResolve;
     this.drainResolve = null;
     resolve?.();
+  }
+
+  private diagnostic(
+    event: string,
+    details: Record<string, string | number | boolean | null | undefined> = {},
+    level: VoiceRuntimeDiagnostic["level"] = "info",
+  ) {
+    this.callbacks.onDiagnostic?.({
+      component: "cartesia_tts",
+      event,
+      level,
+      details: compactDiagnosticDetails(details),
+    });
   }
 }
 

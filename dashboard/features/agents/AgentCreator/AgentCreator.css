@@ -4679,6 +4679,34 @@
   cursor: pointer;
 }
 
+.test-call-header > .test-diagnostics-download {
+  margin-left: auto;
+  border-color: rgba(44, 222, 207, 0.28);
+  color: #28dcd1;
+  background: rgba(8, 91, 97, 0.18);
+}
+
+.test-call-header > .test-diagnostics-download:hover:not(:disabled) {
+  border-color: rgba(44, 222, 207, 0.5);
+  color: #dffffb;
+  background: rgba(8, 105, 106, 0.3);
+}
+
+.agent-test-canvas > .test-diagnostics-download {
+  margin-top: 9px;
+  border-color: rgba(91, 151, 201, 0.28);
+  color: #a9c4d7;
+  background: rgba(6, 28, 47, 0.72);
+  box-shadow: none;
+}
+
+.agent-test-canvas > .test-diagnostics-download:hover:not(:disabled) {
+  color: #dcfffb;
+  background: rgba(8, 74, 83, 0.76);
+  box-shadow: none;
+  transform: none;
+}
+
 .add-language-control button:disabled {
   cursor: not-allowed;
   opacity: 0.45;

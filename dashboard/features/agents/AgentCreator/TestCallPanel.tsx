@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LoaderCircle, Mic, Phone, PhoneOff, Send, Volume2 } from "lucide-react";
+import { Download, LoaderCircle, Mic, Phone, PhoneOff, Send, Volume2 } from "lucide-react";
 import {
   completeTestCall,
   getTestCallAudio,
@@ -30,6 +30,11 @@ import {
 } from "@/features/voice-runtime/cartesiaBrowserTts";
 import { confirmedEndCallResult } from "@/features/voice-runtime/realtimeProtocol";
 import { mergeVapiTranscript } from "@/features/voice-runtime/vapiTranscript";
+import {
+  diagnosticMessage,
+  type VoiceDiagnosticEntry,
+  type VoiceRuntimeDiagnostic,
+} from "@/features/voice-runtime/voiceDiagnostics";
 
 type TestCallPanelProps = {
   agentId?: string;
@@ -79,11 +84,16 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<CallStatus>("idle");
   const [error, setError] = useState("");
+  const [diagnosticCount, setDiagnosticCount] = useState(0);
   const [testRuntime, setTestRuntime] = useState<TestRuntime>(
     runtimeProvider.toLowerCase() === "vapi" ? "vapi" : "cartesia",
   );
 
   const statusRef = useRef<CallStatus>("idle");
+  const diagnosticsRef = useRef<VoiceDiagnosticEntry[]>([]);
+  const diagnosticsStartedAtRef = useRef(0);
+  const diagnosticSequenceRef = useRef(0);
+  const diagnosticRuntimeRef = useRef("");
   const callIdRef = useRef("");
   const callSidRef = useRef("");
   const settingsRef = useRef<TestSettings>(DEFAULT_SETTINGS);
@@ -142,7 +152,73 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   const cleanupMediaRef = useRef<() => void>(() => undefined);
   cleanupMediaRef.current = cleanupMedia;
 
+  function recordDiagnostic(diagnostic: VoiceRuntimeDiagnostic) {
+    const now = Date.now();
+    const entry: VoiceDiagnosticEntry = {
+      ...diagnostic,
+      level: diagnostic.level ?? "info",
+      details: diagnostic.details ?? {},
+      sequence: ++diagnosticSequenceRef.current,
+      occurredAt: new Date(now).toISOString(),
+      elapsedMs: diagnosticsStartedAtRef.current
+        ? now - diagnosticsStartedAtRef.current
+        : 0,
+      callId: callIdRef.current,
+      runtime: diagnosticRuntimeRef.current,
+      status: statusRef.current,
+    };
+    diagnosticsRef.current.push(entry);
+    setDiagnosticCount(diagnosticsRef.current.length);
+    console.debug("[Sauti voice diagnostic]", entry);
+  }
+
+  function resetDiagnostics(runtime: string) {
+    diagnosticsRef.current = [];
+    diagnosticSequenceRef.current = 0;
+    diagnosticsStartedAtRef.current = Date.now();
+    diagnosticRuntimeRef.current = runtime;
+    setDiagnosticCount(0);
+    recordDiagnostic({
+      component: "test_call",
+      event: "test_started",
+      details: { requestedRuntime: runtime },
+    });
+  }
+
+  function downloadDiagnostics() {
+    if (diagnosticsRef.current.length === 0) return;
+    const report = {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      callId: callIdRef.current || diagnosticsRef.current.find((entry) => entry.callId)?.callId || "",
+      runtime: diagnosticRuntimeRef.current,
+      browser: {
+        userAgent: navigator.userAgent,
+        language: navigator.language,
+        online: navigator.onLine,
+      },
+      entries: diagnosticsRef.current,
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `sauti-voice-diagnostics-${report.callId || Date.now()}.json`;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
   function updateStatus(next: CallStatus) {
+    if (statusRef.current !== next && diagnosticsStartedAtRef.current) {
+      recordDiagnostic({
+        component: "test_call",
+        event: "status_changed",
+        details: { from: statusRef.current, to: next },
+      });
+    }
     statusRef.current = next;
     setStatus(next);
   }
@@ -159,12 +235,14 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       setError("Select and save a Cartesia voice before starting the Cartesia test.");
       return;
     }
+    const requestedRuntime = testRuntime === "cartesia" ? "sauti_cartesia" : "vapi";
+    resetDiagnostics(requestedRuntime);
     updateStatus("connecting");
     setError("");
     setMessages([]);
     try {
-      const requestedRuntime = testRuntime === "cartesia" ? "sauti" : "vapi";
-      const started = await startTestCall(agentId, voiceId, requestedRuntime);
+      const backendRuntime = testRuntime === "cartesia" ? "sauti" : "vapi";
+      const started = await startTestCall(agentId, voiceId, backendRuntime);
       callIdRef.current = started.call.id;
       callSidRef.current = started.call.twilioCallSid;
       settingsRef.current = started.settings;
@@ -178,6 +256,16 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       remoteEndPendingRef.current = false;
       businessActionPendingRef.current = false;
       awaitingDictatedDetailsRef.current = false;
+      recordDiagnostic({
+        component: "test_call",
+        event: "call_created",
+        details: {
+          mode: started.mode,
+          managedRuntime: Boolean(started.runtime),
+          browserTtsConfigured: Boolean(started.browserTts),
+          cachedGreetingAvailable: Boolean(started.greetingAudioBase64),
+        },
+      });
       if (testRuntime === "cartesia" && started.mode !== "hybrid_realtime") {
         throw new Error(
           "The Cartesia test runtime is unavailable. Confirm the production OpenAI and Cartesia credentials, then try again.",
@@ -218,6 +306,16 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
         startVoiceMonitor();
       }
     } catch (caught) {
+      recordDiagnostic({
+        component: "test_call",
+        event: "start_failed",
+        level: "error",
+        details: {
+          message: diagnosticMessage(
+            caught instanceof Error ? caught.message : "Unable to start the test call.",
+          ),
+        },
+      });
       const failedCallId = callIdRef.current;
       cleanupMedia();
       callIdRef.current = "";
@@ -233,14 +331,24 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   async function connectManagedRuntime(started: StartTestCallResponse) {
     if (!started.runtime) throw new Error("The selected voice runtime did not return a session configuration.");
     browserRuntimeConnectionRef.current = await connectBrowserVoiceRuntime(started.runtime, {
-      onConnected: () => updateStatus("listening"),
+      onConnected: () => {
+        recordDiagnostic({ component: "vapi", event: "runtime_connected" });
+        updateStatus("listening");
+      },
       onCallerSpeechStarted: () => {
+        recordDiagnostic({ component: "vapi", event: "caller_speech_started" });
         if (!endingRef.current) updateStatus("capturing");
       },
       onCallerSpeechEnded: () => {
+        recordDiagnostic({ component: "vapi", event: "caller_speech_ended" });
         if (!endingRef.current && statusRef.current === "capturing") updateStatus("thinking");
       },
       onCallerTranscript: (text) => {
+        recordDiagnostic({
+          component: "vapi",
+          event: "caller_transcript",
+          details: { textChars: text.length },
+        });
         flushManagedAgentTranscript(started.call.id);
         acceptedCallerTurnsRef.current += 1;
         lastActivityAtRef.current = Date.now();
@@ -262,6 +370,11 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
         ));
       },
       onAgentTranscript: (text, interrupted) => {
+        recordDiagnostic({
+          component: "vapi",
+          event: "agent_transcript",
+          details: { textChars: text.length, interrupted },
+        });
         rememberAgentPrompt(text);
         const pending = managedAgentTranscriptRef.current;
         const merged = mergeVapiTranscript(pending?.text ?? "", text);
@@ -281,17 +394,33 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
         }
       },
       onAgentSpeaking: (value) => {
+        recordDiagnostic({
+          component: "vapi",
+          event: value ? "agent_speaking_started" : "agent_speaking_ended",
+        });
         if (!endingRef.current) updateStatus(value ? "speaking" : "listening");
       },
       onInterrupted: () => {
+        recordDiagnostic({ component: "vapi", event: "agent_interrupted", level: "warn" });
         if (!endingRef.current) updateStatus("capturing");
         void markTestInterruption(started.call.id).catch(() => undefined);
       },
       onError: (message) => {
+        recordDiagnostic({
+          component: "vapi",
+          event: "runtime_error",
+          level: "error",
+          details: { message: diagnosticMessage(message) },
+        });
         setError(message);
         if (!endingRef.current) updateStatus("listening");
       },
       onEnded: (outcome = "completed") => {
+        recordDiagnostic({
+          component: "vapi",
+          event: "runtime_ended",
+          details: { outcome },
+        });
         flushManagedAgentTranscript(started.call.id);
         if (!endingRef.current) void endCall(outcome);
       },
@@ -310,6 +439,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       language: started.call.languageDetected ?? "en",
       recordingDestination: recordingDestinationRef.current,
       callbacks: {
+        onDiagnostic: recordDiagnostic,
         onPlaybackStarted: (speech) => {
           activeHybridSpeechRef.current = { id: speech.id, generation: speech.generation };
           rememberAgentPrompt(speech.text);
@@ -329,6 +459,12 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           }
         },
         onError: (message) => {
+          recordDiagnostic({
+            component: "test_call",
+            event: "tts_error_presented",
+            level: "error",
+            details: { message: diagnosticMessage(message) },
+          });
           activeHybridSpeechRef.current = null;
           setError(message);
           if (!endingRef.current) updateStatus("listening");
@@ -356,6 +492,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       playbackContext: audioContextRef.current,
       recordingDestination: recordingDestinationRef.current,
       callbacks: {
+        onDiagnostic: recordDiagnostic,
         onConnected: () => {
           if (!agentAudioSourceRef.current) updateStatus("listening");
         },
@@ -412,15 +549,58 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           }
         },
         onError: (message) => {
+          recordDiagnostic({
+            component: "test_call",
+            event: "realtime_error_presented",
+            level: "error",
+            details: { message: diagnosticMessage(message) },
+          });
           setError(message);
           if (!endingRef.current) updateStatus("listening");
         },
         executeTool: async (toolCallId, name, argumentsJson) => {
-          const result = await executeTestRealtimeTool(
-            started.call.id, toolCallId, name, argumentsJson,
-          );
-          if (confirmedEndCallResult(name, result)) nativeEndAuthorizedRef.current = true;
-          return result;
+          const startedAt = performance.now();
+          recordDiagnostic({
+            component: "test_call",
+            event: "tool_http_request_started",
+            details: {
+              toolCallId,
+              toolName: name,
+              argumentsBytes: new TextEncoder().encode(argumentsJson).length,
+            },
+          });
+          try {
+            const result = await executeTestRealtimeTool(
+              started.call.id, toolCallId, name, argumentsJson,
+            );
+            recordDiagnostic({
+              component: "test_call",
+              event: "tool_http_request_completed",
+              details: {
+                toolCallId,
+                toolName: name,
+                durationMs: Math.round(performance.now() - startedAt),
+                success: result.success !== false,
+                resultBytes: new TextEncoder().encode(JSON.stringify(result)).length,
+              },
+              level: result.success === false ? "warn" : "info",
+            });
+            if (confirmedEndCallResult(name, result)) nativeEndAuthorizedRef.current = true;
+            return result;
+          } catch (caught) {
+            recordDiagnostic({
+              component: "test_call",
+              event: "tool_http_request_failed",
+              level: "error",
+              details: {
+                toolCallId,
+                toolName: name,
+                durationMs: Math.round(performance.now() - startedAt),
+                message: diagnosticMessage(caught instanceof Error ? caught.message : caught),
+              },
+            });
+            throw caught;
+          }
         },
       },
     });
@@ -1101,6 +1281,11 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
   async function endCall(outcome = "completed", politeFarewell = false) {
     const activeCallId = callIdRef.current;
     if (!activeCallId || endingRef.current) return;
+    recordDiagnostic({
+      component: "test_call",
+      event: "call_end_requested",
+      details: { outcome, politeFarewell },
+    });
     flushManagedAgentTranscript(activeCallId);
     endingRef.current = true;
     const managedRuntime = browserRuntimeConnectionRef.current;
@@ -1145,6 +1330,16 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       if (recording.size > 0) await uploadCallRecording(activeCallId, recording);
       await transcriptWriteRef.current;
       await completeTestCall(activeCallId, outcome);
+      recordDiagnostic({
+        component: "test_call",
+        event: "call_completed",
+        details: {
+          outcome,
+          durationMs: callStartedAtRef.current
+            ? Date.now() - callStartedAtRef.current
+            : 0,
+        },
+      });
       cleanupMedia();
       callIdRef.current = "";
       callSidRef.current = "";
@@ -1153,6 +1348,16 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
       setError("");
       updateStatus("idle");
     } catch (caught) {
+      recordDiagnostic({
+        component: "test_call",
+        event: "call_completion_failed",
+        level: "error",
+        details: {
+          message: diagnosticMessage(
+            caught instanceof Error ? caught.message : "Unable to finish and save the call.",
+          ),
+        },
+      });
       endingRef.current = false;
       updateStatus("listening");
       startVoiceMonitor();
@@ -1263,12 +1468,31 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
             {status === "connecting" ? <LoaderCircle className="spin" size={17} /> : <Phone size={17} />}
             {agentId ? status === "connecting" ? "Connecting..." : `Test ${testRuntime === "cartesia" ? "Cartesia" : "Vapi"}` : "Save agent to test"}
           </button>
+          {diagnosticCount > 0 && (
+            <button
+              className="test-diagnostics-download"
+              onClick={downloadDiagnostics}
+              title="Download privacy-safe voice lifecycle diagnostics"
+              type="button"
+            >
+              <Download size={15} /> Download last diagnostics ({diagnosticCount})
+            </button>
+          )}
           {error && <div className="test-call-error">{error}</div>}
         </div>
       ) : (
         <>
           <header className="test-call-header">
             <div><span className="test-call-live-dot" /><div><small>Hands-free test call{activeRuntime ? ` · ${activeRuntime.toUpperCase()}` : ""}</small><strong>{agentName}</strong></div></div>
+            <button
+              className="test-diagnostics-download"
+              disabled={diagnosticCount === 0}
+              onClick={downloadDiagnostics}
+              title="Download privacy-safe voice lifecycle diagnostics"
+              type="button"
+            >
+              <Download size={15} /> Logs
+            </button>
             <button disabled={status === "ending"} onClick={() => void endCall()} type="button">
               <PhoneOff size={15} /> {status === "ending" ? "Saving..." : "End"}
             </button>
