@@ -9,6 +9,13 @@ export type AuthorizedNextToolRequest = {
   argumentsJson: string;
 };
 
+export type AiRecoverySpeechKind =
+  | "provider_delay"
+  | "provider_unavailable"
+  | "request_failed"
+  | "protocol_failed"
+  | "tool_failed";
+
 export const SAUTI_REALTIME_REQUEST_ID = "sauti_request_id";
 export const AUTHORITATIVE_TRANSCRIPT_PREFIX = "SAUTI_INPUT_TRANSCRIPT";
 export const REALTIME_CALL_ID_MAX_LENGTH = 32;
@@ -127,6 +134,26 @@ export function realtimeAuthorizedFunctionCallItem(
   };
 }
 
+export function protocolRecoveryResponseRequest(
+  requiredToolName: string,
+  requestId: string,
+) {
+  const normalizedToolName = /^[A-Za-z][A-Za-z0-9_]{1,63}$/.test(requiredToolName)
+    ? requiredToolName
+    : "";
+  return {
+    type: "response.create",
+    response: {
+      tool_choice: normalizedToolName
+        ? { type: "function", name: normalizedToolName }
+        : "none",
+      metadata: {
+        [SAUTI_REALTIME_REQUEST_ID]: requestId,
+      },
+    },
+  };
+}
+
 export function businessActionProgressInstruction(toolName: string) {
   const operation = toolName === "book_slot"
     ? "saving the appointment"
@@ -148,9 +175,13 @@ export function businessActionProgressRequest(toolName: string, requestId: strin
     type: "response.create",
     response: {
       // A progress update is an out-of-band lifecycle notification, not an
-      // assistant turn that waits for a caller reply.
+      // assistant turn that waits for a caller reply. Empty input and tools
+      // prevent the full call prompt and tool catalog from consuming thousands
+      // of tokens for one short, model-authored sentence.
       conversation: "none",
+      input: [],
       instructions: businessActionProgressInstruction(toolName),
+      tools: [],
       tool_choice: "none",
       output_modalities: ["text"],
       metadata: {
@@ -158,6 +189,75 @@ export function businessActionProgressRequest(toolName: string, requestId: strin
       },
     },
   };
+}
+
+export function aiRecoverySpeechInstruction(
+  kind: AiRecoverySpeechKind,
+  language: string | undefined,
+  toolName = "",
+) {
+  const situation = recoverySituation(kind, toolName);
+  const targetLanguage = language?.trim() || "the caller's current language";
+  return [
+    "Write one brief, natural, professional caller-facing utterance for a live voice conversation.",
+    `Respond in ${targetLanguage}.`,
+    `Situation: ${situation}`,
+    "Choose the wording yourself and vary it naturally.",
+    "Do not mention a model, provider, API, token limit, internal system, error code, or tool name.",
+    "Do not invent a result or imply that an action succeeded.",
+    kind === "provider_delay"
+      ? "Briefly acknowledge the wait, say that work is continuing, and do not ask a question."
+      : "Briefly explain the outcome and give one clear next step. Ask at most one short question.",
+    "Output only the words to say to the caller.",
+  ].join(" ");
+}
+
+export function aiRecoverySpeechRequest(
+  kind: AiRecoverySpeechKind,
+  language: string | undefined,
+  requestId: string,
+  toolName = "",
+) {
+  return {
+    type: "response.create",
+    response: {
+      // Recovery wording must remain available even when the main conversation
+      // is near its TPM ceiling. Generate it from a tiny isolated context rather
+      // than replaying the full prompt, history, and tool schemas.
+      conversation: "none",
+      input: [],
+      instructions: aiRecoverySpeechInstruction(kind, language, toolName),
+      tools: [],
+      tool_choice: "none",
+      output_modalities: ["text"],
+      metadata: {
+        [SAUTI_REALTIME_REQUEST_ID]: requestId,
+      },
+    },
+  };
+}
+
+function recoverySituation(kind: AiRecoverySpeechKind, toolName: string) {
+  if (kind === "provider_delay") {
+    return "A previous response attempt was temporarily delayed. No outcome is known yet, and the accepted caller request is still being processed automatically.";
+  }
+  if (kind === "provider_unavailable") {
+    return "The caller's requested response could not be completed after an automatic retry. No action should be claimed.";
+  }
+  if (kind === "protocol_failed") {
+    return "The caller's request could not be interpreted into a valid response after automatic recovery. No side effect was confirmed.";
+  }
+  if (kind === "tool_failed") {
+    const effect = toolName === "book_slot"
+      ? "The requested booking was not saved."
+      : toolName === "reschedule_booking" || toolName === "cancel_booking"
+        ? "The existing booking remains unchanged."
+        : toolName === "check_availability"
+          ? "Live availability could not be confirmed and no booking was made."
+          : "The requested operation did not complete and no side effect was confirmed.";
+    return effect;
+  }
+  return "The caller's request did not complete, and no side effect was confirmed.";
 }
 
 export function realtimeTranscriptMirrorItem(transcript: string) {

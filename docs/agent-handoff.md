@@ -4911,3 +4911,29 @@ Expected:
   - `.\gradlew.bat :backend:test` - passed; 344 tests.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: reproduce at least twelve conversational generations, including a phone number spoken with two short pauses and a caller-initiated goodbye. The displayed transcript must retain every phone fragment. In diagnostics, compare every `rate_limit_exceeded` request with this report's 13,751-15,481 requested-token range; those requests should be materially lower, and the agent should reach `end_call` without the capacity apology. If the fixed instructions and tool schemas alone still keep rolling requests above the 40,000 TPM tier, compact those fixed definitions or raise the OpenAI usage tier based on the new measured request sizes.
+
+### 2026-07-23 - Replace canned Realtime recovery speech with compact AI-authored responses
+
+- Diagnosed privacy-safe report `cd15d458-7f2d-4b03-abe3-1b96f209950d`. The repeated sentence `I'm sorry for the wait. The voice service is temporarily busy, but I'm still working on your request.` was not model output. Browser code emitted it directly after two `rate_limit_exceeded` events. At those points OpenAI reported a 40,000 TPM limit with 31,771 tokens already used plus 9,780 requested, and then 31,364 used plus 9,750 requested.
+- Removed executable language-specific operational recovery/failure phrases from the browser OpenAI Realtime runtime and the telephone OpenAI Realtime provider. Sauti now passes a compact semantic situation to the conversational model—delay, provider exhaustion, invalid protocol output, or a failed tool—and the model authors one short professional utterance in the caller's current language.
+- Kept factual effects server-grounded. The semantic recovery request states whether a booking was not saved, a reschedule/cancellation left the existing booking unchanged, availability was not confirmed, or no side effect was confirmed. The model controls wording only and is explicitly prohibited from inventing success.
+- Made progress and recovery generation genuinely small and out of band with `conversation: "none"`, `input: []`, `tools: []`, and `tool_choice: "none"`. This avoids replaying the full conversation, fixed instructions, and tool catalog merely to author one sentence, while allowing the original accepted request or tool future to continue automatically.
+- Preserved deterministic server speech where exact facts matter, including confirmed booking status and booking ID. Business-configured greetings also remain business configuration; they are not operational fallback templates. If the compact auxiliary model request itself cannot run, it fails silently instead of recursively producing another canned or AI recovery response.
+- Fixed the separate confirmation loop visible after `Everything is right`. A malformed response to a mandatory `update_conversation_state` transition previously retried with tools disabled, causing the model to ask for confirmation again. Protocol recovery now retains the exact required tool through the retry in browser and telephony runtimes.
+- Added null-safe telephony recovery metadata after the focused suite exposed that mocked or incomplete provider metadata could omit the required-tool name.
+- Files touched:
+  - `dashboard/features/voice-runtime/{openaiRealtime,realtimeProtocol}.ts`
+  - `dashboard/features/voice-runtime/openaiRealtime.test.ts`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run test:voice` - passed; 39 regressions.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - focused `OpenAiTelephonyRealtimeConversationProviderTest` - passed; 50 tests.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `git diff --check` - passed before this handoff update (line-ending notices only).
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: repeat the reported late-call flow through availability, review approval, save, booking-number repetition, and goodbye. Diagnostics should show auxiliary `recovery_speech` or `business_progress` responses as compact out-of-band requests, no direct `rate-limit-progress:*` speech, automatic continuation without another caller utterance, and no second confirmation after an already accepted approval. A model-generated operational sentence may vary naturally between calls. If even the compact auxiliary request is refused because the account has no remaining capacity, Sauti intentionally does not speak a fabricated fallback; inspect the retained provider diagnostic and the original retry/result lifecycle.

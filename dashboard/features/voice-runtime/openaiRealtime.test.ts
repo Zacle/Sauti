@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  aiRecoverySpeechInstruction,
+  aiRecoverySpeechRequest,
   authorizedNextToolRequest,
   businessActionProgressRequest,
   businessActionProgressInstruction,
@@ -18,6 +20,7 @@ import {
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
   ownsOriginatingToolResponse,
+  protocolRecoveryResponseRequest,
 } from "./realtimeProtocol.ts";
 
 test("settles only the exact response that originated a completed tool", () => {
@@ -191,10 +194,46 @@ test("keeps delayed-operation progress outside the caller conversation", () => {
   const request = businessActionProgressRequest("book_slot", "business-progress-4");
 
   assert.equal(request.response.conversation, "none");
+  assert.deepEqual(request.response.input, []);
+  assert.deepEqual(request.response.tools, []);
   assert.equal(request.response.tool_choice, "none");
   assert.equal(request.response.metadata.sauti_request_id, "business-progress-4");
   assert.match(request.response.instructions, /still saving the appointment/i);
   assert.match(request.response.instructions, /ask a question/i);
+});
+
+test("asks the model to author recovery speech from a compact semantic situation", () => {
+  const request = aiRecoverySpeechRequest(
+    "provider_delay",
+    "fr",
+    "recovery-12",
+  );
+
+  assert.equal(request.response.conversation, "none");
+  assert.deepEqual(request.response.input, []);
+  assert.deepEqual(request.response.tools, []);
+  assert.equal(request.response.tool_choice, "none");
+  assert.equal(request.response.metadata.sauti_request_id, "recovery-12");
+  assert.match(request.response.instructions, /Respond in fr/i);
+  assert.match(request.response.instructions, /Choose the wording yourself/i);
+  assert.match(request.response.instructions, /acknowledge the wait/i);
+  assert.doesNotMatch(
+    request.response.instructions,
+    /voice service is temporarily busy/i,
+  );
+});
+
+test("grounds AI-authored tool failure speech in the operation's factual outcome", () => {
+  const booking = aiRecoverySpeechInstruction("tool_failed", "en", "book_slot");
+  const cancellation = aiRecoverySpeechInstruction("tool_failed", "en", "cancel_booking");
+  const availability = aiRecoverySpeechInstruction("tool_failed", "en", "check_availability");
+
+  assert.match(booking, /booking was not saved/i);
+  assert.match(cancellation, /existing booking remains unchanged/i);
+  assert.match(availability, /availability could not be confirmed/i);
+  assert.match(availability, /no booking was made/i);
+  assert.match(booking, /Do not invent a result/i);
+  assert.match(booking, /Output only the words to say/i);
 });
 
 test("arms delayed progress for configured remote tools without business-name lists", () => {
@@ -261,6 +300,29 @@ test("defers cancellation until an in-flight response has been created", () => {
 test("releases a terminal response before protocol recovery is queued", () => {
   assert.equal(releaseTerminalResponseForProtocolRecovery(false), true);
   assert.equal(releaseTerminalResponseForProtocolRecovery(true), false);
+});
+
+test("preserves a mandatory state tool during terminal protocol recovery", () => {
+  assert.deepEqual(
+    protocolRecoveryResponseRequest("update_conversation_state", "recovery-state-13"),
+    {
+      type: "response.create",
+      response: {
+        tool_choice: { type: "function", name: "update_conversation_state" },
+        metadata: { sauti_request_id: "recovery-state-13" },
+      },
+    },
+  );
+  assert.deepEqual(
+    protocolRecoveryResponseRequest("", "recovery-answer-4"),
+    {
+      type: "response.create",
+      response: {
+        tool_choice: "none",
+        metadata: { sauti_request_id: "recovery-answer-4" },
+      },
+    },
+  );
 });
 
 test("honors a bounded provider rate-limit retry delay", () => {

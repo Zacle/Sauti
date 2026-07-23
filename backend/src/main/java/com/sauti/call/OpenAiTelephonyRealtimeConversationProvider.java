@@ -36,6 +36,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
     private static final String RESPONSE_PURPOSE_CONVERSATION = "conversation";
     private static final String RESPONSE_PURPOSE_BUSINESS_PROGRESS = "business_progress";
     private static final String RESPONSE_PURPOSE_POST_BOOKING_GUIDANCE = "post_booking_guidance";
+    private static final String RESPONSE_PURPOSE_RECOVERY_SPEECH = "recovery_speech";
     private static final long BUSINESS_ACTION_PROGRESS_DELAY_MILLIS = 1_500L;
     private static final long BUSINESS_ACTION_PROGRESS_REPEAT_MILLIS = 8_000L;
 
@@ -101,7 +102,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
     static boolean isAuxiliaryResponsePurpose(String purpose) {
         return RESPONSE_PURPOSE_BUSINESS_PROGRESS.equals(purpose)
-                || RESPONSE_PURPOSE_POST_BOOKING_GUIDANCE.equals(purpose);
+                || RESPONSE_PURPOSE_POST_BOOKING_GUIDANCE.equals(purpose)
+                || RESPONSE_PURPOSE_RECOVERY_SPEECH.equals(purpose);
     }
 
     static String businessActionProgressInstruction(String toolName) {
@@ -116,6 +118,37 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 + "Give one brief, natural, professional progress update in the caller's current language. "
                 + "Include a short apology for the wait and make clear that you are still working on it. "
                 + "Do not claim success or failure, invent a result, repeat booking details, ask a question, or call a tool.";
+    }
+
+    static String aiRecoverySpeechInstruction(String kind, String language, String toolName) {
+        var situation = switch (kind == null ? "" : kind) {
+            case "provider_delay" ->
+                    "A previous response attempt was temporarily delayed. No outcome is known yet, and the accepted caller request is still being processed automatically.";
+            case "provider_unavailable" ->
+                    "The caller's requested response could not be completed after an automatic retry. No action should be claimed.";
+            case "protocol_failed" ->
+                    "The caller's request could not be interpreted into a valid response after automatic recovery. No side effect was confirmed.";
+            case "tool_failed" -> switch (toolName == null ? "" : toolName) {
+                case "book_slot" -> "The requested booking was not saved.";
+                case "reschedule_booking", "cancel_booking" -> "The existing booking remains unchanged.";
+                case "check_availability" -> "Live availability could not be confirmed and no booking was made.";
+                default -> "The requested operation did not complete and no side effect was confirmed.";
+            };
+            default -> "The caller's request did not complete, and no side effect was confirmed.";
+        };
+        var targetLanguage = language == null || language.isBlank()
+                ? "the caller's current language"
+                : language.trim();
+        return "Write one brief, natural, professional caller-facing utterance for a live voice conversation. "
+                + "Respond in " + targetLanguage + ". "
+                + "Situation: " + situation + " "
+                + "Choose the wording yourself and vary it naturally. "
+                + "Do not mention a model, provider, API, token limit, internal system, error code, or tool name. "
+                + "Do not invent a result or imply that an action succeeded. "
+                + ("provider_delay".equals(kind)
+                    ? "Briefly acknowledge the wait, say that work is continuing, and do not ask a question. "
+                    : "Briefly explain the outcome and give one clear next step. Ask at most one short question. ")
+                + "Output only the words to say to the caller.";
     }
 
     @Override
@@ -214,6 +247,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private final java.util.Set<String> activeBusinessActionProgress = new java.util.HashSet<>();
         private String currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
         private String currentBusinessActionProgressKey = "";
+        private String currentResponseRequiredToolName = "";
 
         RealtimeWebSocketListener(
                 ObjectMapper objectMapper,
@@ -336,6 +370,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     currentBusinessActionProgressKey = activeSession == null
                             ? ""
                             : activeSession.dispatchedProgressKey();
+                    var dispatchedRequiredToolName = activeSession == null
+                            ? null
+                            : activeSession.dispatchedRequiredToolName();
+                    currentResponseRequiredToolName = dispatchedRequiredToolName == null
+                            ? ""
+                            : dispatchedRequiredToolName;
                     currentResponseId = eventResponseId;
                     currentResponseCreatedAtNanos = System.nanoTime();
                     lifecycle(
@@ -471,7 +511,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         var postBookingGuidanceResponse = RESPONSE_PURPOSE_POST_BOOKING_GUIDANCE.equals(
                                 currentResponsePurpose
                         );
-                        var auxiliaryResponse = businessProgressResponse || postBookingGuidanceResponse;
+                        var recoverySpeechResponse = RESPONSE_PURPOSE_RECOVERY_SPEECH.equals(
+                                currentResponsePurpose
+                        );
+                        var auxiliaryResponse = businessProgressResponse
+                                || postBookingGuidanceResponse
+                                || recoverySpeechResponse;
                         if (responseContainsToolCall(event)) {
                             responseHasToolCall = true;
                             executeCompletedToolCalls(webSocket, event, completedGeneration);
@@ -531,7 +576,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                 agentText.setLength(0);
                                 textCompleted = true;
                             }
-                        } else if (postBookingGuidanceResponse) {
+                        } else if (postBookingGuidanceResponse || recoverySpeechResponse) {
                             if (agentText.length() > 0) {
                                 completeText("", completedGeneration, completedResponseId);
                             } else {
@@ -554,12 +599,11 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                                 failedSession.requestResponse();
                                 textCompleted = true;
                             } else {
-                                deliverAgentCompletion(new AgentCompletion(
-                                        VoiceOutputGuard.safeResponseFailure(responseLanguage()),
-                                        false,
-                                        completedGeneration,
-                                        "response-failed:" + completedResponseId
-                                ));
+                                if (failedSession != null) {
+                                    failedSession.requestAiRecoverySpeech(
+                                            "provider_unavailable", "", responseLanguage(), completedGeneration
+                                    );
+                                }
                             }
                         }
                         if ("completed".equals(completedStatus)) {
@@ -569,6 +613,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         if (activeSession != null) activeSession.responseFinished();
                         currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
                         currentBusinessActionProgressKey = "";
+                        currentResponseRequiredToolName = "";
                     }
                     case "response.cancelled" -> {
                         lifecycle(
@@ -589,6 +634,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                         if (activeSession != null) activeSession.responseFinished();
                         currentResponsePurpose = RESPONSE_PURPOSE_CONVERSATION;
                         currentBusinessActionProgressKey = "";
+                        currentResponseRequiredToolName = "";
                     }
                     case "error" -> {
                         var error = event.path("error");
@@ -954,13 +1000,24 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
             LOGGER.warn("Suppressed provider protocol output from caller-facing audio callId={}", call.getId());
             var activeSession = session;
             if (protocolRecoveryAttempts++ == 0 && activeSession != null && generation == turnGeneration) {
-                // Retry once with tools disabled. The complete session prompt and
-                // configured business facts remain authoritative for the answer.
-                activeSession.requestToolResultResponse(generation);
+                if (!currentResponseRequiredToolName.isBlank()) {
+                    // Preserve a mandatory semantic/state transition. A generic
+                    // no-tools recovery would ask the caller to reconfirm an
+                    // approval that the caller already gave.
+                    activeSession.requestResponseWithRequiredTool(
+                            currentResponseRequiredToolName, generation
+                    );
+                } else {
+                    // Retry an ordinary malformed follow-up with tools disabled.
+                    activeSession.requestToolResultResponse(generation);
+                }
                 return;
             }
-            var safeText = VoiceOutputGuard.safeResponseFailure(responseLanguage());
-            deliverAgentCompletion(new AgentCompletion(safeText, false, generation, "protocol-recovery"));
+            if (activeSession != null && generation == turnGeneration) {
+                activeSession.requestAiRecoverySpeech(
+                        "protocol_failed", "", responseLanguage(), generation
+                );
+            }
         }
 
         private String responseLanguage() {
@@ -1026,10 +1083,12 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     return;
                 }
                 if (!result.success()) {
-                    var safeText = safeToolFailure(name);
-                    deliverAgentCompletion(new AgentCompletion(
-                            safeText, false, generation, "tool-failure:" + callId
-                    ));
+                    var activeSession = session;
+                    if (activeSession != null) {
+                        activeSession.requestAiRecoverySpeech(
+                                "tool_failed", name, responseLanguage(), generation
+                        );
+                    }
                     return;
                 }
                 if ("end_call".equals(name)
@@ -1190,16 +1249,6 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         private String toolSpokenResponse(com.sauti.llm.LlmToolResult result) {
             var value = result.result().get("spokenResponse");
             return value == null ? "" : value.toString().trim();
-        }
-
-        private String safeToolFailure(String name) {
-            return switch (name) {
-                case "check_availability" -> VoiceOutputGuard.safeAvailabilityFailure(responseLanguage());
-                case "book_slot" -> VoiceOutputGuard.safeBookingFailure(responseLanguage());
-                case "reschedule_booking", "cancel_booking" ->
-                        VoiceOutputGuard.safeBookingMutationFailure(responseLanguage(), name);
-                default -> VoiceOutputGuard.safeResponseFailure(responseLanguage());
-            };
         }
 
         private String toolCallerGuidanceInstruction(
@@ -1442,12 +1491,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         }
 
         void requestResponseWithRequiredTool(String toolName) {
+            requestResponseWithRequiredTool(toolName, currentGeneration());
+        }
+
+        void requestResponseWithRequiredTool(String toolName, long expectedGeneration) {
             enqueueResponse(Map.of(
                     "type", "response.create",
                     "response", Map.of(
                             "tool_choice", Map.of("type", "function", "name", toolName)
                     )
-            ), currentGeneration(), RESPONSE_PURPOSE_CONVERSATION, "");
+            ), expectedGeneration, RESPONSE_PURPOSE_CONVERSATION, "");
         }
 
         void requestExactResponse(String text) {
@@ -1471,11 +1524,34 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     "type", "response.create",
                     "response", Map.of(
                             "conversation", "none",
+                            "input", java.util.List.of(),
                             "instructions", businessActionProgressInstruction(toolName),
+                            "tools", java.util.List.of(),
                             "tool_choice", "none",
                             "output_modalities", java.util.List.of("text")
                     )
             ), expectedGeneration, RESPONSE_PURPOSE_BUSINESS_PROGRESS, progressKey);
+        }
+
+        void requestAiRecoverySpeech(
+                String kind,
+                String toolName,
+                String responseLanguage,
+                long expectedGeneration
+        ) {
+            enqueueResponse(Map.of(
+                    "type", "response.create",
+                    "response", Map.of(
+                            "conversation", "none",
+                            "input", java.util.List.of(),
+                            "instructions", aiRecoverySpeechInstruction(
+                                    kind, responseLanguage, toolName
+                            ),
+                            "tools", java.util.List.of(),
+                            "tool_choice", "none",
+                            "output_modalities", java.util.List.of("text")
+                    )
+            ), expectedGeneration, RESPONSE_PURPOSE_RECOVERY_SPEECH, "");
         }
 
         void requestPostBookingGuidance(String instruction, long expectedGeneration) {
@@ -1575,6 +1651,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
 
         synchronized String dispatchedProgressKey() {
             return inFlightResponse == null ? "" : inFlightResponse.progressKey();
+        }
+
+        synchronized String dispatchedRequiredToolName() {
+            if (inFlightResponse == null) return "";
+            var responseValue = inFlightResponse.payload().get("response");
+            if (!(responseValue instanceof Map<?, ?> response)) return "";
+            var toolChoiceValue = response.get("tool_choice");
+            if (!(toolChoiceValue instanceof Map<?, ?> toolChoice)) return "";
+            var name = toolChoice.get("name");
+            return name == null ? "" : name.toString().trim();
         }
 
         synchronized String cancelBusinessActionProgress(String progressKey) {

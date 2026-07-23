@@ -1,5 +1,7 @@
 import { RealtimeTurnGate } from "./realtimeTurnGate";
 import {
+  aiRecoverySpeechRequest,
+  type AiRecoverySpeechKind,
   authorizedNextToolRequest,
   businessActionProgressRequest,
   callerWaitExpected,
@@ -7,6 +9,7 @@ import {
   completedRealtimeToolCalls,
   hasUsableCallerFacingResponse,
   ownsOriginatingToolResponse,
+  protocolRecoveryResponseRequest,
   realtimeCancellationDecision,
   realtimeAuthorizedFunctionCallItem,
   realtimeRateLimitRetryDelayMs,
@@ -65,9 +68,10 @@ type PendingResponseRequest = {
   generation: number;
   send: (requestId: string) => void;
   retryWithoutTools: boolean;
-  purpose: "conversation" | "business_progress" | "post_booking_guidance";
+  purpose: "conversation" | "business_progress" | "post_booking_guidance" | "recovery_speech";
   progressKey: string;
   retryOnFailure: boolean;
+  requiredToolName: string;
 };
 
 type ResponsePhase = "idle" | "awaiting_response" | "generating_message" | "generating_tool";
@@ -198,6 +202,7 @@ export async function connectOpenAiRealtime(options: {
       purpose: request.purpose,
       retryWithoutTools: request.retryWithoutTools,
       retryOnFailure: request.retryOnFailure,
+      requiredToolName: request.requiredToolName,
       queueDepth: pendingResponseRequests.length,
     });
     request.send(request.requestId);
@@ -216,6 +221,7 @@ export async function connectOpenAiRealtime(options: {
     purpose: PendingResponseRequest["purpose"] = "conversation",
     progressKey = "",
     retryOnFailure = false,
+    requiredToolName = "",
   ) => {
     if (generation !== outputGeneration) {
       diagnostic("response_enqueue_rejected_stale_generation", {
@@ -234,6 +240,7 @@ export async function connectOpenAiRealtime(options: {
       purpose,
       progressKey,
       retryOnFailure,
+      requiredToolName,
     });
     diagnostic("response_enqueued", {
       requestId,
@@ -241,6 +248,7 @@ export async function connectOpenAiRealtime(options: {
       purpose,
       retryWithoutTools,
       retryOnFailure,
+      requiredToolName,
       queueDepth: pendingResponseRequests.length,
     });
     drainResponseQueue();
@@ -266,6 +274,7 @@ export async function connectOpenAiRealtime(options: {
       request.purpose,
       request.progressKey,
       false,
+      request.requiredToolName,
     );
     return true;
   };
@@ -293,11 +302,17 @@ export async function connectOpenAiRealtime(options: {
       purpose: request.purpose,
       delayMs,
     }, "warn");
-    deliverAgentSpeech({
-      id: `rate-limit-progress:${generation}`,
+    enqueueResponse(
+      (requestId) => requestAiRecoverySpeech(
+        channel,
+        "provider_delay",
+        options.responseLanguage,
+        requestId,
+      ),
       generation,
-      text: localizedRateLimitProgress(options.responseLanguage),
-    });
+      false,
+      "recovery_speech",
+    );
     const timer = window.setTimeout(() => {
       rateLimitRetryTimers.delete(generation);
       if (generation !== outputGeneration || channel.readyState !== "open") {
@@ -320,6 +335,7 @@ export async function connectOpenAiRealtime(options: {
         request.purpose,
         request.progressKey,
         false,
+        request.requiredToolName,
       );
     }, delayMs);
     rateLimitRetryTimers.set(generation, timer);
@@ -424,6 +440,7 @@ export async function connectOpenAiRealtime(options: {
           timedOutRequest.purpose,
           timedOutRequest.progressKey,
           false,
+          timedOutRequest.requiredToolName,
         );
         return;
       }
@@ -436,11 +453,7 @@ export async function connectOpenAiRealtime(options: {
         enqueueResponse((requestId) => requestToolResultResponse(channel, requestId), generation);
         return;
       }
-      deliverAgentSpeech({
-        id: `response-timeout:${generation}`,
-        generation,
-        text: localizedProcessingFailure(options.responseLanguage),
-      });
+      enqueueAiRecoverySpeech("request_failed", generation);
       options.callbacks.onError(responseTimeoutMessage(failedPhase));
     }, timeoutMs);
   };
@@ -619,8 +632,48 @@ export async function connectOpenAiRealtime(options: {
   };
 
   const deliverToolFailure = (name: string, generation: number, speechId: string) => {
-    const failure = toolFailureText(name, options.responseLanguage);
-    deliverAgentSpeech({ id: speechId, generation, text: failure });
+    diagnostic("ai_recovery_response_requested", {
+      generation,
+      kind: "tool_failed",
+      toolName: name,
+      speechId,
+    });
+    enqueueResponse(
+      (requestId) => requestAiRecoverySpeech(
+        channel,
+        "tool_failed",
+        options.responseLanguage,
+        requestId,
+        name,
+      ),
+      generation,
+      false,
+      "recovery_speech",
+    );
+  };
+
+  const enqueueAiRecoverySpeech = (
+    kind: AiRecoverySpeechKind,
+    generation: number,
+    toolName = "",
+  ) => {
+    diagnostic("ai_recovery_response_requested", {
+      generation,
+      kind,
+      toolName,
+    });
+    enqueueResponse(
+      (requestId) => requestAiRecoverySpeech(
+        channel,
+        kind,
+        options.responseLanguage,
+        requestId,
+        toolName,
+      ),
+      generation,
+      false,
+      "recovery_speech",
+    );
   };
 
   const settleCompletedToolResponse = (
@@ -808,18 +861,7 @@ export async function connectOpenAiRealtime(options: {
         const completionGeneration = outputGeneration;
         const callerSpokeWhileWaiting = generation !== completionGeneration;
         if (result.success === false) {
-          if (callerSpokeWhileWaiting) {
-            enqueueResponse(
-              (requestId) => requestExactToolResponse(
-                channel,
-                toolFailureText(name, options.responseLanguage),
-                requestId,
-              ),
-              completionGeneration,
-            );
-          } else {
-            deliverToolFailure(name, completionGeneration, `tool-failure:${callId}`);
-          }
+          deliverToolFailure(name, completionGeneration, `tool-failure:${callId}`);
           return;
         }
         const nextTool = authorizedNextToolRequest(result);
@@ -855,6 +897,7 @@ export async function connectOpenAiRealtime(options: {
               "conversation",
               "",
               true,
+              nextTool.name,
             );
           }
           return;
@@ -939,14 +982,7 @@ export async function connectOpenAiRealtime(options: {
         if (generation === completionGeneration) {
           deliverToolFailure(name, completionGeneration, `tool-failure:${callId}`);
         } else {
-          enqueueResponse(
-            (requestId) => requestExactToolResponse(
-              channel,
-              toolFailureText(name, options.responseLanguage),
-              requestId,
-            ),
-            completionGeneration,
-          );
+          deliverToolFailure(name, completionGeneration, `tool-failure:${callId}`);
         }
         options.callbacks.onError("The requested voice action could not be completed.");
       })
@@ -958,6 +994,9 @@ export async function connectOpenAiRealtime(options: {
 
   const recoverProtocolOutput = (cancelResponse: boolean) => {
     const recoveryGeneration = currentResponseGeneration;
+    const recoveryRequiredTool = currentResponseRequest?.requiredToolName
+      ?? dispatchedResponseRequest?.requiredToolName
+      ?? "";
     diagnostic("provider_protocol_recovery", {
       responseId: currentResponseId,
       generation: recoveryGeneration,
@@ -980,20 +1019,26 @@ export async function connectOpenAiRealtime(options: {
       finishResponse();
     }
     if (protocolRecoveryAttempts++ === 0) {
-      // Keep the complete session prompt and business facts, but prevent the
-      // malformed retry from attempting another tool call.
+      // A required semantic/state transition must remain a tool call. Falling
+      // back to a no-tools answer here caused the model to ask for approval
+      // again after the caller had already approved the booking review.
       enqueueResponse(
-        (requestId) => requestToolResultResponse(channel, requestId),
+        (requestId) => requestProtocolRecoveryResponse(
+          channel,
+          recoveryRequiredTool,
+          requestId,
+        ),
         recoveryGeneration,
+        false,
+        "conversation",
+        "",
+        Boolean(recoveryRequiredTool),
+        recoveryRequiredTool,
       );
       return;
     }
     if (protocolRecoveryAttempts === 2) {
-      enqueueResponse((requestId) => requestExactToolResponse(
-        channel,
-        localizedProcessingFailure(options.responseLanguage),
-        requestId,
-      ), recoveryGeneration);
+      enqueueAiRecoverySpeech("protocol_failed", recoveryGeneration);
       return;
     }
     options.callbacks.onError("The voice provider returned an invalid internal protocol response.");
@@ -1310,13 +1355,10 @@ export async function connectOpenAiRealtime(options: {
             generation: currentResponseGeneration,
             ...providerResponseDiagnosticDetails(event),
           }, "error");
-          deliverAgentSpeech({
-            id: eventResponseId || currentResponseId || `response-failed:${currentResponseGeneration}`,
-            generation: currentResponseGeneration,
-            text: rateLimited
-              ? localizedRateLimitFailure(options.responseLanguage)
-              : localizedProcessingFailure(options.responseLanguage),
-          });
+          enqueueAiRecoverySpeech(
+            rateLimited ? "provider_unavailable" : "request_failed",
+            currentResponseGeneration,
+          );
           options.callbacks.onError(rateLimited
             ? "The voice provider remained rate limited after one delayed retry."
             : failedRequest?.retryOnFailure
@@ -1343,6 +1385,18 @@ export async function connectOpenAiRealtime(options: {
         });
       } else if (currentOutputItemId) {
         send(channel, { type: "conversation.item.delete", item_id: currentOutputItemId });
+      }
+      agentTranscript = "";
+      agentInterrupted = false;
+      textCompletionSent = true;
+    } else if (type === "response.done" && currentResponsePurpose === "recovery_speech") {
+      const speech = sanitizeVoiceOutput(agentTranscript.trim());
+      if (speech) {
+        deliverAgentSpeech({
+          id: eventResponseId || currentResponseId || `recovery:${currentResponseGeneration}`,
+          generation: currentResponseGeneration,
+          text: speech,
+        });
       }
       agentTranscript = "";
       agentInterrupted = false;
@@ -1505,11 +1559,7 @@ export async function connectOpenAiRealtime(options: {
         finishResponse();
         if (failedAuxiliaryResponse) return;
         if (retryFailedMainResponse(failedRequest, failedGeneration)) return;
-        deliverAgentSpeech({
-          id: `response-error:${failedGeneration}`,
-          generation: failedGeneration,
-          text: localizedProcessingFailure(options.responseLanguage),
-        });
+        enqueueAiRecoverySpeech("request_failed", failedGeneration);
         options.callbacks.onError(message);
       }
     }
@@ -1674,6 +1724,14 @@ function requestToolResultResponse(channel: RTCDataChannel, requestId: string) {
   });
 }
 
+function requestProtocolRecoveryResponse(
+  channel: RTCDataChannel,
+  requiredToolName: string,
+  requestId: string,
+) {
+  send(channel, protocolRecoveryResponseRequest(requiredToolName, requestId));
+}
+
 function requestRequiredToolResponse(channel: RTCDataChannel, toolName: string, requestId: string) {
   send(channel, {
     type: "response.create",
@@ -1690,6 +1748,16 @@ function requestBusinessActionProgress(
   requestId: string,
 ) {
   send(channel, businessActionProgressRequest(toolName, requestId));
+}
+
+function requestAiRecoverySpeech(
+  channel: RTCDataChannel,
+  kind: AiRecoverySpeechKind,
+  language: string | undefined,
+  requestId: string,
+  toolName = "",
+) {
+  send(channel, aiRecoverySpeechRequest(kind, language, requestId, toolName));
 }
 
 function requestPostBookingGuidance(
@@ -1771,84 +1839,10 @@ function speechFingerprint(value: string) {
   return value.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase();
 }
 
-function localizedBookingFailure(language?: string) {
-  switch (language?.toLocaleLowerCase()) {
-    case "fr": return "Je n’ai pas pu enregistrer le rendez-vous dans le calendrier. Il n’est pas réservé. Souhaitez-vous réessayer ?";
-    case "ar": return "لم أتمكن من حفظ الموعد في التقويم، لذلك لم يتم حجزه. هل تريد المحاولة مرة أخرى؟";
-    case "sw": return "Sikuweza kuhifadhi miadi kwenye kalenda, kwa hiyo haijawekwa. Ungependa kujaribu tena?";
-    default: return "I couldn’t complete the booking, so it is not saved. I still have the details. Would you like me to try once more?";
-  }
-}
-
-function localizedBookingMutationFailure(language: string | undefined, toolName: string) {
-  const cancellation = toolName === "cancel_booking";
-  if (language?.toLocaleLowerCase() === "ar") {
-    return cancellation
-      ? "\u062A\u0639\u0630\u0631 \u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u0645\u0648\u0639\u062F. \u0644\u0645 \u064A\u062A\u063A\u064A\u0631 \u0627\u0644\u062D\u062C\u0632."
-      : "\u062A\u0639\u0630\u0631 \u062A\u063A\u064A\u064A\u0631 \u0645\u0648\u0639\u062F \u0627\u0644\u062D\u062C\u0632. \u0644\u0645 \u064A\u062A\u063A\u064A\u0631 \u0627\u0644\u062D\u062C\u0632.";
-  }
-  switch (language?.toLocaleLowerCase()) {
-    case "fr": return cancellation
-      ? "Je n'ai pas pu annuler le rendez-vous. La reservation reste inchangee."
-      : "Je n'ai pas pu deplacer le rendez-vous. La reservation reste inchangee.";
-    case "ar": return cancellation
-      ? "Ù„Ù… Ø£ØªÙ…ÙƒÙ† Ù…Ù† Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ù…ÙˆØ¹Ø¯. Ù…Ø§ Ø²Ø§Ù„ Ø§Ù„Ø­Ø¬Ø² Ø¯ÙˆÙ† ØªØºÙŠÙŠØ±."
-      : "Ù„Ù… Ø£ØªÙ…ÙƒÙ† Ù…Ù† ØªØºÙŠÙŠØ± Ù…ÙˆØ¹Ø¯ Ø§Ù„Ø­Ø¬Ø². Ù…Ø§ Ø²Ø§Ù„ Ø§Ù„Ø­Ø¬Ø² Ø¯ÙˆÙ† ØªØºÙŠÙŠØ±.";
-    case "sw": return cancellation
-      ? "Sikuweza kughairi miadi. Nafasi hiyo haijabadilishwa."
-      : "Sikuweza kubadilisha muda wa miadi. Nafasi hiyo haijabadilishwa.";
-    default: return cancellation
-      ? "I couldn't cancel the appointment, so the booking remains unchanged."
-      : "I couldn't reschedule the appointment, so the booking remains unchanged.";
-  }
-}
-
 function isAuxiliaryResponsePurpose(purpose?: PendingResponseRequest["purpose"]) {
-  return purpose === "business_progress" || purpose === "post_booking_guidance";
-}
-
-function localizedProcessingFailure(language?: string) {
-  switch (language?.toLocaleLowerCase()) {
-    case "fr": return "Desole, je n'ai pas pu terminer cette demande. Rien n'a ete modifie. Souhaitez-vous que je reessaie ?";
-    case "ar": return "عذراً، لم أتمكن من إكمال هذا الطلب. لم يتم تغيير أي شيء. هل تريدني أن أحاول مرة أخرى؟";
-    case "sw": return "Samahani, sikuweza kukamilisha ombi hilo. Hakuna kilichobadilishwa. Ungependa nijaribu tena?";
-    default: return "I'm sorry, I couldn't finish processing that request. Nothing was changed. Would you like me to try again?";
-  }
-}
-
-function localizedRateLimitProgress(language?: string) {
-  switch (language?.toLocaleLowerCase()) {
-    case "fr":
-      return "Je suis desole pour l'attente. Le service vocal est temporairement occupe, mais je poursuis votre demande.";
-    case "ar":
-      return "\u0639\u0630\u0631\u0627\u064b \u0639\u0644\u0649 \u0627\u0644\u0627\u0646\u062a\u0638\u0627\u0631. \u062e\u062f\u0645\u0629 \u0627\u0644\u0635\u0648\u062a \u0645\u0634\u063a\u0648\u0644\u0629 \u0645\u0624\u0642\u062a\u0627\u064b\u060c \u0644\u0643\u0646\u0646\u064a \u0645\u0627 \u0632\u0644\u062a \u0623\u0639\u0645\u0644 \u0639\u0644\u0649 \u0637\u0644\u0628\u0643.";
-    case "sw":
-      return "Samahani kwa kusubiri. Huduma ya sauti ina shughuli kwa muda, lakini bado ninaendelea na ombi lako.";
-    default:
-      return "I'm sorry for the wait. The voice service is temporarily busy, but I'm still working on your request.";
-  }
-}
-
-function localizedRateLimitFailure(language?: string) {
-  switch (language?.toLocaleLowerCase()) {
-    case "fr":
-      return "Je suis desole, le service vocal est toujours occupe et je n'ai pas pu terminer la reponse. Veuillez reessayer dans un instant.";
-    case "ar":
-      return "\u0639\u0630\u0631\u0627\u064b\u060c \u062e\u062f\u0645\u0629 \u0627\u0644\u0635\u0648\u062a \u0645\u0627 \u0632\u0627\u0644\u062a \u0645\u0634\u063a\u0648\u0644\u0629\u060c \u0644\u0630\u0644\u0643 \u0644\u0645 \u0623\u062a\u0645\u0643\u0646 \u0645\u0646 \u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0631\u062f. \u064a\u0631\u062c\u0649 \u0627\u0644\u0645\u062d\u0627\u0648\u0644\u0629 \u0628\u0639\u062f \u0644\u062d\u0638\u0627\u062a.";
-    case "sw":
-      return "Samahani, huduma ya sauti bado ina shughuli na sikuweza kukamilisha jibu. Tafadhali jaribu tena baada ya muda mfupi.";
-    default:
-      return "I'm sorry, the voice service is still busy, so I couldn't complete the response. Please try again in a moment.";
-  }
-}
-
-function toolFailureText(toolName: string, language?: string) {
-  if (toolName === "check_availability") return localizedAvailabilityFailure(language);
-  if (toolName === "book_slot") return localizedBookingFailure(language);
-  if (toolName === "reschedule_booking" || toolName === "cancel_booking") {
-    return localizedBookingMutationFailure(language, toolName);
-  }
-  return localizedProcessingFailure(language);
+  return purpose === "business_progress"
+    || purpose === "post_booking_guidance"
+    || purpose === "recovery_speech";
 }
 
 function completedRealtimeResponse(event: Record<string, unknown>) {
@@ -1940,15 +1934,6 @@ function sanitizeVoiceOutput(text: string, depth = 0): string {
     }
   }
   return candidate.trim();
-}
-
-function localizedAvailabilityFailure(language?: string) {
-  switch (language?.toLocaleLowerCase()) {
-    case "fr": return "Je ne peux pas confirmer la disponibilité pour le moment. Le créneau demandé n’est pas réservé.";
-    case "ar": return "تعذر تأكيد التقويم المباشر الآن. الموعد المطلوب غير محجوز.";
-    case "sw": return "Siwezi kuthibitisha kalenda kwa sasa. Muda ulioomba haujawekwa nafasi.";
-    default: return "I cannot confirm the live calendar right now. Your requested time is not booked.";
-  }
 }
 
 function send(channel: RTCDataChannel, event: Record<string, unknown>) {

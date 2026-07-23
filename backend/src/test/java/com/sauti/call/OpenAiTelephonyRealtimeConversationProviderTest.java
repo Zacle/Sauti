@@ -54,6 +54,37 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void malformedMandatoryStateTransitionRetriesTheSameRequiredTool() {
+        var events = new ArrayList<String>();
+        var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
+                new ObjectMapper(), mock(OpenAiRealtimeService.class), mock(Call.class),
+                new RecordingListener(events), Map.of()
+        );
+        var session = mock(OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession.class);
+        when(session.consumeExpectedResponse()).thenReturn(true);
+        when(session.dispatchedGeneration()).thenReturn(0L);
+        when(session.dispatchedPurpose()).thenReturn("conversation");
+        when(session.dispatchedRequiredToolName()).thenReturn("update_conversation_state");
+        socketListener.attach(session);
+        var webSocket = mock(WebSocket.class);
+
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.created\",\"response\":{\"id\":\"required-state\"}}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_item.added\",\"item\":{\"type\":\"message\",\"id\":\"bad-state\"}}",
+                true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.output_text.done\",\"text\":\"ANSWER\"}", true);
+        socketListener.onText(webSocket,
+                "{\"type\":\"response.done\",\"response\":{\"id\":\"required-state\",\"status\":\"completed\"}}",
+                true);
+
+        assertThat(events).isEmpty();
+        verify(session).requestResponseWithRequiredTool("update_conversation_state", 0L);
+        verify(session, never()).requestToolResultResponse(0L);
+    }
+
+    @Test
     void speaksOnlyTheFinalAnswerPhaseFromAMultiPhaseResponse() {
         var events = new ArrayList<String>();
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
@@ -956,6 +987,28 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     }
 
     @Test
+    void recoveryInstructionsDelegateWordingButPreserveFactualEffects() {
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.aiRecoverySpeechInstruction(
+                "provider_delay", "fr", ""
+        )).contains(
+                "Respond in fr",
+                "Choose the wording yourself",
+                "acknowledge the wait",
+                "do not ask a question"
+        ).doesNotContain("voice service is temporarily busy");
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.aiRecoverySpeechInstruction(
+                "tool_failed", "en", "book_slot"
+        )).contains(
+                "requested booking was not saved",
+                "Do not invent a result",
+                "Output only the words to say"
+        );
+        assertThat(OpenAiTelephonyRealtimeConversationProvider.aiRecoverySpeechInstruction(
+                "tool_failed", "en", "cancel_booking"
+        )).contains("existing booking remains unchanged");
+    }
+
+    @Test
     void retriesAnAcceptedCallerTurnOnceWhenRealtimeReturnsIncomplete() {
         var events = new ArrayList<String>();
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
@@ -1543,9 +1596,41 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         var event = new ObjectMapper().readTree(payload.getValue());
         assertThat(event.path("type").asText()).isEqualTo("response.create");
         assertThat(event.path("response").path("conversation").asText()).isEqualTo("none");
+        assertThat(event.path("response").path("input").isArray()).isTrue();
+        assertThat(event.path("response").path("input")).isEmpty();
+        assertThat(event.path("response").path("tools").isArray()).isTrue();
+        assertThat(event.path("response").path("tools")).isEmpty();
         assertThat(event.path("response").path("tool_choice").asText()).isEqualTo("none");
         assertThat(event.path("response").path("instructions").asText())
                 .contains("still saving the appointment", "Do not claim success or failure");
+    }
+
+    @Test
+    void recoverySpeechUsesACompactOutOfBandModelResponse() throws Exception {
+        var webSocket = mock(WebSocket.class);
+        when(webSocket.sendText(anyString(), eq(true)))
+                .thenReturn(CompletableFuture.completedFuture(webSocket));
+        var executor = mock(ScheduledExecutorService.class);
+        ScheduledFuture<?> keepAlive = mock(ScheduledFuture.class);
+        when(executor.scheduleAtFixedRate(any(Runnable.class), anyLong(), anyLong(), eq(TimeUnit.SECONDS)))
+                .thenAnswer(ignored -> keepAlive);
+        var session = new OpenAiTelephonyRealtimeConversationProvider.OpenAiTelephonySession(
+                webSocket, new ObjectMapper(), executor
+        );
+
+        session.requestAiRecoverySpeech("tool_failed", "book_slot", "fr", 0L);
+
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(webSocket, timeout(1_000)).sendText(payload.capture(), eq(true));
+        var event = new ObjectMapper().readTree(payload.getValue());
+        assertThat(event.path("type").asText()).isEqualTo("response.create");
+        assertThat(event.path("response").path("conversation").asText()).isEqualTo("none");
+        assertThat(event.path("response").path("input")).isEmpty();
+        assertThat(event.path("response").path("tools")).isEmpty();
+        assertThat(event.path("response").path("tool_choice").asText()).isEqualTo("none");
+        assertThat(event.path("response").path("instructions").asText())
+                .contains("Respond in fr", "requested booking was not saved")
+                .doesNotContain("voice service is temporarily busy");
     }
 
     @Test
