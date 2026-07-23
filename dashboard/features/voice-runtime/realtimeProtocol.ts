@@ -12,6 +12,7 @@ export type AuthorizedNextToolRequest = {
 export const SAUTI_REALTIME_REQUEST_ID = "sauti_request_id";
 export const AUTHORITATIVE_TRANSCRIPT_PREFIX = "SAUTI_INPUT_TRANSCRIPT";
 export const SLOW_RESPONSE_PROGRESS_PURPOSE = "sauti_slow_response_progress";
+export const REALTIME_CALL_ID_MAX_LENGTH = 32;
 
 const IMMEDIATE_TOOL_NAMES = new Set([
   "update_conversation_state",
@@ -71,6 +72,17 @@ export function confirmedEndCallResult(
   const payload = toolResult.result;
   return Boolean(payload && typeof payload === "object" && !Array.isArray(payload)
     && (payload as Record<string, unknown>).ended === true);
+}
+
+/**
+ * OpenAI Realtime limits function call IDs to 32 characters. Chained tools are
+ * created by Sauti rather than the provider, so use a compact opaque ID instead
+ * of concatenating the parent ID and tool name.
+ */
+export function newRealtimeChainedCallId() {
+  const random = globalThis.crypto?.randomUUID?.().replaceAll("-", "")
+    ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`.padEnd(29, "0");
+  return `sc_${random.slice(0, REALTIME_CALL_ID_MAX_LENGTH - 3)}`;
 }
 
 export function completedResponseText(event: Record<string, unknown>) {

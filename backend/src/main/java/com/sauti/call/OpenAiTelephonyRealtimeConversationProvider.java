@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRealtimeConversationProvider {
+    static final int REALTIME_CALL_ID_MAX_LENGTH = 32;
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenAiTelephonyRealtimeConversationProvider.class);
     private static final String RESPONSE_REQUEST_ID_METADATA = "sauti_request_id";
     private static final String RESPONSE_PURPOSE_CONVERSATION = "conversation";
@@ -52,6 +53,16 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         thread.setDaemon(true);
         return thread;
     });
+
+    static String newRealtimeChainedCallId(String parentCallId, String toolName) {
+        var source = (parentCallId == null ? "" : parentCallId)
+                + "\u0000"
+                + (toolName == null ? "" : toolName);
+        var random = java.util.UUID.nameUUIDFromBytes(source.getBytes(StandardCharsets.UTF_8))
+                .toString()
+                .replace("-", "");
+        return "sc_" + random.substring(0, REALTIME_CALL_ID_MAX_LENGTH - 3);
+    }
 
     @org.springframework.beans.factory.annotation.Autowired
     public OpenAiTelephonyRealtimeConversationProvider(
@@ -1018,7 +1029,7 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                 if (!nextTool.isBlank()) {
                     var nextArguments = toolNextToolArguments(result);
                     if (!nextArguments.isBlank()) {
-                        var chainedCallId = "sauti-chain:" + callId + ":" + nextTool;
+                        var chainedCallId = newRealtimeChainedCallId(callId, nextTool);
                         publishAuthorizedFunctionCall(
                                 webSocket, chainedCallId, nextTool, nextArguments
                         );

@@ -11,6 +11,8 @@ import {
   completedRealtimeToolCalls,
   hasUsableCallerFacingResponse,
   realtimeAuthorizedFunctionCallItem,
+  newRealtimeChainedCallId,
+  REALTIME_CALL_ID_MAX_LENGTH,
   realtimeCancellationDecision,
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
@@ -82,16 +84,19 @@ test("does not retry an incomplete response that already delivered caller-facing
 });
 
 test("represents a server-authorized chained tool as a native realtime function call", () => {
+  const chainedCallId = newRealtimeChainedCallId();
+  assert.equal(chainedCallId.length, REALTIME_CALL_ID_MAX_LENGTH);
+  assert.match(chainedCallId, /^sc_[a-z0-9]{29}$/);
   assert.deepEqual(
     realtimeAuthorizedFunctionCallItem(
-      "sauti-chain:semantic:hours",
+      chainedCallId,
       "get_business_hours",
       "{\"question\":\"When are you open?\"}",
     ),
     {
       type: "function_call",
       status: "completed",
-      call_id: "sauti-chain:semantic:hours",
+      call_id: chainedCallId,
       name: "get_business_hours",
       arguments: "{\"question\":\"When are you open?\"}",
     },

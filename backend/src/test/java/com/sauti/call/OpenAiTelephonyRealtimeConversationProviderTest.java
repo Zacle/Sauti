@@ -529,6 +529,9 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     void chainsAvailableCompleteIntakeDirectlyToTheBookingToolWithoutSpeakingAPreamble() {
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
+        var chainedCallId = OpenAiTelephonyRealtimeConversationProvider.newRealtimeChainedCallId(
+                "availability-review", "book_slot"
+        );
         when(realtimeService.executeTool(eq(call), eq("availability-review"), eq("check_availability"), anyString()))
                 .thenReturn(new com.sauti.llm.LlmToolResult(
                         "availability-review", "check_availability", true,
@@ -543,11 +546,11 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                                         "appointment_at", "2026-07-24T15:00:00Z"
                                 )
                         ), ""
-                ));
+        ));
         when(realtimeService.executeTool(
-                eq(call), eq("sauti-chain:availability-review:book_slot"), eq("book_slot"), anyString()
+                eq(call), eq(chainedCallId), eq("book_slot"), anyString()
         )).thenReturn(new com.sauti.llm.LlmToolResult(
-                "sauti-chain:availability-review:book_slot", "book_slot", true,
+                chainedCallId, "book_slot", true,
                 Map.of("status", "booking_review_required", "spokenResponse", "Please confirm the details."), ""
         ));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
@@ -564,7 +567,7 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 true);
 
         verify(realtimeService, timeout(1_000)).executeTool(
-                eq(call), eq("sauti-chain:availability-review:book_slot"), eq("book_slot"), anyString()
+                eq(call), eq(chainedCallId), eq("book_slot"), anyString()
         );
         verify(session, never()).requestResponseWithRequiredTool("book_slot");
         verify(session, never()).requestToolResultResponse();
@@ -576,6 +579,9 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         var events = new ArrayList<String>();
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
+        var chainedCallId = OpenAiTelephonyRealtimeConversationProvider.newRealtimeChainedCallId(
+                "semantic-action", "check_availability"
+        );
         var spoken = "Four in the afternoon is available. Would you like to continue?";
         when(realtimeService.executeTool(
                 eq(call), eq("semantic-action"), eq(com.sauti.tool.ConversationStateTool.NAME), anyString()
@@ -592,11 +598,11 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 ), ""
         ));
         when(realtimeService.executeTool(
-                eq(call), eq("sauti-chain:semantic-action:check_availability"),
+                eq(call), eq(chainedCallId),
                 eq("check_availability"),
                 anyString()
         )).thenReturn(new com.sauti.llm.LlmToolResult(
-                "sauti-chain:semantic-action:check_availability", "check_availability", true,
+                chainedCallId, "check_availability", true,
                 Map.of("status", "requested_time_available", "spokenResponse", spoken), ""
         ));
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
@@ -614,7 +620,7 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
 
         var arguments = ArgumentCaptor.forClass(String.class);
         verify(realtimeService, timeout(1_000)).executeTool(
-                eq(call), eq("sauti-chain:semantic-action:check_availability"),
+                eq(call), eq(chainedCallId),
                 eq("check_availability"),
                 arguments.capture()
         );
@@ -635,6 +641,9 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         var events = new ArrayList<String>();
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
+        var chainedCallId = OpenAiTelephonyRealtimeConversationProvider.newRealtimeChainedCallId(
+                "semantic-approval", "book_slot"
+        );
         var confirmation = "Your appointment is booked. Your booking number is SAT-APPROVED123.";
         var guidanceInstruction = "Tell the caller in their current language to keep the booking number and "
                 + "provide it when calling back to change, reschedule, or cancel the booking.";
@@ -651,10 +660,10 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 ), ""
         ));
         when(realtimeService.executeTool(
-                eq(call), eq("sauti-chain:semantic-approval:book_slot"), eq("book_slot"),
+                eq(call), eq(chainedCallId), eq("book_slot"),
                 eq("{\"review_token\":\"signed-review-token\"}")
         )).thenReturn(new com.sauti.llm.LlmToolResult(
-                "sauti-chain:semantic-approval:book_slot", "book_slot", true,
+                chainedCallId, "book_slot", true,
                 Map.of(
                         "status", "booking_confirmed",
                         "spokenResponse", confirmation,
@@ -675,7 +684,7 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 true);
 
         verify(realtimeService, timeout(1_000)).executeTool(
-                eq(call), eq("sauti-chain:semantic-approval:book_slot"), eq("book_slot"),
+                eq(call), eq(chainedCallId), eq("book_slot"),
                 eq("{\"review_token\":\"signed-review-token\"}")
         );
         verify(session, never()).requestResponseWithRequiredTool("book_slot");
@@ -686,11 +695,11 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         verify(webSocket, timeout(1_000).atLeastOnce()).sendText(payloads.capture(), eq(true));
         assertThat(payloads.getAllValues()).anyMatch(payload ->
                 payload.contains("\"type\":\"function_call\"")
-                        && payload.contains("\"call_id\":\"sauti-chain:semantic-approval:book_slot\"")
+                        && payload.contains("\"call_id\":\"" + chainedCallId + "\"")
         );
         assertThat(payloads.getAllValues()).anyMatch(payload ->
                 payload.contains("\"type\":\"function_call_output\"")
-                        && payload.contains("\"call_id\":\"sauti-chain:semantic-approval:book_slot\"")
+                        && payload.contains("\"call_id\":\"" + chainedCallId + "\"")
         );
 
         when(session.consumeExpectedResponse()).thenReturn(true);
@@ -966,6 +975,10 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     void publishesACompleteNativeToolPairBeforeAnsweringAServerAuthorizedHoursQuestion() {
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
+        var chainedCallId = OpenAiTelephonyRealtimeConversationProvider.newRealtimeChainedCallId(
+                "semantic-hours", "get_business_hours"
+        );
+        assertThat(chainedCallId).hasSize(OpenAiTelephonyRealtimeConversationProvider.REALTIME_CALL_ID_MAX_LENGTH);
         when(realtimeService.executeTool(
                 eq(call), eq("semantic-hours"), eq(com.sauti.tool.ConversationStateTool.NAME), anyString()
         )).thenReturn(new com.sauti.llm.LlmToolResult(
@@ -978,10 +991,10 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                 ), ""
         ));
         when(realtimeService.executeTool(
-                eq(call), eq("sauti-chain:semantic-hours:get_business_hours"),
+                eq(call), eq(chainedCallId),
                 eq("get_business_hours"), eq("{}")
         )).thenReturn(new com.sauti.llm.LlmToolResult(
-                "sauti-chain:semantic-hours:get_business_hours", "get_business_hours", true,
+                chainedCallId, "get_business_hours", true,
                 Map.of(
                         "status", "configured",
                         "timezone", "Africa/Cairo",
@@ -1007,9 +1020,9 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         verify(webSocket, timeout(1_000).atLeast(3)).sendText(payloads.capture(), eq(true));
         var sent = payloads.getAllValues();
         var chainedCallIndex = indexOfPayload(sent, "\"type\":\"function_call\"",
-                "\"call_id\":\"sauti-chain:semantic-hours:get_business_hours\"");
+                "\"call_id\":\"" + chainedCallId + "\"");
         var chainedOutputIndex = indexOfPayload(sent, "\"type\":\"function_call_output\"",
-                "\"call_id\":\"sauti-chain:semantic-hours:get_business_hours\"");
+                "\"call_id\":\"" + chainedCallId + "\"");
 
         assertThat(chainedCallIndex).isGreaterThanOrEqualTo(0);
         assertThat(chainedOutputIndex).isGreaterThan(chainedCallIndex);

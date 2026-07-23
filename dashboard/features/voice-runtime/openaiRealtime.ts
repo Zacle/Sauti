@@ -10,6 +10,7 @@ import {
   isSlowResponseProgressEvent,
   realtimeCancellationDecision,
   realtimeAuthorizedFunctionCallItem,
+  newRealtimeChainedCallId,
   realtimeResponseRequestId,
   realtimeTranscriptMirrorItem,
   SAUTI_REALTIME_REQUEST_ID,
@@ -674,7 +675,7 @@ export async function connectOpenAiRealtime(options: {
         const nextTool = authorizedNextToolRequest(result);
         if (nextTool) {
           if (nextTool.argumentsJson) {
-            const chainedCallId = `sauti-chain:${callId}:${nextTool.name}`;
+            const chainedCallId = newRealtimeChainedCallId();
             send(channel, {
               type: "conversation.item.create",
               item: realtimeAuthorizedFunctionCallItem(

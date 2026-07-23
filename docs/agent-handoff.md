@@ -4752,3 +4752,24 @@ Expected:
   - `.\gradlew.bat :backend:test` - passed.
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up/risk: callers who start a genuinely newer turn take precedence over an older operation's spoken result. The completed result remains in conversation history and can ground the next response; it is intentionally not spoken asynchronously over the caller.
+
+### 2026-07-23 - Bound Realtime chained-tool IDs to stop false processing failures
+
+- Diagnosed the live Agent Studio failure from the provider error shown in the UI: `Invalid 'item.call_id': string too long. Expected a string with maximum length 32`. Sauti created chained IDs by concatenating `sauti-chain`, the provider's parent call ID, and the selected tool name; common availability and hours chains reached 40-52 characters.
+- Replaced concatenated chained IDs with opaque 32-character `sc_...` identifiers in both browser OpenAI Realtime and telephony OpenAI Realtime. This is operation-agnostic and covers every server-authorized read and CRUD chain rather than special-casing availability or one business.
+- Browser IDs use a fresh UUID-derived value. Telephony IDs use a deterministic UUID-derived value from the parent call ID and tool name, preserving idempotent handling of duplicate provider events while remaining within the protocol limit.
+- The invalid `conversation.item.create` event previously made OpenAI terminate the active response. Sauti then entered its empty-response recovery path and spoke the false “couldn't finish processing” message while the actual availability operation continued, which also left the UI appearing to think/work until the later tool path recovered. Keeping the native function-call/function-output pair valid prevents that split lifecycle.
+- Updated browser and telephony regression tests to assert the exact 32-character boundary and to correlate the generated ID across tool execution, native function-call history, and function-call output.
+- Files touched:
+  - `dashboard/features/voice-runtime/{realtimeProtocol,openaiRealtime,openaiRealtime.test}.ts`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run test:voice` - passed; 33 regressions.
+  - `npm.cmd run typecheck` - passed.
+  - full `OpenAiTelephonyRealtimeConversationProviderTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up/risk: live verification should repeat both a server-authorized availability read and a booking/update/cancellation chain. No `item.call_id` validation error, generic processing fallback, or caller-dependent resume should occur.
