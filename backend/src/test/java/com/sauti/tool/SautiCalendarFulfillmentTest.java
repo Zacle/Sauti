@@ -454,15 +454,17 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("bookingNumber", "SAT-AB12CD34")
                 .containsEntry("calendarSynced", false)
                 .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
-                        .contains("saved in our system", "external calendar confirmation is still pending", "SAT-AB12CD34"))
-                .hasEntrySatisfying("callerGuidanceInstruction", instruction -> assertThat(instruction.toString())
-                        .containsIgnoringCase("caller's current language")
-                        .containsIgnoringCase("keep the booking number")
-                        .containsIgnoringCase("calling back")
+                        .contains(
+                                "saved in our system",
+                                "external calendar confirmation is still pending",
+                                "SAT-AB12CD34"
+                        )
+                        .containsIgnoringCase("keep this booking number")
+                        .containsIgnoringCase("call back")
                         .containsIgnoringCase("change")
                         .containsIgnoringCase("reschedule")
-                        .containsIgnoringCase("cancel")
-                        .containsIgnoringCase("do not repeat, alter, or invent the number"));
+                        .containsIgnoringCase("cancel"))
+                .doesNotContainKey("callerGuidanceInstruction");
     }
 
     @Test

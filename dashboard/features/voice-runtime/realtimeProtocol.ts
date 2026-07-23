@@ -216,6 +216,11 @@ export function realtimeRateLimitRetryDelayMs(event: Record<string, unknown>) {
   if (String(error.code ?? "").trim().toLocaleLowerCase() !== "rate_limit_exceeded") return 0;
 
   const message = String(error.message ?? "");
+  const retryMilliseconds = Number(message.match(/try again in\s+(\d+(?:\.\d+)?)ms\b/iu)?.[1]);
+  if (Number.isFinite(retryMilliseconds)) {
+    const delayMs = Math.ceil(retryMilliseconds) + 250;
+    return delayMs >= 500 && delayMs <= MAX_RATE_LIMIT_RETRY_DELAY_MS ? delayMs : 0;
+  }
   const retrySeconds = Number(message.match(/try again in\s+(\d+(?:\.\d+)?)s\b/iu)?.[1]);
   if (!Number.isFinite(retrySeconds)) return DEFAULT_RATE_LIMIT_RETRY_DELAY_MS;
 

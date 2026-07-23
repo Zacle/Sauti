@@ -29,10 +29,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class SautiCalendarFulfillment implements ToolFulfillment {
     private static final Logger LOGGER = LoggerFactory.getLogger(SautiCalendarFulfillment.class);
-    private static final String BOOKING_REFERENCE_GUIDANCE = "Give one brief, natural, professional sentence "
-            + "in the caller's current language telling them to keep the booking number just provided and to give "
-            + "that number when calling back to change, reschedule, or cancel the booking. Refer to it as the booking "
-            + "number; do not repeat, alter, or invent the number, add new booking facts, ask a question, or call a tool.";
     private final CalendarProviderFactory calendarProviderFactory;
     private final BookingService bookingService;
     private final CallSessionStore callSessionStore;
@@ -436,10 +432,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("calendarSynced", calendarSynced);
         result.put("externalCalendarConfigured", !localOnly);
         result.put("ownerNotified", true);
-        result.put("spokenResponse", BookingSpeechRenderer.render(
+        result.put("spokenResponse", BookingSpeechRenderer.renderWithReferenceGuidance(
                 call, booking, booking.getBookingReference()
         ));
-        result.put("callerGuidanceInstruction", BOOKING_REFERENCE_GUIDANCE);
         result.put("instruction", localOnly
                 ? "Tell the caller the booking was saved in Sauti and provide the booking number. Do not claim an external calendar was updated."
                 : "Tell the caller whether the external calendar was confirmed. Always provide the booking number. If calendarSynced is false, say the booking was saved in Sauti for owner follow-up.");

@@ -135,6 +135,30 @@ class AgentToolLoaderTest {
                 .doesNotContainKeys("question_handling", "confirmation_state");
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void terminalToolsCarryTheirFarewellWithoutASecondModelTurn() {
+        var agent = new Agent(new Tenant("Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");
+        agent.update("Amina", "Hello", "Prompt", "en", List.of("en"), null, List.of(), false, "UTC", "");
+        var endCall = new AgentTool(agent, "end_call", "End the call", Map.of(
+                "type", "object",
+                "properties", Map.of("outcome", Map.of("type", "string")),
+                "required", List.of("outcome")
+        ), "noop", true, 50);
+        endCall.configureActionPolicy(ToolActionEffect.TERMINAL, ToolConfirmationPolicy.EXPLICIT);
+        var repository = mock(AgentToolRepository.class);
+        when(repository.findByAgent_IdAndIsActiveTrueOrderByDisplayOrderAsc(agent.getId()))
+                .thenReturn(List.of(endCall));
+
+        var definition = loader(repository).loadForAgent(agent.getId()).get(0);
+        var properties = (Map<String, Object>) definition.inputSchema().get("properties");
+        var required = (List<String>) definition.inputSchema().get("required");
+
+        assertThat(properties).containsKey("spoken_farewell");
+        assertThat(required).contains("outcome", "spoken_farewell");
+        assertThat(definition.description()).contains("without requesting another model response");
+    }
+
     private AgentToolLoader loader(AgentToolRepository repository) {
         return new AgentToolLoader(repository, new ToolActionPolicy());
     }

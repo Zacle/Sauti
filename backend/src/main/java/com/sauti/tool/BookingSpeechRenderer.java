@@ -52,4 +52,15 @@ final class BookingSpeechRenderer {
                             + bookingNumber + ".";
         };
     }
+
+    static String renderWithReferenceGuidance(Call call, Booking booking, String bookingNumber) {
+        var confirmation = render(call, booking, bookingNumber);
+        var guidance = switch (SpokenDateTimeFormatter.language(call)) {
+            case "fr" -> " Veuillez conserver ce numero de reservation et le communiquer si vous rappelez pour modifier, deplacer ou annuler le rendez-vous.";
+            case "ar" -> " يرجى الاحتفاظ برقم الحجز وتقديمه عند الاتصال لتغيير الموعد أو إعادة جدولته أو إلغائه.";
+            case "sw" -> " Tafadhali hifadhi nambari hii ya nafasi na uitaje ukipiga simu kubadilisha muda au kughairi miadi.";
+            default -> " Please keep this booking number and provide it if you call back to change, reschedule, or cancel the appointment.";
+        };
+        return confirmation + guidance;
+    }
 }

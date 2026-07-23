@@ -44,6 +44,9 @@ public class ConversationStateTool {
     private static final Set<String> CALLER_QUESTION = Set.of(
             "none", "answered_in_spoken_response", "requires_business_tool"
     );
+    private static final Set<String> ACTION_AUTHORIZATION = Set.of(
+            "not_applicable", "unconditional", "blocked"
+    );
 
     private final CallSessionStore sessions;
     private final AgentToolRepository agentTools;
@@ -119,6 +122,11 @@ public class ConversationStateTool {
                 "enum", List.of("none", "answered_in_spoken_response", "requires_business_tool"),
                 "description", "Turn-scoped status of an explicit customer question, condition, hesitation, or request for information that must be resolved before any side effect. Use answered_in_spoken_response only when spoken_response directly answers it from authoritative configured facts. Use requires_business_tool when a read-only lookup must run first. Use none for a clean answer, correction, or unconditional action confirmation with no separate unresolved request. An action request itself is not a customer question."
         ));
+        properties.put("action_authorization", Map.of(
+                "type", "string",
+                "enum", List.of("not_applicable", "unconditional", "blocked"),
+                "description", "Independent semantic safety judgment for the complete latest caller turn in any language. Use unconditional only when the caller clearly and consistently authorizes the exact pending side effect with no contradiction, rejection, correction, condition, hesitation, or separate request. Use blocked when any such conflict is present, even if the same turn also contains approval wording. Use not_applicable when this turn is not authorizing a side effect."
+        ));
         properties.put("next_action", Map.of(
                 "type", "string",
                 "enum", List.of("reply", "use_business_tool"),
@@ -137,7 +145,8 @@ public class ConversationStateTool {
                         "required", List.of(
                                 "updates", "additional_details", "clear_fields",
                                 "booking_subject", "booking_intent", "turn_understanding",
-                                "spoken_response", "caller_question", "next_action", "business_tool"
+                                "spoken_response", "caller_question", "action_authorization",
+                                "next_action", "business_tool"
                         ),
                         "additionalProperties", false
                 )
@@ -179,8 +188,19 @@ public class ConversationStateTool {
                     toolCall.arguments().get("caller_question"), CALLER_QUESTION, "none"
             );
             var questionBlocksMutation = !"none".equals(callerQuestion);
+            var actionAuthorization = choice(
+                    toolCall.arguments().get("action_authorization"),
+                    ACTION_AUTHORIZATION,
+                    "not_applicable"
+            );
             var next = reduce(call, existing, toolCall.arguments());
-            if (questionBlocksMutation && next.values().containsKey("review_decision")) {
+            var proposedReviewDecision = next.values().getOrDefault("review_decision", "");
+            var approvalIsUnconditional = "approved".equals(proposedReviewDecision)
+                    && "unconditional".equals(actionAuthorization)
+                    && !questionBlocksMutation;
+            if ((questionBlocksMutation
+                    || ("approved".equals(proposedReviewDecision) && !approvalIsUnconditional))
+                    && next.values().containsKey("review_decision")) {
                 var valuesWithoutApproval = new LinkedHashMap<>(next.values());
                 valuesWithoutApproval.remove("review_decision");
                 next = new ConversationState(
@@ -221,12 +241,12 @@ public class ConversationStateTool {
                     : verifiedBookingArguments(call, next);
             var reviewDecision = next.values().getOrDefault("review_decision", "");
             var approvedPendingAction = !questionBlocksMutation
-                    && "approved".equals(reviewDecision)
+                    && approvalIsUnconditional
                     && pendingAction.isPresent()
                     && next.revision() > pendingAction.orElseThrow().proposedAtRevision();
             var reviewMustContinue = !questionBlocksMutation
                     && !ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
-                    && ("approved".equals(reviewDecision) || "corrected".equals(reviewDecision))
+                    && (approvalIsUnconditional || "corrected".equals(reviewDecision))
                     && configuredFor(call, "book_slot");
             var bookingBecameReady = !questionBlocksMutation
                     && previousBookingArguments.isEmpty()
@@ -283,6 +303,11 @@ public class ConversationStateTool {
                     arguments.put("question_handling", "ready_for_action");
                     arguments.put("confirmation_state", "confirmed");
                     result.put("nextToolArguments", Map.copyOf(arguments));
+                } else if ("get_business_hours".equals(businessTool)) {
+                    // This read has no arguments. Supplying the authoritative
+                    // empty object lets Realtime execute it directly instead of
+                    // spending another model turn asking for the same tool.
+                    result.put("nextToolArguments", Map.of());
                 } else if ("check_availability".equals(businessTool)) {
                     var availabilityArguments = availabilityArguments(next);
                     if (!availabilityArguments.isEmpty()) {

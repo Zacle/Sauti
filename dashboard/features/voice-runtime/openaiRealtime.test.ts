@@ -280,6 +280,13 @@ test("honors a bounded provider rate-limit retry delay", () => {
   assert.equal(realtimeRateLimitRetryDelayMs({
     response: {
       status_details: {
+        error: { code: "rate_limit_exceeded", message: "Please try again in 544ms." },
+      },
+    },
+  }), 794);
+  assert.equal(realtimeRateLimitRetryDelayMs({
+    response: {
+      status_details: {
         error: { code: "rate_limit_exceeded", message: "Please retry shortly." },
       },
     },

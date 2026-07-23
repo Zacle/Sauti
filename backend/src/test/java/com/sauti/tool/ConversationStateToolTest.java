@@ -337,6 +337,42 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void authorizedNoArgumentReadCanExecuteWithoutAnotherModelResponse() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("hours-read-call");
+        when(sessions.conversationState("hours-read-call"))
+                .thenReturn(Optional.of(ConversationState.empty()));
+        var agentTools = mock(AgentToolRepository.class);
+        var hoursTool = mock(AgentTool.class);
+        when(hoursTool.actionEffect()).thenReturn(ToolActionEffect.READ_ONLY);
+        when(agentTools.findByAgent_IdAndToolNameAndIsActiveTrue(
+                call.getAgent().getId(), "get_business_hours"
+        )).thenReturn(Optional.of(hoursTool));
+        var tool = new ConversationStateTool(sessions, agentTools);
+
+        var result = tool.execute(call, toolCall(arguments(
+                "updates", Map.of(),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "information_only",
+                "turn_understanding", "clear",
+                "caller_question", "requires_business_tool",
+                "action_authorization", "not_applicable",
+                "next_action", "use_business_tool",
+                "business_tool", "get_business_hours",
+                "spoken_response", ""
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "get_business_hours")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of())
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
     void pausedBookingIntentCannotAuthorizeTheBookingSideEffect() {
         var sessions = mock(CallSessionStore.class);
         var call = call("paused-business-call");
@@ -473,7 +509,7 @@ class ConversationStateToolTest {
         ));
         var tool = new ConversationStateTool(sessions);
 
-        var result = tool.execute(call, toolCall(Map.of(
+        var result = tool.execute(call, toolCall(arguments(
                 "updates", Map.of("review_decision", "approved"),
                 "additional_details", Map.of(),
                 "clear_fields", List.of(),
@@ -481,6 +517,7 @@ class ConversationStateToolTest {
                 "booking_intent", "unchanged",
                 "turn_understanding", "clear",
                 "caller_question", "none",
+                "action_authorization", "unconditional",
                 "next_action", "reply",
                 "business_tool", "",
                 "spoken_response", ""
@@ -566,12 +603,13 @@ class ConversationStateToolTest {
         )));
         var tool = new ConversationStateTool(sessions);
 
-        var result = tool.execute(call, toolCall(Map.of(
+        var result = tool.execute(call, toolCall(arguments(
                 "updates", Map.of("review_decision", "approved"),
                 "additional_details", Map.of(),
                 "clear_fields", List.of(),
                 "booking_subject", "unchanged",
                 "booking_intent", "unchanged",
+                "action_authorization", "unconditional",
                 "next_action", "reply",
                 "business_tool", "",
                 "spoken_response", "Oui, tout est correct ?"
@@ -668,7 +706,7 @@ class ConversationStateToolTest {
         )));
         var tool = new ConversationStateTool(sessions);
 
-        var result = tool.execute(call, toolCall(Map.of(
+        var result = tool.execute(call, toolCall(arguments(
                 "updates", Map.of("review_decision", "approved"),
                 "additional_details", Map.of(),
                 "clear_fields", List.of(),
@@ -676,6 +714,7 @@ class ConversationStateToolTest {
                 "booking_intent", "unchanged",
                 "turn_understanding", "clear",
                 "caller_question", "answered_in_spoken_response",
+                "action_authorization", "blocked",
                 "next_action", "reply",
                 "business_tool", "",
                 "spoken_response", "The nails service costs 4 dollars. Would you still like me to save the appointment?"
@@ -691,6 +730,56 @@ class ConversationStateToolTest {
         assertThat(captureState(sessions, "approval-question-call").values())
                 .doesNotContainKey("review_decision")
                 .containsEntry("service_type", "Nails");
+    }
+
+    @Test
+    void contradictoryApprovalCannotAuthorizeTheRetainedBookingInAnyLanguage() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("conflicting-approval-call");
+        when(sessions.conversationState("conflicting-approval-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_name", "Harry",
+                                "appointment_name", "Harry",
+                                "caller_phone", "0115753441",
+                                "service_type", "Men hairstyle",
+                                "preferred_day", "2026-07-31",
+                                "preferred_time", "10:00"
+                        ),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        8
+                )
+        ));
+        when(sessions.pendingBooking("conflicting-approval-call")).thenReturn(Optional.of(new BookingDraft(
+                "Harry", "Men hairstyle", "", "2026-07-31T10:00:00Z", "0115753441", true,
+                "signed-review-token"
+        )));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(arguments(
+                "updates", Map.of("review_decision", "approved"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "turn_understanding", "clear",
+                "caller_question", "none",
+                "action_authorization", "blocked",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "I heard conflicting instructions. Should I save these details unchanged?"
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "reply")
+                .containsEntry(
+                        "spokenResponse",
+                        "I heard conflicting instructions. Should I save these details unchanged?"
+                )
+                .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments");
+        assertThat(captureState(sessions, "conflicting-approval-call").values())
+                .doesNotContainKey("review_decision");
     }
 
     @Test
@@ -732,7 +821,8 @@ class ConversationStateToolTest {
         assertThat(definition.inputSchema().toString())
                 .contains(
                         "turn_understanding", "gibberish", "booking_number", "yyyy-MM-dd", "HH:mm",
-                        "caller_question", "answered_in_spoken_response", "requires_business_tool"
+                        "caller_question", "answered_in_spoken_response", "requires_business_tool",
+                        "action_authorization", "unconditional", "blocked"
                 )
                 .doesNotContain("my name is Zachary", "don't book", "call back later");
     }
@@ -749,6 +839,14 @@ class ConversationStateToolTest {
 
     private LlmToolCall toolCall(Map<String, Object> arguments) {
         return new LlmToolCall("semantic-tool-call", ConversationStateTool.NAME, arguments);
+    }
+
+    private Map<String, Object> arguments(Object... entries) {
+        var result = new java.util.LinkedHashMap<String, Object>();
+        for (var index = 0; index + 1 < entries.length; index += 2) {
+            result.put(entries[index].toString(), entries[index + 1]);
+        }
+        return Map.copyOf(result);
     }
 
     private ConversationState captureState(CallSessionStore sessions, String sid) {

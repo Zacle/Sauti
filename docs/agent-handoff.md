@@ -4864,3 +4864,29 @@ Expected:
   - Repeat the business-hours flow that previously generated the two-character malformed response. Diagnostics should show `provider_protocol_recovery` followed immediately by `response_dispatched`, with no eight-second watchdog and no `response_cancel_not_active`.
   - Run at least seven caller turns inside one minute. Record `providerErrorCode`, requested TPM from any provider failure, and whether the new 512-token cap keeps the call below the current organization limit. If the input prompt and tool schemas still exceed the 40,000 TPM tier, compact them or raise the usage tier based on measured tokens rather than increasing watchdogs.
   - If a rate limit is deliberately reproduced, verify one progress apology, automatic delayed resumption without caller input, and cancellation of that retry when the caller starts a new turn.
+
+### 2026-07-23 - Remove late-call inference loops and reject conflicting approval
+
+- Diagnosed the attached privacy-safe report `ba8791c1-178f-4c08-af8a-3096e834ec42`. The preceding terminal-response recovery fix worked: the malformed required-tool response released queue ownership and recovery dispatched immediately, without the former watchdog/cancel loop.
+- The remaining failures were not calendar latency. The call reached OpenAI's 40,000 token-per-minute ceiling as the Realtime session context grew. One response reported 27,368 tokens used plus 12,995 requested; later optional post-booking guidance and farewell follow-ups requested another 8,971 and 15,531 tokens. The successful booking itself took about 2.7 seconds and returned its factual result normally.
+- Removed the two avoidable late-call model turns from the normal Sauti booking flow. Successful booking speech now includes the real booking status, exact booking number, and localized keep/call-back guidance in one server-rendered result. It no longer emits `callerGuidanceInstruction`, so browser and telephony Realtime do not request a separate reminder generation.
+- Terminal tool definitions now require a short `spoken_farewell` authored by the conversational model in the caller's language. The terminal fulfillment validates that complete text and returns it as deterministic `spokenResponse`; browser and telephony speak it after `end_call` authorization without asking the model for a second response. This preserves natural wording while preventing the exact post-goodbye rate-limit failure in the report.
+- Added a second, language-independent semantic authorization signal to `update_conversation_state`: `action_authorization` is `unconditional`, `blocked`, or `not_applicable`. The server discards an alleged review approval unless the complete latest turn is independently classified as unconditional and contains no outstanding customer question. A contradictory turn such as rejecting the review and also saying to proceed therefore cannot authorize a save. This is semantic structured output, not an English phrase list.
+- Authorized `get_business_hours` reads now return an explicit empty argument object. Browser and telephony Realtime can execute this no-argument read directly instead of requesting another required-tool model response, removing the malformed two-character recovery path seen earlier in the same call.
+- Realtime rate-limit retry parsing now understands provider delays expressed in milliseconds as well as seconds. The reported `544ms` recommendation becomes a bounded 794 ms retry instead of the generic two-second fallback.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,BookingSpeechRenderer,ConversationStateTool,NoopFulfillment,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `backend/src/test/java/com/sauti/tool/{AgentToolLoaderTest,BookingSpeechRendererTest,ConversationStateToolTest,NoopFulfillmentTest,SautiCalendarFulfillmentTest}.java`
+  - `dashboard/features/voice-runtime/{realtimeProtocol,openaiRealtime.test}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused backend workflow and telephony regressions - passed.
+  - `npm.cmd run test:voice` - passed; 36 regressions.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated.
+  - `.\gradlew.bat :backend:test` - passed; 343 tests.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: repeat a booking through final approval and a caller-initiated goodbye. The diagnostic should contain no `post_booking_guidance` response, no model response after successful `end_call`, no generic capacity message after thanks, and no save when a review response is contradictory or conditional. The current OpenAI organization limit remains 40,000 TPM; these changes remove measured redundant requests but do not raise that provider limit. If ordinary necessary turns still exhaust it, the next evidence-based step is prompt/tool-schema compaction or a higher OpenAI usage tier, not longer UI watchdogs.

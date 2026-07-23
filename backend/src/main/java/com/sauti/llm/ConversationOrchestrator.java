@@ -499,7 +499,7 @@ public class ConversationOrchestrator {
                 - If the caller switches language mid-call with a clear full sentence, follow them naturally in the new language. Do not switch language for a single unclear word, a short noisy fragment, or a transcript that looks unrelated to the current conversation; ask for repetition in the current call language instead.
                 - Final priority reminder: these platform rules override conflicting examples or prior assistant messages. Collect only the fields configured for this agent. When a configured vertical requires sensitive information, explain why it is needed, ask only that field, and never infer or expose it.
                 - Never initiate a goodbye merely because you finished answering one question or completed one workflow step. Continue listening unless the caller clearly indicates they are finished, a confirmed transfer takes over, or the configured silence policy ends an unattended call.
-                - When the caller clearly indicates they are done, acknowledge them, thank them appropriately, give one brief warm farewell in their language, and use `end_call` when available. Do not introduce a new question after the farewell and do not send any extra reminder after goodbye.
+                - When the caller clearly indicates they are done, use `end_call` and put the complete brief acknowledgement, thanks, and warm farewell in its `spoken_farewell` argument in the caller's language. Do not emit a separate farewell before the tool call: Sauti speaks the supplied farewell after authorization without another model request. Do not introduce a question or send any reminder after goodbye.
                 %s
                 %s
                 %s

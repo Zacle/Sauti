@@ -36,10 +36,25 @@ public class AgentToolLoader {
     private LlmToolDefinition definition(AgentTool tool) {
         var definition = LlmToolDefinition.from(tool);
         if (tool.actionEffect() == ToolActionEffect.TERMINAL) {
+            var schema = new LinkedHashMap<String, Object>(definition.inputSchema());
+            var properties = new LinkedHashMap<String, Object>(
+                    (Map<String, Object>) schema.getOrDefault("properties", Map.of())
+            );
+            var required = new java.util.ArrayList<String>(
+                    (List<String>) schema.getOrDefault("required", List.of())
+            );
+            properties.put("spoken_farewell", Map.of(
+                    "type", "string",
+                    "maxLength", 300,
+                    "description", "The complete brief, warm, professional farewell to speak in the caller's current language. Include any appropriate thanks or acknowledgement. Do not ask a question, mention tools, or add business facts."
+            ));
+            if (!required.contains("spoken_farewell")) required.add("spoken_farewell");
+            schema.put("properties", Map.copyOf(properties));
+            schema.put("required", List.copyOf(required));
             return actionPolicy.decorate(tool, new LlmToolDefinition(
                     definition.name(),
-                    "Authorize a respectful call ending only after the caller clearly indicates they are finished, or after a configured terminal transfer, voicemail, or silence workflow. Never use this merely because one answer or booking step is complete. Thank the caller and give one brief farewell in their current language; do not ask another question afterward.",
-                    definition.inputSchema(),
+                    "Authorize a respectful call ending only after the caller clearly indicates they are finished, or after a configured terminal transfer, voicemail, or silence workflow. Never use this merely because one answer or booking step is complete. Put the one complete farewell in spoken_farewell; Sauti will speak it after authorization without requesting another model response.",
+                    Map.copyOf(schema),
                     definition.callerWaitExpected()
             ));
         }

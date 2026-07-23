@@ -57,4 +57,25 @@ class BookingSpeechRendererTest {
                 .contains("Thursday 23 July at 10 in the morning")
                 .doesNotContain("7 in the morning");
     }
+
+    @Test
+    void includesReferenceGuidanceInTheSameAuthoritativeBookingSpeech() {
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var booking = mock(Booking.class);
+        when(call.getAgent()).thenReturn(agent);
+        when(call.getLanguageDetected()).thenReturn("en");
+        when(agent.getDefaultLanguage()).thenReturn("en");
+        when(agent.getTimezone()).thenReturn("UTC");
+        when(booking.getServiceType()).thenReturn("men hairstyle");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T10:00:00Z"));
+        when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
+
+        assertThat(BookingSpeechRenderer.renderWithReferenceGuidance(call, booking, "SAT-SAVED12345"))
+                .contains(
+                        "Your booking number is SAT-SAVED12345.",
+                        "keep this booking number",
+                        "change, reschedule, or cancel"
+                );
+    }
 }

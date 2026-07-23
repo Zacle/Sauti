@@ -504,10 +504,15 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
     void authorizesPhoneClosureOnlyFromTheSuccessfulEndCallToolResult() {
         var realtimeService = mock(OpenAiRealtimeService.class);
         var call = mock(Call.class);
+        var farewell = "You're welcome, Harry. Thank you for calling, and have a good day.";
         when(realtimeService.executeTool(eq(call), eq("end-1"), eq("end_call"), anyString()))
                 .thenReturn(new com.sauti.llm.LlmToolResult(
                         "end-1", "end_call", true,
-                        Map.of("ended", true, "outcome", "completed"), ""
+                        Map.of(
+                                "ended", true,
+                                "outcome", "completed",
+                                "spokenResponse", farewell
+                        ), ""
                 ));
         var listener = mock(TelephonyRealtimeConversationProvider.Listener.class);
         var socketListener = new OpenAiTelephonyRealtimeConversationProvider.RealtimeWebSocketListener(
@@ -522,7 +527,9 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
                         + "\"arguments\":\"{\\\"outcome\\\":\\\"completed\\\"}\"}", true);
 
         verify(listener, timeout(1_000)).onCallEndAuthorized("completed");
-        verify(session, timeout(1_000)).requestToolResultResponse(0L);
+        verify(session, timeout(1_000)).seedAssistantText(farewell);
+        verify(listener, timeout(1_000)).onAgentTextComplete(farewell, false);
+        verify(session, never()).requestToolResultResponse(anyLong());
     }
 
     @Test
