@@ -5151,3 +5151,21 @@ Expected:
   - `git diff --check` - passed before this handoff update (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: after deployment, start an ElevenLabs test again. It should progress through agent provisioning to `call_created`. If ElevenLabs returns another 422 for a different field, the UI should now display its safe validation path and message instead of only the status code; use that exact message for the next schema correction.
+
+### 2026-07-24 - Normalize canonical tool schemas for ElevenLabs client tools
+
+- Diagnosed report `1784887752592`. The improved provider error exposed the exact rejection after 1,804 ms: `body.tool_config.client.parameters.properties.customer_details.object.additionalProperties: Extra inputs are not permitted`.
+- Kept Sauti's canonical tool schemas unchanged. `additionalProperties` remains available to OpenAI, Retell, Telnyx, and the internal safety/tool-routing layers.
+- Added an ElevenLabs-only recursive schema normalizer that removes `additionalProperties` at every nesting level before creating or updating a client tool. This handles both the top-level canonical constraint and nested object parameters such as `customer_details`.
+- Bumped the ElevenLabs adapter configuration version to `3` so an existing managed binding is resynchronized once with the normalized schemas.
+- Expanded the provider payload regression to prove Retell still receives the canonical `additionalProperties` constraint while ElevenLabs does not.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ElevenLabsManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed-provider payload, safe HTTP validation, and API exception tests - passed;
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: deploy through the normal reviewed CI/CD flow, then start the ElevenLabs test again. If another provider-specific schema keyword is rejected, the diagnostic will expose its exact safe validation path rather than requiring another guess.

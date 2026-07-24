@@ -50,6 +50,7 @@ class ManagedVoiceAgentProvisionersTest {
         assertThat(body.getValue())
                 .containsEntry("begin_message", "Hello from Sauti")
                 .containsKey("general_tools");
+        assertThat(body.getValue().toString()).contains("additionalProperties");
     }
 
     @Test
@@ -84,6 +85,7 @@ class ManagedVoiceAgentProvisionersTest {
         );
         assertThat(toolBody.getValue().toString())
                 .contains("check_availability")
+                .doesNotContain("additionalProperties")
                 .doesNotContain("end_call");
         @SuppressWarnings("unchecked")
         var agentBody = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
@@ -145,7 +147,15 @@ class ManagedVoiceAgentProvisionersTest {
                                 "Check availability.",
                                 Map.of(
                                         "type", "object",
-                                        "properties", Map.of("date", Map.of("type", "string"))
+                                        "properties", Map.of(
+                                                "date", Map.of("type", "string"),
+                                                "customer_details", Map.of(
+                                                        "type", "object",
+                                                        "properties", Map.of(),
+                                                        "additionalProperties", true
+                                                )
+                                        ),
+                                        "additionalProperties", false
                                 ),
                                 true
                         ),

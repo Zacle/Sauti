@@ -41,7 +41,7 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
 
     @Override
     public String configurationVersion() {
-        return "2";
+        return "3";
     }
 
     @Override
@@ -115,8 +115,34 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
         client.put("description", tool.description() == null ? "" : tool.description());
         client.put("expects_response", true);
         client.put("response_timeout_secs", 30);
-        client.put("parameters", tool.inputSchema());
+        client.put("parameters", elevenLabsSchema(tool.inputSchema()));
         return Map.of("tool_config", Map.copyOf(client));
+    }
+
+    private Map<String, Object> elevenLabsSchema(Map<String, Object> schema) {
+        var normalized = new LinkedHashMap<String, Object>();
+        schema.forEach((key, value) -> {
+            if (!"additionalProperties".equals(key)) {
+                normalized.put(key, elevenLabsSchemaValue(value));
+            }
+        });
+        return Map.copyOf(normalized);
+    }
+
+    private Object elevenLabsSchemaValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            var normalized = new LinkedHashMap<String, Object>();
+            map.forEach((key, nested) -> {
+                if (key != null && !"additionalProperties".equals(key.toString())) {
+                    normalized.put(key.toString(), elevenLabsSchemaValue(nested));
+                }
+            });
+            return Map.copyOf(normalized);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(this::elevenLabsSchemaValue).toList();
+        }
+        return value;
     }
 
     private Map<String, Object> agentBody(
