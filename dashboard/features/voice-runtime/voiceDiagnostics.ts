@@ -1,7 +1,14 @@
 export type VoiceDiagnosticLevel = "info" | "warn" | "error";
 
 export type VoiceRuntimeDiagnostic = {
-  component: "openai_realtime" | "cartesia_tts" | "test_call" | "vapi";
+  component:
+    | "openai_realtime"
+    | "cartesia_tts"
+    | "test_call"
+    | "vapi"
+    | "retell"
+    | "elevenlabs"
+    | "telnyx";
   event: string;
   level?: VoiceDiagnosticLevel;
   details?: Record<string, string | number | boolean | null>;

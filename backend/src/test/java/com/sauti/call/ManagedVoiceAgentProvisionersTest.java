@@ -1,0 +1,150 @@
+package com.sauti.call;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sauti.llm.LlmToolDefinition;
+import java.net.URI;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+class ManagedVoiceAgentProvisionersTest {
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void retellCreatesItsResponseEngineAndVoiceAgentFromTheSautiBlueprint() throws Exception {
+        var http = mock(ManagedVoiceProviderHttpClient.class);
+        when(http.post(eq("Retell"), eq(URI.create("https://api.retellai.com/create-retell-llm")), any(), any()))
+                .thenReturn(objectMapper.readTree("{\"llm_id\":\"llm-1\"}"));
+        when(http.post(eq("Retell"), eq(URI.create("https://api.retellai.com/create-agent")), any(), any()))
+                .thenReturn(objectMapper.readTree("{\"agent_id\":\"agent-1\",\"version\":0}"));
+        var provisioner = new RetellManagedVoiceAgentProvisioner(
+                http,
+                objectMapper,
+                "secret",
+                "https://api.retellai.com/",
+                "retell-Cimo",
+                "gpt-4.1-mini"
+        );
+
+        var reference = provisioner.synchronize(blueprint(), null);
+
+        assertThat(reference.externalAgentId()).isEqualTo("agent-1");
+        assertThat(reference.externalResourcesJson()).contains("llm-1");
+        @SuppressWarnings("unchecked")
+        var body = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        verify(http).post(
+                eq("Retell"),
+                eq(URI.create("https://api.retellai.com/create-retell-llm")),
+                any(),
+                body.capture()
+        );
+        assertThat(body.getValue())
+                .containsEntry("begin_message", "Hello from Sauti")
+                .containsKey("general_tools");
+    }
+
+    @Test
+    void elevenLabsCreatesStandaloneToolsAndAttachesThemToTheGeneratedAgent() throws Exception {
+        var http = mock(ManagedVoiceProviderHttpClient.class);
+        when(http.post(eq("ElevenLabs"), eq(URI.create("https://api.elevenlabs.io/v1/convai/tools")), any(), any()))
+                .thenReturn(objectMapper.readTree("{\"id\":\"tool-1\"}"))
+                .thenReturn(objectMapper.readTree("{\"id\":\"tool-2\"}"));
+        when(http.post(
+                eq("ElevenLabs"),
+                eq(URI.create("https://api.elevenlabs.io/v1/convai/agents/create")),
+                any(),
+                any()
+        )).thenReturn(objectMapper.readTree("{\"agent_id\":\"eleven-agent\"}"));
+        var provisioner = new ElevenLabsManagedVoiceAgentProvisioner(
+                http,
+                objectMapper,
+                "secret",
+                "https://api.elevenlabs.io/"
+        );
+
+        var reference = provisioner.synchronize(blueprint(), null);
+
+        assertThat(reference.externalAgentId()).isEqualTo("eleven-agent");
+        assertThat(reference.externalResourcesJson()).contains("tool-1", "tool-2");
+        @SuppressWarnings("unchecked")
+        var body = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        verify(http).post(
+                eq("ElevenLabs"),
+                eq(URI.create("https://api.elevenlabs.io/v1/convai/agents/create")),
+                any(),
+                body.capture()
+        );
+        assertThat(body.getValue().toString())
+                .contains("Hello from Sauti")
+                .contains("tool_ids")
+                .doesNotContain("secret");
+    }
+
+    @Test
+    void telnyxCreatesAWebEnabledAssistantWithClientSideTools() throws Exception {
+        var http = mock(ManagedVoiceProviderHttpClient.class);
+        when(http.post(eq("Telnyx"), eq(URI.create("https://api.telnyx.com/v2/ai/assistants")), any(), any()))
+                .thenReturn(objectMapper.readTree("{\"id\":\"assistant-1\",\"version_id\":\"main\"}"));
+        var provisioner = new TelnyxManagedVoiceAgentProvisioner(
+                http,
+                "secret",
+                "https://api.telnyx.com/v2/"
+        );
+
+        var reference = provisioner.synchronize(blueprint(), null);
+
+        assertThat(reference.externalAgentId()).isEqualTo("assistant-1");
+        @SuppressWarnings("unchecked")
+        var body = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        verify(http).post(
+                eq("Telnyx"),
+                eq(URI.create("https://api.telnyx.com/v2/ai/assistants")),
+                any(),
+                body.capture()
+        );
+        assertThat(body.getValue().toString())
+                .contains("client_side_tool")
+                .contains("supports_unauthenticated_web_calls")
+                .contains("Hello from Sauti")
+                .doesNotContain("secret");
+    }
+
+    private ManagedVoiceAgentBlueprint blueprint() {
+        return new ManagedVoiceAgentBlueprint(
+                "Sauti Test",
+                "Hello from Sauti",
+                "Be concise and professional.",
+                "en",
+                List.of("en"),
+                List.of(
+                        new LlmToolDefinition(
+                                "check_availability",
+                                "Check availability.",
+                                Map.of(
+                                        "type", "object",
+                                        "properties", Map.of("date", Map.of("type", "string"))
+                                ),
+                                true
+                        ),
+                        new LlmToolDefinition(
+                                "end_call",
+                                "End the call.",
+                                Map.of("type", "object"),
+                                false
+                        )
+                ),
+                300,
+                0.7,
+                300,
+                List.of("Sauti")
+        );
+    }
+}

@@ -1,0 +1,147 @@
+package com.sauti.call;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.stereotype.Service;
+
+@Service
+public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProvisioner {
+    private final ManagedVoiceProviderHttpClient httpClient;
+    private final String apiKey;
+    private final String apiBaseUrl;
+
+    public TelnyxManagedVoiceAgentProvisioner(
+            ManagedVoiceProviderHttpClient httpClient,
+            @Value("${sauti.telnyx.api-key:}") String apiKey,
+            @Value("${sauti.telnyx.api-base-url:https://api.telnyx.com/v2}") String apiBaseUrl
+    ) {
+        this.httpClient = httpClient;
+        this.apiKey = trim(apiKey);
+        this.apiBaseUrl = stripTrailingSlash(apiBaseUrl);
+    }
+
+    @Override
+    public String provider() {
+        return "telnyx";
+    }
+
+    @Override
+    public boolean isConfigured() {
+        return !apiKey.isBlank();
+    }
+
+    @Override
+    public ManagedVoiceAgentReference synchronize(
+            ManagedVoiceAgentBlueprint blueprint,
+            ManagedVoiceAgentReference existing
+    ) {
+        var headers = Map.of(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);
+        var body = assistantBody(blueprint);
+        com.fasterxml.jackson.databind.JsonNode response;
+        if (existing == null || existing.externalAgentId().isBlank()) {
+            response = httpClient.post(
+                    "Telnyx",
+                    URI.create(apiBaseUrl + "/ai/assistants"),
+                    headers,
+                    body
+            );
+        } else {
+            response = httpClient.post(
+                    "Telnyx",
+                    URI.create(apiBaseUrl + "/ai/assistants/" + path(existing.externalAgentId())),
+                    headers,
+                    body
+            );
+        }
+        var agentId = response.path("id").asText(existing == null ? "" : existing.externalAgentId()).trim();
+        if (agentId.isBlank()) throw new IllegalStateException("Telnyx did not return an assistant id");
+        var versionId = response.path("version_id").asText(
+                existing == null ? "main" : existing.externalVersionId()
+        );
+        return new ManagedVoiceAgentReference(agentId, versionId, "{}");
+    }
+
+    private Map<String, Object> assistantBody(ManagedVoiceAgentBlueprint blueprint) {
+        var tools = new ArrayList<Map<String, Object>>();
+        blueprint.tools().forEach(tool -> {
+            if ("end_call".equals(tool.name())) {
+                tools.add(Map.of(
+                        "type", "hangup",
+                        "hangup", Map.of(
+                                "description", "End the conversation after one brief, respectful farewell."
+                        )
+                ));
+                return;
+            }
+            var clientTool = new LinkedHashMap<String, Object>();
+            clientTool.put("name", tool.name());
+            clientTool.put("description", tool.description() == null ? "" : tool.description());
+            clientTool.put("parameters", tool.inputSchema());
+            tools.add(Map.of(
+                    "type", "client_side_tool",
+                    "client_side_tool", Map.copyOf(clientTool),
+                    "timeout_ms", 30_000
+            ));
+        });
+        var body = new LinkedHashMap<String, Object>();
+        body.put("name", shorten(blueprint.name(), 100));
+        body.put("instructions", blueprint.instructions() + """
+
+                TELNYX EXECUTION CONTRACT:
+                - Call a required business tool before speaking about its result.
+                - Treat the returned result as authoritative; never claim an action succeeded unless it did.
+                - If a tool is still running, acknowledge the wait naturally and continue automatically when it returns.
+                - Keep each spoken answer continuous and concise.
+                """);
+        body.put("greeting", blueprint.greeting());
+        body.put("tools", tools);
+        body.put("enabled_features", java.util.List.of("telephony"));
+        body.put("telephony_settings", Map.of(
+                "supports_unauthenticated_web_calls", true,
+                "time_limit_secs", Math.max(10, blueprint.maxCallDurationSeconds()),
+                "user_idle_timeout_secs", 60
+        ));
+        body.put("privacy_settings", Map.of("data_retention", false));
+        body.put("interruption_settings", Map.of(
+                "enable", true,
+                "disable_greeting_interruption", false,
+                "start_speaking_plan", Map.of(
+                        "wait_seconds", 0.1,
+                        "transcription_endpointing_plan", Map.of(
+                                "on_punctuation_seconds", 0.1,
+                                "on_no_punctuation_seconds", Math.max(
+                                        0.3,
+                                        Math.min(2.0, blueprint.endpointingMilliseconds() / 1000.0)
+                                ),
+                                "on_number_seconds", 0.6
+                        )
+                )
+        ));
+        body.put("promote_to_main", true);
+        body.put("tags", java.util.List.of("sauti-managed"));
+        return Map.copyOf(body);
+    }
+
+    private static String path(String value) {
+        return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static String shorten(String value, int maximum) {
+        var normalized = trim(value);
+        return normalized.length() <= maximum ? normalized : normalized.substring(0, maximum);
+    }
+
+    private static String trim(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static String stripTrailingSlash(String value) {
+        var normalized = trim(value);
+        while (normalized.endsWith("/")) normalized = normalized.substring(0, normalized.length() - 1);
+        return normalized;
+    }
+}

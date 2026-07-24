@@ -90,6 +90,17 @@ sauti:
       preview-model: ${OPENAI_TTS_PREVIEW_MODEL:gpt-4o-mini-tts}
   voice-runtime:
     test-provider: ${SAUTI_TEST_VOICE_RUNTIME:sauti}
+  managed-voice:
+    public-base-url: ${MANAGED_VOICE_PUBLIC_BASE_URL:${PUBLIC_BASE_URL:http://localhost:8080}}
+  retell:
+    api-key: ${RETELL_API_KEY:}
+    api-base-url: ${RETELL_API_BASE_URL:https://api.retellai.com}
+    default-voice-id: ${RETELL_DEFAULT_VOICE_ID:retell-Cimo}
+    model: ${RETELL_MODEL:gpt-4.1-mini}
+  elevenlabs:
+    api-key: ${ELEVENLABS_API_KEY:}
+    environment: ${ELEVENLABS_ENVIRONMENT:production}
+    api-base-url: ${ELEVENLABS_API_BASE_URL:https://api.elevenlabs.io}
   vapi:
     api-key: ${VAPI_API_KEY:}
     public-key: ${VAPI_PUBLIC_KEY:}
@@ -272,6 +283,8 @@ sauti:
     api-key: ${TELNYX_API_KEY:}
     public-key: ${TELNYX_PUBLIC_KEY:}
     connection-id: ${TELNYX_CONNECTION_ID:}
+    ai-environment: ${TELNYX_AI_ENVIRONMENT:production}
+    ai-region: ${TELNYX_AI_REGION:}
     api-base-url: ${TELNYX_API_BASE_URL:https://api.telnyx.com/v2}
     media-websocket-base-url: ${TELNYX_MEDIA_WEBSOCKET_BASE_URL:}
     requirement-group-id: ${TELNYX_REQUIREMENT_GROUP_ID:}

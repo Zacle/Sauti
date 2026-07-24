@@ -133,8 +133,20 @@ To validate loading without starting Spring, add `-ValidateOnly`.
 
 The direct backend listens on `http://localhost:8080`. If Vapi needs to call this local process, run `cloudflared tunnel --url http://localhost:8080`, put the resulting HTTPS URL in `VAPI_PUBLIC_BASE_URL`, stop the backend, and run the helper again. If the backend is publicly hosted at `https://sauti.uk`, no local tunnel is required.
 
+## Managed-provider comparison
+
+Retell, ElevenLabs Agents, and Telnyx AI Assistants are now peer browser test adapters alongside Vapi. Their account API keys stay in Spring. On the first test Sauti compiles the saved Sauti agent into a provider resource, persists the generated tenant-scoped binding, and then returns either an ephemeral provider session credential or Telnyx's public assistant configuration. A blueprint hash avoids provisioning on unchanged tests and triggers synchronization after an agent edit. No provider agent ID or manual prompt/tool copy is required. See [managed-voice-provider-testing.md](managed-voice-provider-testing.md) for the exact environment variables, provisioning boundary, privacy caveats, and fair comparison procedure.
+
+Agent Studio records lifecycle diagnostics under the selected provider name. The managed adapters use official browser SDKs rather than Sauti-owned audio scheduling:
+
+- `retell-client-js-sdk`;
+- `@elevenlabs/client` with an authenticated WebRTC conversation token;
+- `@telnyx/ai-agent-lib`.
+
+ElevenLabs and Telnyx browser tools execute through the authenticated Sauti test-call API. Retell uses a short-lived, call-scoped callback URL injected during server-side web-call creation. In all three paths, `ToolFulfillmentRouter` remains the only business-action authority.
+
 ## Adding another provider
 
 Implement `BrowserVoiceRuntimeProvider` on the backend and register a matching connector in `dashboard/features/voice-runtime/browserVoiceRuntime.ts`. Keep the shared session response free of provider secrets. New providers must continue to route side effects through `ToolFulfillmentRouter`; a provider callback must never call a business integration directly.
 
-Telnyx and managed-agent evaluations should be added as peer adapters and compared with the same scenarios, agent prompt, tool fixtures, languages, and latency measurements. A Cartesia TTS comparison still needs an STT, turn-taking, and model runtime, so the current Sauti + Cartesia option is not directly equivalent to Vapi's complete orchestration layer.
+A Cartesia TTS comparison still needs an STT, turn-taking, and model runtime, so the current Sauti + Cartesia option is not directly equivalent to a complete managed orchestration layer.

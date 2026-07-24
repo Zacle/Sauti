@@ -4969,3 +4969,87 @@ Expected:
   - `git diff --check` - passed before this handoff update (line-ending notices only).
 - Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: repeat a review approval near the end of a similarly long call. Diagnostics should show `response_enqueued`/`response_dispatched` with `requiredToolName=update_conversation_state` and `compactRequiredTool=true`, followed by that tool executing and the server-authorized `book_slot` chain. It should not show a 319-character protocol response, a 9,975-token required-tool request, the operational wait/failure pair, or a caller-dependent retry. Also test a compound approval plus question and a correction; neither may save until the question/correction is handled and a fresh unconditional approval is received.
+
+### 2026-07-24 - Add isolated Retell, ElevenLabs, and Telnyx browser test adapters
+
+- Added Retell, ElevenLabs Agents, and Telnyx AI Assistants as peer `BrowserVoiceRuntimeProvider` implementations. Agent Studio now exposes all three next to Sauti + Cartesia and Vapi, while existing public web voice, telephony, and default runtime behavior remain unchanged.
+- Kept provider account credentials server-side:
+  - Retell's API key is exchanged for a one-time web-call access token.
+  - ElevenLabs' restricted API key is exchanged for a short-lived WebRTC conversation token.
+  - Telnyx browser testing receives only the public AI Assistant ID/version/environment expected by the official SDK; `TELNYX_API_KEY` remains server-only for telephony and management.
+- Added a provider-neutral managed tool boundary. ElevenLabs and Telnyx browser client tools call the existing authenticated test-call tool API. Retell custom functions receive a short-lived callback URL bound to one active Sauti call and agent. All effects still pass through `ToolFulfillmentRouter`; providers never receive database, calendar, CRM, payment, or workspace credentials.
+- Added per-call Retell webhook redelivery deduplication, including concurrent delivery serialization. Factual success/error results are cached for the call lifetime so a provider retry cannot repeat a mutating test-call tool.
+- Used the official browser SDKs and lazy-loaded each provider adapter so an unselected provider does not inflate the initial Agent Studio bundle. The agent editor first-load bundle fell from the initial 428 kB implementation to 227 kB.
+- Separated final transcript persistence from managed-provider captions. ElevenLabs uses audio alignment, Retell uses agent audio state plus transcript updates, and Telnyx uses speaking state; Agent Studio no longer creates a visible assistant message solely because a managed provider emitted completed model text.
+- Added privacy-safe provider diagnostics and sanitization for provider error URLs/tokens. Operational tool logs include provider, Sauti call ID, tool name, duration, and success only.
+- Documented the exact environment variables, per-provider dashboard setup, browser-versus-phone tool limitations, privacy controls, dependency risks, and a fair comparison scenario set in `docs/managed-voice-provider-testing.md`.
+- Updated Next.js from 15.5.19 to 15.5.21, the latest compatible patch, after the dependency review found direct Next.js advisories. The remaining npm audit findings are documented rather than applying npm's unsafe forced downgrade.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/api/ManagedVoiceToolController.java`
+  - `backend/src/main/java/com/sauti/call/{ManagedVoiceProviderHttpClient,ManagedVoiceRuntimeSupport,ManagedVoiceToolService,RetellBrowserVoiceRuntimeService,ElevenLabsBrowserVoiceRuntimeService,TelnyxAiBrowserVoiceRuntimeService}.java`
+  - `backend/src/test/java/com/sauti/call/{ManagedBrowserVoiceRuntimeServicesTest,ManagedVoiceToolServiceTest}.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/{browserVoiceRuntime,managedRuntimeConfig,retellRuntime,elevenLabsRuntime,telnyxRuntime,voiceDiagnostics}.ts`
+  - `dashboard/features/voice-runtime/managedRuntimeConfig.test.ts`
+  - `dashboard/{package.json,package-lock.json}`
+  - `docs/{managed-voice-provider-testing,voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - managed provider and tool-boundary focused backend tests - passed.
+  - `.\gradlew.bat :backend:test` - passed; 354 tests.
+  - `npm.cmd run test:voice` - passed; 44 regressions.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; 50 routes generated on Next.js 15.5.21.
+  - `npm.cmd audit --omit=dev` - completed with known findings: three high transitive Next.js `postcss`/`sharp` advisories without a compatible npm-proposed fix, and four moderate Telnyx-WebRTC `uuid` advisories with no upstream fix.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-ups/risks:
+  - live provider calls are still required because automated tests cannot authenticate against the three external accounts or reproduce browser/media timing;
+  - create dedicated provider test agents and mirror prompt/greeting/tool schemas deliberately before comparing quality; Sauti does not silently overwrite provider-owned agent configuration;
+  - ElevenLabs and Telnyx client tools are WebRTC-only. Phone/SIP promotion needs authenticated webhook tools and provider signature verification;
+  - keep Telnyx limited to a quota-capped test assistant until its transitive `uuid` advisory is resolved upstream;
+  - Retell's browser SDK does not support typed turns, so its Agent Studio comparison is voice-only.
+
+### 2026-07-24 - Provision managed voice-provider agents from Sauti templates
+
+- Removed the manual provider-agent setup requirement from the Retell, ElevenLabs, and Telnyx browser test path. A test now starts from the selected Sauti agent and the provider API key; Sauti creates the corresponding provider agent automatically on the first call.
+- Added a provider-neutral canonical blueprint built from the current Sauti agent configuration, including its greeting, language, system instructions, interruption/endpointing behavior, maximum call duration, and enabled during-call tools.
+- Added tenant-scoped provider bindings in `managed_voice_agent_bindings`. Each binding stores provider resource IDs, a blueprint hash, and synchronization metadata, but never an API key or other provider secret.
+- Added idempotent provisioning:
+  - an unchanged Sauti blueprint reuses the existing provider resources;
+  - a changed blueprint updates those resources before the test call starts;
+  - a failed provider create/update is not recorded as successfully synchronized;
+  - simultaneous tests for the same agent/provider are serialized in-process to avoid duplicate creation.
+- Added provider implementations for:
+  - Retell response-engine and agent creation/update, including provider-hosted custom tools routed through Sauti's short-lived managed callback;
+  - ElevenLabs standalone client-tool creation/update and private agent creation/update using current `prompt.tool_ids`;
+  - Telnyx AI Assistant creation/update with browser client-side tools routed through the authenticated Sauti tool API.
+- Refactored the three browser runtime preparation services to resolve the generated provider resource immediately before issuing the browser token/session configuration. `RETELL_AGENT_ID`, `ELEVENLABS_AGENT_ID`, `TELNYX_AI_ASSISTANT_ID`, and `TELNYX_AI_VERSION_ID` are no longer required.
+- The only required provider-specific environment variable is the selected provider's server-side API key: `RETELL_API_KEY`, `ELEVENLABS_API_KEY`, or `TELNYX_API_KEY`. Retell voice/model variables remain optional defaults.
+- Agent Studio now displays `Preparing <provider>...` during provisioning so a slower first call is not misrepresented as an already-connected media session.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/resources/db/migration/V36__managed_voice_agent_bindings.sql`
+  - `backend/src/main/java/com/sauti/call/{ManagedVoiceAgentBinding,ManagedVoiceAgentBindingRepository,ManagedVoiceAgentBlueprint,ManagedVoiceAgentBlueprintFactory,ManagedVoiceAgentProvisioner,ManagedVoiceAgentProvisioningService,ManagedVoiceAgentReference}.java`
+  - `backend/src/main/java/com/sauti/call/{RetellManagedVoiceAgentProvisioner,ElevenLabsManagedVoiceAgentProvisioner,TelnyxManagedVoiceAgentProvisioner,ManagedVoiceProviderHttpClient}.java`
+  - `backend/src/main/java/com/sauti/call/{RetellBrowserVoiceRuntimeService,ElevenLabsBrowserVoiceRuntimeService,TelnyxAiBrowserVoiceRuntimeService}.java`
+  - `backend/src/test/java/com/sauti/call/{ManagedVoiceAgentProvisioningServiceTest,ManagedVoiceAgentProvisionersTest,ManagedBrowserVoiceRuntimeServicesTest}.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/{managed-voice-provider-testing,voice-runtime-providers,agent-handoff}.md`
+- Verification:
+  - focused managed provisioning, provider-payload, and runtime-preparation backend tests - passed;
+  - `.\gradlew.bat :backend:test` - passed;
+  - `npm.cmd run test:voice` - passed; 44 regressions;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run build` - passed; 50 routes generated on Next.js 15.5.21.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-ups/risks:
+  - live provider-account tests are still required because mocked HTTP tests cannot prove account entitlements, current quotas, regional availability, or browser/media behavior;
+  - the first test for each Sauti agent/provider combination includes provider provisioning latency; subsequent unchanged tests reuse the binding;
+  - browser tools are deliberately safe and tenant-scoped, but phone/SIP promotion still needs each provider's authenticated webhook/signature path;
+  - provider dashboards may display the generated resources, but Sauti owns their synchronization. Manual provider edits can be overwritten the next time the Sauti blueprint changes.
