@@ -112,6 +112,8 @@ class ManagedVoiceAgentProvisionersTest {
         );
         assertThat(body.getValue().toString())
                 .contains("client_side_tool")
+                .contains("hangup")
+                .doesNotContain("end_call")
                 .contains("supports_unauthenticated_web_calls")
                 .contains("Hello from Sauti")
                 .doesNotContain("secret");

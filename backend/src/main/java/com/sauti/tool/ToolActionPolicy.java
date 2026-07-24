@@ -139,6 +139,7 @@ public class ToolActionPolicy {
         var arguments = new LinkedHashMap<>(call.arguments());
         arguments.remove("question_handling");
         arguments.remove("confirmation_state");
+        arguments.values().removeIf(java.util.Objects::isNull);
         return new LlmToolCall(call.id(), call.name(), Map.copyOf(arguments));
     }
 

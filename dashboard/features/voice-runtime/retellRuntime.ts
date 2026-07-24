@@ -4,7 +4,9 @@ import type {
   BrowserVoiceRuntimeCallbacks,
   BrowserVoiceRuntimeConnection,
 } from "./browserVoiceRuntime";
-import { providerError } from "./managedRuntimeConfig";
+import { configString, providerError } from "./managedRuntimeConfig";
+import { RetellTranscriptReconciler, type RetellTranscriptTurn } from "./retellTranscript";
+import { isVapiOpeningTranscript } from "./vapiTranscript";
 
 type RetellTranscriptItem = {
   role?: string;
@@ -26,13 +28,29 @@ export async function connectRetellRuntime(
   let stopped = false;
   let ended = false;
   let agentSpeaking = false;
-  let latestAgentText = "";
-  let deliveredAgentText = "";
-  let deliveredCallerText = "";
-  const seenTranscriptItems = new Set<string>();
+  let openingPending = true;
+  const configuredOpening = configString(session.configuration, "greeting");
+  const transcriptReconciler = new RetellTranscriptReconciler();
+
+  const deliverTurns = (turns: RetellTranscriptTurn[]) => {
+    for (const turn of turns) {
+      if (turn.role === "caller") {
+        callbacks.onCallerTranscript(turn.text);
+        continue;
+      }
+      callbacks.onAgentCaption(turn.text, turn.index);
+      if (openingPending && isVapiOpeningTranscript(configuredOpening, turn.text)) {
+        openingPending = false;
+        continue;
+      }
+      openingPending = false;
+      callbacks.onAgentTranscript(turn.text, false);
+    }
+  };
 
   const finish = () => {
     if (ended || stopped) return;
+    deliverTurns(transcriptReconciler.completeAll());
     ended = true;
     callbacks.onEnded("completed");
   };
@@ -40,46 +58,33 @@ export async function connectRetellRuntime(
   client.on("call_started", () => callbacks.onConnected());
   client.on("call_ended", finish);
   client.on("agent_start_talking", () => {
+    deliverTurns(transcriptReconciler.completeLatest("caller"));
     agentSpeaking = true;
     callbacks.onAgentSpeaking(true);
-    if (latestAgentText) callbacks.onAgentCaption(latestAgentText);
+    const activeAgent = transcriptReconciler.activeAgentTurn();
+    if (activeAgent) callbacks.onAgentCaption(activeAgent.text, activeAgent.index);
   });
   client.on("agent_stop_talking", () => {
+    deliverTurns(transcriptReconciler.completeLatest("agent"));
     agentSpeaking = false;
     callbacks.onAgentSpeaking(false);
-    if (latestAgentText && latestAgentText !== deliveredAgentText) {
-      deliveredAgentText = latestAgentText;
-      callbacks.onAgentCaption(latestAgentText);
-      callbacks.onAgentTranscript(latestAgentText, false);
-    }
   });
   client.on("update", (update: RetellUpdate) => {
     const transcript = Array.isArray(update.transcript) ? update.transcript : [];
-    for (const item of transcript) {
+    const snapshot: RetellTranscriptTurn[] = [];
+    for (const [index, item] of transcript.entries()) {
       const role = String(item.role ?? "").toLowerCase();
       const text = transcriptText(item);
       if (!text) continue;
-      const fingerprint = `${role}:${text}`;
-      if (seenTranscriptItems.has(fingerprint)) continue;
-      seenTranscriptItems.add(fingerprint);
       if (["user", "caller", "customer"].includes(role)) {
-        if (text !== deliveredCallerText) {
-          deliveredCallerText = text;
-          callbacks.onCallerTranscript(text);
-        }
+        snapshot.push({ index, role: "caller", text });
       } else if (["agent", "assistant", "bot"].includes(role)) {
-        latestAgentText = text;
-        if (agentSpeaking) callbacks.onAgentCaption(text);
+        snapshot.push({ index, role: "agent", text });
       }
     }
-    const last = transcript.at(-1);
-    if (last && ["agent", "assistant", "bot"].includes(String(last.role ?? "").toLowerCase())) {
-      const text = transcriptText(last);
-      if (text) {
-        latestAgentText = text;
-        if (agentSpeaking) callbacks.onAgentCaption(text);
-      }
-    }
+    deliverTurns(transcriptReconciler.update(snapshot));
+    const activeAgent = transcriptReconciler.activeAgentTurn();
+    if (agentSpeaking && activeAgent) callbacks.onAgentCaption(activeAgent.text, activeAgent.index);
   });
   client.on("error", (error: unknown) => callbacks.onError(providerError("Retell", error)));
 

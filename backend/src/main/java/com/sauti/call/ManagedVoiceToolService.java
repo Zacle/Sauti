@@ -86,6 +86,10 @@ public class ManagedVoiceToolService {
                     : Map.of("success", false, "error", routed.error());
         } catch (RuntimeException exception) {
             success = false;
+            LOGGER.warn(
+                    "Managed voice tool failed provider={} sautiCallId={} tool={} exception={}",
+                    provider, call.getId(), name, exception.getClass().getSimpleName()
+            );
             response = Map.of("success", false, "error", "The requested action could not be completed");
         }
         LOGGER.info(
@@ -132,17 +136,45 @@ public class ManagedVoiceToolService {
                 payload.path("function").path("parameters")
         )) {
             if (candidate.isObject()) {
-                return objectMapper.convertValue(candidate, new TypeReference<>() { });
+                Map<String, Object> converted = objectMapper.convertValue(candidate, new TypeReference<>() { });
+                return withoutNulls(converted);
             }
             if (candidate.isTextual() && !candidate.asText().isBlank()) {
                 try {
-                    return objectMapper.readValue(candidate.asText(), new TypeReference<>() { });
+                    Map<String, Object> converted = objectMapper.readValue(
+                            candidate.asText(), new TypeReference<>() { }
+                    );
+                    return withoutNulls(converted);
                 } catch (Exception exception) {
                     throw new IllegalArgumentException("Managed voice tool arguments are not valid JSON");
                 }
             }
         }
         return Map.of();
+    }
+
+    private Map<String, Object> withoutNulls(Map<String, Object> values) {
+        var result = new java.util.LinkedHashMap<String, Object>();
+        values.forEach((key, value) -> {
+            var sanitized = withoutNulls(value);
+            if (key != null && sanitized != null) result.put(key, sanitized);
+        });
+        return Map.copyOf(result);
+    }
+
+    private Object withoutNulls(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            var result = new java.util.LinkedHashMap<String, Object>();
+            map.forEach((key, nested) -> {
+                var sanitized = withoutNulls(nested);
+                if (key != null && sanitized != null) result.put(key.toString(), sanitized);
+            });
+            return Map.copyOf(result);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(this::withoutNulls).filter(java.util.Objects::nonNull).toList();
+        }
+        return value;
     }
 
     private String invocationId(

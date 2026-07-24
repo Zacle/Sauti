@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 8088",
     "lint": "eslint . --max-warnings=0",
-    "test:voice": "node --experimental-strip-types --test features/voice-runtime/cartesiaBrowserTts.test.ts features/voice-runtime/realtimeTurnGate.test.ts features/voice-runtime/hybridPlaybackGate.test.ts features/voice-runtime/openaiRealtime.test.ts features/voice-runtime/vapiErrors.test.ts features/voice-runtime/vapiTranscript.test.ts features/voice-runtime/managedRuntimeConfig.test.ts features/voice-runtime/telnyxReadiness.test.ts features/voice-runtime/voiceDiagnostics.test.ts",
+    "test:voice": "node --experimental-strip-types --test features/voice-runtime/cartesiaBrowserTts.test.ts features/voice-runtime/realtimeTurnGate.test.ts features/voice-runtime/hybridPlaybackGate.test.ts features/voice-runtime/openaiRealtime.test.ts features/voice-runtime/vapiErrors.test.ts features/voice-runtime/vapiTranscript.test.ts features/voice-runtime/managedRuntimeConfig.test.ts features/voice-runtime/retellTranscript.test.ts features/voice-runtime/telnyxReadiness.test.ts features/voice-runtime/voiceDiagnostics.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

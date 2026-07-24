@@ -4,6 +4,7 @@ import jakarta.persistence.EntityNotFoundException;
 import com.sauti.auth.RateLimitExceededException;
 import com.sauti.auth.UnverifiedEmailException;
 import com.sauti.call.PublicWebVoiceRateLimitExceededException;
+import com.sauti.call.ManagedVoiceProviderException;
 import com.sauti.call.VoiceRuntimeUnavailableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -49,6 +50,12 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> voiceRuntimeUnavailable(VoiceRuntimeUnavailableException exception) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new ApiError("voice_runtime_unavailable", exception.getMessage()));
+    }
+
+    @ExceptionHandler(ManagedVoiceProviderException.class)
+    ResponseEntity<ApiError> managedVoiceProvider(ManagedVoiceProviderException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ApiError("managed_voice_provider_error", exception.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

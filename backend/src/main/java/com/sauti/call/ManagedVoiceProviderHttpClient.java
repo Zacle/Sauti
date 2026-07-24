@@ -80,9 +80,7 @@ public class ManagedVoiceProviderHttpClient {
         try {
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException(
-                        provider + " browser session request failed with status " + response.statusCode()
-                );
+                throw new ManagedVoiceProviderException(provider, response.statusCode());
             }
             return objectMapper.readTree(response.body());
         } catch (InterruptedException exception) {

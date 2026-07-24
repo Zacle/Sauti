@@ -57,7 +57,7 @@ public class ManagedVoiceAgentProvisioningService {
         synchronized (lock) {
             try {
                 var blueprint = blueprintFactory.create(call, greeting);
-                var blueprintHash = hash(blueprint);
+                var blueprintHash = hash(blueprint, provisioner.configurationVersion());
                 var existingBinding = repository.findByTenantIdAndAgentIdAndProvider(
                         call.getTenant().getId(),
                         call.getAgent().getId(),
@@ -97,10 +97,14 @@ public class ManagedVoiceAgentProvisioningService {
         );
     }
 
-    private String hash(ManagedVoiceAgentBlueprint blueprint) {
+    private String hash(ManagedVoiceAgentBlueprint blueprint, String configurationVersion) {
         try {
             var writer = objectMapper.writer().with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
-            var bytes = writer.writeValueAsString(blueprint).getBytes(StandardCharsets.UTF_8);
+            var fingerprint = Map.of(
+                    "blueprint", blueprint,
+                    "configurationVersion", configurationVersion == null ? "" : configurationVersion
+            );
+            var bytes = writer.writeValueAsString(fingerprint).getBytes(StandardCharsets.UTF_8);
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to fingerprint the managed voice agent blueprint", exception);

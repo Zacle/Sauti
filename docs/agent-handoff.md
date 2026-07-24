@@ -5090,3 +5090,39 @@ Expected:
   - `npm.cmd run build` reached `next build` but made no progress and the combined command was terminated at the 300-second verification limit. A separate dashboard Node process was already running in the workspace; it was preserved rather than stopped because it may belong to the user. The preceding production build passed before this dashboard-only race fix, and the changed TypeScript passes typecheck/lint/tests, but CI still needs to confirm the production build.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: start another Telnyx browser test. Diagnostics must show `call_created`, then `runtime_connected` only after Telnyx is client-ready, with no `Cannot start ... before login`, no startup `runtime_ended`, no `call_completion_failed`, and no `idle -> listening` transition. The measured ~8-second pre-browser interval was backend provisioning/preparation; compare a second unchanged test to distinguish one-time provider provisioning from ongoing latency.
+
+### 2026-07-24 - Correct Retell tool/transcript handling, surface ElevenLabs authorization, and end Telnyx calls
+
+- Diagnosed all three managed-provider reports rather than treating them as one conversational-quality failure:
+  - Retell report `111aa8b8-5e2d-4d02-bed1-f02293c49053` contained 51 caller transcript events because Retell sends cumulative revisions of the active utterance. Retell's call record also showed that `check_availability` reached Sauti three times, but every callback returned `success=false`.
+  - The Retell requests included legitimate optional fields with JSON `null`. `ToolActionPolicy.businessCall()` copied those arguments with `Map.copyOf`, which rejects null values and caused the otherwise-valid availability lookups to fail before business routing.
+  - ElevenLabs report `1784879023285` failed during setup, before `call_created`. A read-only request with the locally configured key returned HTTP 401, so the key is invalid or lacks the required Agents/Tools permissions.
+  - Telnyx report `92c4ee41-39c7-4efe-bcd9-7eb02e2af862` completed the booking correctly but waited for Sauti's idle timeout after the caller said goodbye. Telnyx exposes the native tool as `hangup`, while the provider-neutral instructions still told the model to call `end_call`.
+- Added a Retell cumulative-transcript reconciler. Active revisions update one live caption; a caller or agent turn is persisted only when it is complete. The configured opening remains visible but is not persisted a second time when Retell reports the provider-spoken greeting.
+- Removed null values recursively at the managed-provider boundary and defensively before the business tool call is copied. Provider-supplied optional nulls can no longer crash tool routing, while the routed factual result remains authoritative.
+- Added a privacy-safe warning for unexpected managed-tool runtime failures. It records provider, Sauti call ID, tool name, and exception class, but no arguments, transcript, phone number, token, or secret.
+- Added `ManagedVoiceProviderException`. Managed-provider 4xx/5xx setup failures now return a safe HTTP 502 `managed_voice_provider_error` with the provider status and a credential/permission action instead of becoming a generic internal server error.
+- Translated the provider-neutral `end_call` instruction to Telnyx's native `hangup` contract and instructed the Telnyx assistant to hang up immediately after one brief farewell.
+- Added provider adapter configuration versions to the managed-agent binding fingerprint. This forces existing generated Telnyx assistants to receive the corrected hangup instructions once; unchanged bindings are reused after synchronization.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{ManagedVoiceAgentProvisioner,ManagedVoiceAgentProvisioningService,ManagedVoiceProviderException,ManagedVoiceProviderHttpClient,ManagedVoiceToolService,TelnyxManagedVoiceAgentProvisioner}.java`
+  - `backend/src/main/java/com/sauti/shared/ApiExceptionHandler.java`
+  - `backend/src/main/java/com/sauti/tool/ToolActionPolicy.java`
+  - `backend/src/test/java/com/sauti/call/{ManagedVoiceAgentProvisionersTest,ManagedVoiceAgentProvisioningServiceTest,ManagedVoiceToolServiceTest}.java`
+  - `backend/src/test/java/com/sauti/shared/ApiExceptionHandlerTest.java`
+  - `dashboard/features/voice-runtime/{retellRuntime,retellTranscript,retellTranscript.test}.ts`
+  - `dashboard/package.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed-provider backend regressions - passed;
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed;
+  - `npm.cmd run test:voice` - passed; 48 tests;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run build` - passed; 50 routes generated on Next.js 15.5.21;
+  - `git diff --check` - passed before this handoff update (line-ending notices only).
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification:
+  - Retell should show one caller transcript entry per utterance and one greeting; availability callbacks should return factual calendar results rather than generic failures.
+  - ElevenLabs needs a valid restricted key with access to Agents, Tools, and conversation-token operations before another runtime test can reach `call_created`.
+  - Telnyx should invoke `hangup` and emit `runtime_ended` immediately after the final farewell rather than remaining in `thinking` until the idle timer.

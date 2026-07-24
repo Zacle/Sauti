@@ -35,6 +35,11 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
     }
 
     @Override
+    public String configurationVersion() {
+        return "2";
+    }
+
+    @Override
     public ManagedVoiceAgentReference synchronize(
             ManagedVoiceAgentBlueprint blueprint,
             ManagedVoiceAgentReference existing
@@ -89,13 +94,15 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
         });
         var body = new LinkedHashMap<String, Object>();
         body.put("name", shorten(blueprint.name(), 100));
-        body.put("instructions", blueprint.instructions() + """
+        body.put("instructions", blueprint.instructions().replace("end_call", "hangup") + """
 
                 TELNYX EXECUTION CONTRACT:
                 - Call a required business tool before speaking about its result.
                 - Treat the returned result as authoritative; never claim an action succeeded unless it did.
                 - If a tool is still running, acknowledge the wait naturally and continue automatically when it returns.
                 - Keep each spoken answer continuous and concise.
+                - When the caller is finished, say one brief respectful farewell and call hangup immediately.
+                - If the caller says goodbye after your farewell, call hangup immediately without waiting for another turn.
                 """);
         body.put("greeting", blueprint.greeting());
         body.put("tools", tools);

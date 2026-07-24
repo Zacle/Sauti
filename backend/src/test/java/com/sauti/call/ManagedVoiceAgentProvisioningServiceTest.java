@@ -39,6 +39,7 @@ class ManagedVoiceAgentProvisioningServiceTest {
         when(blueprintFactory.create(call, "Hello")).thenReturn(blueprint);
         when(provisioner.provider()).thenReturn("retell");
         when(provisioner.isConfigured()).thenReturn(true);
+        when(provisioner.configurationVersion()).thenReturn("1");
         when(provisioner.synchronize(blueprint, null)).thenReturn(reference);
         when(repository.findByTenantIdAndAgentIdAndProvider(tenantId, agentId, "retell"))
                 .thenAnswer(ignored -> Optional.ofNullable(stored.get()));
@@ -59,6 +60,51 @@ class ManagedVoiceAgentProvisioningServiceTest {
 
         verify(provisioner, times(1)).synchronize(blueprint, null);
         verify(repository, times(1)).save(any());
+    }
+
+    @Test
+    void resynchronizesAnExistingBindingWhenProviderConfigurationChanges() {
+        var repository = mock(ManagedVoiceAgentBindingRepository.class);
+        var blueprintFactory = mock(ManagedVoiceAgentBlueprintFactory.class);
+        var provisioner = mock(ManagedVoiceAgentProvisioner.class);
+        var call = mock(Call.class);
+        var tenant = mock(Tenant.class);
+        var agent = mock(Agent.class);
+        var tenantId = UUID.randomUUID();
+        var agentId = UUID.randomUUID();
+        var stored = new AtomicReference<ManagedVoiceAgentBinding>();
+        var blueprint = blueprint("Hello");
+        var reference = new ManagedVoiceAgentReference("external-agent", "main", "{}");
+
+        when(call.getTenant()).thenReturn(tenant);
+        when(call.getAgent()).thenReturn(agent);
+        when(tenant.getId()).thenReturn(tenantId);
+        when(agent.getId()).thenReturn(agentId);
+        when(blueprintFactory.create(call, "Hello")).thenReturn(blueprint);
+        when(provisioner.provider()).thenReturn("telnyx");
+        when(provisioner.isConfigured()).thenReturn(true);
+        when(provisioner.configurationVersion()).thenReturn("1", "2");
+        when(provisioner.synchronize(any(), any())).thenReturn(reference);
+        when(repository.findByTenantIdAndAgentIdAndProvider(tenantId, agentId, "telnyx"))
+                .thenAnswer(ignored -> Optional.ofNullable(stored.get()));
+        when(repository.save(any())).thenAnswer(invocation -> {
+            stored.set(invocation.getArgument(0));
+            return invocation.getArgument(0);
+        });
+
+        var service = new ManagedVoiceAgentProvisioningService(
+                repository,
+                blueprintFactory,
+                new ObjectMapper(),
+                List.of(provisioner)
+        );
+
+        assertThat(service.resolve("telnyx", call, "Hello")).isEqualTo(reference);
+        assertThat(service.resolve("telnyx", call, "Hello")).isEqualTo(reference);
+
+        verify(provisioner).synchronize(blueprint, null);
+        verify(provisioner).synchronize(blueprint, reference);
+        verify(repository, times(2)).save(any());
     }
 
     private ManagedVoiceAgentBlueprint blueprint(String greeting) {
