@@ -23,6 +23,11 @@ public class DefaultToolSeeder {
                         "time_preference", property("string", "Exact preferred time in HH:mm when provided, otherwise a period such as morning", ""),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("date")), "sauti_calendar", "noop_calendar", 10);
+        seed(agent, "lookup_booking", "Look up an existing booking only after collecting both its customer-facing booking number and the exact phone number used for that booking. Never disclose booking details before the server confirms both values.",
+                schema(Map.of(
+                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", ""),
+                        "caller_phone", property("string", "Exact phone number used when the booking was created", "phone")
+                ), List.of("booking_number", "caller_phone")), "sauti_calendar", "noop_calendar", 19);
         seed(agent, "book_slot", "Two-step booking: appointment_name is the service recipient. Set review_action semantically to prepare_review, correct_review, or unconditional approve_review from the caller's meaning in their language. If that turn also contains a question, condition, hesitation, correction, or information request, set question_handling to answer_before_action so nothing is saved until it is answered and freshly confirmed. The server retains the private review token. Never ask the caller to spell or expose the token.",
                 schema(Map.ofEntries(
                         Map.entry("appointment_at", property("string", "Confirmed ISO-8601 appointment datetime", "date-time")),
@@ -40,13 +45,25 @@ public class DefaultToolSeeder {
         seed(agent, "reschedule_booking", "Reschedule only after checking the new time and receiving unconditional confirmation. If the latest turn includes a separate question, condition, hesitation, correction, or information request, use question_handling answer_before_action and answer it before changing anything.",
                 schema(Map.of(
                         "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", ""),
+                        "caller_phone", property("string", "Exact phone number currently stored on the booking", "phone"),
                         "appointment_at", property("string", "Confirmed new ISO-8601 appointment datetime", "date-time"),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
-                ), List.of("booking_number", "appointment_at")), "sauti_calendar", "noop_calendar", 21);
+                ), List.of("booking_number", "caller_phone", "appointment_at")), "sauti_calendar", "noop_calendar", 21);
         seed(agent, "cancel_booking", "Cancel only after unconditional caller confirmation. If the latest turn includes a separate question, condition, hesitation, correction, or information request, use question_handling answer_before_action and answer it before changing anything.",
                 schema(Map.of(
-                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", "")
-                ), List.of("booking_number")), "sauti_calendar", "noop_calendar", 22);
+                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", ""),
+                        "caller_phone", property("string", "Exact phone number currently stored on the booking", "phone")
+                ), List.of("booking_number", "caller_phone")), "sauti_calendar", "noop_calendar", 22);
+        seed(agent, "update_booking", "Update non-time booking details only after looking up the booking and receiving unconditional confirmation of the exact changes. Use reschedule_booking for appointment date or time changes.",
+                schema(Map.ofEntries(
+                        Map.entry("booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", "")),
+                        Map.entry("caller_phone", property("string", "Exact phone number currently stored on the booking", "phone")),
+                        Map.entry("appointment_name", property("string", "Replacement name of the service recipient", "")),
+                        Map.entry("new_caller_phone", property("string", "Replacement contact phone number", "phone")),
+                        Map.entry("caller_email", property("string", "Replacement contact email", "email")),
+                        Map.entry("service_type", property("string", "Replacement configured service", "")),
+                        Map.entry("customer_details", property("object", "Additional booking details to merge", ""))
+                ), List.of("booking_number", "caller_phone")), "sauti_calendar", "noop_calendar", 23);
         seed(agent, "send_confirmation_sms", "Send a booking confirmation SMS. If SMS is unavailable, explain that "
                         + "to the caller and offer WhatsApp when that tool is available.",
                 schema(Map.of(
@@ -95,7 +112,10 @@ public class DefaultToolSeeder {
 
     private void synchronizeAddedTools(Agent agent) {
         var tools = agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agent.getId());
-        var calendarTools = Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking");
+        var calendarTools = Set.of(
+                "check_availability", "lookup_booking", "book_slot",
+                "reschedule_booking", "cancel_booking", "update_booking"
+        );
         var connectedCalendar = tools.stream()
                 .filter(tool -> calendarTools.contains(tool.getToolName()))
                 .filter(tool -> "google".equalsIgnoreCase(tool.getCalendarType()))
@@ -106,7 +126,9 @@ public class DefaultToolSeeder {
             tools.stream().filter(tool -> calendarTools.contains(tool.getToolName()))
                     .forEach(tool -> tool.connectCalendar("google", credentialId));
         } else {
-            tools.stream().filter(tool -> Set.of("reschedule_booking", "cancel_booking").contains(tool.getToolName()))
+            tools.stream().filter(tool -> Set.of(
+                            "lookup_booking", "reschedule_booking", "cancel_booking", "update_booking"
+                    ).contains(tool.getToolName()))
                     .forEach(tool -> tool.configureForDraft(agent.isBookingEnabled(), "noop_calendar"));
         }
         var lookup = tools.stream().filter(tool -> "lookup_google_sheet_row".equals(tool.getToolName())).findFirst().orElse(null);
@@ -122,7 +144,10 @@ public class DefaultToolSeeder {
 
     /** Keeps runtime tools aligned when booking or transfer settings change. */
     public void synchronizeCapabilities(Agent agent) {
-        var calendarTools = Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking");
+        var calendarTools = Set.of(
+                "check_availability", "lookup_booking", "book_slot",
+                "reschedule_booking", "cancel_booking", "update_booking"
+        );
         for (var tool : agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agent.getId())) {
             if (calendarTools.contains(tool.getToolName())) {
                 // Preserve an attached Google credential. Draft tools already
@@ -155,7 +180,8 @@ public class DefaultToolSeeder {
     private ActionPolicy defaultPolicy(String name) {
         return switch (name) {
             case "book_slot" -> new ActionPolicy(ToolActionEffect.DATA_WRITE, ToolConfirmationPolicy.VERIFIED_REVIEW);
-            case "reschedule_booking", "cancel_booking", "update_google_sheet_row", "call_custom_webhook" ->
+            case "reschedule_booking", "cancel_booking", "update_booking",
+                    "update_google_sheet_row", "call_custom_webhook" ->
                     new ActionPolicy(ToolActionEffect.DATA_WRITE, ToolConfirmationPolicy.EXPLICIT);
             case "send_confirmation_sms" ->
                     new ActionPolicy(ToolActionEffect.EXTERNAL_COMMUNICATION, ToolConfirmationPolicy.NONE);

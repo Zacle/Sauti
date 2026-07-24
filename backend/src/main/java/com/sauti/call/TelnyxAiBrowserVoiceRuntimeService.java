@@ -50,7 +50,7 @@ public class TelnyxAiBrowserVoiceRuntimeService implements BrowserVoiceRuntimePr
         );
         configuration.put("environment", environment);
         configuration.put("greeting", greeting == null ? "" : greeting);
-        configuration.put("toolNames", support.toolNames(call));
+        configuration.put("toolNames", support.toolNamesIncludingEndCall(call));
         configuration.put("callSid", call.getTwilioCallSid());
         if (!region.isBlank()) configuration.put("region", region);
         return new BrowserVoiceRuntimeSession(provider(), "", "", Map.copyOf(configuration));

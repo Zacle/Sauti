@@ -28,7 +28,8 @@ public class ConversationStateTool {
     public static final String NAME = "update_conversation_state";
     private static final Set<String> COMMON_FIELDS = Set.of(
             "caller_name", "appointment_name", "recipient_relation", "service_type",
-            "caller_phone", "caller_email", "booking_number", "preferred_day", "preferred_time",
+            "caller_phone", "new_caller_phone", "caller_email",
+            "booking_number", "preferred_day", "preferred_time",
             "review_decision"
     );
     private static final Set<String> SUBJECTS = Set.of(
@@ -71,8 +72,9 @@ public class ConversationStateTool {
                     case "recipient_relation" -> "Relationship of an explicitly different recipient to the caller, expressed compactly.";
                     case "service_type" -> "Requested configured service, only when the meaning is clear.";
                     case "caller_phone" -> "Complete caller-provided phone number.";
+                    case "new_caller_phone" -> "Replacement contact phone explicitly requested for an existing booking. Never overwrite caller_phone, which verifies the current booking.";
                     case "caller_email" -> "Complete caller-provided email address.";
-                    case "booking_number" -> "Exact customer-facing booking number supplied for a lookup, reschedule, or cancellation.";
+                    case "booking_number" -> "Exact customer-facing booking number supplied for a lookup, update, reschedule, or cancellation.";
                     case "preferred_day" -> "Clearly understood appointment date normalized to yyyy-MM-dd using TODAY IN THE BUSINESS TIMEZONE. Omit when the date is unclear.";
                     case "preferred_time" -> "Clearly understood exact appointment time normalized to HH:mm, or a clear broad period such as morning or afternoon. Omit when the time is unclear.";
                     case "review_decision" -> "Meaning of the caller's latest response to the immediately preceding server-retained booking review or action confirmation: approved, corrected, rejected, or unclear. This is turn-scoped and never inferred from politeness alone.";
@@ -292,7 +294,10 @@ public class ConversationStateTool {
                     && businessTool.matches("[A-Za-z][A-Za-z0-9_]{1,63}")
                     && !NAME.equals(businessTool)
                     && !(ConversationState.INTENT_PAUSED.equals(next.bookingIntent())
-                        && Set.of("book_slot", "reschedule_booking", "cancel_booking").contains(businessTool))
+                        && Set.of(
+                                "book_slot", "update_booking",
+                                "reschedule_booking", "cancel_booking"
+                        ).contains(businessTool))
                     && configuredFor(call, businessTool)) {
                 result.put("nextTool", businessTool);
                 result.put("nextToolAuthorized", true);
@@ -303,6 +308,10 @@ public class ConversationStateTool {
                     arguments.put("question_handling", "ready_for_action");
                     arguments.put("confirmation_state", "confirmed");
                     result.put("nextToolArguments", Map.copyOf(arguments));
+                } else if ("lookup_booking".equals(businessTool)) {
+                    bookingIdentityArguments(next).ifPresent(arguments ->
+                            result.put("nextToolArguments", arguments)
+                    );
                 } else if ("get_business_hours".equals(businessTool)) {
                     // This read has no arguments. Supplying the authoritative
                     // empty object lets Realtime execute it directly instead of
@@ -322,14 +331,12 @@ public class ConversationStateTool {
                             result.put("nextToolArguments", arguments)
                     );
                 } else if ("cancel_booking".equals(businessTool)) {
-                    var bookingNumber = next.values().getOrDefault("booking_number", "").trim();
-                    if (!bookingNumber.isBlank()) {
-                        result.put("nextToolArguments", Map.of(
-                                "booking_number", bookingNumber,
-                                "question_handling", "ready_for_action",
-                                "confirmation_state", "confirmed"
-                        ));
-                    }
+                    bookingIdentityArguments(next).ifPresent(identity -> {
+                        var arguments = new LinkedHashMap<String, Object>(identity);
+                        arguments.put("question_handling", "ready_for_action");
+                        arguments.put("confirmation_state", "confirmed");
+                        result.put("nextToolArguments", Map.copyOf(arguments));
+                    });
                 }
             }
             result.put("instruction", spoken.isBlank()
@@ -376,7 +383,22 @@ public class ConversationStateTool {
             return Optional.empty();
         }
         if (pending == null || pending.isEmpty()) return Optional.empty();
-        return BookingToolArgumentResolver.resolveReschedule(call, state.asNotes(), pending.get());
+        return BookingToolArgumentResolver.resolveReschedule(call, state.asNotes(), pending.get())
+                .flatMap(arguments -> bookingIdentityArguments(state).map(identity -> {
+                    var secured = new LinkedHashMap<String, Object>(arguments);
+                    secured.putAll(identity);
+                    return Map.copyOf(secured);
+                }));
+    }
+
+    private Optional<Map<String, Object>> bookingIdentityArguments(ConversationState state) {
+        var bookingNumber = state.values().getOrDefault("booking_number", "").trim();
+        var callerPhone = state.values().getOrDefault("caller_phone", "").trim();
+        if (bookingNumber.isBlank() || callerPhone.isBlank()) return Optional.empty();
+        return Optional.of(Map.of(
+                "booking_number", bookingNumber,
+                "caller_phone", callerPhone
+        ));
     }
 
     private Optional<PendingAction> pendingAction(Call call) {

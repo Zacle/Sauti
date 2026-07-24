@@ -968,6 +968,8 @@ class SautiCalendarFulfillmentTest {
         var updated = mock(com.sauti.calendar.Booking.class);
         var bookingId = java.util.UUID.randomUUID();
         when(existing.getId()).thenReturn(bookingId);
+        when(existing.getCallerPhone()).thenReturn("011-575-2441");
+        when(existing.getBookingReference()).thenReturn("SAT-AB12CD34");
         when(updated.getId()).thenReturn(bookingId);
         when(updated.getBookingReference()).thenReturn("SAT-AB12CD34");
         when(updated.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T14:00:00Z"));
@@ -977,6 +979,7 @@ class SautiCalendarFulfillmentTest {
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "reschedule-booking", "reschedule_booking", Map.of(
                         "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115752441",
                         "appointment_at", "2026-07-23T14:00:00Z",
                         "duration_minutes", 45
                 )
@@ -999,13 +1002,18 @@ class SautiCalendarFulfillmentTest {
         var cancelled = mock(com.sauti.calendar.Booking.class);
         var bookingId = java.util.UUID.randomUUID();
         when(existing.getId()).thenReturn(bookingId);
+        when(existing.getCallerPhone()).thenReturn("011-575-2441");
+        when(existing.getBookingReference()).thenReturn("SAT-AB12CD34");
         when(cancelled.getId()).thenReturn(bookingId);
         when(cancelled.getBookingReference()).thenReturn("SAT-AB12CD34");
         when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
         when(fixture.bookingService.cancel(any(), eq(bookingId))).thenReturn(cancelled);
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
-                "cancel-booking", "cancel_booking", Map.of("booking_number", "SAT-AB12CD34")
+                "cancel-booking", "cancel_booking", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115752441"
+                )
         ));
 
         assertThat(result.result())
@@ -1015,6 +1023,124 @@ class SautiCalendarFulfillmentTest {
                 .hasEntrySatisfying("instruction", instruction -> assertThat(instruction.toString())
                         .contains("bookingNumber")
                         .containsIgnoringCase("current language"));
+    }
+
+    @Test
+    void cancellationRejectsAMismatchedPhoneBeforeChangingTheBooking() {
+        var fixture = fixture(HOURS, List.of());
+        var existing = mock(com.sauti.calendar.Booking.class);
+        when(existing.getCallerPhone()).thenReturn("011-575-2441");
+        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "cancel-booking", "cancel_booking", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115759999"
+                )
+        ));
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.error()).contains("booking number or phone number did not match");
+        verify(fixture.bookingService, never()).cancel(any(), any());
+    }
+
+    @Test
+    void lookupDisclosesBookingFactsOnlyAfterPhoneVerification() {
+        var fixture = fixture(HOURS, List.of());
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getBookingReference()).thenReturn("SAT-AB12CD34");
+        when(booking.getCallerPhone()).thenReturn("011-575-2441");
+        when(booking.getCallerName()).thenReturn("Alexandra");
+        when(booking.getServiceType()).thenReturn("women hairstyle");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
+        when(booking.getDurationMinutes()).thenReturn(60);
+        when(booking.getStatus()).thenReturn("confirmed");
+        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(booking);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-booking", "lookup_booking", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115752441"
+                )
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "booking_found")
+                .containsEntry("bookingFound", true)
+                .containsEntry("bookingNumber", "SAT-AB12CD34")
+                .containsEntry("appointmentName", "Alexandra")
+                .containsEntry("bookingStatus", "confirmed")
+                .doesNotContainKeys("callerPhone", "callerEmail");
+    }
+
+    @Test
+    void lookupRejectsAMismatchedPhoneWithoutDisclosingBookingFacts() {
+        var fixture = fixture(HOURS, List.of());
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getCallerPhone()).thenReturn("011-575-2441");
+        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(booking);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-booking", "lookup_booking", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115759999"
+                )
+        ));
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.error()).contains("booking number or phone number did not match");
+        assertThat(result.result()).isEmpty();
+    }
+
+    @Test
+    void updatePreservesTheAppointmentAndChangesOnlyConfirmedDetails() {
+        var fixture = fixture(HOURS, List.of());
+        var bookingId = java.util.UUID.randomUUID();
+        var existing = mock(com.sauti.calendar.Booking.class);
+        var updated = mock(com.sauti.calendar.Booking.class);
+        when(existing.getId()).thenReturn(bookingId);
+        when(existing.getBookingReference()).thenReturn("SAT-AB12CD34");
+        when(existing.getCallerPhone()).thenReturn("011-575-2441");
+        when(existing.getCallerName()).thenReturn("Alexandra");
+        when(existing.getCallerEmail()).thenReturn("old@example.com");
+        when(existing.getServiceType()).thenReturn("women hairstyle");
+        when(existing.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
+        when(existing.getDurationMinutes()).thenReturn(60);
+        when(existing.getCapturedData()).thenReturn("{\"stylist\":\"any\"}");
+        when(updated.getBookingReference()).thenReturn("SAT-AB12CD34");
+        when(updated.getStatus()).thenReturn("confirmed");
+        when(updated.getCallerName()).thenReturn("Alexandria");
+        when(updated.getServiceType()).thenReturn("women hairstyle");
+        when(updated.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
+        when(updated.getDurationMinutes()).thenReturn(60);
+        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
+        when(fixture.bookingService.update(any(), eq(bookingId), any())).thenReturn(updated);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "update-booking", "update_booking", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115752441",
+                        "appointment_name", "Alexandria",
+                        "customer_details", Map.of("notes", "quiet appointment")
+                )
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "booking_updated")
+                .containsEntry("bookingNumber", "SAT-AB12CD34")
+                .containsEntry("appointmentName", "Alexandria")
+                .containsEntry("updated", true);
+        var request = org.mockito.ArgumentCaptor.forClass(
+                com.sauti.calendar.BookingDtos.UpdateBookingRequest.class
+        );
+        verify(fixture.bookingService).update(any(), eq(bookingId), request.capture());
+        assertThat(request.getValue().appointmentAt())
+                .isEqualTo(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
+        assertThat(request.getValue().capturedData())
+                .containsEntry("stylist", "any")
+                .containsEntry("notes", "quiet appointment");
     }
 
     private Fixture fixture(String hours, List<CalendarAvailabilitySlot> slots) {

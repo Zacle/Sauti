@@ -137,7 +137,10 @@ public class GoogleCalendarIntegrationService {
                 "refreshToken", token.refreshToken()
         ), java.util.Map.of("calendarId", "primary"));
         toolRepository.findByAgent_IdOrderByDisplayOrderAsc(agent.getId()).stream()
-                .filter(tool -> Set.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking")
+                .filter(tool -> Set.of(
+                                "check_availability", "lookup_booking", "book_slot",
+                                "reschedule_booking", "cancel_booking", "update_booking"
+                        )
                         .contains(tool.getToolName()))
                 .forEach(tool -> tool.connectCalendar("google", credential.getId()));
         agent.updateCalendarProvider("Google Calendar");

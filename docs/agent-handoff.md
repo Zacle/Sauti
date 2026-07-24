@@ -5289,3 +5289,100 @@ Expected:
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: after reviewed CI/CD deployment, start another Telnyx browser test. Managed assistant synchronization should proceed beyond validation code `10015` to call creation.
+
+### 2026-07-24 - Make Telnyx browser-call termination observable and Sauti-controlled
+
+- Diagnosed report `dc8fb5dc-9b74-45a1-874d-b5bd0887775d`. Availability checks and booking completed successfully, including booking ID `SAT-OHM2KFA6HOP1`.
+- The assistant spoke a farewell at sequence 172-173, but there was no native Telnyx hangup invocation, provider disconnect, runtime-ended event, or terminal client-tool event. The first end event was the user's manual End action at sequence 175, about 38 seconds later.
+- The prior Telnyx adapter exposed an opaque provider-native `hangup` tool. Its schema was valid, but the model did not invoke it, so Sauti had no terminal result it could observe or enforce.
+- Replaced the Telnyx-only native hangup mapping with Sauti's existing `end_call` client tool:
+  - Telnyx browser runtime configuration now includes `end_call` only when that tool is enabled for the agent;
+  - the managed assistant receives a strong, language-independent same-turn contract to speak one brief farewell and invoke `end_call` without waiting for another caller turn;
+  - the browser executes `end_call` through the existing authenticated Sauti tool endpoint;
+  - only a successful result containing `result.ended=true` schedules provider-session termination;
+  - termination is scheduled after returning the tool result, preventing a disconnect from racing the provider's tool response;
+  - ordinary business tools and unsuccessful terminal results cannot end a call.
+- Bumped the Telnyx managed-assistant configuration version to `5` so existing assistants resynchronize once with the observable terminal tool.
+- Added browser-runtime tests for confirmed terminal completion and non-terminal business-tool isolation, and extended backend tests for Telnyx provisioning and runtime tool exposure.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{ManagedVoiceRuntimeSupport,TelnyxAiBrowserVoiceRuntimeService,TelnyxManagedVoiceAgentProvisioner}.java`
+  - `backend/src/test/java/com/sauti/call/{ManagedBrowserVoiceRuntimeServicesTest,ManagedVoiceAgentProvisionersTest}.java`
+  - `dashboard/features/voice-runtime/{telnyxRuntime,telnyxClientTool}.ts`
+  - `dashboard/features/voice-runtime/telnyxClientTool.test.ts`
+  - `dashboard/package.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Telnyx backend provisioning/runtime tests - passed; Gradle reported `BUILD SUCCESSFUL` in 31 seconds.
+  - `npm.cmd run test:voice` - passed all 50 tests.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js completed the optimized production build.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 3 minutes 12 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after reviewed CI/CD deployment, complete a Telnyx browser call with a natural caller farewell. The diagnostic should contain `client_tool_started`/`client_tool_completed` for `end_call`, followed by `runtime_ended` and `call_completed`, without a manual End action.
+
+### 2026-07-24 - Add secure provider-neutral booking CRUD
+
+- Diagnosed report `5b73211f-e740-47ab-9141-40bee8968982`. The ElevenLabs call connected and ended normally, but after the caller supplied booking ID `SAT-OHM2KFA6HOP1`, the provider invoked only `update_conversation_state`. No booking-read tool was available, so the model improvised that it could not verify bookings and redirected the caller to the business phone.
+- Added complete existing-booking support to the shared Sauti tool catalog used by managed and native voice runtimes:
+  - `lookup_booking` reads a booking;
+  - `update_booking` changes non-time booking details;
+  - `reschedule_booking` changes date/time;
+  - `cancel_booking` cancels the booking;
+  - existing `book_slot` remains the create operation.
+- Secured every existing-booking operation with two required values: the customer-facing booking number and the phone number already stored on that booking. Verification is tenant-scoped and performed again by the server at execution time.
+- Lookup results expose only customer-safe booking fields. Identity failures return one generic mismatch and disclose neither whether the booking ID exists nor any booking/contact details.
+- A phone-number change uses a separate `new_caller_phone` argument. The current stored phone remains the verification credential for that operation.
+- Existing mutation confirmation behavior remains in force: update, reschedule, and cancel retain the exact pending action and require the caller's later unconditional confirmation before execution. Lookup is read-only and does not require mutation confirmation.
+- Updated the provider-neutral conversation contract to request the booking number and current phone one at a time, use the configured tool instead of claiming verification is unavailable, and preserve collected booking context across turns.
+- Added an idempotent startup backfill so agents created before this release receive the new default tools. Runtime schema hardening also adds the two identity fields to legacy existing-booking tool rows before managed-provider synchronization.
+- Extended calendar integration activation and progress/recovery semantics to cover lookup and update operations.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/GoogleCalendarIntegrationService.java`
+  - `backend/src/main/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProvider.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,ConversationStateTool,DefaultToolBackfill,DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/AuthAgentFlowTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/{AgentToolLoaderTest,ConversationStateToolTest,DefaultToolBackfillTest,DefaultToolSeederTest,SautiCalendarFulfillmentTest}.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused CRUD, conversation-state, startup-backfill, seeding, loader, and managed-provider tests - passed.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed after the final implementation; Gradle reported `BUILD SUCCESSFUL` in 1 minute 18 seconds.
+  - final focused startup-backfill, fulfillment, and conversation-state tests - passed; Gradle reported `BUILD SUCCESSFUL` in 14 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after reviewed CI/CD deployment and backend restart, run lookup, update, reschedule, and cancellation tests through each enabled provider. Diagnostics should show the corresponding business tool with both `booking_number` and `caller_phone`; no booking details or mutation should occur after an identity mismatch.
+
+### 2026-07-24 - Use provider-native progress speech for delayed business tools
+
+- Replaced prompt-only delayed-operation behavior in the managed Retell and ElevenLabs adapters with their current native execution controls.
+- Verified payload fields against primary provider material before implementation:
+  - the installed official `retell-sdk` custom-tool schema documents `speak_during_execution`, `execution_message_type`, `execution_message_description`, `speak_after_execution`, and `timeout_ms`;
+  - the installed official `@elevenlabs/elevenlabs-js` schema documents `conversation_config.turn.soft_timeout_config`, including LLM-generated messages and the soft-timeout limit.
+- Retell custom tools now:
+  - enable `speak_during_execution` only for tools whose Sauti definition marks `callerWaitExpected=true`;
+  - use prompt-generated wording in the caller's current language rather than a fixed business phrase;
+  - forbid questions and unverified success/failure claims in the progress utterance;
+  - enable `speak_after_execution` so the factual tool result produces speech without another caller turn;
+  - use a bounded 30-second provider tool timeout.
+- ElevenLabs agents now use a 1.5-second soft timeout with one LLM-generated contextual progress update. The static message is only the provider-required fallback. Once the same LLM/tool generation completes, ElevenLabs automatically continues with the result.
+- Telnyx's current browser client-tool contract does not expose native mid-execution speech or deferred result injection. Its safe fallback now marks potentially slow tools with an AI-generated, current-language acknowledgment immediately before invocation and requires automatic continuation when the result returns. It does not ask a question or claim an outcome.
+- Existing OpenAI Realtime delayed-progress/preemption and Vapi `request-response-delayed` behavior remain unchanged.
+- Bumped managed configuration versions so existing synchronized provider agents are refreshed:
+  - Retell: version `2`;
+  - ElevenLabs: version `6`;
+  - Telnyx: version `6`.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{RetellManagedVoiceAgentProvisioner,ElevenLabsManagedVoiceAgentProvisioner,TelnyxManagedVoiceAgentProvisioner}.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed-provider provisioning tests - passed; Gradle reported `BUILD SUCCESSFUL` in 13 seconds after the final provider change.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 25 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after reviewed CI/CD deployment, allow an availability lookup or booking write to exceed 1.5 seconds. ElevenLabs and Retell should speak one contextual progress update and then announce the result without caller speech. Telnyx should acknowledge immediately before the slow tool and announce the result automatically afterward. Diagnostics must not show duplicate progress speech or an extra caller turn between tool completion and result speech.
+- Known limitation: true mid-execution Telnyx progress requires changing from browser client tools to signed asynchronous Telnyx webhooks plus call-control `ai_assistant_add_messages`. That needs durable operation correlation, idempotency, active call-control ID capture, signature verification, and result injection; it was not approximated with unsafe browser TTS or an unverified webhook.

@@ -9,6 +9,7 @@ import {
   providerError,
 } from "./managedRuntimeConfig";
 import { startTelnyxConversationWhenReady } from "./telnyxReadiness";
+import { executeTelnyxClientTool } from "./telnyxClientTool";
 
 export async function connectTelnyxRuntime(
   session: BrowserVoiceRuntimeSession,
@@ -18,12 +19,15 @@ export async function connectTelnyxRuntime(
   const agentId = configString(session.configuration, "agentId");
   if (!agentId) throw new Error("Telnyx did not return an AI assistant id.");
   const toolNames = configStringArray(session.configuration, "toolNames");
+  let finishFromTerminalTool = () => {};
   const clientTools = Object.fromEntries(toolNames.map((name) => [
     name,
-    async (parameters: unknown, context: { callId: string }) => callbacks.executeTool(
+    async (parameters: unknown, context: { callId: string }) => executeTelnyxClientTool(
       context.callId,
       name,
-      JSON.stringify(parameters ?? {}),
+      parameters,
+      callbacks.executeTool,
+      finishFromTerminalTool,
     ),
   ]));
   const environment = configString(session.configuration, "environment") === "development"
@@ -60,6 +64,7 @@ export async function connectTelnyxRuntime(
     ended = true;
     callbacks.onEnded("completed");
   };
+  finishFromTerminalTool = finish;
 
   client.on("agent.error", (error) => {
     if (conversationStarted) callbacks.onError(providerError("Telnyx", error));

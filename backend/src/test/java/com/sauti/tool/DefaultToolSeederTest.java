@@ -29,11 +29,14 @@ class DefaultToolSeederTest {
         new DefaultToolSeeder(repository).seedDefaults(agent);
 
         var captor = ArgumentCaptor.forClass(AgentTool.class);
-        verify(repository, times(14)).save(captor.capture());
+        verify(repository, times(16)).save(captor.capture());
         var tools = captor.getAllValues().stream().collect(java.util.stream.Collectors.toMap(
                 AgentTool::getToolName, tool -> tool
         ));
         assertThat(tools.get("lookup_google_sheet_row").actionEffect()).isEqualTo(ToolActionEffect.READ_ONLY);
+        assertThat(tools.get("lookup_booking").actionEffect()).isEqualTo(ToolActionEffect.READ_ONLY);
+        assertThat(tools.get("update_booking").actionEffect()).isEqualTo(ToolActionEffect.DATA_WRITE);
+        assertThat(tools.get("update_booking").confirmationPolicy()).isEqualTo(ToolConfirmationPolicy.EXPLICIT);
         assertThat(tools.get("update_google_sheet_row").actionEffect()).isEqualTo(ToolActionEffect.DATA_WRITE);
         assertThat(tools.get("send_whatsapp_message").actionEffect()).isEqualTo(ToolActionEffect.EXTERNAL_COMMUNICATION);
         assertThat(tools.get("request_mpesa_payment").actionEffect()).isEqualTo(ToolActionEffect.FINANCIAL);

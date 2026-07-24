@@ -41,7 +41,7 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
 
     @Override
     public String configurationVersion() {
-        return "5";
+        return "6";
     }
 
     @Override
@@ -262,7 +262,18 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
         conversationConfig.put("agent", Map.copyOf(agent));
         conversationConfig.put("turn", Map.of(
                 "turn_eagerness", "normal",
-                "turn_timeout", 7
+                "turn_timeout", 7,
+                "soft_timeout_config", Map.of(
+                        "timeout_seconds", 1.5,
+                        "message", "One moment, please.",
+                        "use_llm_generated_message", true,
+                        "max_soft_timeouts_per_generation", 1,
+                        "llm_generated_message_prompt_override",
+                        "Generate one brief, natural, professional progress update in the caller's current "
+                                + "language. Acknowledge that the request is still being processed. "
+                                + "Do not ask a question and do not imply success or failure. "
+                                + "Do not repeat a previous progress update."
+                )
         ));
         conversationConfig.put("conversation", Map.of(
                 "max_duration_seconds", Math.max(10, blueprint.maxCallDurationSeconds())

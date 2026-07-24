@@ -22,9 +22,18 @@ public class ManagedVoiceRuntimeSupport {
     }
 
     public List<String> toolNames(Call call) {
+        return toolNames(call, false);
+    }
+
+    public List<String> toolNamesIncludingEndCall(Call call) {
+        return toolNames(call, true);
+    }
+
+    private List<String> toolNames(Call call, boolean includeEndCall) {
         return agentToolLoader.loadForAgent(call.getAgent().getId()).stream()
                 .map(tool -> tool.name())
-                .filter(name -> name != null && !name.isBlank() && !"end_call".equals(name))
+                .filter(name -> name != null && !name.isBlank())
+                .filter(name -> includeEndCall || !"end_call".equals(name))
                 .distinct()
                 .toList();
     }

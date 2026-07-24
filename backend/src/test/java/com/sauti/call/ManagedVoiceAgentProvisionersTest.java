@@ -51,6 +51,21 @@ class ManagedVoiceAgentProvisionersTest {
                 .containsEntry("begin_message", "Hello from Sauti")
                 .containsKey("general_tools");
         assertThat(body.getValue().toString()).contains("additionalProperties");
+        @SuppressWarnings("unchecked")
+        var retellTools = (List<Map<String, Object>>) body.getValue().get("general_tools");
+        var availabilityTool = retellTools.stream()
+                .filter(tool -> "check_availability".equals(tool.get("name")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(availabilityTool)
+                .containsEntry("speak_during_execution", true)
+                .containsEntry("speak_after_execution", true)
+                .containsEntry("execution_message_type", "prompt")
+                .containsEntry("timeout_ms", 30_000);
+        assertThat(availabilityTool.get("execution_message_description").toString())
+                .contains("caller's current language")
+                .contains("Do not ask a question")
+                .contains("wait for the tool result");
     }
 
     @Test
@@ -135,6 +150,18 @@ class ManagedVoiceAgentProvisionersTest {
                 .containsEntry("name", "end_call");
         assertThat(endCall.get("params"))
                 .isEqualTo(Map.of("system_tool_type", "end_call"));
+        @SuppressWarnings("unchecked")
+        var turn = (Map<String, Object>) conversationConfig.get("turn");
+        @SuppressWarnings("unchecked")
+        var softTimeout = (Map<String, Object>) turn.get("soft_timeout_config");
+        assertThat(softTimeout)
+                .containsEntry("timeout_seconds", 1.5)
+                .containsEntry("use_llm_generated_message", true)
+                .containsEntry("max_soft_timeouts_per_generation", 1);
+        assertThat(softTimeout.get("llm_generated_message_prompt_override").toString())
+                .contains("caller's current language")
+                .contains("Do not ask a question")
+                .contains("Do not repeat");
     }
 
     @Test
@@ -161,8 +188,8 @@ class ManagedVoiceAgentProvisionersTest {
         );
         assertThat(body.getValue().toString())
                 .contains("client_side_tool")
-                .contains("hangup")
-                .doesNotContain("end_call")
+                .contains("end_call")
+                .doesNotContain("type=hangup")
                 .doesNotContain("timeout_ms")
                 .doesNotContain("promote_to_main")
                 .contains("supports_unauthenticated_web_calls")
@@ -174,6 +201,20 @@ class ManagedVoiceAgentProvisionersTest {
                 .isEqualTo(Map.of("enabled", false));
         assertThat(body.getValue().get("privacy_settings"))
                 .isEqualTo(Map.of("data_retention", false));
+        @SuppressWarnings("unchecked")
+        var telnyxTools = (List<Map<String, Object>>) body.getValue().get("tools");
+        @SuppressWarnings("unchecked")
+        var telnyxAvailability = (Map<String, Object>) telnyxTools.stream()
+                .map(tool -> tool.get("client_side_tool"))
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .filter(tool -> "check_availability".equals(tool.get("name")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(telnyxAvailability.get("description").toString())
+                .contains("Immediately before invoking it")
+                .contains("caller's current language")
+                .contains("continue automatically");
     }
 
     @Test

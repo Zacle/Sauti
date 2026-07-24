@@ -10,6 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AgentToolLoader {
+    private static final java.util.Set<String> BOOKING_ACCESS_TOOLS = java.util.Set.of(
+            "lookup_booking", "update_booking", "reschedule_booking", "cancel_booking"
+    );
     private final AgentToolRepository agentToolRepository;
     private final ToolActionPolicy actionPolicy;
 
@@ -57,6 +60,10 @@ public class AgentToolLoader {
                     Map.copyOf(schema),
                     definition.callerWaitExpected()
             ));
+        }
+        if (BOOKING_ACCESS_TOOLS.contains(tool.getToolName())) {
+            var secured = requireBookingIdentity(definition);
+            return actionPolicy.decorate(tool, secured);
         }
         if (!"book_slot".equals(tool.getToolName())) return actionPolicy.decorate(tool, definition);
 
@@ -124,6 +131,38 @@ public class AgentToolLoader {
                 Map.copyOf(schema),
                 definition.callerWaitExpected()
         ));
+    }
+
+    @SuppressWarnings("unchecked")
+    private LlmToolDefinition requireBookingIdentity(LlmToolDefinition definition) {
+        var schema = new LinkedHashMap<String, Object>(definition.inputSchema());
+        var properties = new LinkedHashMap<String, Object>(
+                (Map<String, Object>) schema.getOrDefault("properties", Map.of())
+        );
+        var required = new java.util.ArrayList<String>(
+                (List<String>) schema.getOrDefault("required", List.of())
+        );
+        properties.put("booking_number", Map.of(
+                "type", "string",
+                "description", "Exact customer-facing Sauti booking number supplied by the caller."
+        ));
+        properties.put("caller_phone", Map.of(
+                "type", "string",
+                "description", "Exact phone number used for the existing booking. Required for identity verification before reading or changing it."
+        ));
+        for (var field : List.of("booking_number", "caller_phone")) {
+            if (!required.contains(field)) required.add(field);
+        }
+        schema.put("properties", Map.copyOf(properties));
+        schema.put("required", List.copyOf(required));
+        return new LlmToolDefinition(
+                definition.name(),
+                definition.description()
+                        + " Require both the booking number and exact booking phone. "
+                        + "Never disclose or mutate booking data until the server verifies both.",
+                Map.copyOf(schema),
+                definition.callerWaitExpected()
+        );
     }
 
     private String humanize(String field) {

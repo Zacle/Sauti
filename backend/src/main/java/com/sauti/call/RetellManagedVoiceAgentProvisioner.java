@@ -45,6 +45,11 @@ public class RetellManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
     }
 
     @Override
+    public String configurationVersion() {
+        return "2";
+    }
+
+    @Override
     public ManagedVoiceAgentReference synchronize(
             ManagedVoiceAgentBlueprint blueprint,
             ManagedVoiceAgentReference existing
@@ -115,6 +120,21 @@ public class RetellManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
             custom.put("url", "{{sauti_tool_url}}");
             custom.put("method", "POST");
             custom.put("parameters", tool.inputSchema());
+            custom.put("speak_after_execution", true);
+            if (tool.callerWaitExpected()) {
+                custom.put("speak_during_execution", true);
+                custom.put("execution_message_type", "prompt");
+                custom.put(
+                        "execution_message_description",
+                        "Generate one brief, natural, professional progress update in the caller's current "
+                                + "language. Say that you are still working on the requested operation. "
+                                + "Do not ask a question and do not imply that it succeeded or failed. "
+                                + "After this update, stop speaking and wait for the tool result."
+                );
+            } else {
+                custom.put("speak_during_execution", false);
+            }
+            custom.put("timeout_ms", 30_000);
             tools.add(Map.copyOf(custom));
         });
         var body = new LinkedHashMap<String, Object>();

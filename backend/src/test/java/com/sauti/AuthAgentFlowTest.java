@@ -449,7 +449,7 @@ class AuthAgentFlowTest {
         var toolsJson = mvc.perform(get("/api/v1/agents/" + agentId + "/tools")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(14))
+                .andExpect(jsonPath("$.length()").value(16))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();

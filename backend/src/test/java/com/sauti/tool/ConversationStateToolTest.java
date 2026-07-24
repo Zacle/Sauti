@@ -454,12 +454,61 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void lookupUsesTheStoredBookingIdentityWithoutAnotherModelTurn() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("lookup-booking-call");
+        when(sessions.conversationState("lookup-booking-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "booking_number", "SAT-AB12CD34",
+                                "caller_phone", "0115752441"
+                        ),
+                        ConversationState.SUBJECT_UNKNOWN,
+                        ConversationState.INTENT_INFORMATION,
+                        3
+                )
+        ));
+        var repository = mock(AgentToolRepository.class);
+        var lookup = mock(AgentTool.class);
+        when(lookup.actionEffect()).thenReturn(ToolActionEffect.READ_ONLY);
+        when(repository.findByAgent_IdAndToolNameAndIsActiveTrue(
+                call.getAgent().getId(), "lookup_booking"
+        )).thenReturn(Optional.of(lookup));
+        var tool = new ConversationStateTool(sessions, repository);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of(),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "caller_question", "requires_business_tool",
+                "next_action", "use_business_tool",
+                "business_tool", "lookup_booking",
+                "spoken_response", ""
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "lookup_booking")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115752441"
+                ))
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
     void cancellationUsesTheStoredBookingNumberWithoutAnotherModelTurn() {
         var sessions = mock(CallSessionStore.class);
         var call = call("cancel-booking-call");
         when(sessions.conversationState("cancel-booking-call")).thenReturn(Optional.of(
                 new ConversationState(
-                        Map.of("booking_number", "SAT-AB12CD34"),
+                        Map.of(
+                                "booking_number", "SAT-AB12CD34",
+                                "caller_phone", "0115752441"
+                        ),
                         ConversationState.SUBJECT_UNKNOWN,
                         ConversationState.INTENT_ACTIVE,
                         3
@@ -484,6 +533,7 @@ class ConversationStateToolTest {
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
                         "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115752441",
                         "question_handling", "ready_for_action",
                         "confirmation_state", "confirmed"
                 ))
@@ -496,7 +546,10 @@ class ConversationStateToolTest {
         var call = call("verified-action-call");
         when(sessions.conversationState("verified-action-call")).thenReturn(Optional.of(
                 new ConversationState(
-                        Map.of("booking_number", "SAT-AB12CD34"),
+                        Map.of(
+                                "booking_number", "SAT-AB12CD34",
+                                "caller_phone", "0115752441"
+                        ),
                         ConversationState.SUBJECT_UNKNOWN,
                         ConversationState.INTENT_ACTIVE,
                         11
@@ -504,7 +557,10 @@ class ConversationStateToolTest {
         ));
         when(sessions.pendingAction("verified-action-call")).thenReturn(Optional.of(
                 new PendingAction(
-                        "cancel_booking", Map.of("booking_number", "SAT-AB12CD34"), 11
+                        "cancel_booking", Map.of(
+                                "booking_number", "SAT-AB12CD34",
+                                "caller_phone", "0115752441"
+                        ), 11
                 )
         ));
         var tool = new ConversationStateTool(sessions);
@@ -529,6 +585,7 @@ class ConversationStateToolTest {
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
                         "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115752441",
                         "question_handling", "ready_for_action",
                         "confirmation_state", "confirmed"
                 ))
@@ -543,6 +600,7 @@ class ConversationStateToolTest {
                 new ConversationState(
                         Map.of(
                                 "booking_number", "SAT-AB12CD34",
+                                "caller_phone", "0115752441",
                                 "preferred_day", "2026-07-23",
                                 "preferred_time", "14:00"
                         ),
@@ -573,6 +631,7 @@ class ConversationStateToolTest {
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
                         "booking_number", "SAT-AB12CD34",
+                        "caller_phone", "0115752441",
                         "appointment_at", "2026-07-23T14:00Z",
                         "duration_minutes", 45,
                         "question_handling", "ready_for_action",

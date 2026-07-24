@@ -312,7 +312,10 @@ public class IntegrationService {
     private List<String> toolNamesFor(String provider) {
         return switch (provider) {
             case "whatsapp" -> List.of("send_whatsapp_message");
-            case "google_calendar" -> List.of("check_availability", "book_slot", "reschedule_booking", "cancel_booking");
+            case "google_calendar" -> List.of(
+                    "check_availability", "lookup_booking", "book_slot",
+                    "reschedule_booking", "cancel_booking", "update_booking"
+            );
             case "google_sheets" -> List.of("lookup_google_sheet_row", "update_google_sheet_row");
             case "mpesa" -> List.of("request_mpesa_payment", "check_mpesa_payment");
             case "custom_webhook" -> List.of("call_custom_webhook");

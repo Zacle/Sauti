@@ -100,7 +100,8 @@ class ManagedBrowserVoiceRuntimeServicesTest {
         when(provisioning.isConfigured("telnyx")).thenReturn(true);
         when(provisioning.resolve("telnyx", fixture.call(), "Hello"))
                 .thenReturn(new ManagedVoiceAgentReference("assistant-42", "main", "{}"));
-        when(support.toolNames(fixture.call())).thenReturn(List.of("check_availability"));
+        when(support.toolNamesIncludingEndCall(fixture.call()))
+                .thenReturn(List.of("check_availability", "end_call"));
         var service = new TelnyxAiBrowserVoiceRuntimeService(
                 support, provisioning, "development", "eu-west"
         );
@@ -113,6 +114,7 @@ class ManagedBrowserVoiceRuntimeServicesTest {
                 .containsEntry("agentId", "assistant-42")
                 .containsEntry("environment", "development")
                 .containsEntry("region", "eu-west")
+                .containsEntry("toolNames", List.of("check_availability", "end_call"))
                 .doesNotContainValue("call-token");
     }
 

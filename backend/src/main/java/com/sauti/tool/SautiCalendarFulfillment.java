@@ -29,6 +29,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class SautiCalendarFulfillment implements ToolFulfillment {
     private static final Logger LOGGER = LoggerFactory.getLogger(SautiCalendarFulfillment.class);
+    private static final com.fasterxml.jackson.databind.ObjectMapper CAPTURED_DATA_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
     private final CalendarProviderFactory calendarProviderFactory;
     private final BookingService bookingService;
     private final CallSessionStore callSessionStore;
@@ -55,9 +57,11 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             return switch (toolCall.name()) {
                 case "get_business_hours" -> LlmToolResult.success(toolCall, businessHours(call));
                 case "check_availability" -> LlmToolResult.success(toolCall, checkAvailability(call, toolCall.arguments(), toolConfig));
+                case "lookup_booking" -> LlmToolResult.success(toolCall, lookupBooking(call, toolCall));
                 case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(call, toolCall, toolConfig));
                 case "reschedule_booking" -> LlmToolResult.success(toolCall, reschedule(call, toolCall));
                 case "cancel_booking" -> LlmToolResult.success(toolCall, cancel(call, toolCall));
+                case "update_booking" -> LlmToolResult.success(toolCall, updateBooking(call, toolCall));
                 default -> LlmToolResult.error(toolCall, "Unrecognised calendar tool: " + toolCall.name());
             };
         } catch (RuntimeException exception) {
@@ -599,8 +603,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     }
 
     private Map<String, Object> reschedule(Call call, LlmToolCall toolCall) {
-        var bookingNumber = requiredStringArg(toolCall.arguments(), "booking_number");
-        var existing = bookingService.resolve(call.getTenant().getId(), bookingNumber);
+        var existing = verifiedBooking(call, toolCall.arguments());
+        var bookingNumber = existing.getBookingReference();
         var booking = bookingService.reschedule(call.getTenant().getId(), existing.getId(),
                 new com.sauti.calendar.BookingDtos.RescheduleBookingRequest(
                         OffsetDateTime.parse(requiredStringArg(toolCall.arguments(), "appointment_at")),
@@ -618,8 +622,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     }
 
     private Map<String, Object> cancel(Call call, LlmToolCall toolCall) {
-        var bookingNumber = requiredStringArg(toolCall.arguments(), "booking_number");
-        var existing = bookingService.resolve(call.getTenant().getId(), bookingNumber);
+        var existing = verifiedBooking(call, toolCall.arguments());
+        var bookingNumber = existing.getBookingReference();
         var booking = bookingService.cancel(call.getTenant().getId(), existing.getId());
         return Map.of(
                 "status", "booking_cancelled",
@@ -630,6 +634,117 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 "instruction", "Tell the caller in their current language that bookingNumber was cancelled. "
                         + "Do not claim that any other booking was changed."
         );
+    }
+
+    private Map<String, Object> lookupBooking(Call call, LlmToolCall toolCall) {
+        var booking = verifiedBooking(call, toolCall.arguments());
+        return Map.of(
+                "status", "booking_found",
+                "bookingFound", true,
+                "bookingNumber", booking.getBookingReference(),
+                "bookingStatus", booking.getStatus(),
+                "appointmentName", booking.getCallerName(),
+                "serviceType", booking.getServiceType(),
+                "appointmentAt", inBusinessTimezone(call, booking.getAppointmentAt()).toString(),
+                "durationMinutes", booking.getDurationMinutes(),
+                "instruction", "Tell the caller in their current language that the booking was found. "
+                        + "Use only bookingNumber, bookingStatus, appointmentName, serviceType, "
+                        + "appointmentAt, and durationMinutes from this result. Do not disclose contact details."
+        );
+    }
+
+    private Map<String, Object> updateBooking(Call call, LlmToolCall toolCall) {
+        var arguments = toolCall.arguments();
+        var existing = verifiedBooking(call, arguments);
+        var details = new LinkedHashMap<String, Object>(capturedData(existing.getCapturedData()));
+        mapArg(arguments, "customer_details").forEach(details::put);
+        details.values().removeIf(java.util.Objects::isNull);
+        var updated = bookingService.update(
+                call.getTenant().getId(),
+                existing.getId(),
+                new com.sauti.calendar.BookingDtos.UpdateBookingRequest(
+                        stringArg(arguments, "appointment_name", existing.getCallerName()),
+                        stringArg(arguments, "new_caller_phone", existing.getCallerPhone()),
+                        arguments.containsKey("caller_email")
+                                ? nullableStringArg(arguments, "caller_email")
+                                : existing.getCallerEmail(),
+                        stringArg(arguments, "service_type", existing.getServiceType()),
+                        existing.getAppointmentAt(),
+                        existing.getDurationMinutes(),
+                        Map.copyOf(details)
+                )
+        );
+        return Map.of(
+                "status", "booking_updated",
+                "bookingNumber", updated.getBookingReference(),
+                "bookingStatus", updated.getStatus(),
+                "appointmentName", updated.getCallerName(),
+                "serviceType", updated.getServiceType(),
+                "appointmentAt", inBusinessTimezone(call, updated.getAppointmentAt()).toString(),
+                "durationMinutes", updated.getDurationMinutes(),
+                "updated", true,
+                "instruction", "Tell the caller in their current language that the requested booking details "
+                        + "were updated. Use only the factual fields in this result. Do not disclose contact details. "
+                        + "For date or time changes, use the separate reschedule workflow."
+        );
+    }
+
+    private com.sauti.calendar.Booking verifiedBooking(
+            Call call,
+            Map<String, Object> arguments
+    ) {
+        var bookingNumber = requiredStringArg(arguments, "booking_number");
+        var suppliedPhone = requiredStringArg(arguments, "caller_phone");
+        final com.sauti.calendar.Booking booking;
+        try {
+            booking = bookingService.resolve(call.getTenant().getId(), bookingNumber);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException("The booking number or phone number did not match");
+        }
+        if (!phoneMatches(booking.getCallerPhone(), suppliedPhone)) {
+            throw new IllegalArgumentException("The booking number or phone number did not match");
+        }
+        return booking;
+    }
+
+    private boolean phoneMatches(String expected, String supplied) {
+        var normalizedExpected = normalizedPhone(expected);
+        var normalizedSupplied = normalizedPhone(supplied);
+        return !normalizedExpected.isBlank()
+                && secureEquals(normalizedExpected, normalizedSupplied);
+    }
+
+    private String normalizedPhone(String value) {
+        var digits = value == null ? "" : value.replaceAll("\\D", "");
+        return digits.startsWith("00") ? digits.substring(2) : digits;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mapArg(Map<String, Object> arguments, String name) {
+        var value = arguments.get(name);
+        if (!(value instanceof Map<?, ?> values)) return Map.of();
+        var result = new LinkedHashMap<String, Object>();
+        values.forEach((key, nested) -> {
+            if (key != null && nested != null) result.put(key.toString(), nested);
+        });
+        return Map.copyOf(result);
+    }
+
+    private String nullableStringArg(Map<String, Object> arguments, String name) {
+        var value = arguments.get(name);
+        return value == null || value.toString().isBlank() ? null : value.toString().trim();
+    }
+
+    private Map<String, Object> capturedData(String value) {
+        if (value == null || value.isBlank()) return Map.of();
+        try {
+            return CAPTURED_DATA_MAPPER.readValue(
+                    value,
+                    new com.fasterxml.jackson.core.type.TypeReference<>() { }
+            );
+        } catch (Exception ignored) {
+            return Map.of();
+        }
     }
 
     private String stringArg(Map<String, Object> arguments, String name, String defaultValue) {

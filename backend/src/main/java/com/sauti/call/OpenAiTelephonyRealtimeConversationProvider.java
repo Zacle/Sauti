@@ -111,6 +111,8 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
         var operation = switch (toolName == null ? "" : toolName) {
             case "book_slot" -> "saving the appointment";
             case "check_availability" -> "checking the live schedule";
+            case "lookup_booking" -> "verifying the booking";
+            case "update_booking" -> "updating the booking details";
             case "reschedule_booking" -> "rescheduling the appointment";
             case "cancel_booking" -> "cancelling the appointment";
             default -> "working on the caller's request";
@@ -131,7 +133,10 @@ public class OpenAiTelephonyRealtimeConversationProvider implements TelephonyRea
                     "The caller's request could not be interpreted into a valid response after automatic recovery. No side effect was confirmed.";
             case "tool_failed" -> switch (toolName == null ? "" : toolName) {
                 case "book_slot" -> "The requested booking was not saved.";
-                case "reschedule_booking", "cancel_booking" -> "The existing booking remains unchanged.";
+                case "lookup_booking" ->
+                        "The booking identity could not be verified, so no booking details may be disclosed.";
+                case "update_booking", "reschedule_booking", "cancel_booking" ->
+                        "The existing booking remains unchanged.";
                 case "check_availability" -> "Live availability could not be confirmed and no booking was made.";
                 default -> "The requested operation did not complete and no side effect was confirmed.";
             };

@@ -36,7 +36,7 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
 
     @Override
     public String configurationVersion() {
-        return "4";
+        return "6";
     }
 
     @Override
@@ -77,18 +77,19 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
     ) {
         var tools = new ArrayList<Map<String, Object>>();
         blueprint.tools().forEach(tool -> {
-            if ("end_call".equals(tool.name())) {
-                tools.add(Map.of(
-                        "type", "hangup",
-                        "hangup", Map.of(
-                                "description", "End the conversation after one brief, respectful farewell."
-                        )
-                ));
-                return;
-            }
             var clientTool = new LinkedHashMap<String, Object>();
             clientTool.put("name", tool.name());
-            clientTool.put("description", tool.description() == null ? "" : tool.description());
+            var description = tool.description() == null ? "" : tool.description();
+            if ("end_call".equals(tool.name())) {
+                description = "Required terminal action. Call this immediately after one brief respectful farewell "
+                        + "when the caller is finished or says goodbye. Do not wait for another caller turn.";
+            } else if (tool.callerWaitExpected()) {
+                description += " This operation may take noticeable time. Immediately before invoking it, say one "
+                        + "brief, natural, professional progress acknowledgment in the caller's current language. "
+                        + "Do not ask a question and do not imply success or failure. After the result returns, "
+                        + "continue automatically and explain only the factual outcome.";
+            }
+            clientTool.put("description", description.trim());
             clientTool.put("parameters", tool.inputSchema());
             tools.add(Map.of(
                     "type", "client_side_tool",
@@ -97,15 +98,17 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
         });
         var body = new LinkedHashMap<String, Object>();
         body.put("name", shorten(blueprint.name(), 100));
-        body.put("instructions", blueprint.instructions().replace("end_call", "hangup") + """
+        body.put("instructions", blueprint.instructions() + """
 
                 TELNYX EXECUTION CONTRACT:
                 - Call a required business tool before speaking about its result.
                 - Treat the returned result as authoritative; never claim an action succeeded unless it did.
-                - If a tool is still running, acknowledge the wait naturally and continue automatically when it returns.
+                - For a tool marked as potentially slow, speak its brief progress acknowledgment immediately before
+                  invoking it, without asking the caller a question.
+                - After every tool result, continue automatically in the same turn; never wait for more caller speech.
                 - Keep each spoken answer continuous and concise.
-                - When the caller is finished, say one brief respectful farewell and call hangup immediately.
-                - If the caller says goodbye after your farewell, call hangup immediately without waiting for another turn.
+                - When the caller is finished, say one brief respectful farewell and call end_call in the same turn.
+                - Never finish a farewell without calling end_call. Never wait for another caller turn after the farewell.
                 """);
         body.put("greeting", blueprint.greeting());
         body.put("tools", tools);

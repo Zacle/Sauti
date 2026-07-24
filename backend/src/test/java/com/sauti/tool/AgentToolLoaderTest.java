@@ -159,6 +159,30 @@ class AgentToolLoaderTest {
         assertThat(definition.description()).contains("without requesting another model response");
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void existingBookingToolsAlwaysRequireReferenceAndPhoneVerification() {
+        var agent = new Agent(new Tenant("Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");
+        agent.update("Amina", "Hello", "Prompt", "en", List.of("en"), null, List.of(), true, "UTC", "");
+        var lookup = new AgentTool(agent, "lookup_booking", "Find booking", Map.of(
+                "type", "object",
+                "properties", Map.of("booking_number", Map.of("type", "string")),
+                "required", List.of("booking_number")
+        ), "sauti_calendar", true, 19);
+        lookup.configureActionPolicy(ToolActionEffect.READ_ONLY, ToolConfirmationPolicy.NONE);
+        var repository = mock(AgentToolRepository.class);
+        when(repository.findByAgent_IdAndIsActiveTrueOrderByDisplayOrderAsc(agent.getId()))
+                .thenReturn(List.of(lookup));
+
+        var definition = loader(repository).loadForAgent(agent.getId()).get(0);
+        var properties = (Map<String, Object>) definition.inputSchema().get("properties");
+        var required = (List<String>) definition.inputSchema().get("required");
+
+        assertThat(properties).containsKeys("booking_number", "caller_phone");
+        assertThat(required).contains("booking_number", "caller_phone");
+        assertThat(definition.description()).contains("Never disclose or mutate booking data");
+    }
+
     private AgentToolLoader loader(AgentToolRepository repository) {
         return new AgentToolLoader(repository, new ToolActionPolicy());
     }
