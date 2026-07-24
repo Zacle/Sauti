@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
+import com.sauti.session.CallSessionStore;
 import com.sauti.tool.ToolFulfillmentRouter;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -33,6 +34,7 @@ public class ManagedVoiceToolService {
     private final CallRepository callRepository;
     private final WebVoiceTokenService tokenService;
     private final ToolFulfillmentRouter toolRouter;
+    private final CallSessionStore sessions;
     private final ObjectMapper objectMapper;
     private final Map<String, CachedResult> completed = new ConcurrentHashMap<>();
 
@@ -40,11 +42,13 @@ public class ManagedVoiceToolService {
             CallRepository callRepository,
             WebVoiceTokenService tokenService,
             ToolFulfillmentRouter toolRouter,
+            CallSessionStore sessions,
             ObjectMapper objectMapper
     ) {
         this.callRepository = callRepository;
         this.tokenService = tokenService;
         this.toolRouter = toolRouter;
+        this.sessions = sessions;
         this.objectMapper = objectMapper;
     }
 
@@ -79,11 +83,11 @@ public class ManagedVoiceToolService {
         Map<String, Object> response;
         boolean success;
         try {
-            LlmToolResult routed = toolRouter.route(call, new LlmToolCall(invocationId, name, arguments));
-            success = routed.success();
-            response = routed.success()
-                    ? Map.of("success", true, "data", routed.result())
-                    : Map.of("success", false, "error", routed.error());
+            var toolCall = new LlmToolCall(invocationId, name, arguments);
+            bridgeManagedConfirmation(call, toolCall);
+            LlmToolResult routed = toolRouter.route(call, toolCall);
+            response = response(routed);
+            success = Boolean.TRUE.equals(response.get("success"));
         } catch (RuntimeException exception) {
             success = false;
             LOGGER.warn(
@@ -93,13 +97,79 @@ public class ManagedVoiceToolService {
             response = Map.of("success", false, "error", "The requested action could not be completed");
         }
         LOGGER.info(
-                "Managed voice tool completed provider={} sautiCallId={} tool={} success={} durationMs={}",
-                provider, call.getId(), name, success, elapsedMillis(startedAt)
+                "Managed voice tool completed provider={} sautiCallId={} tool={} success={} "
+                        + "actionPerformed={} status={} durationMs={}",
+                provider,
+                call.getId(),
+                name,
+                success,
+                response.getOrDefault("actionPerformed", "not_applicable"),
+                response.getOrDefault("status", success ? "completed" : "failed"),
+                elapsedMillis(startedAt)
         );
         return new CachedResult(
                 response,
                 java.time.Instant.now().plusSeconds(Math.max(120, call.getAgent().getMaxCallDurationSeconds() + 120L))
         );
+    }
+
+    private void bridgeManagedConfirmation(Call call, LlmToolCall toolCall) {
+        if (!"confirmed".equals(stringArgument(toolCall, "confirmation_state"))
+                || !"ready_for_action".equals(stringArgument(toolCall, "question_handling"))) {
+            return;
+        }
+        var businessArguments = new java.util.LinkedHashMap<>(toolCall.arguments());
+        businessArguments.remove("confirmation_state");
+        businessArguments.remove("question_handling");
+        businessArguments.values().removeIf(java.util.Objects::isNull);
+        sessions.recordManagedConfirmation(
+                call.getTwilioCallSid(),
+                toolCall.name(),
+                Map.copyOf(businessArguments)
+        );
+    }
+
+    private Map<String, Object> response(LlmToolResult routed) {
+        if (!routed.success()) {
+            return Map.of(
+                    "success", false,
+                    "actionPerformed", false,
+                    "error", routed.error()
+            );
+        }
+        var facts = routed.result();
+        var performedFact = facts.get("actionPerformed");
+        var actionDeferred = performedFact instanceof Boolean performed && !performed;
+        var response = new java.util.LinkedHashMap<String, Object>();
+        response.put("success", !actionDeferred);
+        response.put("data", facts);
+        copyFact(facts, response, "status");
+        copyFact(facts, response, "actionPerformed");
+        copyFact(facts, response, "effect");
+        copyFact(facts, response, "action");
+        copyFact(facts, response, "instruction");
+        copyFact(facts, response, "bookingFound");
+        copyFact(facts, response, "retryField");
+        copyFact(facts, response, "capturedBookingNumber");
+        copyFact(facts, response, "bookingNumberReadback");
+        if (actionDeferred) {
+            response.put("error", "No external action was performed");
+        }
+        return Map.copyOf(response);
+    }
+
+    private void copyFact(
+            Map<String, Object> source,
+            Map<String, Object> target,
+            String name
+    ) {
+        var value = source.get(name);
+        if (value != null) target.put(name, value);
+    }
+
+    private String stringArgument(LlmToolCall call, String name) {
+        var value = call.arguments().get(name);
+        return value == null ? "" : value.toString().trim();
     }
 
     private Call authorizedCall(String callSid, String token) {

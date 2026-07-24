@@ -5386,3 +5386,76 @@ Expected:
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: after reviewed CI/CD deployment, allow an availability lookup or booking write to exceed 1.5 seconds. ElevenLabs and Retell should speak one contextual progress update and then announce the result without caller speech. Telnyx should acknowledge immediately before the slow tool and announce the result automatically afterward. Diagnostics must not show duplicate progress speech or an extra caller turn between tool completion and result speech.
 - Known limitation: true mid-execution Telnyx progress requires changing from browser client tools to signed asynchronous Telnyx webhooks plus call-control `ai_assistant_add_messages`. That needs durable operation correlation, idempotency, active call-control ID capture, signature verification, and result injection; it was not approximated with unsafe browser TTS or an unverified webhook.
+
+### 2026-07-24 - Stop managed-provider confirmation loops and false mutation claims
+
+- Diagnosed ElevenLabs report `9946ba22-f8fd-4c5f-ab76-13d1ad810513` and Telnyx report `5c5676a0-0edf-47f2-b93c-a0416621ba94`.
+- The evidence showed a shared server/provider protocol mismatch:
+  - ElevenLabs invoked `cancel_booking` three times at diagnostic sequences 77, 116, and 133;
+  - Telnyx invoked `cancel_booking` three times at sequences 71, 105, and 132;
+  - neither provider invoked `update_conversation_state` after the caller's confirmation;
+  - the server therefore retained the exact action but never received the later semantic revision required by `ToolActionPolicy`, so every repeat was safely deferred and the model asked again.
+- Added a managed-provider confirmation bridge at the server boundary:
+  - it runs only for `confirmation_state=confirmed` and `question_handling=ready_for_action`;
+  - a matching server-retained pending action must already exist;
+  - tool name and all material business arguments must match exactly;
+  - the conversation-state revision must still equal the proposal revision, so any intervening state change makes the proposal stale;
+  - only then is one later approval revision recorded, after which the existing `ToolActionPolicy` atomically consumes the retained action.
+- This bridge does not weaken first-turn safety: a model-supplied confirmed flag without a prior retained proposal is still deferred. It also cannot authorize a different booking number, phone number, action, or changed proposal.
+- Corrected managed-tool response semantics:
+  - a protocol-level successful deferral no longer returns a misleading top-level `success=true`;
+  - deferred mutations now expose top-level `success=false`, `actionPerformed=false`, `status=action_deferred`, and the authoritative instruction;
+  - completed mutations expose `actionPerformed=true`;
+  - operational logs now record `success`, `actionPerformed`, and safe `status` values without logging arguments or customer data.
+- Strengthened Retell, ElevenLabs, and Telnyx execution contracts: mutation success may be stated only when `actionPerformed=true`; `success=false` or `actionPerformed=false` means nothing changed; a later exact confirmation should invoke the retained tool once rather than asking repeatedly.
+- Bumped managed configuration versions to force resynchronization:
+  - Retell: version `3`;
+  - ElevenLabs: version `7`;
+  - Telnyx: version `7`.
+- Telnyx transcribed the supplied booking prefix as `SHE` rather than `SAT`. The new confirmation bridge cannot correct or silently substitute that identifier. After one confirmation, the factual tool result must report the generic booking/phone mismatch and no booking may be cancelled.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{ManagedVoiceToolService,RetellManagedVoiceAgentProvisioner,ElevenLabsManagedVoiceAgentProvisioner,TelnyxManagedVoiceAgentProvisioner}.java`
+  - `backend/src/main/java/com/sauti/session/{CallSessionStore,RedisCallSessionStore}.java`
+  - `backend/src/test/java/com/sauti/call/{ManagedVoiceToolServiceTest,ManagedVoiceAgentProvisionersTest}.java`
+  - `backend/src/test/java/com/sauti/session/RedisCallSessionStoreTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed tool, atomic session confirmation, action policy, and provider provisioning tests - passed; Gradle reported `BUILD SUCCESSFUL` in 14 seconds.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 22 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after reviewed deployment, test cancel through Retell, ElevenLabs, and Telnyx with a known booking and matching phone. The first mutation call should retain/review the action, the next unconditional confirmation should produce exactly one completed mutation with `actionPerformed=true`, and the agent should announce the factual cancellation once. Repeat with a wrong booking prefix: the result must be a generic mismatch and the database must remain unchanged.
+
+### 2026-07-24 - Recover safely from a misheard existing-booking identity
+
+- Replaced the opaque existing-booking identity error with a structured recovery result shared by lookup, update, reschedule, and cancellation.
+- When the supplied booking number and phone cannot be matched together, the calendar fulfillment now returns:
+  - `status=booking_identity_mismatch`;
+  - `bookingFound=false`;
+  - `actionPerformed=false`;
+  - `retryField=booking_number`;
+  - the exact caller-supplied `capturedBookingNumber`;
+  - `bookingNumberReadback` as an ordered character list, including the dash;
+  - mutation-specific negative facts such as `cancelled=false` or `updated=false`.
+- The caller-facing instruction is deliberately privacy-preserving:
+  - say only that the booking number and phone could not be matched together;
+  - read the captured booking number back one character at a time in the caller's language;
+  - ask for the booking number again as the single next value;
+  - never reveal whether the booking number exists independently of the phone;
+  - collect the phone again and run `lookup_booking` before proposing any mutation.
+- On mismatch, the server clears `booking_number`, `caller_phone`, and stale `review_decision` from semantic call state, increments its revision, and removes any pending mutation. Unrelated caller state is preserved.
+- Managed-provider responses expose the safe recovery fields at the top level as well as in `data`, reducing the chance that a provider overlooks the factual mismatch.
+- Updated the provider-neutral conversation contract so all native and managed runtimes follow the same readback/recollection sequence.
+- Files touched:
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceToolService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused calendar fulfillment, orchestration prompt, and managed-tool tests - passed; Gradle reported `BUILD SUCCESSFUL` in 17 seconds.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 20 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and normal GitHub Actions CI/CD.
+- Required live verification: deliberately say a booking ID with one wrong character. The agent should state that the number and phone could not be matched, read back exactly what it heard, ask for the booking number again, then request the phone again. It must not ask for cancellation confirmation, disclose booking details, or mutate the booking until the corrected pair succeeds through `lookup_booking`.

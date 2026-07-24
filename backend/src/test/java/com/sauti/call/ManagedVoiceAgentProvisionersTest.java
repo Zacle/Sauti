@@ -66,6 +66,9 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("caller's current language")
                 .contains("Do not ask a question")
                 .contains("wait for the tool result");
+        assertThat(body.getValue().get("general_prompt").toString())
+                .contains("actionPerformed=true")
+                .contains("Do not ask repeatedly");
     }
 
     @Test
@@ -162,6 +165,9 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("caller's current language")
                 .contains("Do not ask a question")
                 .contains("Do not repeat");
+        assertThat(prompt.get("prompt").toString())
+                .contains("actionPerformed=true")
+                .contains("Do not ask repeatedly");
     }
 
     @Test
@@ -215,6 +221,9 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("Immediately before invoking it")
                 .contains("caller's current language")
                 .contains("continue automatically");
+        assertThat(body.getValue().get("instructions").toString())
+                .contains("actionPerformed=true")
+                .contains("Do not ask repeatedly");
     }
 
     @Test

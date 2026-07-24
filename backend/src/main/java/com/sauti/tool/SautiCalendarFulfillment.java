@@ -64,6 +64,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 case "update_booking" -> LlmToolResult.success(toolCall, updateBooking(call, toolCall));
                 default -> LlmToolResult.error(toolCall, "Unrecognised calendar tool: " + toolCall.name());
             };
+        } catch (BookingIdentityMismatchException exception) {
+            resetBookingIdentity(call);
+            return LlmToolResult.success(toolCall, bookingIdentityMismatch(toolCall));
         } catch (RuntimeException exception) {
             return LlmToolResult.error(toolCall, exception.getMessage());
         }
@@ -699,12 +702,74 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         try {
             booking = bookingService.resolve(call.getTenant().getId(), bookingNumber);
         } catch (RuntimeException exception) {
-            throw new IllegalArgumentException("The booking number or phone number did not match");
+            throw new BookingIdentityMismatchException();
         }
         if (!phoneMatches(booking.getCallerPhone(), suppliedPhone)) {
-            throw new IllegalArgumentException("The booking number or phone number did not match");
+            throw new BookingIdentityMismatchException();
         }
         return booking;
+    }
+
+    private Map<String, Object> bookingIdentityMismatch(LlmToolCall toolCall) {
+        var captured = stringArg(toolCall.arguments(), "booking_number", "");
+        var result = new LinkedHashMap<String, Object>();
+        result.put("status", "booking_identity_mismatch");
+        result.put("bookingFound", false);
+        result.put("actionPerformed", false);
+        result.put("retryField", "booking_number");
+        result.put("capturedBookingNumber", captured);
+        result.put("bookingNumberReadback", bookingNumberReadback(captured));
+        switch (toolCall.name()) {
+            case "cancel_booking" -> result.put("cancelled", false);
+            case "update_booking", "reschedule_booking" -> result.put("updated", false);
+            default -> {
+            }
+        }
+        result.put(
+                "instruction",
+                "No booking details were disclosed and no booking was changed. Tell the caller in their current "
+                        + "language that the booking number and phone number could not be matched together. "
+                        + "Read bookingNumberReadback back one character at a time, including the dash, and ask "
+                        + "the caller to repeat or correct the booking number only. Do not say whether that booking "
+                        + "number exists. After the corrected booking number, collect the phone number again and "
+                        + "run lookup_booking before proposing any update, reschedule, or cancellation."
+        );
+        return Map.copyOf(result);
+    }
+
+    private List<String> bookingNumberReadback(String value) {
+        if (value == null || value.isBlank()) return List.of();
+        return value.trim().toUpperCase(java.util.Locale.ROOT).chars()
+                .filter(character -> !Character.isWhitespace(character))
+                .mapToObj(character -> Character.toString((char) character))
+                .toList();
+    }
+
+    private void resetBookingIdentity(Call call) {
+        try {
+            var existing = callSessionStore.conversationState(call.getTwilioCallSid())
+                    .orElse(ConversationState.empty());
+            var values = new LinkedHashMap<>(existing.values());
+            values.remove("booking_number");
+            values.remove("caller_phone");
+            values.remove("review_decision");
+            callSessionStore.updateConversationState(
+                    call.getTwilioCallSid(),
+                    new ConversationState(
+                            Map.copyOf(values),
+                            existing.bookingSubject(),
+                            existing.bookingIntent(),
+                            existing.revision() + 1
+                    )
+            );
+            callSessionStore.updatePendingAction(call.getTwilioCallSid(), null);
+        } catch (RuntimeException exception) {
+            LOGGER.warn(
+                    "Could not reset booking identity after a mismatch sautiCallId={} exception={}",
+                    call.getId(),
+                    exception.getClass().getSimpleName()
+            );
+        }
     }
 
     private boolean phoneMatches(String expected, String supplied) {
@@ -717,6 +782,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     private String normalizedPhone(String value) {
         var digits = value == null ? "" : value.replaceAll("\\D", "");
         return digits.startsWith("00") ? digits.substring(2) : digits;
+    }
+
+    private static final class BookingIdentityMismatchException extends RuntimeException {
     }
 
     @SuppressWarnings("unchecked")

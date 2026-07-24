@@ -37,6 +37,12 @@ public interface CallSessionStore {
 
     void updatePendingAction(String callSid, PendingAction action);
 
+    boolean recordManagedConfirmation(
+            String callSid,
+            String toolName,
+            java.util.Map<String, Object> arguments
+    );
+
     boolean consumeConfirmedAction(String callSid, String toolName, java.util.Map<String, Object> arguments);
 
     void setSpeaking(String callSid, boolean speaking, String markName);

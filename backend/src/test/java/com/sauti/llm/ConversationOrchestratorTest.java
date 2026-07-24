@@ -85,6 +85,8 @@ class ConversationOrchestratorTest {
                 .contains("Never speak ISO dates")
                 .contains("For a new booking, never ask for a booking ID")
                 .contains("Existing-booking identity sequence")
+                .contains("booking_identity_mismatch")
+                .contains("bookingNumberReadback")
                 .contains("exact phone number used when the booking was created")
                 .contains("Never disclose booking details")
                 .contains("Do not ask how long a normal appointment should last")

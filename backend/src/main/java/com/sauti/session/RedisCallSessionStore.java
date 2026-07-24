@@ -170,6 +170,35 @@ public class RedisCallSessionStore implements CallSessionStore {
     }
 
     @Override
+    public boolean recordManagedConfirmation(
+            String callSid,
+            String toolName,
+            Map<String, Object> arguments
+    ) {
+        if (callSid == null || callSid.isBlank()) return false;
+        var recorded = new boolean[1];
+        mutate(callSid, session -> {
+            if (session == null) return null;
+            var pending = session.getPendingAction();
+            if (pending == null || !pending.matches(toolName, arguments)) return session;
+            var state = session.getConversationState();
+            if (state.revision() != pending.proposedAtRevision()) return session;
+            var values = new LinkedHashMap<>(state.values());
+            values.put("review_decision", "approved");
+            session.setConversationState(new ConversationState(
+                    Map.copyOf(values),
+                    state.bookingSubject(),
+                    state.bookingIntent(),
+                    Math.max(state.revision(), pending.proposedAtRevision()) + 1
+            ));
+            session.touch();
+            recorded[0] = true;
+            return session;
+        });
+        return recorded[0];
+    }
+
+    @Override
     public boolean consumeConfirmedAction(
             String callSid,
             String toolName,

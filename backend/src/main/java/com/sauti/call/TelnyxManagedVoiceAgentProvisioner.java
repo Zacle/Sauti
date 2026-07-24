@@ -36,7 +36,7 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
 
     @Override
     public String configurationVersion() {
-        return "6";
+        return "7";
     }
 
     @Override
@@ -102,7 +102,12 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
 
                 TELNYX EXECUTION CONTRACT:
                 - Call a required business tool before speaking about its result.
-                - Treat the returned result as authoritative; never claim an action succeeded unless it did.
+                - Treat the returned result as authoritative. For any mutation, claim success only when the result
+                  explicitly contains actionPerformed=true.
+                - success=false or actionPerformed=false means nothing changed. Follow the returned instruction and
+                  never describe the requested mutation as completed.
+                - For an explicitly confirmed retained action, invoke the exact same tool and material arguments with
+                  confirmation_state=confirmed and question_handling=ready_for_action. Do not ask repeatedly.
                 - For a tool marked as potentially slow, speak its brief progress acknowledgment immediately before
                   invoking it, without asking the caller a question.
                 - After every tool result, continue automatically in the same turn; never wait for more caller speech.

@@ -21,10 +21,12 @@ import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.ConversationMessage;
 import com.sauti.session.BookingDraft;
 import com.sauti.session.CallSessionStore;
+import com.sauti.session.ConversationState;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class SautiCalendarFulfillmentTest {
@@ -1031,6 +1033,19 @@ class SautiCalendarFulfillmentTest {
         var existing = mock(com.sauti.calendar.Booking.class);
         when(existing.getCallerPhone()).thenReturn("011-575-2441");
         when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
+        when(fixture.callSessionStore.conversationState("call-sid")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "booking_number", "SAT-AB12CD34",
+                                "caller_phone", "0115759999",
+                                "caller_name", "Zachary",
+                                "review_decision", "approved"
+                        ),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        7
+                )
+        ));
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "cancel-booking", "cancel_booking", Map.of(
@@ -1039,9 +1054,27 @@ class SautiCalendarFulfillmentTest {
                 )
         ));
 
-        assertThat(result.success()).isFalse();
-        assertThat(result.error()).contains("booking number or phone number did not match");
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "booking_identity_mismatch")
+                .containsEntry("bookingFound", false)
+                .containsEntry("actionPerformed", false)
+                .containsEntry("cancelled", false)
+                .containsEntry("retryField", "booking_number")
+                .containsEntry("capturedBookingNumber", "SAT-AB12CD34");
+        assertThat(result.result().get("bookingNumberReadback"))
+                .isEqualTo(List.of("S", "A", "T", "-", "A", "B", "1", "2", "C", "D", "3", "4"));
+        assertThat(result.result().get("instruction").toString())
+                .contains("could not be matched together")
+                .contains("Do not say whether");
         verify(fixture.bookingService, never()).cancel(any(), any());
+        verify(fixture.callSessionStore).updatePendingAction("call-sid", null);
+        var resetState = org.mockito.ArgumentCaptor.forClass(ConversationState.class);
+        verify(fixture.callSessionStore).updateConversationState(eq("call-sid"), resetState.capture());
+        assertThat(resetState.getValue().revision()).isEqualTo(8);
+        assertThat(resetState.getValue().values())
+                .containsEntry("caller_name", "Zachary")
+                .doesNotContainKeys("booking_number", "caller_phone", "review_decision");
     }
 
     @Test
@@ -1088,9 +1121,14 @@ class SautiCalendarFulfillmentTest {
                 )
         ));
 
-        assertThat(result.success()).isFalse();
-        assertThat(result.error()).contains("booking number or phone number did not match");
-        assertThat(result.result()).isEmpty();
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "booking_identity_mismatch")
+                .containsEntry("bookingFound", false)
+                .containsEntry("actionPerformed", false)
+                .containsEntry("retryField", "booking_number")
+                .doesNotContainKeys("appointmentName", "serviceType", "callerPhone", "callerEmail");
+        verify(fixture.callSessionStore).updatePendingAction("call-sid", null);
     }
 
     @Test
