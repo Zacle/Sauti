@@ -8,6 +8,7 @@ import {
   configStringArray,
   providerError,
 } from "./managedRuntimeConfig";
+import { startTelnyxConversationWhenReady } from "./telnyxReadiness";
 
 export async function connectTelnyxRuntime(
   session: BrowserVoiceRuntimeSession,
@@ -52,14 +53,17 @@ export async function connectTelnyxRuntime(
   let ended = false;
   let agentSpeaking = false;
   let latestAgentText = "";
+  let conversationStarted = false;
 
   const finish = () => {
-    if (ended || stopped) return;
+    if (!conversationStarted || ended || stopped) return;
     ended = true;
     callbacks.onEnded("completed");
   };
 
-  client.on("agent.error", (error) => callbacks.onError(providerError("Telnyx", error)));
+  client.on("agent.error", (error) => {
+    if (conversationStarted) callbacks.onError(providerError("Telnyx", error));
+  });
   client.on("agent.disconnected", finish);
   client.on("conversation.update", (notification) => {
     const stream = notification.call?.remoteStream;
@@ -95,19 +99,34 @@ export async function connectTelnyxRuntime(
   });
 
   try {
-    await client.connect();
-    callbacks.onConnected();
-    await client.startConversation({
-      customHeaders: [
-        { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
-      ],
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+    await startTelnyxConversationWhenReady({
+      connect: () => client.connect(),
+      startConversation: () => client.startConversation({
+        customHeaders: [
+          { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
+        ],
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      }),
+      subscribe: ({ ready, failed, disconnected }) => {
+        client.on("agent.connected", ready);
+        client.on("agent.error", failed);
+        client.on("agent.disconnected", disconnected);
+        return () => {
+          client.off("agent.connected", ready);
+          client.off("agent.error", failed);
+          client.off("agent.disconnected", disconnected);
+        };
       },
     });
+    conversationStarted = true;
+    callbacks.onConnected();
   } catch (error) {
+    stopped = true;
+    ended = true;
     audio.remove();
     await client.disconnect().catch(() => undefined);
     throw new Error(providerError("Telnyx", error));

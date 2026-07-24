@@ -5053,3 +5053,40 @@ Expected:
   - the first test for each Sauti agent/provider combination includes provider provisioning latency; subsequent unchanged tests reuse the binding;
   - browser tools are deliberately safe and tenant-scoped, but phone/SIP promotion still needs each provider's authenticated webhook/signature path;
   - provider dashboards may display the generated resources, but Sauti owns their synchronization. Manual provider edits can be overwritten the next time the Sauti blueprint changes.
+
+### 2026-07-24 - Deliver managed-provider API keys through production CI/CD
+
+- Diagnosed the production message `retell test calls are not configured in the running backend`. The refactored backend correctly required only `RETELL_API_KEY`, but `.github/workflows/deploy.yml` synchronized only the older Cartesia and Vapi secrets. A GitHub `RETELL_API_KEY` secret therefore could not reach `/opt/sauti/.env.production`.
+- Refactored the existing optional-provider secret step into one fixed-name helper and added `RETELL_API_KEY`, `ELEVENLABS_API_KEY`, and `TELNYX_API_KEY`. Empty GitHub secrets leave an existing server value untouched; configured secrets replace only their exact key in `.env.production`. Secret values are transferred through permission-restricted temporary files and are not printed.
+- Copied the existing local `RETELL_API_KEY` into the repository's encrypted GitHub Actions secret store without displaying its value. `gh secret list` confirmed the secret name is present.
+- Files touched:
+  - `.github/workflows/deploy.yml`
+  - `docs/agent-handoff.md`
+- Verification:
+  - extracted `Sync optional provider secrets` shell body passed `bash -n`;
+  - `git diff --check` passed (line-ending notices only);
+  - GitHub Actions secret listing confirmed `RETELL_API_KEY` by name.
+- Deployment status: not deployed. The workflow and application changes remain uncommitted for maintainer review. Per repository policy, a maintainer must commit and push them; the normal CI-success-triggered deploy will then synchronize the secret and restart the backend.
+- Known follow-up: the current running backend will continue reporting Retell as unconfigured until that reviewed revision completes the normal CI/CD deployment. ElevenLabs and Telnyx similarly require their GitHub secret names when those providers are ready to test.
+
+### 2026-07-24 - Wait for Telnyx client readiness before starting browser media
+
+- Diagnosed privacy-safe report `fdcdc5ea-5b4f-4299-9ff9-944c4f3120e4`. This was a Telnyx test, not a Retell test. The backend prepared the test call in 7,995 ms, the browser SDK's `connect()` promise returned, and Sauti immediately called `startConversation()`. Telnyx then rejected it two milliseconds later with `Cannot start AI agent conversation before login is complete`.
+- Confirmed from the installed official Telnyx SDK contract that `connect()` can resolve before login/registration finishes. `agent.connected`, which follows authentication and REGED/client-ready state, is the correct boundary for starting the AI conversation.
+- Added a bounded Telnyx readiness gate. Sauti now subscribes before connecting, waits for `agent.connected`, rejects on provider error or pre-ready disconnect, times out after 15 seconds, and only then starts the conversation and reports the runtime as connected.
+- Startup provider errors are now surfaced once through the failed start rather than also being emitted as an active-call error. A disconnect during startup no longer calls the normal completed-call callback.
+- Marked the client stopped before cleanup on a failed start. This prevents `disconnect()` from producing the concurrent `runtime_ended`/`endCall` path seen in the report. That race had caused both startup cleanup and normal completion to operate on the same test call, producing the later `call_completion_failed: Internal Server Error` and the invalid `idle -> listening` state transition.
+- Added regressions proving that an early `connect()` resolution cannot start a Telnyx conversation and that a disconnect before readiness cannot start or complete one.
+- Files touched:
+  - `dashboard/features/voice-runtime/{telnyxRuntime,telnyxReadiness,telnyxReadiness.test}.ts`
+  - `dashboard/package.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run test:voice` - passed; 46 tests;
+  - focused `telnyxReadiness.test.ts` rerun after the final readiness-promise ordering adjustment - passed; 2 tests;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run typecheck` - passed;
+  - `git diff --check` - passed (line-ending notices only);
+  - `npm.cmd run build` reached `next build` but made no progress and the combined command was terminated at the 300-second verification limit. A separate dashboard Node process was already running in the workspace; it was preserved rather than stopped because it may belong to the user. The preceding production build passed before this dashboard-only race fix, and the changed TypeScript passes typecheck/lint/tests, but CI still needs to confirm the production build.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: start another Telnyx browser test. Diagnostics must show `call_created`, then `runtime_connected` only after Telnyx is client-ready, with no `Cannot start ... before login`, no startup `runtime_ended`, no `call_completion_failed`, and no `idle -> listening` transition. The measured ~8-second pre-browser interval was backend provisioning/preparation; compare a second unchanged test to distinguish one-time provider provisioning from ongoing latency.
