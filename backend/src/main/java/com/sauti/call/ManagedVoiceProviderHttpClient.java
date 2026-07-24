@@ -80,7 +80,11 @@ public class ManagedVoiceProviderHttpClient {
         try {
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new ManagedVoiceProviderException(provider, response.statusCode());
+                throw new ManagedVoiceProviderException(
+                        provider,
+                        response.statusCode(),
+                        validationSummary(response.statusCode(), response.body())
+                );
             }
             return objectMapper.readTree(response.body());
         } catch (InterruptedException exception) {
@@ -91,5 +95,38 @@ public class ManagedVoiceProviderHttpClient {
         } catch (Exception exception) {
             throw new IllegalStateException(provider + " browser session could not be created", exception);
         }
+    }
+
+    private String validationSummary(int statusCode, String responseBody) {
+        if (statusCode != 422 || responseBody == null || responseBody.isBlank()) return "";
+        try {
+            var detail = objectMapper.readTree(responseBody).path("detail");
+            if (!detail.isArray()) return "";
+            var messages = new java.util.ArrayList<String>();
+            for (var item : detail) {
+                if (messages.size() == 3) break;
+                var location = new java.util.ArrayList<String>();
+                var locationNode = item.path("loc");
+                if (locationNode.isArray()) {
+                    locationNode.forEach(part -> {
+                        if (part.isTextual() || part.isIntegralNumber()) location.add(part.asText());
+                    });
+                }
+                var message = item.path("msg").isTextual() ? item.path("msg").asText().trim() : "";
+                if (message.isBlank()) continue;
+                var summary = (location.isEmpty() ? "" : String.join(".", location) + ": ") + message;
+                messages.add(safeValidationText(summary));
+            }
+            return messages.isEmpty() ? "" : "Validation: " + String.join("; ", messages);
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private String safeValidationText(String value) {
+        var normalized = value.replaceAll("[\\p{Cntrl}]+", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return normalized.length() <= 240 ? normalized : normalized.substring(0, 240);
     }
 }

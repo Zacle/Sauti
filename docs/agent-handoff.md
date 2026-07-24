@@ -5126,3 +5126,28 @@ Expected:
   - Retell should show one caller transcript entry per utterance and one greeting; availability callbacks should return factual calendar results rather than generic failures.
   - ElevenLabs needs a valid restricted key with access to Agents, Tools, and conversation-token operations before another runtime test can reach `call_created`.
   - Telnyx should invoke `hangup` and emit `runtime_ended` immediately after the final farewell rather than remaining in `thinking` until the idle timer.
+
+### 2026-07-24 - Correct ElevenLabs built-in tool provisioning after provider 422
+
+- Diagnosed the live transition from ElevenLabs HTTP 401 to HTTP 422. The new API key is authenticating, but the generated configuration used the wrong current tool boundary: Sauti created `end_call` as a standalone workspace tool and included its ID in `prompt.tool_ids`.
+- Updated the adapter to match ElevenLabs' current contract:
+  - client/business tools are still created through `/v1/convai/tools` and attached through `prompt.tool_ids`;
+  - the `end_call` system tool is no longer created or attached by ID;
+  - `end_call` is configured under `prompt.built_in_tools`.
+- Bumped the ElevenLabs adapter configuration version to `2`. Existing Sauti-managed ElevenLabs bindings will resynchronize once with the corrected payload and then return to normal hash-based reuse.
+- Improved provider validation reporting. For HTTP 422, Sauti now extracts at most three structured `detail[].loc` and `detail[].msg` entries. Provider response inputs, request bodies, API keys, and arbitrary response text remain excluded.
+- Added regressions proving that:
+  - only the business tool is created as a standalone ElevenLabs tool;
+  - the agent payload contains both `tool_ids` and `built_in_tools.end_call`;
+  - structured validation details are useful while provider input and credentials are not exposed.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{ElevenLabsManagedVoiceAgentProvisioner,ManagedVoiceProviderException,ManagedVoiceProviderHttpClient}.java`
+  - `backend/src/test/java/com/sauti/call/{ManagedVoiceAgentProvisionersTest,ManagedVoiceProviderHttpClientTest}.java`
+  - `backend/src/test/java/com/sauti/shared/ApiExceptionHandlerTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused ElevenLabs provisioning, HTTP validation, and API error tests - passed;
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed;
+  - `git diff --check` - passed before this handoff update (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after deployment, start an ElevenLabs test again. It should progress through agent provisioning to `call_created`. If ElevenLabs returns another 422 for a different field, the UI should now display its safe validation path and message instead of only the status code; use that exact message for the next schema correction.

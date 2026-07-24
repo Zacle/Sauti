@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -55,8 +56,7 @@ class ManagedVoiceAgentProvisionersTest {
     void elevenLabsCreatesStandaloneToolsAndAttachesThemToTheGeneratedAgent() throws Exception {
         var http = mock(ManagedVoiceProviderHttpClient.class);
         when(http.post(eq("ElevenLabs"), eq(URI.create("https://api.elevenlabs.io/v1/convai/tools")), any(), any()))
-                .thenReturn(objectMapper.readTree("{\"id\":\"tool-1\"}"))
-                .thenReturn(objectMapper.readTree("{\"id\":\"tool-2\"}"));
+                .thenReturn(objectMapper.readTree("{\"id\":\"tool-1\"}"));
         when(http.post(
                 eq("ElevenLabs"),
                 eq(URI.create("https://api.elevenlabs.io/v1/convai/agents/create")),
@@ -73,18 +73,31 @@ class ManagedVoiceAgentProvisionersTest {
         var reference = provisioner.synchronize(blueprint(), null);
 
         assertThat(reference.externalAgentId()).isEqualTo("eleven-agent");
-        assertThat(reference.externalResourcesJson()).contains("tool-1", "tool-2");
+        assertThat(reference.externalResourcesJson()).contains("tool-1").doesNotContain("tool-2");
         @SuppressWarnings("unchecked")
-        var body = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        var toolBody = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        verify(http, times(1)).post(
+                eq("ElevenLabs"),
+                eq(URI.create("https://api.elevenlabs.io/v1/convai/tools")),
+                any(),
+                toolBody.capture()
+        );
+        assertThat(toolBody.getValue().toString())
+                .contains("check_availability")
+                .doesNotContain("end_call");
+        @SuppressWarnings("unchecked")
+        var agentBody = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
         verify(http).post(
                 eq("ElevenLabs"),
                 eq(URI.create("https://api.elevenlabs.io/v1/convai/agents/create")),
                 any(),
-                body.capture()
+                agentBody.capture()
         );
-        assertThat(body.getValue().toString())
+        assertThat(agentBody.getValue().toString())
                 .contains("Hello from Sauti")
                 .contains("tool_ids")
+                .contains("built_in_tools")
+                .contains("end_call")
                 .doesNotContain("secret");
     }
 

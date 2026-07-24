@@ -33,4 +33,22 @@ class ApiExceptionHandlerTest {
                         + "Check the API key and its agent/tool permissions."
         ));
     }
+
+    @Test
+    void distinguishesProviderConfigurationValidationFromCredentialFailure() {
+        var response = new ApiExceptionHandler().managedVoiceProvider(
+                new ManagedVoiceProviderException(
+                        "ElevenLabs",
+                        422,
+                        "Validation: body.conversation_config.agent.prompt.tool_ids: invalid system tool"
+                )
+        );
+
+        assertThat(response.getStatusCode().value()).isEqualTo(502);
+        assertThat(response.getBody()).isEqualTo(new ApiError(
+                "managed_voice_provider_error",
+                "ElevenLabs rejected the generated agent/tool configuration with status 422. "
+                        + "Validation: body.conversation_config.agent.prompt.tool_ids: invalid system tool"
+        ));
+    }
 }

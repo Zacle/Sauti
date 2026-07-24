@@ -40,6 +40,11 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
     }
 
     @Override
+    public String configurationVersion() {
+        return "2";
+    }
+
+    @Override
     public ManagedVoiceAgentReference synchronize(
             ManagedVoiceAgentBlueprint blueprint,
             ManagedVoiceAgentReference existing
@@ -48,6 +53,7 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
         var existingToolIds = toolIds(existing);
         var synchronizedToolIds = new LinkedHashMap<String, String>();
         for (var tool : blueprint.tools()) {
+            if (isBuiltInTool(tool)) continue;
             var body = toolBody(tool);
             var toolId = trim(existingToolIds.get(tool.name()));
             if (toolId.isBlank()) {
@@ -69,7 +75,11 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
             synchronizedToolIds.put(tool.name(), toolId);
         }
 
-        var body = agentBody(blueprint, new ArrayList<>(synchronizedToolIds.values()));
+        var body = agentBody(
+                blueprint,
+                new ArrayList<>(synchronizedToolIds.values()),
+                blueprint.tools().stream().anyMatch(this::isBuiltInTool)
+        );
         String agentId;
         String versionId;
         if (existing == null || existing.externalAgentId().isBlank()) {
@@ -99,28 +109,21 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
     }
 
     private Map<String, Object> toolBody(LlmToolDefinition tool) {
-        Map<String, Object> config;
-        if ("end_call".equals(tool.name())) {
-            config = Map.of(
-                    "type", "system",
-                    "name", "end_call",
-                    "description", "End the call after one brief, respectful farewell.",
-                    "params", Map.of("system_tool_type", "end_call")
-            );
-        } else {
-            var client = new LinkedHashMap<String, Object>();
-            client.put("type", "client");
-            client.put("name", tool.name());
-            client.put("description", tool.description() == null ? "" : tool.description());
-            client.put("expects_response", true);
-            client.put("response_timeout_secs", 30);
-            client.put("parameters", tool.inputSchema());
-            config = Map.copyOf(client);
-        }
-        return Map.of("tool_config", config);
+        var client = new LinkedHashMap<String, Object>();
+        client.put("type", "client");
+        client.put("name", tool.name());
+        client.put("description", tool.description() == null ? "" : tool.description());
+        client.put("expects_response", true);
+        client.put("response_timeout_secs", 30);
+        client.put("parameters", tool.inputSchema());
+        return Map.of("tool_config", Map.copyOf(client));
     }
 
-    private Map<String, Object> agentBody(ManagedVoiceAgentBlueprint blueprint, List<String> toolIds) {
+    private Map<String, Object> agentBody(
+            ManagedVoiceAgentBlueprint blueprint,
+            List<String> toolIds,
+            boolean includeEndCall
+    ) {
         var prompt = new LinkedHashMap<String, Object>();
         prompt.put("prompt", blueprint.instructions() + """
 
@@ -132,6 +135,9 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
                 """);
         prompt.put("temperature", 0.2);
         prompt.put("tool_ids", toolIds);
+        if (includeEndCall) {
+            prompt.put("built_in_tools", Map.of("end_call", Map.of()));
+        }
 
         var agent = new LinkedHashMap<String, Object>();
         agent.put("first_message", blueprint.greeting());
@@ -156,6 +162,10 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
                 "auth", Map.of("enable_auth", true)
         ));
         return Map.copyOf(body);
+    }
+
+    private boolean isBuiltInTool(LlmToolDefinition tool) {
+        return "end_call".equals(tool.name());
     }
 
     @SuppressWarnings("unchecked")
