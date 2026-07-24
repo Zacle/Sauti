@@ -5196,3 +5196,27 @@ Expected:
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: after reviewed CI/CD deployment, start another ElevenLabs test. Tool synchronization should now pass the nested `clear_fields` array item. If the provider exposes another incompatible node, use the exact sanitized validation path from the new diagnostic.
+
+### 2026-07-24 - Send the complete ElevenLabs built-in end-call configuration
+
+- Diagnosed report `1784890262874`. Tool-schema synchronization passed the earlier parameter validations, and ElevenLabs then rejected agent creation after 2,365 ms because `conversation_config.agent.prompt.built_in_tools.end_call` lacked the required `name` and `params` fields.
+- The previous adapter sent `end_call: {}` and its test only asserted that the serialized agent payload contained the strings `built_in_tools` and `end_call`. That coverage was too shallow and did not validate the provider's required nested structure.
+- Verified the exact current contract before changing code using:
+  - the installed official `@elevenlabs/elevenlabs-js` generated types and serializers (`BuiltInToolsInput`, `SystemToolConfigInput`, and `SystemToolConfigInputParams`);
+  - ElevenLabs' official Get Agent API example, which shows the same wire representation.
+- The generated agent now sends:
+  - `type: system`;
+  - `name: end_call`;
+  - `params.system_tool_type: end_call`.
+- Replaced the presence-only regression with structural assertions for each required nested value.
+- Bumped the ElevenLabs adapter configuration version to `5` so existing managed bindings resynchronize once with the complete system-tool payload.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ElevenLabsManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed-provider provisioning, provider HTTP validation, and API error tests - passed; Gradle reported `BUILD SUCCESSFUL` in 22 seconds.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 52 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after reviewed CI/CD deployment, start another ElevenLabs test. Agent provisioning must proceed beyond `built_in_tools.end_call` validation to `call_created`.

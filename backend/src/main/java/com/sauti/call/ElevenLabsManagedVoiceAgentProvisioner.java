@@ -41,7 +41,7 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
 
     @Override
     public String configurationVersion() {
-        return "4";
+        return "5";
     }
 
     @Override
@@ -244,7 +244,13 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
         prompt.put("temperature", 0.2);
         prompt.put("tool_ids", toolIds);
         if (includeEndCall) {
-            prompt.put("built_in_tools", Map.of("end_call", Map.of()));
+            prompt.put("built_in_tools", Map.of(
+                    "end_call", Map.of(
+                            "type", "system",
+                            "name", "end_call",
+                            "params", Map.of("system_tool_type", "end_call")
+                    )
+            ));
         }
 
         var agent = new LinkedHashMap<String, Object>();

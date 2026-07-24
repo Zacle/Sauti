@@ -120,6 +120,21 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("built_in_tools")
                 .contains("end_call")
                 .doesNotContain("secret");
+        @SuppressWarnings("unchecked")
+        var conversationConfig = (Map<String, Object>) agentBody.getValue().get("conversation_config");
+        @SuppressWarnings("unchecked")
+        var agent = (Map<String, Object>) conversationConfig.get("agent");
+        @SuppressWarnings("unchecked")
+        var prompt = (Map<String, Object>) agent.get("prompt");
+        @SuppressWarnings("unchecked")
+        var builtInTools = (Map<String, Object>) prompt.get("built_in_tools");
+        @SuppressWarnings("unchecked")
+        var endCall = (Map<String, Object>) builtInTools.get("end_call");
+        assertThat(endCall)
+                .containsEntry("type", "system")
+                .containsEntry("name", "end_call");
+        assertThat(endCall.get("params"))
+                .isEqualTo(Map.of("system_tool_type", "end_call"));
     }
 
     @Test
