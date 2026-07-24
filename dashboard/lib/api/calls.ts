@@ -92,10 +92,21 @@ export function recordTestRealtimeTranscript(callId: string, role: "caller" | "a
   });
 }
 
-export function executeTestRealtimeTool(callId: string, toolCallId: string, name: string, argumentsJson: string) {
+export function executeTestRealtimeTool(
+  callId: string,
+  toolCallId: string,
+  name: string,
+  argumentsJson: string,
+  provider?: string,
+) {
   return apiRequest<Record<string, unknown>>(`/calls/${callId}/realtime/tool`, {
     method: "POST",
-    body: JSON.stringify({ callId: toolCallId, name, arguments: argumentsJson }),
+    body: JSON.stringify({
+      callId: toolCallId,
+      name,
+      arguments: argumentsJson,
+      ...(provider?.trim() ? { provider: provider.trim().toLowerCase() } : {}),
+    }),
   });
 }
 

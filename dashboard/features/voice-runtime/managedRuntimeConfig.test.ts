@@ -36,4 +36,14 @@ test("managed provider errors do not stringify arbitrary provider objects", () =
     providerError("ElevenLabs", "token=secret wss://provider.example/session?token=secret"),
     "ElevenLabs: token [redacted] [provider endpoint]",
   );
+  assert.equal(
+    providerError("ElevenLabs", "Server error: Unknown error", {
+      errorType: "tool_execution",
+      code: 500,
+      debugMessage: "token=secret failed",
+      apiKey: "must-not-appear",
+      nested: { customer: "must-not-appear" },
+    }),
+    "ElevenLabs: Server error: Unknown error (type=tool_execution, code=500, debug=token [redacted] failed)",
+  );
 });

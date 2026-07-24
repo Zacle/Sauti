@@ -49,7 +49,8 @@ export async function connectElevenLabsRuntime(
         if (details.reason === "error") callbacks.onError(providerError("ElevenLabs", details.message));
         finish();
       },
-      onError: (message) => callbacks.onError(providerError("ElevenLabs", message)),
+      onError: (message, context) =>
+        callbacks.onError(providerError("ElevenLabs", message, context)),
       onVadScore: ({ vadScore }) => {
         if (vadScore >= 0.65 && !callerSpeaking) {
           callerSpeaking = true;

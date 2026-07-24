@@ -451,11 +451,13 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
           details: { toolCallId, toolName: name },
         });
         try {
+          await transcriptWriteRef.current;
           const result = await executeTestRealtimeTool(
             started.call.id,
             toolCallId,
             name,
             argumentsJson,
+            started.runtime?.provider,
           );
           recordDiagnostic({
             component: runtimeComponent,
@@ -464,7 +466,16 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
               toolCallId,
               toolName: name,
               durationMs: Math.round(performance.now() - toolStartedAt),
+              success: result.success !== false,
+              workflowPending: result.workflowPending === true,
+              ...(typeof result.actionPerformed === "boolean"
+                ? { actionPerformed: result.actionPerformed }
+                : {}),
+              ...(typeof result.status === "string"
+                ? { status: result.status.slice(0, 80) }
+                : {}),
             },
+            level: result.success === false ? "warn" : "info",
           });
           return result;
         } catch (caught) {
@@ -647,6 +658,7 @@ export function TestCallPanel({ agentId, agentName, voiceId, runtimeProvider = "
             },
           });
           try {
+            await transcriptWriteRef.current;
             const result = await executeTestRealtimeTool(
               started.call.id, toolCallId, name, argumentsJson,
             );

@@ -221,6 +221,95 @@ Expected:
 
 ## Change log
 
+### 2026-07-24 - Unify managed-provider CRUD execution and outcome semantics
+
+- Re-verified Retell, ElevenLabs, and Telnyx tool behavior against their current official documentation before changing the implementation.
+- The booking repository and calendar fulfillment already implemented all required operations:
+  - create through `book_slot`;
+  - read through `lookup_booking`;
+  - non-time update through `update_booking`;
+  - date/time update through `reschedule_booking`;
+  - delete/cancel through `cancel_booking`.
+- The shared failure was above the persistence layer:
+  - Retell webhook tools executed through `ManagedVoiceToolService`;
+  - ElevenLabs and Telnyx browser client tools bypassed that service through `/calls/{id}/realtime/tool` and received the raw `LlmToolResult` shape instead;
+  - provider prompts expected top-level `actionPerformed`, `status`, and chaining fields, but the browser route nested those facts under `result`;
+  - valid review, confirmation, identity-recovery, and next-tool states were returned as `success=false` merely because no mutation had happened yet, causing providers to treat workflow progress as tool failure and retry or ask for confirmation repeatedly;
+  - the browser could invoke a tool before the asynchronous transcript write containing the caller's latest confirmation completed, so server-side semantic state sometimes saw a stale caller turn.
+- Added one managed-provider execution boundary for Retell, ElevenLabs, and Telnyx:
+  - authenticated ElevenLabs and Telnyx browser client tools now execute through `ManagedVoiceToolService`;
+  - provider redelivery remains idempotent through the existing call/invocation cache;
+  - protocol success is now distinct from business mutation success;
+  - a successfully processed review or deferred workflow returns `success=true`, `workflowPending=true`, and `actionPerformed=false` where applicable;
+  - only `actionPerformed=true` authorizes the agent to say that external data changed;
+  - genuine router/execution failures alone return `success=false`;
+  - safe workflow facts such as `nextTool`, `nextToolAuthorized`, `nextToolArguments`, `spokenResponse`, recovery fields, and factual CRUD outcomes are copied to the top level while the full facts remain under `data`.
+- Both managed and native browser tool callbacks now wait for queued transcript persistence before invoking the backend. This ensures the latest caller approval, correction, pause, or question is visible to server-owned conversation state.
+- Safe diagnostics now record provider tool duration, protocol success, mutation outcome, workflow-pending state, and status without arguments, booking details, phone numbers, or other customer data.
+- Updated managed-provider execution contracts and forced one resynchronization:
+  - Retell configuration version `4`;
+  - ElevenLabs configuration version `8`;
+  - Telnyx configuration version `8`.
+- Provider-specific conclusions:
+  - Retell custom functions treat HTTP 2xx as successful transport and pass the response body to the LLM; a pending business workflow must therefore remain a 2xx/successful tool result rather than a fabricated error.
+  - ElevenLabs client tools must be registered with exactly matching case-sensitive names and must wait for a response to place returned facts in conversation context. ElevenLabs recommends webhook tools for server-side APIs; the current client-tool path remains appropriate only for Sauti browser tests.
+  - Telnyx synchronous client tools must return the factual result before the agent can continue. Its asynchronous tool flow requires a separate deferred-context/message-injection architecture and is intentionally not used for caller-blocking CRUD.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/call/{ManagedVoiceToolService,RealtimeDtos,RetellManagedVoiceAgentProvisioner,ElevenLabsManagedVoiceAgentProvisioner,TelnyxManagedVoiceAgentProvisioner}.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceToolServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/lib/api/calls.ts`
+  - the earlier uncommitted ElevenLabs diagnostic-context files remain part of the same review set;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - focused managed-tool and provider-provisioning tests passed; Gradle reported `BUILD SUCCESSFUL`.
+  - `.\gradlew.bat :backend:test --rerun-tasks` passed.
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run lint` passed with zero warnings.
+  - `npm.cmd run build` passed; Next.js completed the optimized production build.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment:
+  - use one known booking and correct phone to test lookup, update, reschedule, and cancel through each provider;
+  - verify one initial review/confirmation and exactly one mutation result;
+  - deliberately use a wrong booking character and confirm the database remains unchanged while the agent reads back and recollects the booking number;
+  - export diagnostics and confirm `client_tool_completed` includes the safe `success`, `workflowPending`, `actionPerformed`, and `status` fields.
+- Known follow-up: migrate ElevenLabs production telephony operations from browser client tools to signed server webhook tools before treating that provider as production-ready outside browser test calls.
+
+### 2026-07-24 - Execute managed-provider confirmations from the retained action
+
+- Investigated three browser-call diagnostics:
+  - Retell: `sauti-voice-diagnostics-19670aab-aa3b-4d9e-8f20-8f81cb4408db.json`
+  - ElevenLabs: `sauti-voice-diagnostics-5363e948-48c3-445e-a59e-e8013d7f5c20.json`
+  - Telnyx: `sauti-voice-diagnostics-4aeaa11d-67f1-44e4-8c6f-c05a46efc128.json`
+- The Telnyx trace showed `reschedule_booking` being called after every affirmative caller turn. The managed provider regenerated or reformatted material arguments on the confirmation turn, while the safety boundary requires an exact match with the server-retained proposal. The mismatch caused a new proposal to replace the old one and produced an indefinite confirmation loop.
+- `ManagedVoiceToolService` now resolves a managed-provider confirmation against `CallSessionStore.pendingAction`. When the tool name matches:
+  - the server-retained arguments are authoritative;
+  - provider-regenerated booking identifiers, dates, times, durations, or phone values are ignored;
+  - the retained action is marked approved and routed with `ready_for_action` plus `confirmed`;
+  - the downstream action policy still consumes only the exact retained action.
+- This preserves the safety property: an affirmative response can authorize only the action already reviewed with the caller. It cannot silently alter its material parameters.
+- Added a regression test where Telnyx omits the phone and duration and reformats the appointment timestamp on the confirmation call. The routed reschedule uses the retained booking number, phone, offset timestamp, and duration and completes once.
+- The ElevenLabs diagnostic ended immediately after its greeting with the SDK message `Server error: Unknown error`. The SDK also supplies a separate error context, but the browser adapter previously discarded it. `providerError` now accepts that context and records only allow-listed primitive fields (`errorType`, `code`, `debugMessage`, and string/number `details`) after URL and credential redaction. Arbitrary or nested provider objects remain excluded.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceToolService.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceToolServiceTest.java`
+  - `dashboard/features/voice-runtime/elevenLabsRuntime.ts`
+  - `dashboard/features/voice-runtime/managedRuntimeConfig.ts`
+  - `dashboard/features/voice-runtime/managedRuntimeConfig.test.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.ManagedVoiceToolServiceTest" --tests "com.sauti.tool.ToolActionPolicyTest" --tests "com.sauti.session.RedisCallSessionStoreTest" --rerun-tasks` passed.
+  - `npm.cmd run typecheck` passed.
+  - `node --test --experimental-strip-types features/voice-runtime/managedRuntimeConfig.test.ts` passed.
+  - `.\gradlew.bat :backend:test --rerun-tasks` passed.
+  - `npm.cmd run build` passed.
+- Deployment status: uncommitted and not deployed. A maintainer must review, commit, and push through the normal CI/CD chain.
+- Live follow-up:
+  - reschedule on each managed provider, confirm once, and verify that exactly one mutation succeeds;
+  - export a new ElevenLabs diagnostic if it fails again—the error should now include safe provider type/code/debug context instead of only `Unknown error`;
+  - Retell's supplied browser diagnostic contains speaking-state and transcript events but no provider tool-callback payloads, so correlate any remaining Retell mutation failure with the backend `Managed voice tool completed` log by Sauti call ID.
+
 ### 2026-07-22 - Preserve the selected Cartesia voice in Vapi and coalesce live captions
 
 - Corrected an attempted OpenAI-native Realtime default before deployment because it would have silently replaced the agent's selected Cartesia voice with OpenAI `marin`. Vapi native speech-to-speech requires an OpenAI-compatible voice and cannot preserve Cartesia TTS.

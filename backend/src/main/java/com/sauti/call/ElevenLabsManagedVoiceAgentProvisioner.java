@@ -41,7 +41,7 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
 
     @Override
     public String configurationVersion() {
-        return "7";
+        return "8";
     }
 
     @Override
@@ -237,10 +237,14 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
 
                 ELEVENLABS EXECUTION CONTRACT:
                 - Call a required business tool before speaking about its result.
+                - success=true means the tool request was processed. It does not by itself mean a business mutation
+                  happened. Only actionPerformed=true means external data changed.
                 - Treat the returned result as authoritative. For any mutation, claim success only when the result
                   explicitly contains actionPerformed=true.
-                - success=false or actionPerformed=false means nothing changed. Follow the returned instruction and
-                  never describe the requested mutation as completed.
+                - workflowPending=true or actionPerformed=false is a valid workflow step, not a tool failure. Follow
+                  instruction, nextTool, nextToolArguments, and nextToolAuthorized exactly. Do not retry the same
+                  mutation merely because nothing changed yet.
+                - success=false means the tool itself failed. Never describe the requested mutation as completed.
                 - For an explicitly confirmed retained action, invoke the exact same tool and material arguments with
                   confirmation_state=confirmed and question_handling=ready_for_action. Do not ask repeatedly.
                 - If a tool is still running, acknowledge the wait naturally and continue automatically when it returns.

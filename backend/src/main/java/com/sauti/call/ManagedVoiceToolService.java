@@ -53,22 +53,46 @@ public class ManagedVoiceToolService {
     }
 
     public Map<String, Object> execute(String provider, String callSid, String token, JsonNode payload) {
-        var normalizedProvider = provider == null ? "" : provider.trim().toLowerCase(java.util.Locale.ROOT);
-        if (!PROVIDERS.contains(normalizedProvider)) {
-            throw new IllegalArgumentException("Unsupported managed voice provider");
-        }
+        var normalizedProvider = normalizedProvider(provider);
         var call = authorizedCall(callSid, token);
         var name = toolName(payload);
-        if (!name.matches("[A-Za-z][A-Za-z0-9_-]{0,63}")) {
-            throw new IllegalArgumentException("Managed voice tool name is invalid");
-        }
+        validateToolName(name);
         var arguments = arguments(payload);
         var invocationId = invocationId(normalizedProvider, payload, name, arguments);
+        return executeCached(normalizedProvider, call, invocationId, name, arguments);
+    }
+
+    /**
+     * Executes a browser-managed provider client tool after the authenticated
+     * call controller has already resolved and authorized the Sauti call.
+     */
+    public Map<String, Object> executeAuthenticated(
+            String provider,
+            Call call,
+            String invocationId,
+            String name,
+            String argumentsJson
+    ) {
+        var normalizedProvider = normalizedProvider(provider);
+        validateToolName(name);
+        var arguments = arguments(argumentsJson);
+        var normalizedInvocationId = normalizedProvider + ":client:"
+                + firstNonBlank(invocationId, fingerprint(name, arguments));
+        return executeCached(normalizedProvider, call, normalizedInvocationId, name, arguments);
+    }
+
+    private Map<String, Object> executeCached(
+            String provider,
+            Call call,
+            String invocationId,
+            String name,
+            Map<String, Object> arguments
+    ) {
         var cacheKey = call.getId() + ":" + invocationId;
         purgeExpired();
         return completed.compute(cacheKey, (key, existing) -> {
             if (existing != null && java.time.Instant.now().isBefore(existing.expiresAt())) return existing;
-            return executeOnce(normalizedProvider, call, invocationId, name, arguments);
+            return executeOnce(provider, call, invocationId, name, arguments);
         }).result();
     }
 
@@ -83,8 +107,10 @@ public class ManagedVoiceToolService {
         Map<String, Object> response;
         boolean success;
         try {
-            var toolCall = new LlmToolCall(invocationId, name, arguments);
-            bridgeManagedConfirmation(call, toolCall);
+            var toolCall = bridgeManagedConfirmation(
+                    call,
+                    new LlmToolCall(invocationId, name, arguments)
+            );
             LlmToolResult routed = toolRouter.route(call, toolCall);
             response = response(routed);
             success = Boolean.TRUE.equals(response.get("success"));
@@ -113,19 +139,28 @@ public class ManagedVoiceToolService {
         );
     }
 
-    private void bridgeManagedConfirmation(Call call, LlmToolCall toolCall) {
+    private LlmToolCall bridgeManagedConfirmation(Call call, LlmToolCall toolCall) {
         if (!"confirmed".equals(stringArgument(toolCall, "confirmation_state"))
                 || !"ready_for_action".equals(stringArgument(toolCall, "question_handling"))) {
-            return;
+            return toolCall;
         }
-        var businessArguments = new java.util.LinkedHashMap<>(toolCall.arguments());
-        businessArguments.remove("confirmation_state");
-        businessArguments.remove("question_handling");
-        businessArguments.values().removeIf(java.util.Objects::isNull);
+        var retained = sessions.pendingAction(call.getTwilioCallSid())
+                .filter(action -> action.toolName().equals(toolCall.name()));
+        if (retained.isEmpty()) return toolCall;
+
+        var businessArguments = retained.orElseThrow().arguments();
         sessions.recordManagedConfirmation(
                 call.getTwilioCallSid(),
                 toolCall.name(),
-                Map.copyOf(businessArguments)
+                businessArguments
+        );
+        var verifiedArguments = new java.util.LinkedHashMap<>(businessArguments);
+        verifiedArguments.put("question_handling", "ready_for_action");
+        verifiedArguments.put("confirmation_state", "confirmed");
+        return new LlmToolCall(
+                toolCall.id(),
+                toolCall.name(),
+                Map.copyOf(verifiedArguments)
         );
     }
 
@@ -138,24 +173,29 @@ public class ManagedVoiceToolService {
             );
         }
         var facts = routed.result();
-        var performedFact = facts.get("actionPerformed");
-        var actionDeferred = performedFact instanceof Boolean performed && !performed;
+        var workflowPending = Boolean.TRUE.equals(facts.get("nextToolAuthorized"))
+                || falseFact(facts, "actionPerformed")
+                || falseFact(facts, "bookingCreated")
+                || falseFact(facts, "bookingFound")
+                || falseFact(facts, "updated")
+                || falseFact(facts, "cancelled");
         var response = new java.util.LinkedHashMap<String, Object>();
-        response.put("success", !actionDeferred);
+        response.put("success", true);
+        if (workflowPending) response.put("workflowPending", true);
         response.put("data", facts);
-        copyFact(facts, response, "status");
-        copyFact(facts, response, "actionPerformed");
-        copyFact(facts, response, "effect");
-        copyFact(facts, response, "action");
-        copyFact(facts, response, "instruction");
-        copyFact(facts, response, "bookingFound");
-        copyFact(facts, response, "retryField");
-        copyFact(facts, response, "capturedBookingNumber");
-        copyFact(facts, response, "bookingNumberReadback");
-        if (actionDeferred) {
-            response.put("error", "No external action was performed");
-        }
+        List.of(
+                "status", "actionPerformed", "effect", "action", "instruction", "reason",
+                "nextAction", "nextTool", "nextToolAuthorized", "nextToolArguments",
+                "spokenResponse", "bookingCreated", "bookingFound", "updated", "cancelled",
+                "bookingNumber", "bookingStatus", "appointmentAt", "retryField",
+                "capturedBookingNumber", "bookingNumberReadback", "nextMissingField",
+                "remainingMissingFieldCount", "nextInvalidField", "ended"
+        ).forEach(name -> copyFact(facts, response, name));
         return Map.copyOf(response);
+    }
+
+    private boolean falseFact(Map<String, Object> facts, String name) {
+        return facts.get(name) instanceof Boolean value && !value;
     }
 
     private void copyFact(
@@ -223,6 +263,18 @@ public class ManagedVoiceToolService {
         return Map.of();
     }
 
+    private Map<String, Object> arguments(String argumentsJson) {
+        if (argumentsJson == null || argumentsJson.isBlank()) return Map.of();
+        try {
+            Map<String, Object> converted = objectMapper.readValue(
+                    argumentsJson, new TypeReference<>() { }
+            );
+            return withoutNulls(converted);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Managed voice tool arguments are not valid JSON");
+        }
+    }
+
     private Map<String, Object> withoutNulls(Map<String, Object> values) {
         var result = new java.util.LinkedHashMap<String, Object>();
         values.forEach((key, value) -> {
@@ -260,17 +312,34 @@ public class ManagedVoiceToolService {
         );
         if (!explicit.isBlank()) return provider + ":" + explicit + ":" + name;
         var providerCallId = text(payload == null ? null : payload.path("call"), "call_id");
+        return provider + ":" + fingerprint(providerCallId + ":" + name, arguments);
+    }
+
+    private String fingerprint(String name, Map<String, Object> arguments) {
         try {
             var digest = MessageDigest.getInstance("SHA-256").digest(
                     objectMapper.writeValueAsString(Map.of(
-                            "providerCallId", providerCallId,
                             "name", name,
                             "arguments", arguments
                     )).getBytes(StandardCharsets.UTF_8)
             );
-            return provider + ":" + HexFormat.of().formatHex(digest);
+            return HexFormat.of().formatHex(digest);
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to identify the managed voice tool invocation", exception);
+        }
+    }
+
+    private String normalizedProvider(String provider) {
+        var normalized = provider == null ? "" : provider.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!PROVIDERS.contains(normalized)) {
+            throw new IllegalArgumentException("Unsupported managed voice provider");
+        }
+        return normalized;
+    }
+
+    private void validateToolName(String name) {
+        if (name == null || !name.matches("[A-Za-z][A-Za-z0-9_-]{0,63}")) {
+            throw new IllegalArgumentException("Managed voice tool name is invalid");
         }
     }
 

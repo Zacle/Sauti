@@ -18,6 +18,7 @@ import com.sauti.call.CallQueryService;
 import com.sauti.call.CallRecordingService;
 import com.sauti.call.WebVoiceTokenService;
 import com.sauti.call.OpenAiRealtimeService;
+import com.sauti.call.ManagedVoiceToolService;
 import com.sauti.call.CartesiaRealtimeTextToSpeechClient;
 import com.sauti.call.RealtimeDtos.RealtimeToolRequest;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
@@ -55,6 +56,7 @@ public class CallController {
     private final WebVoiceTokenService webVoiceTokenService;
     private final String webVoiceWebsocketUrl;
     private final OpenAiRealtimeService openAiRealtimeService;
+    private final ManagedVoiceToolService managedVoiceToolService;
     private final CartesiaRealtimeTextToSpeechClient cartesiaClient;
     private final BrowserVoiceRuntimeRegistry browserVoiceRuntimeRegistry;
     private final String defaultTestVoiceRuntime;
@@ -67,6 +69,7 @@ public class CallController {
             BrowserSpeechToTextService browserSpeechToTextService,
             WebVoiceTokenService webVoiceTokenService,
             OpenAiRealtimeService openAiRealtimeService,
+            ManagedVoiceToolService managedVoiceToolService,
             CartesiaRealtimeTextToSpeechClient cartesiaClient,
             BrowserVoiceRuntimeRegistry browserVoiceRuntimeRegistry,
             @Value("${sauti.voice-runtime.test-provider:sauti}") String defaultTestVoiceRuntime,
@@ -79,6 +82,7 @@ public class CallController {
         this.browserSpeechToTextService = browserSpeechToTextService;
         this.webVoiceTokenService = webVoiceTokenService;
         this.openAiRealtimeService = openAiRealtimeService;
+        this.managedVoiceToolService = managedVoiceToolService;
         this.cartesiaClient = cartesiaClient;
         this.browserVoiceRuntimeRegistry = browserVoiceRuntimeRegistry;
         this.defaultTestVoiceRuntime = defaultTestVoiceRuntime == null ? "sauti" : defaultTestVoiceRuntime.trim();
@@ -211,7 +215,7 @@ public class CallController {
     }
 
     @PostMapping("/{id}/realtime/tool")
-    com.sauti.llm.LlmToolResult realtimeTool(
+    Object realtimeTool(
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID id,
             @RequestBody RealtimeToolRequest request
@@ -219,6 +223,14 @@ public class CallController {
         var call = callQueryService.get(user.tenantId(), id);
         if (!"test".equals(call.getDirection()) || !call.isActive()) {
             throw new IllegalArgumentException("The browser test call is not active");
+        }
+        var provider = request.provider() == null
+                ? ""
+                : request.provider().trim().toLowerCase(java.util.Locale.ROOT);
+        if (java.util.Set.of("retell", "elevenlabs", "telnyx").contains(provider)) {
+            return managedVoiceToolService.executeAuthenticated(
+                    provider, call, request.callId(), request.name(), request.arguments()
+            );
         }
         return openAiRealtimeService.executeTool(call, request.callId(), request.name(), request.arguments());
     }

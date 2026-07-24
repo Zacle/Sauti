@@ -17,6 +17,6 @@ public final class RealtimeDtos {
         }
     }
 
-    public record RealtimeToolRequest(String callId, String name, String arguments) {
+    public record RealtimeToolRequest(String callId, String name, String arguments, String provider) {
     }
 }
