@@ -36,18 +36,19 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
 
     @Override
     public String configurationVersion() {
-        return "2";
+        return "3";
     }
 
     @Override
     public ManagedVoiceAgentReference synchronize(
             ManagedVoiceAgentBlueprint blueprint,
-            ManagedVoiceAgentReference existing
+        ManagedVoiceAgentReference existing
     ) {
         var headers = Map.of(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);
-        var body = assistantBody(blueprint);
+        var updating = existing != null && !existing.externalAgentId().isBlank();
+        var body = assistantBody(blueprint, updating);
         com.fasterxml.jackson.databind.JsonNode response;
-        if (existing == null || existing.externalAgentId().isBlank()) {
+        if (!updating) {
             response = httpClient.post(
                     "Telnyx",
                     URI.create(apiBaseUrl + "/ai/assistants"),
@@ -70,7 +71,10 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
         return new ManagedVoiceAgentReference(agentId, versionId, "{}");
     }
 
-    private Map<String, Object> assistantBody(ManagedVoiceAgentBlueprint blueprint) {
+    private Map<String, Object> assistantBody(
+            ManagedVoiceAgentBlueprint blueprint,
+            boolean updating
+    ) {
         var tools = new ArrayList<Map<String, Object>>();
         blueprint.tools().forEach(tool -> {
             if ("end_call".equals(tool.name())) {
@@ -88,8 +92,7 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
             clientTool.put("parameters", tool.inputSchema());
             tools.add(Map.of(
                     "type", "client_side_tool",
-                    "client_side_tool", Map.copyOf(clientTool),
-                    "timeout_ms", 30_000
+                    "client_side_tool", Map.copyOf(clientTool)
             ));
         });
         var body = new LinkedHashMap<String, Object>();
@@ -128,7 +131,7 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
                         )
                 )
         ));
-        body.put("promote_to_main", true);
+        if (updating) body.put("promote_to_main", true);
         body.put("tags", java.util.List.of("sauti-managed"));
         return Map.copyOf(body);
     }

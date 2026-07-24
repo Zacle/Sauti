@@ -5238,3 +5238,35 @@ Expected:
   - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 39 seconds.
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status: not deployed. This test-only correction remains uncommitted for maintainer review and normal CI.
+
+### 2026-07-24 - Align Telnyx provisioning with its current SDK and expose safe HTTP 400 details
+
+- Diagnosed report `1784893366638`. The Telnyx test stopped during managed assistant synchronization after 1,352 ms, before `call_created`, with HTTP 400. No browser media, speech, transcript, or tool execution began.
+- The diagnostic could not identify the rejected field because Sauti previously extracted structured provider validation only for HTTP 422. Telnyx documents HTTP 400 for malformed or unsupported request fields and uses an `errors[]` envelope with `code`, `title`, `detail`, and `source`.
+- Checked the generated payload against Telnyx's current official API documentation and the official `telnyx` JavaScript SDK version `7.10.0`, installed only in `D:\tmp\sauti-telnyx-schema` for schema inspection:
+  - inline `ClientSideTool` contains only `type` and `client_side_tool`; the nested tool contains `name`, `description`, and `parameters`;
+  - `timeout_ms` is not part of that current assistant-tool type;
+  - Sauti already configures the corresponding 30-second execution timeout in the browser through `clientToolTimeoutMs`;
+  - `promote_to_main` belongs to assistant update parameters and is not part of assistant creation parameters.
+- Corrected the Telnyx adapter:
+  - removed unsupported inline `timeout_ms`;
+  - sends `promote_to_main` only while updating an existing assistant;
+  - bumped the Telnyx configuration version to `3` so existing bindings resynchronize once.
+- Extended managed-provider error reporting for HTTP 400:
+  - supports Telnyx `errors[]` and the existing `detail[]` validation shape;
+  - exposes at most three sanitized source/message/code summaries;
+  - excludes `meta`, arbitrary input, request bodies, headers, and credentials.
+- Added regressions proving:
+  - create payloads contain neither `timeout_ms` nor `promote_to_main`;
+  - update payloads still promote the new version;
+  - Telnyx 400 details identify the invalid field without leaking provider metadata or authorization secrets.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{TelnyxManagedVoiceAgentProvisioner,ManagedVoiceProviderHttpClient,ManagedVoiceProviderException}.java`
+  - `backend/src/test/java/com/sauti/call/{ManagedVoiceAgentProvisionersTest,ManagedVoiceProviderHttpClientTest}.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed-provider payload, HTTP validation, and API exception tests - passed; Gradle reported `BUILD SUCCESSFUL` in 55 seconds.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 2 minutes 38 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after reviewed CI/CD deployment, run the Telnyx test again. It should proceed beyond assistant synchronization. If Telnyx still returns HTTP 400, the next diagnostic must include the safe source field and provider message rather than only the status code.

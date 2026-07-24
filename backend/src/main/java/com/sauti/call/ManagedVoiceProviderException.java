@@ -27,9 +27,10 @@ public class ManagedVoiceProviderException extends RuntimeException {
             return provider + " rejected managed voice setup with status " + providerStatus
                     + ". Check the API key and its agent/tool permissions.";
         }
-        if (providerStatus == 422) {
+        if (providerStatus == 400 || providerStatus == 422) {
             var detail = validationSummary == null ? "" : validationSummary.trim();
-            return provider + " rejected the generated agent/tool configuration with status 422."
+            return provider + " rejected the generated agent/tool configuration with status "
+                    + providerStatus + "."
                     + (detail.isBlank() ? "" : " " + detail);
         }
         return provider + " rejected managed voice setup with status " + providerStatus + ".";

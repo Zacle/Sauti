@@ -163,9 +163,46 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("client_side_tool")
                 .contains("hangup")
                 .doesNotContain("end_call")
+                .doesNotContain("timeout_ms")
+                .doesNotContain("promote_to_main")
                 .contains("supports_unauthenticated_web_calls")
                 .contains("Hello from Sauti")
                 .doesNotContain("secret");
+    }
+
+    @Test
+    void telnyxPromotesAnUpdatedAssistantVersionToMain() throws Exception {
+        var http = mock(ManagedVoiceProviderHttpClient.class);
+        when(http.post(
+                eq("Telnyx"),
+                eq(URI.create("https://api.telnyx.com/v2/ai/assistants/assistant-1")),
+                any(),
+                any()
+        )).thenReturn(objectMapper.readTree("{\"id\":\"assistant-1\",\"version_id\":\"version-2\"}"));
+        var provisioner = new TelnyxManagedVoiceAgentProvisioner(
+                http,
+                "secret",
+                "https://api.telnyx.com/v2/"
+        );
+
+        var reference = provisioner.synchronize(
+                blueprint(),
+                new ManagedVoiceAgentReference("assistant-1", "main", "{}")
+        );
+
+        assertThat(reference.externalVersionId()).isEqualTo("version-2");
+        @SuppressWarnings("unchecked")
+        var body = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        verify(http).post(
+                eq("Telnyx"),
+                eq(URI.create("https://api.telnyx.com/v2/ai/assistants/assistant-1")),
+                any(),
+                body.capture()
+        );
+        assertThat(body.getValue())
+                .containsEntry("promote_to_main", true);
+        assertThat(body.getValue().toString())
+                .doesNotContain("timeout_ms");
     }
 
     private ManagedVoiceAgentBlueprint blueprint() {

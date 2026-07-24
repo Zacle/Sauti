@@ -45,4 +45,37 @@ class ManagedVoiceProviderHttpClientTest {
                 .hasMessageNotContaining("must-never-appear")
                 .hasMessageNotContaining("secret");
     }
+
+    @Test
+    void exposesOnlySafeTelnyxErrorFieldsForAProvider400() throws Exception {
+        var httpClient = mock(HttpClient.class);
+        @SuppressWarnings("unchecked")
+        var response = (HttpResponse<String>) mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(400);
+        when(response.body()).thenReturn("""
+                {
+                  "errors": [{
+                    "code": "10015",
+                    "title": "Invalid attribute",
+                    "detail": "Unexpected field timeout_ms",
+                    "source": {"pointer": "/tools/0/timeout_ms"},
+                    "meta": {"api_key": "must-never-appear"}
+                  }]
+                }
+                """);
+        when(httpClient.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(response);
+        var client = new ManagedVoiceProviderHttpClient(httpClient, new ObjectMapper());
+
+        assertThatThrownBy(() -> client.get(
+                "Telnyx",
+                URI.create("https://api.telnyx.com/v2/ai/assistants"),
+                Map.of("Authorization", "Bearer secret")
+        ))
+                .isInstanceOf(ManagedVoiceProviderException.class)
+                .hasMessageContaining(
+                        "/tools/0/timeout_ms: Unexpected field timeout_ms (10015)"
+                )
+                .hasMessageNotContaining("must-never-appear")
+                .hasMessageNotContaining("secret");
+    }
 }

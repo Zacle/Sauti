@@ -98,24 +98,45 @@ public class ManagedVoiceProviderHttpClient {
     }
 
     private String validationSummary(int statusCode, String responseBody) {
-        if (statusCode != 422 || responseBody == null || responseBody.isBlank()) return "";
+        if ((statusCode != 400 && statusCode != 422)
+                || responseBody == null
+                || responseBody.isBlank()) return "";
         try {
-            var detail = objectMapper.readTree(responseBody).path("detail");
-            if (!detail.isArray()) return "";
+            var root = objectMapper.readTree(responseBody);
             var messages = new java.util.ArrayList<String>();
-            for (var item : detail) {
-                if (messages.size() == 3) break;
-                var location = new java.util.ArrayList<String>();
-                var locationNode = item.path("loc");
-                if (locationNode.isArray()) {
-                    locationNode.forEach(part -> {
-                        if (part.isTextual() || part.isIntegralNumber()) location.add(part.asText());
-                    });
+            var detail = root.path("detail");
+            if (detail.isArray()) {
+                for (var item : detail) {
+                    if (messages.size() == 3) break;
+                    var location = new java.util.ArrayList<String>();
+                    var locationNode = item.path("loc");
+                    if (locationNode.isArray()) {
+                        locationNode.forEach(part -> {
+                            if (part.isTextual() || part.isIntegralNumber()) location.add(part.asText());
+                        });
+                    }
+                    var message = item.path("msg").isTextual() ? item.path("msg").asText().trim() : "";
+                    if (message.isBlank()) continue;
+                    var summary = (location.isEmpty() ? "" : String.join(".", location) + ": ") + message;
+                    messages.add(safeValidationText(summary));
                 }
-                var message = item.path("msg").isTextual() ? item.path("msg").asText().trim() : "";
-                if (message.isBlank()) continue;
-                var summary = (location.isEmpty() ? "" : String.join(".", location) + ": ") + message;
-                messages.add(safeValidationText(summary));
+            }
+            var errors = root.path("errors");
+            if (errors.isArray()) {
+                for (var item : errors) {
+                    if (messages.size() == 3) break;
+                    var source = item.path("source");
+                    var location = source.path("pointer").asText("").trim();
+                    if (location.isBlank()) location = source.path("parameter").asText("").trim();
+                    var title = item.path("title").asText("").trim();
+                    var detailMessage = item.path("detail").asText("").trim();
+                    var code = item.path("code").asText("").trim();
+                    var message = detailMessage.isBlank() ? title : detailMessage;
+                    if (message.isBlank()) continue;
+                    var prefix = location.isBlank() ? "" : location + ": ";
+                    var suffix = code.isBlank() ? "" : " (" + code + ")";
+                    messages.add(safeValidationText(prefix + message + suffix));
+                }
             }
             return messages.isEmpty() ? "" : "Validation: " + String.join("; ", messages);
         } catch (Exception ignored) {
