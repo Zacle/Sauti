@@ -5220,3 +5220,21 @@ Expected:
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: after reviewed CI/CD deployment, start another ElevenLabs test. Agent provisioning must proceed beyond `built_in_tools.end_call` validation to `call_created`.
+
+### 2026-07-24 - Remove the asynchronous Mockito verification race from progress preemption
+
+- Reproduced `OpenAiTelephonyRealtimeConversationProviderTest.completedBusinessActionPreemptsProgressAndSpeaksWithoutAnotherCallerTurn` independently. The focused test failed at line 903 while waiting for `cancelBusinessActionProgress`.
+- The test result proved the production continuation was not missing: `tool_execution_completed` appeared immediately after Mockito's three-second `timeout(...).verify(...)` failed. The asynchronous completion thread was trying to invoke the same mock method being polled by the test, making the test's synchronization mechanism race with the behavior it was observing.
+- Kept production progress cancellation and direct-result speech unchanged.
+- Replaced concurrent timeout verification with a dedicated latch triggered by the final listener callback. The test now:
+  - releases the delayed business action;
+  - waits for the complete result-speech path without locking the session mock;
+  - verifies progress cancellation, provider-response cancellation, history seeding, and final speech synchronously after completion.
+- Files touched:
+  - `backend/src/test/java/com/sauti/call/OpenAiTelephonyRealtimeConversationProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - the exact formerly failing test passed independently with `--rerun-tasks`; Gradle reported `BUILD SUCCESSFUL` in 45 seconds.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 39 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. This test-only correction remains uncommitted for maintainer review and normal CI.

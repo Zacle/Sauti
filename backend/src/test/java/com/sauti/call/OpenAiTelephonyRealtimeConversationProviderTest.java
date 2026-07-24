@@ -1,6 +1,7 @@
 package com.sauti.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.mock;
@@ -861,7 +862,12 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         var saveStarted = new CountDownLatch(1);
         var saveReturned = new CountDownLatch(1);
         var releaseSave = new CountDownLatch(1);
+        var resultSpoken = new CountDownLatch(1);
         var confirmation = "Your appointment is booked. Your booking number is SAT-AUTO123456.";
+        doAnswer(ignored -> {
+            resultSpoken.countDown();
+            return null;
+        }).when(listener).onAgentTextComplete(confirmation, false);
         when(realtimeService.executeTool(eq(call), eq("auto-booking"), eq("book_slot"), anyString()))
                 .thenAnswer(ignored -> {
                     saveStarted.countDown();
@@ -900,10 +906,11 @@ class OpenAiTelephonyRealtimeConversationProviderTest {
         releaseSave.countDown();
 
         assertThat(saveReturned.await(1, TimeUnit.SECONDS)).isTrue();
-        verify(session, timeout(3_000)).cancelBusinessActionProgress(progressKey.getValue());
-        verify(session, timeout(3_000)).cancelProviderResponse("active-progress");
-        verify(session, timeout(3_000)).seedAssistantText(confirmation);
-        verify(listener, timeout(3_000)).onAgentTextComplete(confirmation, false);
+        assertThat(resultSpoken.await(3, TimeUnit.SECONDS)).isTrue();
+        verify(session).cancelBusinessActionProgress(progressKey.getValue());
+        verify(session).cancelProviderResponse("active-progress");
+        verify(session).seedAssistantText(confirmation);
+        verify(listener).onAgentTextComplete(confirmation, false);
     }
 
     @Test
