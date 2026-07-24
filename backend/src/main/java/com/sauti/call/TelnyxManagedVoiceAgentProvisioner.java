@@ -36,7 +36,7 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
 
     @Override
     public String configurationVersion() {
-        return "3";
+        return "4";
     }
 
     @Override
@@ -113,7 +113,8 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
         body.put("telephony_settings", Map.of(
                 "supports_unauthenticated_web_calls", true,
                 "time_limit_secs", Math.max(10, blueprint.maxCallDurationSeconds()),
-                "user_idle_timeout_secs", 60
+                "user_idle_timeout_secs", 60,
+                "recording_settings", Map.of("enabled", false)
         ));
         body.put("privacy_settings", Map.of("data_retention", false));
         body.put("interruption_settings", Map.of(

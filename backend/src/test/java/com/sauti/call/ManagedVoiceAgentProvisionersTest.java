@@ -168,6 +168,12 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("supports_unauthenticated_web_calls")
                 .contains("Hello from Sauti")
                 .doesNotContain("secret");
+        @SuppressWarnings("unchecked")
+        var telephonySettings = (Map<String, Object>) body.getValue().get("telephony_settings");
+        assertThat(telephonySettings.get("recording_settings"))
+                .isEqualTo(Map.of("enabled", false));
+        assertThat(body.getValue().get("privacy_settings"))
+                .isEqualTo(Map.of("data_retention", false));
     }
 
     @Test

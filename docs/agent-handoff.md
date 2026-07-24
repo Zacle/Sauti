@@ -5270,3 +5270,22 @@ Expected:
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: after reviewed CI/CD deployment, run the Telnyx test again. It should proceed beyond assistant synchronization. If Telnyx still returns HTTP 400, the next diagnostic must include the safe source field and provider message rather than only the status code.
+
+### 2026-07-24 - Disable Telnyx recording when managed assistants disable Telnyx retention
+
+- Diagnosed report `1784895131757`. The improved HTTP 400 diagnostics identified Telnyx validation code `10015`: the generated assistant disabled provider data retention while Telnyx's recording default remained enabled.
+- Confirmed against Telnyx's current assistant API and official JavaScript SDK that recording is controlled by `telephony_settings.recording_settings.enabled`.
+- Kept `privacy_settings.data_retention=false` and now explicitly sends `telephony_settings.recording_settings.enabled=false`. This avoids enabling provider retention merely to satisfy a recording default.
+- Browser-test recording remains a separate Sauti-controlled path and is unaffected by disabling Telnyx's provider-side call recording.
+- Bumped the Telnyx managed-assistant configuration version to `4` so existing bindings resynchronize once with the compatible privacy and recording settings.
+- Added structural regression assertions covering both disabled Telnyx recording and disabled Telnyx retention.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.ManagedVoiceAgentProvisionersTest" --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 30 seconds.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 3 minutes 29 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after reviewed CI/CD deployment, start another Telnyx browser test. Managed assistant synchronization should proceed beyond validation code `10015` to call creation.
