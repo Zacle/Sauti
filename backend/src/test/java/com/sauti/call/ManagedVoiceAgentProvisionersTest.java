@@ -86,7 +86,26 @@ class ManagedVoiceAgentProvisionersTest {
         assertThat(toolBody.getValue().toString())
                 .contains("check_availability")
                 .doesNotContain("additionalProperties")
+                .doesNotContain("maxLength")
                 .doesNotContain("end_call");
+        @SuppressWarnings("unchecked")
+        var toolConfig = (Map<String, Object>) toolBody.getValue().get("tool_config");
+        @SuppressWarnings("unchecked")
+        var parameters = (Map<String, Object>) toolConfig.get("parameters");
+        @SuppressWarnings("unchecked")
+        var properties = (Map<String, Object>) parameters.get("properties");
+        @SuppressWarnings("unchecked")
+        var clearFields = (Map<String, Object>) properties.get("clear_fields");
+        @SuppressWarnings("unchecked")
+        var clearFieldItems = (Map<String, Object>) clearFields.get("items");
+        assertThat(clearFieldItems)
+                .containsEntry("type", "string")
+                .containsEntry("description", "Value for clear fields item.");
+        @SuppressWarnings("unchecked")
+        var date = (Map<String, Object>) properties.get("date");
+        assertThat(date)
+                .containsEntry("description", "Appointment date. Expected format: date.")
+                .doesNotContainKeys("format", "maxLength");
         @SuppressWarnings("unchecked")
         var agentBody = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
         verify(http).post(
@@ -148,7 +167,17 @@ class ManagedVoiceAgentProvisionersTest {
                                 Map.of(
                                         "type", "object",
                                         "properties", Map.of(
-                                                "date", Map.of("type", "string"),
+                                                "date", Map.of(
+                                                        "type", "string",
+                                                        "description", "Appointment date.",
+                                                        "format", "date",
+                                                        "maxLength", 10
+                                                ),
+                                                "clear_fields", Map.of(
+                                                        "type", "array",
+                                                        "description", "Fields to clear.",
+                                                        "items", Map.of("type", "string")
+                                                ),
                                                 "customer_details", Map.of(
                                                         "type", "object",
                                                         "properties", Map.of(),

@@ -41,7 +41,7 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
 
     @Override
     public String configurationVersion() {
-        return "3";
+        return "4";
     }
 
     @Override
@@ -120,29 +120,111 @@ public class ElevenLabsManagedVoiceAgentProvisioner implements ManagedVoiceAgent
     }
 
     private Map<String, Object> elevenLabsSchema(Map<String, Object> schema) {
+        return normalizeElevenLabsSchema(schema, "tool parameters", true);
+    }
+
+    /**
+     * ElevenLabs client-tool parameters resemble JSON Schema but use a
+     * provider-specific discriminated model. In particular, nested values must
+     * declare how they are populated (Sauti uses {@code description}) and
+     * ordinary JSON Schema keywords such as {@code additionalProperties},
+     * {@code format}, and {@code maxLength} are rejected with HTTP 422.
+     *
+     * Keep Sauti's canonical schema untouched for other providers and translate
+     * only the payload sent to ElevenLabs.
+     */
+    private Map<String, Object> normalizeElevenLabsSchema(
+            Map<?, ?> schema,
+            String fieldName,
+            boolean root
+    ) {
+        var type = schemaType(schema);
         var normalized = new LinkedHashMap<String, Object>();
-        schema.forEach((key, value) -> {
-            if (!"additionalProperties".equals(key)) {
-                normalized.put(key, elevenLabsSchemaValue(value));
+        normalized.put("type", type);
+
+        var description = trim(stringValue(schema.get("description")));
+        var format = trim(stringValue(schema.get("format")));
+        if (description.isBlank() && !root) {
+            description = "Value for " + humanize(fieldName) + ".";
+        }
+        if (!format.isBlank()) {
+            description = (description.isBlank() ? "Value for " + humanize(fieldName) + "." : description)
+                    + " Expected format: " + format + ".";
+        }
+        if (!description.isBlank()) normalized.put("description", description);
+
+        if ("object".equals(type)) {
+            var properties = new LinkedHashMap<String, Object>();
+            if (schema.get("properties") instanceof Map<?, ?> rawProperties) {
+                rawProperties.forEach((key, value) -> {
+                    if (key != null && value instanceof Map<?, ?> propertySchema) {
+                        var propertyName = key.toString();
+                        properties.put(
+                                propertyName,
+                                normalizeElevenLabsSchema(propertySchema, propertyName, false)
+                        );
+                    }
+                });
             }
-        });
+            normalized.put("properties", Map.copyOf(properties));
+            if (schema.get("required") instanceof List<?> required) {
+                var knownRequired = required.stream()
+                        .filter(String.class::isInstance)
+                        .map(String.class::cast)
+                        .filter(properties::containsKey)
+                        .toList();
+                if (!knownRequired.isEmpty()) normalized.put("required", knownRequired);
+            }
+        } else if ("array".equals(type)) {
+            if (schema.get("items") instanceof Map<?, ?> itemSchema) {
+                normalized.put(
+                        "items",
+                        normalizeElevenLabsSchema(itemSchema, fieldName + " item", false)
+                );
+            } else {
+                normalized.put(
+                        "items",
+                        Map.of(
+                                "type", "string",
+                                "description", "One value in " + humanize(fieldName) + "."
+                        )
+                );
+            }
+        } else if (schema.get("enum") instanceof List<?> values) {
+            var allowedValues = values.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .toList();
+            if (!allowedValues.isEmpty()) normalized.put("enum", allowedValues);
+        }
+
         return Map.copyOf(normalized);
     }
 
-    private Object elevenLabsSchemaValue(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            var normalized = new LinkedHashMap<String, Object>();
-            map.forEach((key, nested) -> {
-                if (key != null && !"additionalProperties".equals(key.toString())) {
-                    normalized.put(key.toString(), elevenLabsSchemaValue(nested));
-                }
-            });
-            return Map.copyOf(normalized);
+    private String schemaType(Map<?, ?> schema) {
+        var type = schema.get("type");
+        if (type instanceof String value && !value.isBlank()) return value;
+        if (type instanceof List<?> values && !values.isEmpty()) {
+            return values.stream()
+                    .filter(String.class::isInstance)
+                    .map(String.class::cast)
+                    .filter(value -> !"null".equals(value))
+                    .findFirst()
+                    .orElse("string");
         }
-        if (value instanceof List<?> list) {
-            return list.stream().map(this::elevenLabsSchemaValue).toList();
-        }
-        return value;
+        if (schema.containsKey("properties")) return "object";
+        if (schema.containsKey("items")) return "array";
+        return "string";
+    }
+
+    private static String humanize(String value) {
+        return trim(value)
+                .replace('_', ' ')
+                .replaceAll("\\s+", " ");
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : value.toString();
     }
 
     private Map<String, Object> agentBody(

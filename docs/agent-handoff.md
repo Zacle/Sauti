@@ -5169,3 +5169,30 @@ Expected:
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification: deploy through the normal reviewed CI/CD flow, then start the ElevenLabs test again. If another provider-specific schema keyword is rejected, the diagnostic will expose its exact safe validation path rather than requiring another guess.
+
+### 2026-07-24 - Translate canonical JSON Schema into ElevenLabs' parameter model
+
+- Diagnosed report `1784888753558`. ElevenLabs accepted the preceding `additionalProperties` correction, then rejected the next provider-incompatible node after 2,061 ms: `body.tool_config.client.parameters.properties.clear_fields.array.items.string: Value error, Must set one of: description, dynamic_variable, is_system_pr`.
+- Confirmed against the current official ElevenLabs JavaScript SDK types that client-tool parameters are not unrestricted JSON Schema:
+  - nested model-supplied object, array, and literal values use `description` to tell ElevenLabs how the LLM populates them;
+  - array `items` are themselves full provider parameter nodes and therefore require that metadata;
+  - supported structural fields are narrower than canonical JSON Schema, so keywords such as `additionalProperties`, `format`, and `maxLength` cannot be forwarded unchanged.
+- Replaced the ElevenLabs-only recursive key removal with a typed schema translator. It:
+  - normalizes object, array, and literal nodes recursively;
+  - supplies a neutral generated description when a nested canonical field or array item lacks one;
+  - preserves explicit descriptions, object properties/required fields, and string enums;
+  - folds a canonical `format` hint into the description;
+  - omits unsupported constraints while leaving every canonical Sauti schema unchanged for Retell, Telnyx, OpenAI, and internal validation.
+- Bumped the ElevenLabs adapter configuration version to `4`, forcing one resynchronization of existing Sauti-managed ElevenLabs tools.
+- Expanded the managed-provider regression to cover the exact `clear_fields.items` failure and unsupported `format`/`maxLength` fields, while continuing to prove that Retell receives the canonical schema.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ElevenLabsManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed-provider provisioning, provider HTTP validation, and API error tests - passed;
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed;
+  - the first full-suite invocation reached its 120-second command limit without a test failure; the bounded rerun completed successfully in 285.7 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after reviewed CI/CD deployment, start another ElevenLabs test. Tool synchronization should now pass the nested `clear_fields` array item. If the provider exposes another incompatible node, use the exact sanitized validation path from the new diagnostic.
