@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "13";
+        return "14";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -82,13 +82,14 @@ public class TelnyxManagedVoiceAgentProvisioner {
     ) {
         var tools = new ArrayList<Map<String, Object>>();
         blueprint.tools().forEach(tool -> {
+            // Telnyx must have exactly one terminal tool. Map Sauti's portable
+            // end_call name to the provider-native hangup below rather than
+            // requiring the model to execute a webhook and a second tool.
+            if ("end_call".equals(tool.name())) return;
             var webhook = new LinkedHashMap<String, Object>();
             webhook.put("name", tool.name());
             var description = tool.description() == null ? "" : tool.description();
-            if ("end_call".equals(tool.name())) {
-                description = "Record the terminal outcome after one brief respectful farewell when the caller is "
-                        + "finished. After this webhook succeeds, immediately invoke the native hang-up tool.";
-            } else if (tool.callerWaitExpected()) {
+            if (tool.callerWaitExpected()) {
                 description += " This operation may take noticeable time. Immediately before invoking it, say one "
                         + "brief, natural, professional progress acknowledgment in the caller's current language. "
                         + "Do not ask a question and do not imply success or failure. After the result returns, "
@@ -119,8 +120,8 @@ public class TelnyxManagedVoiceAgentProvisioner {
         tools.add(Map.of(
                 "type", "hangup",
                 "hangup", Map.of(
-                        "name", "hang_up",
-                        "description", "End the voice session after the farewell and successful end_call webhook."
+                        "description", "After one brief respectful farewell, immediately end the call when the caller "
+                                + "clearly indicates they are finished. Do not wait for another caller turn."
                 )
         ));
         var body = new LinkedHashMap<String, Object>();
@@ -143,8 +144,10 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   invoking it, without asking the caller a question.
                 - After every tool result, continue automatically in the same turn; never wait for more caller speech.
                 - Keep each spoken answer continuous and concise.
-                - When the caller is finished, say one brief respectful farewell, call end_call, then immediately call
-                  the native hang_up tool. Never wait for another caller turn after the farewell.
+                - On Telnyx, do not call the portable end_call webhook. The single terminal action is Telnyx's native
+                  hangup tool. When the caller clearly indicates they are finished, say one brief respectful farewell
+                  and immediately invoke hangup. Do not pass spoken_farewell, outcome, or summary arguments, do not
+                  call a webhook first, and never wait for another caller turn after the farewell.
                 """);
         body.put("greeting", blueprint.greeting());
         body.put("voice_settings", Map.of("voice", selectedVoice(blueprint.voiceId())));

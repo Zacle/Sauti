@@ -225,6 +225,27 @@ Expected:
 
 ## Change log
 
+### 2026-07-25 - Make Telnyx call termination a single native action
+
+- Fixed managed Telnyx assistants saying goodbye but leaving the phone call connected.
+- Root cause: Sauti provisioned both an `end_call` webhook and a native Hangup tool, then instructed the model to execute them sequentially. The Hangup payload also supplied an unsupported custom `name=hang_up`; Telnyx's current `HangupToolParams` schema accepts only `description`. A model could complete the Sauti webhook without ever invoking a valid native terminal action.
+- Telnyx provisioning now:
+  - omits the portable `end_call` webhook from Telnyx assistants;
+  - emits exactly one provider-native `type=hangup` tool using the current schema;
+  - instructs the model to say one farewell and immediately invoke native `hangup`;
+  - does not ask the model to pass portable `spoken_farewell`, outcome, or summary arguments to the native action.
+- The existing `call.hangup` Call Control webhook remains the authoritative lifecycle completion path in Sauti, so the native tool both disconnects the line and completes the active call record.
+- Advanced the managed Telnyx configuration version to `14`, forcing previously provisioned assistants to receive the corrected terminal-tool configuration on synchronization.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{TelnyxManagedVoiceAgentProvisioner,ManagedVoiceToolService}.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Telnyx provisioning, managed-tool, Call Control, and conversation-state tests passed; Gradle reported `BUILD SUCCESSFUL`;
+  - `.\gradlew.bat :backend:test` passed; Gradle reported `BUILD SUCCESSFUL`.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: synchronize the managed assistant, place a call, clearly say that no further help is needed, and verify that it speaks one farewell, disconnects immediately, and receives a `call.hangup` event.
+
 ### 2026-07-25 - Identify existing bookings without asking for long references
 
 - Replaced the default existing-booking intake for every agent and business type with a privacy-preserving sequence: ask for the booking phone, existing appointment date, and the name the caller says the booking was saved under. Ask one value per turn and invoke `lookup_booking` as soon as all three are present.

@@ -169,7 +169,8 @@ public class ManagedVoiceToolService {
      * Sauti's deterministic state machine, so execute the bounded, exact chain
      * at the server boundary instead of asking the model to rediscover it.
      *
-     * The Telnyx assistant owns the native hang-up after Sauti records end_call.
+     * Telnyx provisions only its native hangup tool, so a portable end_call
+     * transition must return to the provider for that terminal action.
      */
     private LlmToolResult routeAuthorizedChain(Call call, LlmToolCall initial) {
         var current = initial;

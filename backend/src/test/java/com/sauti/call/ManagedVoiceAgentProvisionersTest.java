@@ -54,14 +54,29 @@ class ManagedVoiceAgentProvisionersTest {
         assertThat(body.getValue().toString())
                 .contains("type=webhook")
                 .contains("type=hangup")
-                .contains("name=hang_up")
                 .contains("https://sauti.example/webhooks/telnyx/tools/check_availability")
                 .contains("callSid={{sauti_call_sid}}")
                 .contains("async=false")
                 .contains("timeout_ms=30000")
                 .contains("end_call")
+                .doesNotContain("/webhooks/telnyx/tools/end_call")
+                .doesNotContain("name=hang_up", "name=end_call")
                 .doesNotContain("client_side_tool")
                 .doesNotContain("promote_to_main");
+        @SuppressWarnings("unchecked")
+        var tools = (List<Map<String, Object>>) body.getValue().get("tools");
+        assertThat(tools).filteredOn(tool -> "hangup".equals(tool.get("type")))
+                .singleElement()
+                .satisfies(tool -> assertThat(tool.get("hangup")).isEqualTo(Map.of(
+                        "description", "After one brief respectful farewell, immediately end the call when the caller "
+                                + "clearly indicates they are finished. Do not wait for another caller turn."
+                )));
+        assertThat(tools).filteredOn(tool -> "webhook".equals(tool.get("type")))
+                .allSatisfy(tool -> assertThat(tool.toString()).doesNotContain("name=end_call"));
+        assertThat(body.getValue().get("instructions").toString())
+                .contains("do not call the portable end_call webhook")
+                .contains("native", "hangup tool", "immediately invoke hangup")
+                .contains("Do not pass spoken_farewell", "call a webhook first");
         @SuppressWarnings("unchecked")
         var telephony = (Map<String, Object>) body.getValue().get("telephony_settings");
         assertThat(telephony.get("recording_settings")).isEqualTo(Map.of("enabled", false));
