@@ -225,6 +225,26 @@ Expected:
 
 ## Change log
 
+### 2026-07-25 - Finalize the browser UI after Telnyx ends a call
+
+- Fixed browser test calls remaining in the `Listening` state after the assistant invoked `end_browser_call` and Telnyx ended the WebRTC conversation.
+- Root cause: the dashboard finalized its local call state only when the Telnyx SDK emitted `agent.disconnected`. `endConversation()` can settle before that event arrives, or without the event being observed promptly, leaving the transcript panel active.
+- The registered terminal tool now finalizes the local call state after the SDK hang-up attempt settles. The existing `agent.disconnected` listener remains an idempotent fallback.
+- Hang-up failures are still reported, but the already-terminal browser session is cleaned up in a `finally` path. Finalization also clears the speaking state and removes the hidden audio element.
+- Added regression coverage for successful, promise-less, and failed SDK hang-up attempts.
+- Files touched:
+  - `dashboard/features/voice-runtime/{telnyxRuntime,telnyxEndConversation,telnyxEndConversation.test}.ts`
+  - `dashboard/package.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run test:voice` passed: 9 tests;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed and generated the optimized dashboard;
+  - `git diff --check` passed.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: let the assistant end a browser test call and confirm the UI leaves `Listening`, disables the active-call controls, and diagnostics end with `runtime_ended`.
+
 ### 2026-07-25 - End Telnyx WebRTC calls through a registered browser tool
 
 - Diagnosed `sauti-telnyx-diagnostics-1784977500183.json` for Sauti test call `4babf556-a3fa-4062-b104-3777c89a5518`.

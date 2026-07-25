@@ -7,6 +7,7 @@ import {
   configString,
   providerError,
 } from "./managedRuntimeConfig";
+import { finalizeTelnyxEndConversation } from "./telnyxEndConversation";
 import { startTelnyxConversationWhenReady } from "./telnyxReadiness";
 
 export async function connectTelnyxRuntime(
@@ -46,6 +47,8 @@ export async function connectTelnyxRuntime(
   const finish = () => {
     if (!conversationStarted || ended || stopped) return;
     ended = true;
+    agentSpeaking = false;
+    callbacks.onAgentSpeaking(false);
     audio.srcObject = null;
     audio.remove();
     callbacks.onEnded("completed");
@@ -55,8 +58,11 @@ export async function connectTelnyxRuntime(
     // Acknowledge the tool before closing WebRTC so the SDK does not discard
     // its result as an output from an already-shut-down conversation.
     window.setTimeout(() => {
-      const ending = client.endConversation();
-      void ending?.catch((error) => callbacks.onError(providerError("Telnyx", error)));
+      void finalizeTelnyxEndConversation(
+        () => client.endConversation(),
+        (error) => callbacks.onError(providerError("Telnyx", error)),
+        finish,
+      );
     }, 100);
     return { success: true, ending: true };
   });
