@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "14";
+        return "15";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -120,8 +120,22 @@ public class TelnyxManagedVoiceAgentProvisioner {
         tools.add(Map.of(
                 "type", "hangup",
                 "hangup", Map.of(
-                        "description", "After one brief respectful farewell, immediately end the call when the caller "
-                                + "clearly indicates they are finished. Do not wait for another caller turn."
+                        "description", "For phone_call conversations only: after one brief respectful farewell, "
+                                + "immediately end the call when the caller clearly indicates they are finished."
+                )
+        ));
+        tools.add(Map.of(
+                "type", "client_side_tool",
+                "client_side_tool", Map.of(
+                        "name", "end_browser_call",
+                        "description", "For web_call conversations only: after one brief respectful farewell, "
+                                + "immediately end the browser voice conversation when the caller clearly indicates "
+                                + "they are finished.",
+                        "parameters", Map.of(
+                                "type", "object",
+                                "properties", Map.of(),
+                                "required", java.util.List.of()
+                        )
                 )
         ));
         var body = new LinkedHashMap<String, Object>();
@@ -144,10 +158,12 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   invoking it, without asking the caller a question.
                 - After every tool result, continue automatically in the same turn; never wait for more caller speech.
                 - Keep each spoken answer continuous and concise.
-                - On Telnyx, do not call the portable end_call webhook. The single terminal action is Telnyx's native
-                  hangup tool. When the caller clearly indicates they are finished, say one brief respectful farewell
-                  and immediately invoke hangup. Do not pass spoken_farewell, outcome, or summary arguments, do not
-                  call a webhook first, and never wait for another caller turn after the farewell.
+                - On Telnyx, do not call the portable end_call webhook. Use the current provider channel
+                  `{{telnyx_conversation_channel}}` to select exactly one terminal action. For `web_call`, say one
+                  brief respectful farewell and immediately invoke `end_browser_call`. For `phone_call`, say one brief
+                  respectful farewell and immediately invoke Telnyx's native `hangup`. Do not pass spoken_farewell,
+                  outcome, or summary arguments, do not call a webhook first, and never wait for another caller turn
+                  after the farewell.
                 """);
         body.put("greeting", blueprint.greeting());
         body.put("voice_settings", Map.of("voice", selectedVoice(blueprint.voiceId())));

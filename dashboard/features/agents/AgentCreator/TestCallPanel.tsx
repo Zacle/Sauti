@@ -187,6 +187,15 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           recordDiagnostic("agent_interrupted");
           updateStatus("listening");
         },
+        onToolInvoked(toolName) {
+          recordDiagnostic("tool_invoked", { toolName });
+        },
+        onToolCompleted(toolName, isError) {
+          recordDiagnostic("tool_completed", { toolName, isError }, isError ? "warn" : "info");
+        },
+        onToolError(toolName, reason) {
+          recordDiagnostic("tool_error", { toolName, reason }, "error");
+        },
         onError(message) {
           recordDiagnostic("runtime_error", { message }, "error");
           setError(message);

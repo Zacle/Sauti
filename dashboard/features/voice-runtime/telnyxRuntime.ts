@@ -46,9 +46,27 @@ export async function connectTelnyxRuntime(
   const finish = () => {
     if (!conversationStarted || ended || stopped) return;
     ended = true;
+    audio.srcObject = null;
+    audio.remove();
     callbacks.onEnded("completed");
   };
 
+  client.registerClientTool("end_browser_call", () => {
+    // Acknowledge the tool before closing WebRTC so the SDK does not discard
+    // its result as an output from an already-shut-down conversation.
+    window.setTimeout(() => {
+      const ending = client.endConversation();
+      void ending?.catch((error) => callbacks.onError(providerError("Telnyx", error)));
+    }, 100);
+    return { success: true, ending: true };
+  });
+  client.on("client.tool.invoked", ({ toolName }) => callbacks.onToolInvoked?.(toolName));
+  client.on("client.tool.completed", ({ toolName, isError }) =>
+    callbacks.onToolCompleted?.(toolName, isError)
+  );
+  client.on("client.tool.error", ({ toolName, reason }) =>
+    callbacks.onToolError?.(toolName, reason)
+  );
   client.on("agent.error", (error) => {
     if (conversationStarted) callbacks.onError(providerError("Telnyx", error));
   });

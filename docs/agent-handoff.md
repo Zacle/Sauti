@@ -225,6 +225,35 @@ Expected:
 
 ## Change log
 
+### 2026-07-25 - End Telnyx WebRTC calls through a registered browser tool
+
+- Diagnosed `sauti-telnyx-diagnostics-1784977500183.json` for Sauti test call `4babf556-a3fa-4062-b104-3777c89a5518`.
+- The export contained 29 browser runtime/status events and no terminal tool event. Its final `ending -> idle` transition was caused by the test UI completing its local session; it did not prove that the assistant selected Telnyx's native phone Hangup tool.
+- The remaining failure was channel-specific: this was a WebRTC `TEST-*` call, not a phone Call Control leg. Telnyx documents client-side tools as the supported browser execution path and states that they are unavailable for SIP/phone calls.
+- Managed assistants now expose two explicitly channel-scoped terminal actions:
+  - `end_browser_call`, a `client_side_tool` for `web_call`;
+  - Telnyx native Hangup for `phone_call`.
+- Instructions use Telnyx's `{{telnyx_conversation_channel}}` dynamic variable to select exactly one action after one farewell. The portable Sauti `end_call` webhook remains omitted from Telnyx assistants.
+- The browser runtime registers `end_browser_call`, acknowledges the invocation, then deterministically calls `TelnyxAIAgent.endConversation()`. Provider-driven endings now also remove the hidden audio element.
+- Test-call diagnostics now record safe client-tool lifecycle events (`tool_invoked`, `tool_completed`, and `tool_error`) with only tool name/status, making future terminal failures observable without logging arguments or customer data.
+- Verified the current assistant payload against the official Telnyx `7.10.0` SDK types: `client_side_tool` requires `name`, `description`, and JSON Schema `parameters`; native Hangup accepts only `description`.
+- Advanced the managed Telnyx configuration version to `15`, forcing assistant synchronization on the next call after deployment.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{TelnyxManagedVoiceAgentProvisioner,ManagedVoiceToolService}.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `dashboard/features/voice-runtime/{browserVoiceRuntime,telnyxRuntime}.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Telnyx provisioning, managed-tool, and Call Control tests passed;
+  - `.\gradlew.bat :backend:test` passed;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run test:voice` passed: 6 tests;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed and generated the optimized dashboard.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: start a browser test call, clearly state that no further help is needed, and verify diagnostics contain `tool_invoked` and `tool_completed` for `end_browser_call` followed by `runtime_ended`. For a real phone call, verify native Hangup produces `call.hangup`.
+
 ### 2026-07-25 - Make Telnyx call termination a single native action
 
 - Fixed managed Telnyx assistants saying goodbye but leaving the phone call connected.

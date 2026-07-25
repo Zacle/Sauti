@@ -54,6 +54,8 @@ class ManagedVoiceAgentProvisionersTest {
         assertThat(body.getValue().toString())
                 .contains("type=webhook")
                 .contains("type=hangup")
+                .contains("type=client_side_tool")
+                .contains("name=end_browser_call")
                 .contains("https://sauti.example/webhooks/telnyx/tools/check_availability")
                 .contains("callSid={{sauti_call_sid}}")
                 .contains("async=false")
@@ -61,21 +63,34 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("end_call")
                 .doesNotContain("/webhooks/telnyx/tools/end_call")
                 .doesNotContain("name=hang_up", "name=end_call")
-                .doesNotContain("client_side_tool")
                 .doesNotContain("promote_to_main");
         @SuppressWarnings("unchecked")
         var tools = (List<Map<String, Object>>) body.getValue().get("tools");
         assertThat(tools).filteredOn(tool -> "hangup".equals(tool.get("type")))
                 .singleElement()
                 .satisfies(tool -> assertThat(tool.get("hangup")).isEqualTo(Map.of(
-                        "description", "After one brief respectful farewell, immediately end the call when the caller "
-                                + "clearly indicates they are finished. Do not wait for another caller turn."
+                        "description", "For phone_call conversations only: after one brief respectful farewell, "
+                                + "immediately end the call when the caller clearly indicates they are finished."
+                )));
+        assertThat(tools).filteredOn(tool -> "client_side_tool".equals(tool.get("type")))
+                .singleElement()
+                .satisfies(tool -> assertThat(tool.get("client_side_tool")).isEqualTo(Map.of(
+                        "name", "end_browser_call",
+                        "description", "For web_call conversations only: after one brief respectful farewell, "
+                                + "immediately end the browser voice conversation when the caller clearly indicates "
+                                + "they are finished.",
+                        "parameters", Map.of(
+                                "type", "object",
+                                "properties", Map.of(),
+                                "required", List.of()
+                        )
                 )));
         assertThat(tools).filteredOn(tool -> "webhook".equals(tool.get("type")))
                 .allSatisfy(tool -> assertThat(tool.toString()).doesNotContain("name=end_call"));
         assertThat(body.getValue().get("instructions").toString())
                 .contains("do not call the portable end_call webhook")
-                .contains("native", "hangup tool", "immediately invoke hangup")
+                .contains("{{telnyx_conversation_channel}}", "web_call", "end_browser_call", "phone_call")
+                .contains("native", "hangup")
                 .contains("Do not pass spoken_farewell", "call a webhook first");
         @SuppressWarnings("unchecked")
         var telephony = (Map<String, Object>) body.getValue().get("telephony_settings");
