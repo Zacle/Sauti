@@ -104,7 +104,7 @@ class ManagedVoiceAgentProvisionersTest {
                 "stop_on_conversation_end", true
         ));
         assertThat(body.getValue().get("privacy_settings"))
-                .isEqualTo(Map.of("data_retention", false));
+                .isEqualTo(Map.of("data_retention", true));
     }
 
     @Test

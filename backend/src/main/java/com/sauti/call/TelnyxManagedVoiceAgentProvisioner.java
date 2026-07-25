@@ -206,7 +206,9 @@ public class TelnyxManagedVoiceAgentProvisioner {
                         "stop_on_conversation_end", true
                 )
         ));
-        body.put("privacy_settings", Map.of("data_retention", false));
+        // Telnyx validation 10015 requires provider data retention whenever
+        // assistant-managed recording is enabled.
+        body.put("privacy_settings", Map.of("data_retention", true));
         body.put("interruption_settings", Map.of(
                 "enable", true,
                 "disable_greeting_interruption", false,

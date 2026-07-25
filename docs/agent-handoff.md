@@ -238,6 +238,7 @@ Expected:
   - browser SDK sessions send `X-Sauti-Conversation-Channel: web_call`, which Telnyx maps to `sauti_conversation_channel` and which takes precedence over the default.
 - Advanced the managed Telnyx configuration version to `16`, forcing assistant resynchronization on the first call after deployment.
 - The live assistant inspection also confirmed why recordings stopped: `telephony_settings.recording_settings.enabled` was explicitly `false`. Provisioning now enables dual-channel MP3 recording and stops recording when the conversation ends.
+- The first synchronization attempt with recording enabled was rejected by Telnyx validation `10015`: recording cannot be enabled while `privacy_settings.data_retention=false`. The payload now sets provider data retention to `true`, which is Telnyx's required pairing for assistant-managed recording. This is a deliberate privacy/storage tradeoff required to restore recordings; deployments that require zero Telnyx retention must instead disable Telnyx recording.
 - Files touched:
   - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
   - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
