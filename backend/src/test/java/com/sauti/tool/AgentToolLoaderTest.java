@@ -161,7 +161,7 @@ class AgentToolLoaderTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void existingBookingToolsAlwaysRequireReferenceAndPhoneVerification() {
+    void lookupUsesPhoneDateAndCallerSuppliedNameInsteadOfARequiredReference() {
         var agent = new Agent(new Tenant("Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");
         agent.update("Amina", "Hello", "Prompt", "en", List.of("en"), null, List.of(), true, "UTC", "");
         var lookup = new AgentTool(agent, "lookup_booking", "Find booking", Map.of(
@@ -178,9 +178,15 @@ class AgentToolLoaderTest {
         var properties = (Map<String, Object>) definition.inputSchema().get("properties");
         var required = (List<String>) definition.inputSchema().get("required");
 
-        assertThat(properties).containsKeys("booking_number", "caller_phone");
-        assertThat(required).contains("booking_number", "caller_phone");
-        assertThat(definition.description()).contains("Never disclose or mutate booking data");
+        assertThat(properties)
+                .containsKeys("caller_phone", "booking_date", "booking_lookup_name", "booking_time")
+                .doesNotContainKey("booking_number");
+        assertThat(required)
+                .contains("caller_phone", "booking_date", "booking_lookup_name")
+                .doesNotContain("booking_number", "booking_time");
+        assertThat(definition.description())
+                .contains("caller-supplied phone, appointment date, and saved-under name")
+                .contains("Never reveal a stored name");
     }
 
     private AgentToolLoader loader(AgentToolRepository repository) {

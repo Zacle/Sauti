@@ -26,10 +26,27 @@ import org.springframework.stereotype.Service;
 @Service
 public class ConversationStateTool {
     public static final String NAME = "update_conversation_state";
+    private static final int BOOKING_REFERENCE_SUFFIX_LENGTH = 12;
+    private static final Map<String, String> SPOKEN_BOOKING_TOKENS = Map.ofEntries(
+            Map.entry("zero", "0"),
+            Map.entry("one", "1"),
+            Map.entry("two", "2"),
+            Map.entry("three", "3"),
+            Map.entry("four", "4"),
+            Map.entry("five", "5"),
+            Map.entry("six", "6"),
+            Map.entry("seven", "7"),
+            Map.entry("eight", "8"),
+            Map.entry("nine", "9"),
+            Map.entry("dash", "-"),
+            Map.entry("hyphen", "-"),
+            Map.entry("minus", "-")
+    );
     private static final Set<String> COMMON_FIELDS = Set.of(
             "caller_name", "appointment_name", "recipient_relation", "service_type",
             "caller_phone", "new_caller_phone", "caller_email",
-            "booking_number", "preferred_day", "preferred_time",
+            "booking_number", "booking_date", "booking_lookup_name", "booking_time",
+            "preferred_day", "preferred_time",
             "review_decision"
     );
     private static final Set<String> SUBJECTS = Set.of(
@@ -75,7 +92,10 @@ public class ConversationStateTool {
                     case "caller_phone" -> "Complete caller-provided phone number.";
                     case "new_caller_phone" -> "Replacement contact phone explicitly requested for an existing booking. Never overwrite caller_phone, which verifies the current booking.";
                     case "caller_email" -> "Complete caller-provided email address.";
-                    case "booking_number" -> "Exact customer-facing booking number supplied for a lookup, update, reschedule, or cancellation.";
+                    case "booking_number" -> "Accumulated customer-facing booking number supplied for a lookup, update, reschedule, or cancellation. Normalize spelled characters, number words, and dash/hyphen into the SAT-XXXXXXXXXXXX form. Consecutive partial fragments are valid updates.";
+                    case "booking_date" -> "Date of an existing appointment, normalized to yyyy-MM-dd in the business timezone. This identifies an existing booking and is distinct from preferred_day for a new or replacement date.";
+                    case "booking_lookup_name" -> "Name the caller says the existing booking was saved under. Never fill this from a name disclosed by a tool result.";
+                    case "booking_time" -> "Exact time of an existing appointment normalized to HH:mm, only when the server reports that phone, date, and saved name match more than one booking.";
                     case "preferred_day" -> "Clearly understood appointment date normalized to yyyy-MM-dd using TODAY IN THE BUSINESS TIMEZONE. Omit when the date is unclear.";
                     case "preferred_time" -> "Clearly understood exact appointment time normalized to HH:mm, or a clear broad period such as morning or afternoon. Omit when the time is unclear.";
                     case "review_decision" -> "Meaning of the caller's latest response to the immediately preceding server-retained booking review or action confirmation: approved, corrected, rejected, or unclear. This is turn-scoped and never inferred from politeness alone.";
@@ -265,8 +285,11 @@ public class ConversationStateTool {
                     && (turnUpdates.containsKey("preferred_day") || turnUpdates.containsKey("preferred_time"))
                     && configuredFor(call, "check_availability");
             var bookingIdentityBecameReady = (turnUpdates.containsKey("booking_number")
-                    || turnUpdates.containsKey("caller_phone"))
-                    && bookingIdentityArguments(next).isPresent()
+                    || turnUpdates.containsKey("caller_phone")
+                    || turnUpdates.containsKey("booking_date")
+                    || turnUpdates.containsKey("booking_lookup_name")
+                    || turnUpdates.containsKey("booking_time"))
+                    && lookupBookingArguments(next).isPresent()
                     && configuredFor(call, "lookup_booking");
             var callDisposition = choice(
                     toolCall.arguments().get("call_disposition"), CALL_DISPOSITIONS, "continue"
@@ -332,7 +355,7 @@ public class ConversationStateTool {
                     arguments.put("confirmation_state", "confirmed");
                     result.put("nextToolArguments", Map.copyOf(arguments));
                 } else if ("lookup_booking".equals(businessTool)) {
-                    bookingIdentityArguments(next).ifPresent(arguments ->
+                    lookupBookingArguments(next).ifPresent(arguments ->
                             result.put("nextToolArguments", arguments)
                     );
                 } else if ("end_call".equals(businessTool)) {
@@ -436,6 +459,27 @@ public class ConversationStateTool {
         ));
     }
 
+    private Optional<Map<String, Object>> lookupBookingArguments(ConversationState state) {
+        var verified = bookingIdentityArguments(state);
+        if (verified.isPresent()) return verified;
+        var callerPhone = state.values().getOrDefault("caller_phone", "").trim();
+        var bookingDate = state.values().getOrDefault("booking_date", "").trim();
+        var bookingName = state.values().getOrDefault("booking_lookup_name", "").trim();
+        try {
+            java.time.LocalDate.parse(bookingDate);
+        } catch (java.time.format.DateTimeParseException exception) {
+            return Optional.empty();
+        }
+        if (callerPhone.isBlank() || bookingName.isBlank()) return Optional.empty();
+        var arguments = new LinkedHashMap<String, Object>();
+        arguments.put("caller_phone", callerPhone);
+        arguments.put("booking_date", bookingDate);
+        arguments.put("booking_lookup_name", bookingName);
+        var bookingTime = state.values().getOrDefault("booking_time", "").trim();
+        if (!bookingTime.isBlank()) arguments.put("booking_time", bookingTime);
+        return Optional.of(Map.copyOf(arguments));
+    }
+
     private Optional<PendingAction> pendingAction(Call call) {
         try {
             var pending = sessions.pendingAction(call.getTwilioCallSid());
@@ -455,6 +499,11 @@ public class ConversationStateTool {
         // Review decisions authorize at most the current caller turn. They must
         // never leak into a later turn as stale approval.
         values.remove("review_decision");
+        if (turnUpdates.containsKey("booking_date")
+                || turnUpdates.containsKey("booking_lookup_name")) {
+            values.remove("booking_number");
+            values.remove("booking_time");
+        }
         clearFields(arguments.get("clear_fields"), allowedDetails).forEach(values::remove);
 
         var subject = choice(arguments.get("booking_subject"), SUBJECTS, "unchanged");
@@ -463,7 +512,17 @@ public class ConversationStateTool {
         if ("unchanged".equals(intent)) intent = current.bookingIntent();
 
         turnUpdates.forEach((key, value) -> {
-            if (COMMON_FIELDS.contains(key) && !value.isBlank()) values.put(key, value);
+            if (!COMMON_FIELDS.contains(key) || value.isBlank()) return;
+            if ("booking_number".equals(key)) {
+                var normalized = normalizeBookingNumber(value);
+                var previous = normalizeBookingNumber(values.getOrDefault(key, ""));
+                if (canAppendBookingFragment(previous, normalized)) {
+                    normalized = previous + normalized.replaceFirst("^-", "");
+                }
+                if (!normalized.isBlank()) values.put(key, normalized);
+                return;
+            }
+            values.put(key, value);
         });
         detailUpdates.forEach((key, value) -> {
             if (allowedDetails.contains(key) && !value.isBlank()) values.put(key, value);
@@ -488,6 +547,42 @@ public class ConversationStateTool {
             values.remove("recipient_relation");
         }
         return new ConversationState(values, subject, intent, current.revision() + 1);
+    }
+
+    private String normalizeBookingNumber(String value) {
+        if (value == null || value.isBlank()) return "";
+        var result = new StringBuilder();
+        var tokens = value.trim().toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}-]+", " ")
+                .split("\\s+");
+        for (var token : tokens) {
+            if (token.isBlank()) continue;
+            var spoken = SPOKEN_BOOKING_TOKENS.get(token);
+            if (spoken != null) {
+                result.append(spoken);
+            } else if ("sat".equals(token)) {
+                result.append("SAT");
+            } else {
+                result.append(token.replaceAll("[^\\p{L}\\p{N}]", "").toUpperCase(Locale.ROOT));
+            }
+        }
+        var normalized = result.toString()
+                .replaceAll("-+", "-")
+                .replaceAll("[^A-Z0-9-]", "");
+        if (normalized.startsWith("SAT") && !normalized.startsWith("SAT-")) {
+            normalized = "SAT-" + normalized.substring(3).replaceFirst("^-", "");
+        }
+        return normalized;
+    }
+
+    private boolean canAppendBookingFragment(String previous, String fragment) {
+        if (!previous.matches("SAT-[A-Z0-9]{0," + (BOOKING_REFERENCE_SUFFIX_LENGTH - 1) + "}")) {
+            return false;
+        }
+        if (fragment.isBlank() || fragment.startsWith("SAT")) return false;
+        var suffix = fragment.replaceFirst("^-", "").replaceAll("[^A-Z0-9]", "");
+        var previousLength = previous.substring(4).length();
+        return !suffix.isBlank() && previousLength + suffix.length() <= BOOKING_REFERENCE_SUFFIX_LENGTH;
     }
 
     private Map<String, String> updates(Object value) {

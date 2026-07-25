@@ -32,4 +32,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             OffsetDateTime windowStart,
             OffsetDateTime windowEnd
     );
+
+    List<Booking> findAllByTenantIdAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+            UUID tenantId,
+            OffsetDateTime windowStart,
+            OffsetDateTime windowEnd
+    );
 }

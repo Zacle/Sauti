@@ -1132,6 +1132,122 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
+    void lookupFindsABookingByPhoneAppointmentDateAndCallerSuppliedName() {
+        var fixture = fixture(HOURS, List.of());
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getBookingReference()).thenReturn("SAT-AB12CD34");
+        when(booking.getCallerPhone()).thenReturn("011-575-2441");
+        when(booking.getCallerName()).thenReturn("Zachary Cole");
+        when(booking.getServiceType()).thenReturn("women hairstyle");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
+        when(booking.getDurationMinutes()).thenReturn(60);
+        when(booking.getStatus()).thenReturn("confirmed");
+        when(fixture.bookingService.findOnAppointmentDate(
+                any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
+        )).thenReturn(List.of(booking));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-by-details", "lookup_booking", Map.of(
+                        "caller_phone", "0115752441",
+                        "booking_date", "2026-07-31",
+                        "booking_lookup_name", "Zachary Cole"
+                )
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_found")
+                .containsEntry("bookingFound", true)
+                .containsEntry("bookingNumber", "SAT-AB12CD34")
+                .containsEntry("appointmentName", "Zachary Cole")
+                .doesNotContainKeys("callerPhone", "callerEmail");
+        var remembered = org.mockito.ArgumentCaptor.forClass(ConversationState.class);
+        verify(fixture.callSessionStore).updateConversationState(eq("call-sid"), remembered.capture());
+        assertThat(remembered.getValue().values())
+                .containsEntry("booking_number", "SAT-AB12CD34");
+    }
+
+    @Test
+    void lookupRejectsAWrongSavedUnderNameWithoutRevealingTheStoredName() {
+        var fixture = fixture(HOURS, List.of());
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getCallerPhone()).thenReturn("011-575-2441");
+        when(booking.getCallerName()).thenReturn("Alexandra Secret");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
+        when(fixture.bookingService.findOnAppointmentDate(
+                any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
+        )).thenReturn(List.of(booking));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-wrong-name", "lookup_booking", Map.of(
+                        "caller_phone", "0115752441",
+                        "booking_date", "2026-07-31",
+                        "booking_lookup_name", "Zachary Cole"
+                )
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_identity_mismatch")
+                .containsEntry("bookingFound", false)
+                .containsEntry("actionPerformed", false)
+                .containsEntry("retryField", "caller_phone")
+                .doesNotContainKeys("appointmentName", "serviceType", "bookingNumber");
+        assertThat(result.result().toString())
+                .doesNotContain("Alexandra Secret")
+                .contains("never reveal a stored name");
+    }
+
+    @Test
+    void lookupAsksForTheExactTimeWithoutDisclosingAmbiguousCandidates() {
+        var fixture = fixture(HOURS, List.of());
+        var morning = mock(com.sauti.calendar.Booking.class);
+        var afternoon = mock(com.sauti.calendar.Booking.class);
+        for (var booking : List.of(morning, afternoon)) {
+            when(booking.getCallerPhone()).thenReturn("011-575-2441");
+            when(booking.getCallerName()).thenReturn("Zachary Cole");
+        }
+        when(morning.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T09:00:00Z"));
+        when(afternoon.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T14:30:00Z"));
+        when(afternoon.getBookingReference()).thenReturn("SAT-AFTERNOON");
+        when(afternoon.getStatus()).thenReturn("confirmed");
+        when(afternoon.getServiceType()).thenReturn("women hairstyle");
+        when(afternoon.getDurationMinutes()).thenReturn(60);
+        when(fixture.bookingService.findOnAppointmentDate(
+                any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
+        )).thenReturn(List.of(morning, afternoon));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-ambiguous", "lookup_booking", Map.of(
+                        "caller_phone", "0115752441",
+                        "booking_date", "2026-07-31",
+                        "booking_lookup_name", "Zachary Cole"
+                )
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_identity_ambiguous")
+                .containsEntry("bookingFound", false)
+                .containsEntry("actionPerformed", false)
+                .containsEntry("retryField", "booking_time")
+                .doesNotContainKeys("spokenResponse", "appointmentName", "appointmentAt", "bookingNumber");
+        assertThat(result.result().get("instruction").toString())
+                .contains("exact appointment time", "Do not say how many")
+                .doesNotContain("09:00", "14:30");
+
+        var narrowed = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-by-time", "lookup_booking", Map.of(
+                        "caller_phone", "0115752441",
+                        "booking_date", "2026-07-31",
+                        "booking_lookup_name", "Zachary Cole",
+                        "booking_time", "14:30"
+                )
+        ));
+
+        assertThat(narrowed.result())
+                .containsEntry("status", "booking_found")
+                .containsEntry("appointmentAt", "2026-07-31T14:30Z");
+    }
+
+    @Test
     void updatePreservesTheAppointmentAndChangesOnlyConfirmedDetails() {
         var fixture = fixture(HOURS, List.of());
         var bookingId = java.util.UUID.randomUUID();

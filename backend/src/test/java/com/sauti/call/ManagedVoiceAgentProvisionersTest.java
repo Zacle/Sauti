@@ -44,7 +44,12 @@ class ManagedVoiceAgentProvisionersTest {
                 .containsEntry("voice_settings", Map.of("voice", "Telnyx.NaturalHD.astra"))
                 .containsEntry("transcription", Map.of(
                         "model", "deepgram/nova-3",
-                        "language", "auto"
+                        "language", "auto",
+                        "settings", Map.of(
+                                "smart_format", true,
+                                "numerals", true,
+                                "keyterm", "SAT,Sauti"
+                        )
                 ));
         assertThat(body.getValue().toString())
                 .contains("type=webhook")

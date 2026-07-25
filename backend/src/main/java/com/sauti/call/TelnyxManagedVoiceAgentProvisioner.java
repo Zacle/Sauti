@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "11";
+        return "13";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -154,6 +154,21 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 "language",
                 blueprint.supportedLanguages().size() > 1 ? "auto" : blueprint.language()
         );
+        var transcriptionSettings = new LinkedHashMap<String, Object>();
+        transcriptionSettings.put("smart_format", true);
+        transcriptionSettings.put("numerals", true);
+        var keyterms = java.util.stream.Stream.concat(
+                        java.util.stream.Stream.of("SAT", "Sauti"),
+                        blueprint.boostedKeywords().stream()
+                )
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .map(value -> value.replace(",", " "))
+                .distinct()
+                .limit(100)
+                .toList();
+        transcriptionSettings.put("keyterm", String.join(",", keyterms));
+        transcription.put("settings", Map.copyOf(transcriptionSettings));
         body.put("transcription", Map.copyOf(transcription));
         body.put("tools", tools);
         body.put("enabled_features", java.util.List.of("telephony"));

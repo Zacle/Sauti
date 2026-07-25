@@ -65,6 +65,21 @@ public class BookingService {
     }
 
     @Transactional(readOnly = true)
+    public List<Booking> findOnAppointmentDate(UUID tenantId, LocalDate date, ZoneId timezone) {
+        Objects.requireNonNull(tenantId, "Tenant is required");
+        Objects.requireNonNull(date, "Appointment date is required");
+        Objects.requireNonNull(timezone, "Business timezone is required");
+        var start = date.atStartOfDay(timezone).toOffsetDateTime();
+        var end = date.plusDays(1).atStartOfDay(timezone).toOffsetDateTime();
+        return bookingRepository
+                .findAllByTenantIdAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        tenantId,
+                        start,
+                        end
+                );
+    }
+
+    @Transactional(readOnly = true)
     public Booking get(UUID tenantId, UUID bookingId) {
         return bookingRepository.findByIdAndTenantId(bookingId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Booking not found"));

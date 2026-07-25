@@ -21,6 +21,37 @@ import org.mockito.ArgumentCaptor;
 
 class ConversationStateToolTest {
     @Test
+    void normalizesAndAccumulatesSpelledBookingNumberFragments() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("spelled-booking-call");
+        when(sessions.conversationState("spelled-booking-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of("booking_number", "SAT-"),
+                        ConversationState.SUBJECT_UNKNOWN,
+                        ConversationState.INTENT_ACTIVE,
+                        2
+                )
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of(
+                        "booking_number", "dash o h m two k f a six h o p one"
+                ),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Thank you. What phone number was used for the booking?"
+        )));
+
+        assertThat(captureState(sessions, "spelled-booking-call").values())
+                .containsEntry("booking_number", "SAT-OHM2KFA6HOP1");
+    }
+
+    @Test
     void correctedSpeakerNameUpdatesASelfBookingWithoutDependingOnCallerWording() {
         var sessions = mock(CallSessionStore.class);
         var call = call("semantic-call");
@@ -543,6 +574,103 @@ class ConversationStateToolTest {
                         "caller_phone", "0115752441"
                 ))
                 .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void completingPhoneDateAndNameForcesAReferenceFreeLookup() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("details-identity-call");
+        when(sessions.conversationState("details-identity-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_phone", "0115752441",
+                                "booking_date", "2026-07-31"
+                        ),
+                        ConversationState.SUBJECT_UNKNOWN,
+                        ConversationState.INTENT_ACTIVE,
+                        3
+                )
+        ));
+        var repository = mock(AgentToolRepository.class);
+        var lookup = mock(AgentTool.class);
+        when(lookup.actionEffect()).thenReturn(ToolActionEffect.READ_ONLY);
+        when(repository.findByAgent_IdAndToolNameAndIsActiveTrue(
+                call.getAgent().getId(), "lookup_booking"
+        )).thenReturn(Optional.of(lookup));
+        var tool = new ConversationStateTool(sessions, repository);
+
+        var result = tool.execute(call, toolCall(arguments(
+                "updates", Map.of("booking_lookup_name", "Zachary Cole"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "turn_understanding", "clear",
+                "caller_question", "none",
+                "action_authorization", "not_applicable",
+                "call_disposition", "continue",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Let me check that booking."
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "lookup_booking")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "caller_phone", "0115752441",
+                        "booking_date", "2026-07-31",
+                        "booking_lookup_name", "Zachary Cole"
+                ))
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void appointmentTimeIsIncludedWhenRetryingAnAmbiguousIdentity() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("ambiguous-identity-call");
+        when(sessions.conversationState("ambiguous-identity-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_phone", "0115752441",
+                                "booking_date", "2026-07-31",
+                                "booking_lookup_name", "Zachary Cole"
+                        ),
+                        ConversationState.SUBJECT_UNKNOWN,
+                        ConversationState.INTENT_ACTIVE,
+                        4
+                )
+        ));
+        var repository = mock(AgentToolRepository.class);
+        var lookup = mock(AgentTool.class);
+        when(lookup.actionEffect()).thenReturn(ToolActionEffect.READ_ONLY);
+        when(repository.findByAgent_IdAndToolNameAndIsActiveTrue(
+                call.getAgent().getId(), "lookup_booking"
+        )).thenReturn(Optional.of(lookup));
+        var tool = new ConversationStateTool(sessions, repository);
+
+        var result = tool.execute(call, toolCall(arguments(
+                "updates", Map.of("booking_time", "14:30"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "turn_understanding", "clear",
+                "caller_question", "none",
+                "action_authorization", "not_applicable",
+                "call_disposition", "continue",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", ""
+        )));
+
+        assertThat(result.result()).containsEntry("nextToolArguments", Map.of(
+                "caller_phone", "0115752441",
+                "booking_date", "2026-07-31",
+                "booking_lookup_name", "Zachary Cole",
+                "booking_time", "14:30"
+        ));
     }
 
     @Test

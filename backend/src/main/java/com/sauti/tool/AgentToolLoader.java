@@ -142,24 +142,48 @@ public class AgentToolLoader {
         var required = new java.util.ArrayList<String>(
                 (List<String>) schema.getOrDefault("required", List.of())
         );
-        properties.put("booking_number", Map.of(
-                "type", "string",
-                "description", "Exact customer-facing Sauti booking number supplied by the caller."
-        ));
+        if ("lookup_booking".equals(definition.name())) {
+            properties.remove("booking_number");
+            required.remove("booking_number");
+            properties.put("booking_date", Map.of(
+                    "type", "string",
+                    "format", "date",
+                    "description", "Date of the existing appointment in yyyy-MM-dd format in the business timezone."
+            ));
+            properties.put("booking_lookup_name", Map.of(
+                    "type", "string",
+                    "description", "Name the caller says the booking was saved under. Ask the caller; never reveal or infer the stored name."
+            ));
+            properties.put("booking_time", Map.of(
+                    "type", "string",
+                    "description", "Exact existing appointment time in HH:mm, only when a prior lookup reports multiple matching bookings."
+            ));
+        } else {
+            properties.put("booking_number", Map.of(
+                    "type", "string",
+                    "description", "Server-verified Sauti booking number returned by lookup_booking. Never ask the caller to provide it."
+            ));
+        }
         properties.put("caller_phone", Map.of(
                 "type", "string",
-                "description", "Exact phone number used for the existing booking. Required for identity verification before reading or changing it."
+                "description", "Exact phone number the caller says was used for the existing booking."
         ));
-        for (var field : List.of("booking_number", "caller_phone")) {
+        var identityFields = "lookup_booking".equals(definition.name())
+                ? List.of("caller_phone", "booking_date", "booking_lookup_name")
+                : List.of("booking_number", "caller_phone");
+        for (var field : identityFields) {
             if (!required.contains(field)) required.add(field);
         }
         schema.put("properties", Map.copyOf(properties));
         schema.put("required", List.copyOf(required));
         return new LlmToolDefinition(
                 definition.name(),
-                definition.description()
-                        + " Require both the booking number and exact booking phone. "
-                        + "Never disclose or mutate booking data until the server verifies both.",
+                definition.description() + ("lookup_booking".equals(definition.name())
+                        ? " Identify the booking from the caller-supplied phone, appointment date, and saved-under name. "
+                                + "If multiple bookings match, ask for the appointment time. Never reveal a stored name "
+                                + "or booking facts until the server verifies the supplied values together."
+                        : " Use only the booking number established by a successful lookup_booking plus the verified "
+                                + "booking phone. Never ask the caller for a booking number or mutate data before lookup."),
                 Map.copyOf(schema),
                 definition.callerWaitExpected()
         );

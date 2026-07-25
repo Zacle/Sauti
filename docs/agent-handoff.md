@@ -225,6 +225,58 @@ Expected:
 
 ## Change log
 
+### 2026-07-25 - Identify existing bookings without asking for long references
+
+- Replaced the default existing-booking intake for every agent and business type with a privacy-preserving sequence: ask for the booking phone, existing appointment date, and the name the caller says the booking was saved under. Ask one value per turn and invoke `lookup_booking` as soon as all three are present.
+- The server now searches only the current tenant and appointment-date window, then verifies normalized phone and caller-supplied name together. It does not reveal which field failed or disclose the stored name before all values match.
+- If more than one booking matches on the same date, the workflow asks only for the exact appointment time and retries with `booking_time`; it does not disclose how many candidates exist or reveal their names or times.
+- After successful verification, the server stores the real booking reference as private conversation state. Update, reschedule, and cancellation tools continue to require that server-established reference plus the verified phone, so callers do not need to dictate a long ID and no mutation protection is weakened.
+- Legacy booking-reference arguments remain accepted for backward compatibility when voluntarily supplied, but shared prompts and injected tool schemas never require or ask the caller for one.
+- Added tenant/date repository lookup support, deterministic state chaining for the new identity fields, platform-injected schemas for all configured calendar agents, and managed Telnyx configuration version `13` so existing assistants receive the new universal contract.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/{BookingRepository,BookingService}.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,ConversationStateTool,DefaultToolSeeder,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/{AgentToolLoader,ConversationStateTool,SautiCalendarFulfillmentTest}.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed-provider, prompt, schema, semantic-state, and calendar fulfillment suite passed: 83 tests, Gradle `BUILD SUCCESSFUL`;
+  - `.\gradlew.bat :backend:test` passed; Gradle reported `BUILD SUCCESSFUL`.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: ask any agent to find an existing booking. It should collect phone, date, and saved-under name one at a time, ask for time only when needed to disambiguate, and never request or read a booking reference unless the caller voluntarily asks about it after verification.
+
+### 2026-07-25 - Accept caller-spelled booking numbers across turns
+
+- Diagnosed `sauti-telnyx-diagnostics-1784972749386.json` and its call transcript for Sauti call `d2d983f6-b471-424c-a4dc-8e83d0b6d48c`.
+- The caller coherently supplied `SAT-OHM2KFA6HOP1` in character groups, but the Telnyx assistant repeatedly responded that it did not understand. The exported diagnostic contained 54 runtime/state events and no transcript or tool events, confirming that no Sauti tool was invoked and no booking lookup occurred.
+- Corrected the managed-assistant boundary:
+  - Telnyx Nova-3 transcription now enables `smart_format` and `numerals`;
+  - the stable `SAT` and `Sauti` terms plus agent-configured/business keywords are sent through Telnyx's supported Deepgram `keyterm` setting;
+  - Telnyx configuration version is now `12`, forcing existing managed assistants to receive the updated transcription and instruction contract.
+- Corrected the conversation contract:
+  - booking numbers are explicitly treated as structured identifiers rather than personal details;
+  - callers may provide the identifier character by character and across consecutive turns;
+  - coherent partial fragments are persisted and receive a short listening cue instead of being classified as gibberish;
+  - the assistant normalizes only explicit dash and number words and must not silently repair `SET` to `SAT` or guess an uncertain character.
+- Added a deterministic server fallback in `ConversationStateTool`. Spelled fragments such as `dash o h m two k f a six h o p one` append safely to retained `SAT-` and normalize to `SAT-OHM2KFA6HOP1`. This does not bypass identity protection: the exact booking phone is still required and `lookup_booking` remains authoritative.
+- Updated booking tool schemas and new-agent examples to describe the actual `SAT-XXXXXXXXXXXX` format.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/{AgentToolLoader,ConversationStateTool,DefaultToolSeeder}.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/ConversationStateToolTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Telnyx provisioning, conversation contract, and semantic-state tests passed; Gradle reported `BUILD SUCCESSFUL`.
+  - `.\gradlew.bat :backend:test --rerun-tasks` passed; Gradle reported `BUILD SUCCESSFUL`.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: repeat the supplied identifier in two or three fragments. The assistant should retain each fragment, ask for the booking phone once the 12-character suffix is complete, invoke `lookup_booking`, and never claim a match before the factual tool result.
+
 ### 2026-07-25 - Parse the current Telnyx voice catalog
 
 - Fixed Agent Studio reporting that no compatible voice was available for every language even though Telnyx was enabled.

@@ -23,11 +23,13 @@ public class DefaultToolSeeder {
                         "time_preference", property("string", "Exact preferred time in HH:mm when provided, otherwise a period such as morning", ""),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("date")), "sauti_calendar", "noop_calendar", 10);
-        seed(agent, "lookup_booking", "Look up an existing booking only after collecting both its customer-facing booking number and the exact phone number used for that booking. Never disclose booking details before the server confirms both values.",
+        seed(agent, "lookup_booking", "Look up an existing booking only after collecting the booking phone, appointment date, and the name the caller says it was saved under. Never reveal the stored name or booking details before the server confirms all supplied values together.",
                 schema(Map.of(
-                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", ""),
-                        "caller_phone", property("string", "Exact phone number used when the booking was created", "phone")
-                ), List.of("booking_number", "caller_phone")), "sauti_calendar", "noop_calendar", 19);
+                        "caller_phone", property("string", "Exact phone number used when the booking was created", "phone"),
+                        "booking_date", property("string", "Existing appointment date in yyyy-MM-dd format", "date"),
+                        "booking_lookup_name", property("string", "Name the caller says the booking was saved under", ""),
+                        "booking_time", property("string", "Exact existing appointment time in HH:mm, only when needed to disambiguate multiple matches", "")
+                ), List.of("caller_phone", "booking_date", "booking_lookup_name")), "sauti_calendar", "noop_calendar", 19);
         seed(agent, "book_slot", "Two-step booking: appointment_name is the service recipient. Set review_action semantically to prepare_review, correct_review, or unconditional approve_review from the caller's meaning in their language. If that turn also contains a question, condition, hesitation, correction, or information request, set question_handling to answer_before_action so nothing is saved until it is answered and freshly confirmed. The server retains the private review token. Never ask the caller to spell or expose the token.",
                 schema(Map.ofEntries(
                         Map.entry("appointment_at", property("string", "Confirmed ISO-8601 appointment datetime", "date-time")),
@@ -44,19 +46,19 @@ public class DefaultToolSeeder {
                 )), "sauti_calendar", "noop_calendar", 20);
         seed(agent, "reschedule_booking", "Reschedule only after checking the new time and receiving unconditional confirmation. If the latest turn includes a separate question, condition, hesitation, correction, or information request, use question_handling answer_before_action and answer it before changing anything.",
                 schema(Map.of(
-                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", ""),
+                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34EF56", ""),
                         "caller_phone", property("string", "Exact phone number currently stored on the booking", "phone"),
                         "appointment_at", property("string", "Confirmed new ISO-8601 appointment datetime", "date-time"),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("booking_number", "caller_phone", "appointment_at")), "sauti_calendar", "noop_calendar", 21);
         seed(agent, "cancel_booking", "Cancel only after unconditional caller confirmation. If the latest turn includes a separate question, condition, hesitation, correction, or information request, use question_handling answer_before_action and answer it before changing anything.",
                 schema(Map.of(
-                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", ""),
+                        "booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34EF56", ""),
                         "caller_phone", property("string", "Exact phone number currently stored on the booking", "phone")
                 ), List.of("booking_number", "caller_phone")), "sauti_calendar", "noop_calendar", 22);
         seed(agent, "update_booking", "Update non-time booking details only after looking up the booking and receiving unconditional confirmation of the exact changes. Use reschedule_booking for appointment date or time changes.",
                 schema(Map.ofEntries(
-                        Map.entry("booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34", "")),
+                        Map.entry("booking_number", property("string", "Customer-facing Sauti booking number, for example SAT-AB12CD34EF56", "")),
                         Map.entry("caller_phone", property("string", "Exact phone number currently stored on the booking", "phone")),
                         Map.entry("appointment_name", property("string", "Replacement name of the service recipient", "")),
                         Map.entry("new_caller_phone", property("string", "Replacement contact phone number", "phone")),
