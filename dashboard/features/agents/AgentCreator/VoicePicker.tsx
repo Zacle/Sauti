@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, CircleAlert, LoaderCircle, Mic2, Pause, Play, Search, X } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Languages, LoaderCircle, Mic2, Pause, Play, Search, X } from "lucide-react";
 import { listVoices } from "@/lib/api/voices";
 import type { VoiceOption } from "@/types/api";
 
@@ -25,8 +25,11 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   const [bufferingId, setBufferingId] = useState("");
   const [previewError, setPreviewError] = useState("");
   const [languageFilter, setLanguageFilter] = useState("recommended");
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [languageQuery, setLanguageQuery] = useState("");
   const [accentFilter, setAccentFilter] = useState("all");
   const [accentOpen, setAccentOpen] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(40);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const initialSelectionRef = useRef({ value, primaryLanguage, onChange });
 
@@ -63,6 +66,10 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
       ...voices.flatMap((voice) => voice.languages),
     ])).sort((left, right) => languageName(left).localeCompare(languageName(right))),
     [configuredLanguages, voices],
+  );
+  const availableLanguageCount = useMemo(
+    () => visibleLanguages.filter((language) => voices.some((voice) => voice.languages.includes(language))).length,
+    [visibleLanguages, voices],
   );
   const accentBaseVoices = useMemo(
     () => voices.filter((voice) => languageFilter === "recommended"
@@ -113,7 +120,15 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
     : [...filteredVoices]
       .filter((voice) => voice.languages.includes(languageFilter))
       .sort((left, right) => compareVoiceQuality(left, right, [languageFilter]));
+  const displayedVoices = visibleLanguageVoices.slice(0, visibleLimit);
   const unsupportedLanguage = languageFilter !== "recommended" && voiceCoverage[languageFilter] === 0;
+  const languageOptions = visibleLanguages.filter((language) =>
+    languageName(language).toLowerCase().includes(languageQuery.trim().toLowerCase())
+  );
+
+  useEffect(() => {
+    setVisibleLimit(40);
+  }, [accentFilter, languageFilter, query]);
 
   async function preview(voice: VoiceOption) {
     const previewLanguage = previewLanguageFor(voice);
@@ -148,9 +163,11 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
     });
     try {
       await audio.play();
-    } catch {
+    } catch (caught) {
       setBufferingId("");
-      setPreviewError(`Your browser blocked the preview for ${voice.name}. Try again.`);
+      setPreviewError(caught instanceof DOMException && caught.name === "NotAllowedError"
+        ? "Your browser blocked audio playback. Allow sound for this site and try again."
+        : `The preview for ${displayVoiceName(voice.name)} is unavailable. Try another voice.`);
     }
   }
 
@@ -159,6 +176,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
     setPlayingId("");
     setBufferingId("");
     setPreviewError("");
+    setLanguageOpen(false);
     setAccentOpen(false);
     setOpen(false);
   }
@@ -203,13 +221,79 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
                   placeholder="Search voices, accents, or styles..."
                 />
               </label>
+              <div className={`voice-language-filter ${languageOpen ? "open" : ""}`}>
+                <button
+                  className="voice-filter-trigger"
+                  type="button"
+                  aria-expanded={languageOpen}
+                  aria-haspopup="menu"
+                  onClick={() => {
+                    setLanguageOpen((current) => !current);
+                    setAccentOpen(false);
+                  }}
+                >
+                  <Languages aria-hidden="true" size={17} />
+                  <span>
+                    <small>Language</small>
+                    <strong>{languageFilter === "recommended" ? "Best match" : languageName(languageFilter)}</strong>
+                  </span>
+                  <ChevronDown aria-hidden="true" size={16} />
+                </button>
+                {languageOpen && (
+                  <div className="voice-language-menu">
+                    <label>
+                      <Search aria-hidden="true" size={15} />
+                      <input
+                        autoFocus
+                        aria-label="Search languages"
+                        placeholder="Find a language..."
+                        value={languageQuery}
+                        onChange={(event) => setLanguageQuery(event.target.value)}
+                      />
+                    </label>
+                    <div>
+                      {!languageQuery && (
+                        <button
+                          className={languageFilter === "recommended" ? "selected" : ""}
+                          type="button"
+                          onClick={() => {
+                            setLanguageFilter("recommended");
+                            setLanguageOpen(false);
+                          }}
+                        >
+                          <span><strong>Best match</strong><small>Agent languages</small></span>
+                          {languageFilter === "recommended" && <Check size={14} />}
+                        </button>
+                      )}
+                      {languageOptions.map((language) => (
+                        <button
+                          className={languageFilter === language ? "selected" : ""}
+                          key={language}
+                          type="button"
+                          onClick={() => {
+                            setLanguageFilter(language);
+                            setLanguageOpen(false);
+                            setLanguageQuery("");
+                          }}
+                        >
+                          <span><strong>{languageName(language)}</strong><small>{voiceCoverage[language] || 0} voices</small></span>
+                          {languageFilter === language && <Check size={14} />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className={`voice-accent-filter ${accentOpen ? "open" : ""}`}>
                 <button
                   className="voice-accent-trigger"
                   type="button"
                   aria-expanded={accentOpen}
                   aria-haspopup="menu"
-                  onClick={() => setAccentOpen((current) => !current)}
+                  onClick={() => {
+                    setAccentOpen((current) => !current);
+                    setLanguageOpen(false);
+                  }}
                 >
                   <span>
                     <small>Accent</small>
@@ -242,25 +326,8 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
 
             <div className="voice-engine-summary">
               <span><Mic2 size={17} /></span>
-              <div><strong>Telnyx voice library</strong><small>Native Telnyx voices for browser and telephone conversations.</small></div>
-              <i>{voices.length} voices</i>
-            </div>
-
-            <div className="voice-language-tabs" aria-label="Voice language">
-              <button className={languageFilter === "recommended" ? "active" : ""} onClick={() => setLanguageFilter("recommended")} type="button">
-                Best match
-              </button>
-              {visibleLanguages.map((language) => (
-                <button
-                  className={`${languageFilter === language ? "active" : ""} ${voiceCoverage[language] === 0 ? "unsupported" : ""}`}
-                  key={language}
-                  onClick={() => setLanguageFilter(language)}
-                  type="button"
-                >
-                  {languageName(language)}
-                  <span>{voiceCoverage[language] || "—"}</span>
-                </button>
-              ))}
+              <div><strong>Telnyx voice library</strong><small>Choose a language, refine by accent, then listen before saving.</small></div>
+              <i>{voices.length} voices · {availableLanguageCount} languages</i>
             </div>
 
             <div className="voice-picker-results">
@@ -288,12 +355,13 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
                   <span>{languageFilter === "recommended" ? "Recommended voices" : languageName(languageFilter)}</span>
                   <i>{languageFilter === "recommended" ? `Ranked across ${configuredLanguages.length} languages` : `${visibleLanguageVoices.length} compatible voices`}</i>
                 </h3>
-                <div>{visibleLanguageVoices.map((voice, index) => {
+                <div>{displayedVoices.map((voice, index) => {
                 const selected = pendingVoiceId === voice.id;
                 const origin = voice.traits.language
                   ? `${languageName(voice.traits.language)} origin`
                   : null;
-                const traits = [origin, voice.traits.accent, voice.traits.gender, voice.traits.age].filter(Boolean);
+                const catalogSource = voice.name.match(/^\[([^\]]+)\]/)?.[1];
+                const traits = [catalogSource, origin, voice.traits.accent, voice.traits.gender, voice.traits.age].filter(Boolean);
                 const covered = coverage(voice, configuredLanguages);
                 const previewLanguage = previewLanguageFor(voice);
                 return (
@@ -311,9 +379,9 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
                     tabIndex={0}
                   >
                     <span className="voice-option-radio">{selected && <Check size={13} />}</span>
-                    <span className="voice-option-avatar">{voice.name.slice(0, 1).toUpperCase()}</span>
+                    <span className="voice-option-avatar">{displayVoiceName(voice.name).slice(0, 1).toUpperCase()}</span>
                     <span className="voice-option-copy">
-                      <strong>{voice.name}<em className={`provider-${voice.provider}`}>{providerName(voice.provider)}</em>{languageFilter === "recommended" && index < 3 && <em>Recommended</em>}</strong>
+                      <strong>{displayVoiceName(voice.name)}<em className={`provider-${voice.provider}`}>{providerName(voice.provider)}</em>{languageFilter === "recommended" && index < 3 && <em>Recommended</em>}</strong>
                       <small>{voice.description || voice.category}</small>
                       <span>
                         {languageFilter === "recommended" && <i>{covered}/{configuredLanguages.length} languages</i>}
@@ -335,7 +403,13 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
                     </button>
                   </div>
                 );
-              })}</div></section>}
+              })}</div>
+                {displayedVoices.length < visibleLanguageVoices.length && (
+                  <button className="voice-results-more" type="button" onClick={() => setVisibleLimit((current) => current + 40)}>
+                    Show 40 more <span>{visibleLanguageVoices.length - displayedVoices.length} remaining</span>
+                  </button>
+                )}
+              </section>}
             </div>
 
             <footer>
@@ -374,6 +448,10 @@ function titleCase(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+function displayVoiceName(value: string) {
+  return value.replace(/^\[[^\]]+\]\s*/, "").trim() || "Untitled voice";
+}
+
 function unsupportedLanguageMessage(language: string, enabledProviders: string[]) {
   if (!enabledProviders.includes("telnyx")) {
     return "Telnyx is not enabled in the backend environment. Add TELNYX_API_KEY so the native voice catalog can load.";
@@ -384,8 +462,25 @@ function unsupportedLanguageMessage(language: string, enabledProviders: string[]
 function compareVoiceQuality(left: VoiceOption, right: VoiceOption, languages: string[]) {
   return providerRank(left.provider) - providerRank(right.provider)
     || coverage(right, languages) - coverage(left, languages)
+    || modelRank(left.traits.model) - modelRank(right.traits.model)
+    || nameRank(left.name) - nameRank(right.name)
     || categoryRank(left.category) - categoryRank(right.category)
     || left.name.localeCompare(right.name);
+}
+
+function modelRank(model = "") {
+  const normalized = model.toLowerCase();
+  if (normalized === "ultra") return 0;
+  if (normalized === "naturalhd") return 1;
+  if (normalized === "grok") return 2;
+  if (normalized === "natural") return 3;
+  if (normalized === "bayan") return 4;
+  if (normalized.includes("libri")) return 9;
+  return 5;
+}
+
+function nameRank(name: string) {
+  return /^[\p{L}][\p{L}\p{M}\s'.-]+$/u.test(displayVoiceName(name)) ? 0 : 1;
 }
 
 function providerRank(provider: string) {

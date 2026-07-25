@@ -73,7 +73,7 @@ public class TelnyxVoiceCatalogClient {
                     "language", language,
                     "output_type", "binary_output"
             ));
-            var request = request(URI.create(apiBaseUrl + "/text-to-speech"))
+            var request = request(URI.create(apiBaseUrl + "/text-to-speech/speech"))
                     .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();

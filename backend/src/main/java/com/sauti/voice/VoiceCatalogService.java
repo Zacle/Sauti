@@ -143,10 +143,11 @@ public class VoiceCatalogService {
                     voiceId
             );
             var gender = node.path("gender").asText("").trim();
+            var accent = node.path("accent").asText("").trim();
             var model = firstNonBlank(node.path("model_id").asText(""), modelFromVoiceId(voiceId));
             var mutable = byId.computeIfAbsent(
                     voiceId,
-                    ignored -> new MutableVoice(voiceId, name, model, gender)
+                    ignored -> new MutableVoice(voiceId, name, model, gender, accent)
             );
             mutable.languages.add(language);
         }
@@ -225,13 +226,15 @@ public class VoiceCatalogService {
         private final String name;
         private final String model;
         private final String gender;
+        private final String accent;
         private final LinkedHashSet<String> languages = new LinkedHashSet<>();
 
-        private MutableVoice(String id, String name, String model, String gender) {
+        private MutableVoice(String id, String name, String model, String gender, String accent) {
             this.id = id;
             this.name = name;
             this.model = model;
             this.gender = gender;
+            this.accent = accent;
         }
 
         private VoiceOption toOption() {
@@ -239,6 +242,9 @@ public class VoiceCatalogService {
             traits.put("model", model);
             if (!gender.isBlank()) {
                 traits.put("gender", gender);
+            }
+            if (!accent.isBlank()) {
+                traits.put("accent", accent);
             }
             traits.put("description", languages.size() > 1 ? "multilingual" : "native");
             return new VoiceOption(

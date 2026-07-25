@@ -124,6 +124,7 @@ class VoiceCatalogServiceTest {
                       "name": "Amanda",
                       "language": "en-US",
                       "model_id": "Bayan",
+                      "accent": "American",
                       "gender": "female",
                       "provider": "telnyx",
                       "is_platform": true
@@ -152,6 +153,7 @@ class VoiceCatalogServiceTest {
                     assertThat(voice.name()).isEqualTo("Amanda");
                     assertThat(voice.languages()).containsExactly("en");
                     assertThat(voice.traits()).containsEntry("model", "Bayan");
+                    assertThat(voice.traits()).containsEntry("accent", "American");
                 });
         assertThat(catalog.voices())
                 .filteredOn(voice -> voice.id().equals("Telnyx.Bayan.Alia"))

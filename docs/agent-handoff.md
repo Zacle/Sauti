@@ -231,15 +231,33 @@ Expected:
 - A read-only inspection of the live Telnyx response found 1,214 voices and confirmed the payload now identifies each voice with `id` and its model with `model_id`. Sauti read only the older documented `voice_id` field, so it discarded every entry before language filtering.
 - The server-side voice catalog now reads the current `id` and `model_id` fields while retaining compatibility with the earlier `voice_id` shape.
 - Language values are normalized to stable ISO base codes. This handles the live BCP-47 values such as `en-US` and `ar-AE` and remains tolerant of human-readable labels such as `English` or `American English`.
-- Added regression coverage for the live catalog shape across English and Arabic, the legacy catalog shape, and human-readable language labels.
+- Fixed voice previews against Telnyx's current REST API. Sauti posted to the obsolete `/v2/text-to-speech` path; previews now use `/v2/text-to-speech/speech`, as required by the current TTS OpenAPI reference.
+- Corrected the dashboard's preview error handling so only an actual browser `NotAllowedError` is described as blocked playback. Provider or media failures now report that the selected preview is unavailable.
+- Redesigned voice discovery for the full catalog:
+  - replaced the overflowing horizontal language tabs with a searchable language menu;
+  - promoted language, accent, and text search into one responsive filter row;
+  - exposed Telnyx accent metadata so the accent filter is functional;
+  - ranks higher-quality voice models before noisy LibriTTS/numeric entries;
+  - progressively renders voices in groups of 40 instead of mounting hundreds of cards at once;
+  - simplified bracketed catalog display names while retaining the authoritative voice ID.
+- Added regression coverage for the live catalog shape across English and Arabic, accent metadata, the legacy catalog shape, human-readable language labels, and the current synthesis endpoint.
 - Files touched:
+  - `backend/src/main/java/com/sauti/voice/TelnyxVoiceCatalogClient.java`
   - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `backend/src/test/java/com/sauti/voice/TelnyxVoiceCatalogClientTest.java`
   - `backend/src/test/java/com/sauti/voice/VoiceCatalogServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
   - `docs/agent-handoff.md`
 - Verification:
-  - `.\gradlew.bat :backend:test --tests "com.sauti.voice.VoiceCatalogServiceTest" --rerun-tasks` passed.
-  - `.\gradlew.bat :backend:test --rerun-tasks` passed; Gradle reported `BUILD SUCCESSFUL`.
+  - read-only live Telnyx synthesis for the previously failing Brooke Ultra voice returned HTTP 200 from `/v2/text-to-speech/speech`;
+  - focused voice catalog and Telnyx client tests passed;
+  - `.\gradlew.bat :backend:test --rerun-tasks` passed; Gradle reported `BUILD SUCCESSFUL`;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed and generated the optimized production dashboard.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Visual follow-up: the in-app browser runtime was unavailable during this session, so the responsive modal should receive a final human visual check before commit.
 
 ### 2026-07-24 - Unify managed-provider CRUD execution and outcome semantics
 
