@@ -89,12 +89,20 @@ class ManagedVoiceAgentProvisionersTest {
                 .allSatisfy(tool -> assertThat(tool.toString()).doesNotContain("name=end_call"));
         assertThat(body.getValue().get("instructions").toString())
                 .contains("do not call the portable end_call webhook")
-                .contains("{{telnyx_conversation_channel}}", "web_call", "end_browser_call", "phone_call")
+                .contains("{{sauti_conversation_channel}}", "web_call", "end_browser_call", "phone_call")
+                .doesNotContain("{{telnyx_conversation_channel}}")
                 .contains("native", "hangup")
                 .contains("Do not pass spoken_farewell", "call a webhook first");
+        assertThat(body.getValue().get("dynamic_variables"))
+                .isEqualTo(Map.of("sauti_conversation_channel", "phone_call"));
         @SuppressWarnings("unchecked")
         var telephony = (Map<String, Object>) body.getValue().get("telephony_settings");
-        assertThat(telephony.get("recording_settings")).isEqualTo(Map.of("enabled", false));
+        assertThat(telephony.get("recording_settings")).isEqualTo(Map.of(
+                "enabled", true,
+                "channels", "dual",
+                "format", "mp3",
+                "stop_on_conversation_end", true
+        ));
         assertThat(body.getValue().get("privacy_settings"))
                 .isEqualTo(Map.of("data_retention", false));
     }

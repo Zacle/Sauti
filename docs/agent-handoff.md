@@ -225,6 +225,35 @@ Expected:
 
 ## Change log
 
+### 2026-07-25 - Override Telnyx's incorrect WebRTC channel and restore recording
+
+- Diagnosed `sauti-telnyx-diagnostics-1784989184039.json` for Sauti test call `6c511a53-013f-47fa-8e40-15d9c2383435`.
+- The refreshed dashboard runtime connected successfully, but the export contained no `tool_invoked`, `tool_completed`, `tool_error`, or provider-driven `runtime_ended` event. Its only `ending -> idle` transition came from the user manually ending the call.
+- A second export, `sauti-telnyx-diagnostics-1784994020556.json`, reproduced the same failure for test call `86e527cc-6358-43ab-9430-2d7f5c66c773`: the assistant's final short speaking turn ended at 55.1 seconds, no terminal client-tool or provider-disconnect event followed, and the user manually ended the still-connected browser session 22.2 seconds later.
+- A read-only Telnyx API inspection confirmed that Ailsa's live managed assistant had all 11 expected tools, including `end_browser_call`, and the terminal instruction. The associated WebRTC SDK conversation was nevertheless classified in Telnyx metadata as `phone_call`.
+- A read-only inspection after the second export confirmed that the live assistant was still on the previous configuration: its instructions referenced `{{telnyx_conversation_channel}}`, it had no default `sauti_conversation_channel`, and recording remained disabled. The second export therefore did not exercise configuration version `16`; it confirms the old failure mode rather than invalidating the pending fix.
+- Root cause: the terminal instruction trusted Telnyx's `{{telnyx_conversation_channel}}`. Because Telnyx classified this browser conversation as `phone_call`, the assistant did not select the registered browser client tool.
+- Managed assistants now use Sauti's `{{sauti_conversation_channel}}` variable instead:
+  - the assistant default is `phone_call`, preserving real telephone behavior;
+  - browser SDK sessions send `X-Sauti-Conversation-Channel: web_call`, which Telnyx maps to `sauti_conversation_channel` and which takes precedence over the default.
+- Advanced the managed Telnyx configuration version to `16`, forcing assistant resynchronization on the first call after deployment.
+- The live assistant inspection also confirmed why recordings stopped: `telephony_settings.recording_settings.enabled` was explicitly `false`. Provisioning now enables dual-channel MP3 recording and stops recording when the conversation ends.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed Telnyx provisioning and synchronization tests passed;
+  - `.\gradlew.bat :backend:test` passed;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run test:voice` passed: 9 tests;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed and generated the optimized dashboard;
+  - `git diff --check` passed.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: hard-refresh the dashboard, start a new browser test call, end naturally, and verify diagnostics show `tool_invoked -> tool_completed -> runtime_ended` for `end_browser_call`. Then verify the completed call receives a playable recording. For a real phone call, confirm the native Hangup path and dual-channel recording still work.
+
 ### 2026-07-25 - Finalize the browser UI after Telnyx ends a call
 
 - Fixed browser test calls remaining in the `Listening` state after the assistant invoked `end_browser_call` and Telnyx ended the WebRTC conversation.

@@ -116,6 +116,7 @@ export async function connectTelnyxRuntime(
       startConversation: () => client.startConversation({
         customHeaders: [
           { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
+          { name: "X-Sauti-Conversation-Channel", value: "web_call" },
         ],
         audio: {
           echoCancellation: true,

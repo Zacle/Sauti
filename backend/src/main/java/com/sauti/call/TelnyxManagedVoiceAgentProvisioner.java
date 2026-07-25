@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "15";
+        return "16";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -158,14 +158,18 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   invoking it, without asking the caller a question.
                 - After every tool result, continue automatically in the same turn; never wait for more caller speech.
                 - Keep each spoken answer continuous and concise.
-                - On Telnyx, do not call the portable end_call webhook. Use the current provider channel
-                  `{{telnyx_conversation_channel}}` to select exactly one terminal action. For `web_call`, say one
+                - On Telnyx, do not call the portable end_call webhook. Use Sauti's explicit conversation channel
+                  `{{sauti_conversation_channel}}` to select exactly one terminal action. For `web_call`, say one
                   brief respectful farewell and immediately invoke `end_browser_call`. For `phone_call`, say one brief
                   respectful farewell and immediately invoke Telnyx's native `hangup`. Do not pass spoken_farewell,
                   outcome, or summary arguments, do not call a webhook first, and never wait for another caller turn
                   after the farewell.
                 """);
         body.put("greeting", blueprint.greeting());
+        // Telnyx currently reports AI Agent SDK WebRTC sessions as phone_call.
+        // Keep phone calls as the safe default and let the browser override this
+        // variable through X-Sauti-Conversation-Channel at conversation start.
+        body.put("dynamic_variables", Map.of("sauti_conversation_channel", "phone_call"));
         body.put("voice_settings", Map.of("voice", selectedVoice(blueprint.voiceId())));
         var transcription = new LinkedHashMap<String, Object>();
         transcription.put("model", "deepgram/nova-3");
@@ -195,7 +199,12 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 "supports_unauthenticated_web_calls", true,
                 "time_limit_secs", Math.max(10, blueprint.maxCallDurationSeconds()),
                 "user_idle_timeout_secs", 60,
-                "recording_settings", Map.of("enabled", false)
+                "recording_settings", Map.of(
+                        "enabled", true,
+                        "channels", "dual",
+                        "format", "mp3",
+                        "stop_on_conversation_end", true
+                )
         ));
         body.put("privacy_settings", Map.of("data_retention", false));
         body.put("interruption_settings", Map.of(
