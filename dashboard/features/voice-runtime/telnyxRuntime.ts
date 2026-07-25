@@ -5,11 +5,9 @@ import type {
 } from "./browserVoiceRuntime";
 import {
   configString,
-  configStringArray,
   providerError,
 } from "./managedRuntimeConfig";
 import { startTelnyxConversationWhenReady } from "./telnyxReadiness";
-import { executeTelnyxClientTool } from "./telnyxClientTool";
 
 export async function connectTelnyxRuntime(
   session: BrowserVoiceRuntimeSession,
@@ -18,18 +16,6 @@ export async function connectTelnyxRuntime(
   const { TelnyxAIAgent } = await import("@telnyx/ai-agent-lib");
   const agentId = configString(session.configuration, "agentId");
   if (!agentId) throw new Error("Telnyx did not return an AI assistant id.");
-  const toolNames = configStringArray(session.configuration, "toolNames");
-  let finishFromTerminalTool = () => {};
-  const clientTools = Object.fromEntries(toolNames.map((name) => [
-    name,
-    async (parameters: unknown, context: { callId: string }) => executeTelnyxClientTool(
-      context.callId,
-      name,
-      parameters,
-      callbacks.executeTool,
-      finishFromTerminalTool,
-    ),
-  ]));
   const environment = configString(session.configuration, "environment") === "development"
     ? "development"
     : "production";
@@ -39,8 +25,6 @@ export async function connectTelnyxRuntime(
     versionId: configString(session.configuration, "versionId") || "main",
     environment,
     region: region || undefined,
-    clientTools,
-    clientToolTimeoutMs: 30_000,
     vad: {
       volumeThreshold: 10,
       silenceDurationMs: 700,
@@ -64,7 +48,6 @@ export async function connectTelnyxRuntime(
     ended = true;
     callbacks.onEnded("completed");
   };
-  finishFromTerminalTool = finish;
 
   client.on("agent.error", (error) => {
     if (conversationStarted) callbacks.onError(providerError("Telnyx", error));

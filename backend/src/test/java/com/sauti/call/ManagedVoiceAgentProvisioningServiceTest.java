@@ -22,7 +22,7 @@ class ManagedVoiceAgentProvisioningServiceTest {
     void createsAndThenReusesTheTenantScopedProviderBindingForAnUnchangedBlueprint() {
         var repository = mock(ManagedVoiceAgentBindingRepository.class);
         var blueprintFactory = mock(ManagedVoiceAgentBlueprintFactory.class);
-        var provisioner = mock(ManagedVoiceAgentProvisioner.class);
+        var provisioner = mock(TelnyxManagedVoiceAgentProvisioner.class);
         var call = mock(Call.class);
         var tenant = mock(Tenant.class);
         var agent = mock(Agent.class);
@@ -37,11 +37,10 @@ class ManagedVoiceAgentProvisioningServiceTest {
         when(tenant.getId()).thenReturn(tenantId);
         when(agent.getId()).thenReturn(agentId);
         when(blueprintFactory.create(call, "Hello")).thenReturn(blueprint);
-        when(provisioner.provider()).thenReturn("retell");
         when(provisioner.isConfigured()).thenReturn(true);
         when(provisioner.configurationVersion()).thenReturn("1");
         when(provisioner.synchronize(blueprint, null)).thenReturn(reference);
-        when(repository.findByTenantIdAndAgentIdAndProvider(tenantId, agentId, "retell"))
+        when(repository.findByTenantIdAndAgentIdAndProvider(tenantId, agentId, "telnyx"))
                 .thenAnswer(ignored -> Optional.ofNullable(stored.get()));
         when(repository.save(any())).thenAnswer(invocation -> {
             stored.set(invocation.getArgument(0));
@@ -52,11 +51,11 @@ class ManagedVoiceAgentProvisioningServiceTest {
                 repository,
                 blueprintFactory,
                 new ObjectMapper(),
-                List.of(provisioner)
+                provisioner
         );
 
-        assertThat(service.resolve("retell", call, "Hello")).isEqualTo(reference);
-        assertThat(service.resolve("retell", call, "Hello")).isEqualTo(reference);
+        assertThat(service.resolve(call, "Hello")).isEqualTo(reference);
+        assertThat(service.resolve(call, "Hello")).isEqualTo(reference);
 
         verify(provisioner, times(1)).synchronize(blueprint, null);
         verify(repository, times(1)).save(any());
@@ -66,7 +65,7 @@ class ManagedVoiceAgentProvisioningServiceTest {
     void resynchronizesAnExistingBindingWhenProviderConfigurationChanges() {
         var repository = mock(ManagedVoiceAgentBindingRepository.class);
         var blueprintFactory = mock(ManagedVoiceAgentBlueprintFactory.class);
-        var provisioner = mock(ManagedVoiceAgentProvisioner.class);
+        var provisioner = mock(TelnyxManagedVoiceAgentProvisioner.class);
         var call = mock(Call.class);
         var tenant = mock(Tenant.class);
         var agent = mock(Agent.class);
@@ -81,7 +80,6 @@ class ManagedVoiceAgentProvisioningServiceTest {
         when(tenant.getId()).thenReturn(tenantId);
         when(agent.getId()).thenReturn(agentId);
         when(blueprintFactory.create(call, "Hello")).thenReturn(blueprint);
-        when(provisioner.provider()).thenReturn("telnyx");
         when(provisioner.isConfigured()).thenReturn(true);
         when(provisioner.configurationVersion()).thenReturn("1", "2");
         when(provisioner.synchronize(any(), any())).thenReturn(reference);
@@ -96,11 +94,11 @@ class ManagedVoiceAgentProvisioningServiceTest {
                 repository,
                 blueprintFactory,
                 new ObjectMapper(),
-                List.of(provisioner)
+                provisioner
         );
 
-        assertThat(service.resolve("telnyx", call, "Hello")).isEqualTo(reference);
-        assertThat(service.resolve("telnyx", call, "Hello")).isEqualTo(reference);
+        assertThat(service.resolve(call, "Hello")).isEqualTo(reference);
+        assertThat(service.resolve(call, "Hello")).isEqualTo(reference);
 
         verify(provisioner).synchronize(blueprint, null);
         verify(provisioner).synchronize(blueprint, reference);
@@ -112,6 +110,7 @@ class ManagedVoiceAgentProvisioningServiceTest {
                 "Sauti Test",
                 greeting,
                 "Be professional.",
+                "Telnyx.NaturalHD.astra",
                 "en",
                 List.of("en"),
                 List.of(),

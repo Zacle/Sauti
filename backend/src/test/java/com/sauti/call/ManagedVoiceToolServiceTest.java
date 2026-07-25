@@ -21,6 +21,56 @@ import org.junit.jupiter.api.Test;
 
 class ManagedVoiceToolServiceTest {
     @Test
+    void telnyxWebhookExecutesDirectBodyArgumentsAndDeduplicatesRedelivery() throws Exception {
+        var repository = mock(CallRepository.class);
+        var router = mock(ToolFulfillmentRouter.class);
+        var sessions = mock(CallSessionStore.class);
+        var objectMapper = new ObjectMapper();
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        when(call.getId()).thenReturn(UUID.randomUUID());
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getMaxCallDurationSeconds()).thenReturn(600);
+        when(call.getTwilioCallSid()).thenReturn("telnyx-call-42");
+        when(call.isActive()).thenReturn(true);
+        when(repository.findByTwilioCallSid("telnyx-call-42")).thenReturn(Optional.of(call));
+        when(router.route(any(), any())).thenAnswer(invocation -> {
+            var toolCall = (com.sauti.llm.LlmToolCall) invocation.getArgument(1);
+            return LlmToolResult.success(toolCall, Map.of(
+                    "status", "availability_checked",
+                    "available", true
+            ));
+        });
+        var service = new ManagedVoiceToolService(
+                repository,
+                mock(WebVoiceTokenService.class),
+                router,
+                sessions,
+                objectMapper
+        );
+        var body = objectMapper.readTree("""
+                {"date":"2026-07-31","time":"10:00"}
+                """);
+
+        var first = service.executeTelnyxWebhook(
+                "telnyx-call-42", "tool-call-1", "check_availability", body
+        );
+        var retry = service.executeTelnyxWebhook(
+                "telnyx-call-42", "tool-call-1", "check_availability", body
+        );
+
+        assertThat(first)
+                .containsEntry("success", true)
+                .containsEntry("status", "availability_checked");
+        assertThat(retry).isEqualTo(first);
+        var routed = ArgumentCaptor.forClass(com.sauti.llm.LlmToolCall.class);
+        verify(router, times(1)).route(any(), routed.capture());
+        assertThat(routed.getValue().arguments())
+                .containsEntry("date", "2026-07-31")
+                .containsEntry("time", "10:00");
+    }
+
+    @Test
     void authorizesTheBoundAgentAndDeduplicatesProviderRedelivery() throws Exception {
         var repository = mock(CallRepository.class);
         var router = mock(ToolFulfillmentRouter.class);
@@ -56,8 +106,8 @@ class ManagedVoiceToolServiceTest {
                 }
                 """);
 
-        var first = service.execute("retell", "call-42", token, payload);
-        var redelivery = service.execute("retell", "call-42", token, payload);
+        var first = service.execute("telnyx", "call-42", token, payload);
+        var redelivery = service.execute("telnyx", "call-42", token, payload);
 
         assertThat(first).isEqualTo(Map.of(
                 "success", true,
@@ -105,7 +155,7 @@ class ManagedVoiceToolServiceTest {
                 }
                 """);
 
-        service.execute("retell", "call-null", token, payload);
+        service.execute("telnyx", "call-null", token, payload);
 
         var routed = ArgumentCaptor.forClass(com.sauti.llm.LlmToolCall.class);
         verify(router).route(any(), routed.capture());
@@ -159,7 +209,7 @@ class ManagedVoiceToolServiceTest {
                 }
                 """);
 
-        var result = service.execute("elevenlabs", "call-confirm", token, payload);
+        var result = service.execute("telnyx", "call-confirm", token, payload);
 
         assertThat(result)
                 .containsEntry("success", true)
@@ -171,7 +221,7 @@ class ManagedVoiceToolServiceTest {
     }
 
     @Test
-    void authenticatedBrowserClientUsesTheManagedEnvelopeAndExposesNextToolFacts() {
+    void authenticatedBrowserClientFollowsAuthorizedNextToolAndUsesTheManagedEnvelope() {
         var repository = mock(CallRepository.class);
         var router = mock(ToolFulfillmentRouter.class);
         var sessions = mock(CallSessionStore.class);
@@ -187,9 +237,14 @@ class ManagedVoiceToolServiceTest {
         when(agent.getMaxCallDurationSeconds()).thenReturn(300);
         when(router.route(any(), any())).thenAnswer(invocation -> {
             var toolCall = (com.sauti.llm.LlmToolCall) invocation.getArgument(1);
+            if ("book_slot".equals(toolCall.name())) {
+                return LlmToolResult.success(toolCall, Map.of(
+                        "status", "booking_confirmation_required",
+                        "actionPerformed", false,
+                        "instruction", "Read the verified booking review."
+                ));
+            }
             return LlmToolResult.success(toolCall, Map.of(
-                    "status", "booking_confirmation_required",
-                    "actionPerformed", false,
                     "nextTool", "book_slot",
                     "nextToolAuthorized", true,
                     "nextToolArguments", Map.of("review_token", "opaque"),
@@ -199,7 +254,7 @@ class ManagedVoiceToolServiceTest {
         var service = new ManagedVoiceToolService(repository, tokenService, router, sessions, objectMapper);
 
         var result = service.executeAuthenticated(
-                "elevenlabs",
+                "telnyx",
                 call,
                 "provider-tool-1",
                 "update_conversation_state",
@@ -210,14 +265,74 @@ class ManagedVoiceToolServiceTest {
                 .containsEntry("success", true)
                 .containsEntry("workflowPending", true)
                 .containsEntry("actionPerformed", false)
-                .containsEntry("nextTool", "book_slot")
-                .containsEntry("nextToolAuthorized", true);
-        assertThat(result.get("nextToolArguments")).isEqualTo(Map.of("review_token", "opaque"));
+                .containsEntry("status", "booking_confirmation_required")
+                .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments");
         var routed = ArgumentCaptor.forClass(com.sauti.llm.LlmToolCall.class);
-        verify(router).route(any(), routed.capture());
-        assertThat(routed.getValue().arguments())
+        verify(router, times(2)).route(any(), routed.capture());
+        assertThat(routed.getAllValues().get(0).arguments())
                 .containsEntry("review_decision", "confirmed")
                 .doesNotContainKey("unused");
+        assertThat(routed.getAllValues().get(1).name()).isEqualTo("book_slot");
+        assertThat(routed.getAllValues().get(1).arguments())
+                .containsEntry("review_token", "opaque");
+    }
+
+    @Test
+    void followsAnExactServerAuthorizedLookupWithoutDependingOnProviderReasoning() {
+        var repository = mock(CallRepository.class);
+        var router = mock(ToolFulfillmentRouter.class);
+        var sessions = mock(CallSessionStore.class);
+        var objectMapper = new ObjectMapper();
+        var tokenService = new WebVoiceTokenService(
+                "managed-voice-test-secret-managed-voice-test-secret", 10
+        );
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        when(call.getId()).thenReturn(UUID.randomUUID());
+        when(call.getTwilioCallSid()).thenReturn("lookup-chain-call");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getMaxCallDurationSeconds()).thenReturn(300);
+        when(router.route(any(), any())).thenAnswer(invocation -> {
+            var routedCall = (com.sauti.llm.LlmToolCall) invocation.getArgument(1);
+            if ("update_conversation_state".equals(routedCall.name())) {
+                return LlmToolResult.success(routedCall, Map.of(
+                        "nextTool", "lookup_booking",
+                        "nextToolAuthorized", true,
+                        "nextToolArguments", Map.of(
+                                "booking_number", "SAT-OHM2KFA6HOP1",
+                                "caller_phone", "0115752441"
+                        )
+                ));
+            }
+            return LlmToolResult.success(routedCall, Map.of(
+                    "status", "booking_found",
+                    "bookingFound", true,
+                    "bookingNumber", "SAT-OHM2KFA6HOP1"
+            ));
+        });
+        var service = new ManagedVoiceToolService(repository, tokenService, router, sessions, objectMapper);
+
+        var result = service.executeAuthenticated(
+                "telnyx",
+                call,
+                "provider-state-1",
+                "update_conversation_state",
+                "{}"
+        );
+
+        assertThat(result)
+                .containsEntry("success", true)
+                .containsEntry("status", "booking_found")
+                .containsEntry("bookingFound", true)
+                .containsEntry("bookingNumber", "SAT-OHM2KFA6HOP1")
+                .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments");
+        var routed = ArgumentCaptor.forClass(com.sauti.llm.LlmToolCall.class);
+        verify(router, times(2)).route(any(), routed.capture());
+        assertThat(routed.getAllValues().get(1).name()).isEqualTo("lookup_booking");
+        assertThat(routed.getAllValues().get(1).arguments()).isEqualTo(Map.of(
+                "booking_number", "SAT-OHM2KFA6HOP1",
+                "caller_phone", "0115752441"
+        ));
     }
 
     @Test

@@ -26,8 +26,6 @@ services:
       DASHBOARD_BASE_URL: https://${SAUTI_DOMAIN:-sauti.uk}
       SAUTI_CORS_ALLOWED_ORIGINS: https://${SAUTI_DOMAIN:-sauti.uk}
       PUBLIC_BASE_URL: https://${SAUTI_DOMAIN:-sauti.uk}
-      SAUTI_WEB_VOICE_WEBSOCKET_URL: wss://${SAUTI_DOMAIN:-sauti.uk}
-      TELNYX_MEDIA_WEBSOCKET_BASE_URL: wss://${SAUTI_DOMAIN:-sauti.uk}/ws/telnyx/media
       SAUTI_RECORDINGS_DIR: /data/recordings
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx1536m}
       MANAGEMENT_HEALTH_MAIL_ENABLED: "false"

@@ -52,14 +52,12 @@ foreach ($environmentLine in Get-Content -LiteralPath $resolvedEnvironmentFile) 
 }
 
 Write-Host "Loaded $loadedVariables environment variables from $resolvedEnvironmentFile."
-$configuredRuntime = [Environment]::GetEnvironmentVariable("SAUTI_TEST_VOICE_RUNTIME", "Process")
-if ($configuredRuntime -eq "vapi") {
-    $configuredVapiPublicKey = [Environment]::GetEnvironmentVariable("VAPI_PUBLIC_KEY", "Process")
-    if ([string]::IsNullOrWhiteSpace($configuredVapiPublicKey)) {
-        throw "SAUTI_TEST_VOICE_RUNTIME is vapi but VAPI_PUBLIC_KEY is empty in the environment file."
-    }
-    Write-Host "Vapi test-call configuration is present. Secret values were not printed."
+$telnyxApiKey = [Environment]::GetEnvironmentVariable("TELNYX_API_KEY", "Process")
+$telnyxToolSecret = [Environment]::GetEnvironmentVariable("TELNYX_TOOL_WEBHOOK_SECRET", "Process")
+if ([string]::IsNullOrWhiteSpace($telnyxApiKey) -or [string]::IsNullOrWhiteSpace($telnyxToolSecret)) {
+    throw "TELNYX_API_KEY and TELNYX_TOOL_WEBHOOK_SECRET are required for voice calls."
 }
+Write-Host "Telnyx voice configuration is present. Secret values were not printed."
 
 if ($ValidateOnly) {
     exit 0

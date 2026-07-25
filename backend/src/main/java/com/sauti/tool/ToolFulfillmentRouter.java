@@ -19,7 +19,7 @@ public class ToolFulfillmentRouter {
             SautiCalendarFulfillment calendarFulfillment,
             WebhookToolFulfillment webhookFulfillment,
             SautiSmsFulfillment smsFulfillment,
-            TwilioTransferFulfillment transferFulfillment,
+            TelnyxTransferFulfillment transferFulfillment,
             DuringCallIntegrationFulfillment integrationFulfillment,
             NoopFulfillment noopFulfillment,
             ConversationStateTool conversationStateTool,
@@ -32,7 +32,7 @@ public class ToolFulfillmentRouter {
                 "sauti_calendar", calendarFulfillment,
                 "webhook", webhookFulfillment,
                 "sauti_sms", smsFulfillment,
-                "twilio_transfer", transferFulfillment,
+                "call_transfer", transferFulfillment,
                 "sauti_integration", integrationFulfillment,
                 "noop", noopFulfillment
         );

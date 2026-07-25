@@ -32,12 +32,11 @@ public class ProductionSafetyValidator implements ApplicationRunner {
         requireSecret(errors, "sauti.webhooks.signing-secret", 24);
         requireValue(errors, "sauti.providers.mode", List.of("live"));
         rejectValue(errors, "sauti.llm.provider", List.of("fake", "heuristic"));
-        rejectValue(errors, "sauti.telephony.provider", List.of("fake"));
+        requireValue(errors, "sauti.telephony.provider", List.of("telnyx"));
         requireFalse(errors, "sauti.auth.expose-dev-tokens");
         requireFalse(errors, "spring.h2.console.enabled");
         requirePrefix(errors, "spring.datasource.url", "jdbc:postgresql:");
         requirePrefix(errors, "sauti.dashboard.base-url", "https://");
-        requirePrefix(errors, "sauti.web-voice.public-websocket-base-url", "wss://");
         validateOrigins(errors);
         validateProviderSignatures(errors);
 
@@ -61,8 +60,6 @@ public class ProductionSafetyValidator implements ApplicationRunner {
 
     private void validateProviderSignatures(List<String> errors) {
         switch (property("sauti.telephony.provider")) {
-            case "twilio" -> requireTrue(errors, "sauti.twilio.validate-signature");
-            case "signalwire" -> requireTrue(errors, "sauti.signalwire.validate-signature");
             case "telnyx" -> requireTrue(errors, "sauti.telnyx.validate-signature");
             default -> { }
         }

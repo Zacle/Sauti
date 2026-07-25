@@ -2,47 +2,102 @@ package com.sauti.voice;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sauti.call.CartesiaRealtimeTextToSpeechClient;
 import org.junit.jupiter.api.Test;
 
 class VoiceCatalogServiceTest {
-    @Test
-    void keepsOpenAiRealtimeInternalAndDoesNotExposeItsVoices() {
-        var service = new VoiceCatalogService(
-                new ObjectMapper(),
-                mock(CartesiaRealtimeTextToSpeechClient.class),
-                "", "2026-03-01", "https://cartesia.invalid/voices",
-                "openai-test-key", "https://openai.invalid/speech", "gpt-4o-mini-tts"
-        );
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-        var catalog = service.list();
+    @Test
+    void returnsAnEmptyCatalogWhenTelnyxIsNotConfigured() {
+        var client = mock(TelnyxVoiceCatalogClient.class);
+        when(client.isConfigured()).thenReturn(false);
+
+        var catalog = new VoiceCatalogService(client).list();
 
         assertThat(catalog.enabledProviders()).isEmpty();
         assertThat(catalog.voices()).isEmpty();
     }
 
     @Test
-    void cachesExactCartesiaGreetingWithoutLoadingTheCatalog() {
-        var cartesia = mock(CartesiaRealtimeTextToSpeechClient.class);
-        when(cartesia.preview("cartesia:voice-1", "fr", "Bonjour, comment puis-je vous aider ?"))
-                .thenReturn(new byte[] {1, 2, 3});
-        var service = new VoiceCatalogService(
-                new ObjectMapper(), cartesia,
-                "", "2026-03-01", "https://cartesia.invalid/voices",
-                "", "https://openai.invalid/speech", "gpt-4o-mini-tts"
+    void mapsOnlyNativeTelnyxVoicesAndMergesTheirLanguages() throws Exception {
+        var client = mock(TelnyxVoiceCatalogClient.class);
+        when(client.isConfigured()).thenReturn(true);
+        when(client.listNativeVoices()).thenReturn(objectMapper.readTree("""
+                {
+                  "voices": [
+                    {
+                      "provider": "telnyx",
+                      "name": "Astra",
+                      "voice_id": "Telnyx.NaturalHD.astra",
+                      "language": "en-US",
+                      "gender": "female"
+                    },
+                    {
+                      "provider": "telnyx",
+                      "name": "Astra",
+                      "voice_id": "Telnyx.NaturalHD.astra",
+                      "language": "fr-FR",
+                      "gender": "female"
+                    },
+                    {
+                      "provider": "aws",
+                      "name": "Joanna",
+                      "voice_id": "AWS.Polly.Joanna",
+                      "language": "en-US",
+                      "gender": "female"
+                    }
+                  ]
+                }
+                """));
+
+        var catalog = new VoiceCatalogService(client).list();
+
+        assertThat(catalog.enabledProviders()).containsExactly("telnyx");
+        assertThat(catalog.voices()).singleElement().satisfies(voice -> {
+            assertThat(voice.id()).isEqualTo("Telnyx.NaturalHD.astra");
+            assertThat(voice.languages()).containsExactly("en", "fr");
+            assertThat(voice.traits()).containsEntry("model", "NaturalHD");
+            assertThat(voice.traits()).containsEntry("gender", "female");
+        });
+        verify(client).listNativeVoices();
+    }
+
+    @Test
+    void cachesAnExactTelnyxPreview() throws Exception {
+        var client = mock(TelnyxVoiceCatalogClient.class);
+        when(client.isConfigured()).thenReturn(true);
+        when(client.listNativeVoices()).thenReturn(objectMapper.readTree("""
+                {"voices":[{
+                  "provider":"telnyx",
+                  "name":"Astra",
+                  "voice_id":"Telnyx.NaturalHD.astra",
+                  "language":"fr-FR",
+                  "gender":"female"
+                }]}
+                """));
+        when(client.synthesize(
+                "Telnyx.NaturalHD.astra",
+                "fr",
+                "Bonjour, comment puis-je vous aider ?"
+        )).thenReturn(new byte[] {1, 2, 3});
+        var service = new VoiceCatalogService(client);
+
+        assertThat(service.preview(
+                "Telnyx.NaturalHD.astra", "fr", "Bonjour, comment puis-je vous aider ?"
+        )).containsExactly(1, 2, 3);
+        assertThat(service.preview(
+                "Telnyx.NaturalHD.astra", "fr", "Bonjour, comment puis-je vous aider ?"
+        )).containsExactly(1, 2, 3);
+
+        verify(client, times(1)).synthesize(
+                "Telnyx.NaturalHD.astra",
+                "fr",
+                "Bonjour, comment puis-je vous aider ?"
         );
-
-        assertThat(service.cachedCartesiaGreeting(
-                "cartesia:voice-1", "fr", "Bonjour, comment puis-je vous aider ?"
-        )).containsExactly(1, 2, 3);
-        assertThat(service.cachedCartesiaGreeting(
-                "cartesia:voice-1", "fr", "Bonjour, comment puis-je vous aider ?"
-        )).containsExactly(1, 2, 3);
-
-        verify(cartesia).preview("cartesia:voice-1", "fr", "Bonjour, comment puis-je vous aider ?");
     }
 }

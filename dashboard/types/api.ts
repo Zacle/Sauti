@@ -304,24 +304,10 @@ export type BrowserVoiceRuntimeSession = {
   configuration: Record<string, unknown>;
 };
 
-export type BrowserTtsSession = {
-  provider: "cartesia";
-  clientToken: string;
-  voiceId: string;
-  modelId: string;
-};
-
 export type StartTestCallResponse = {
   call: Call;
   greeting: string;
-  greetingAudioBase64: string | null;
-  websocketUrl: string;
-  token: string;
-  inputSampleRate: number;
-  mode: string;
-  availabilityToolEnabled: boolean;
-  runtime: BrowserVoiceRuntimeSession | null;
-  browserTts: BrowserTtsSession | null;
+  runtime: BrowserVoiceRuntimeSession;
   settings: {
     bargeInSensitivity: number;
     bargeInGraceMs: number;

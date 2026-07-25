@@ -1,20 +1,15 @@
 package com.sauti.outbound;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.Agent;
 import com.sauti.agent.AgentRepository;
+import com.sauti.agent.TelephonyProvider;
 import com.sauti.calendar.Booking;
+import com.sauti.call.CallPipelineService;
 import jakarta.persistence.EntityNotFoundException;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
-import java.util.Base64;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,32 +18,24 @@ import org.springframework.transaction.annotation.Transactional;
 public class OutboundCallService {
     private final ScheduledCallRepository scheduledCallRepository;
     private final AgentRepository agentRepository;
-    private final ObjectMapper objectMapper;
-    private final HttpClient httpClient;
+    private final ObjectProvider<TelephonyProvider> telephonyProvider;
+    private final ObjectProvider<CallPipelineService> callPipelineService;
     private final boolean enabled;
-    private final String accountSid;
-    private final String authToken;
-    private final String publicBaseUrl;
     private final String defaultFromNumber;
 
     public OutboundCallService(
             ScheduledCallRepository scheduledCallRepository,
             AgentRepository agentRepository,
-            ObjectMapper objectMapper,
-            @Value("${sauti.twilio.outbound.enabled}") boolean enabled,
-            @Value("${sauti.twilio.account-sid}") String accountSid,
-            @Value("${sauti.twilio.auth-token}") String authToken,
-            @Value("${sauti.twilio.public-base-url}") String publicBaseUrl,
-            @Value("${sauti.twilio.outbound.from-number}") String defaultFromNumber
+            ObjectProvider<TelephonyProvider> telephonyProvider,
+            ObjectProvider<CallPipelineService> callPipelineService,
+            @Value("${sauti.telnyx.outbound.enabled:false}") boolean enabled,
+            @Value("${sauti.telnyx.outbound.from-number:}") String defaultFromNumber
     ) {
         this.scheduledCallRepository = scheduledCallRepository;
         this.agentRepository = agentRepository;
-        this.objectMapper = objectMapper;
-        this.httpClient = HttpClient.newHttpClient();
+        this.telephonyProvider = telephonyProvider;
+        this.callPipelineService = callPipelineService;
         this.enabled = enabled;
-        this.accountSid = accountSid;
-        this.authToken = authToken;
-        this.publicBaseUrl = publicBaseUrl;
         this.defaultFromNumber = defaultFromNumber;
     }
 
@@ -75,7 +62,7 @@ public class OutboundCallService {
         return scheduledCallRepository.save(new ScheduledCall(agent.getTenant(), agent, null, "callback", targetPhone, scheduledFor));
     }
 
-    @Scheduled(fixedDelayString = "${sauti.twilio.outbound.poll-delay-ms}")
+    @Scheduled(fixedDelayString = "${sauti.telnyx.outbound.poll-delay-ms:60000}")
     @Transactional
     public void initiateDueCalls() {
         if (!enabled) {
@@ -87,41 +74,21 @@ public class OutboundCallService {
 
     private void initiate(ScheduledCall scheduledCall) {
         try {
-            var response = httpClient.send(twilioRequest(scheduledCall), HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                scheduledCall.markInitiated(extractSid(response.body()));
-                return;
-            }
-            scheduledCall.markFailed("Twilio returned HTTP " + response.statusCode());
+            var from = scheduledCall.getAgent().getTwilioPhoneNumber();
+            if (from == null || from.isBlank()) from = defaultFromNumber;
+            var callControlId = telephonyProvider.getObject().createOutboundCall(
+                    scheduledCall.getTargetPhone(),
+                    from,
+                    "scheduled-call:" + scheduledCall.getId()
+            );
+            callPipelineService.getObject().startOutboundCall(
+                    scheduledCall.getAgent(),
+                    callControlId,
+                    scheduledCall.getTargetPhone()
+            );
+            scheduledCall.markInitiated(callControlId);
         } catch (Exception exception) {
             scheduledCall.markFailed(exception.getMessage());
-        }
-    }
-
-    private HttpRequest twilioRequest(ScheduledCall scheduledCall) {
-        var from = scheduledCall.getAgent().getTwilioPhoneNumber();
-        if (from == null || from.isBlank()) {
-            from = defaultFromNumber;
-        }
-        var body = "To=" + encode(scheduledCall.getTargetPhone())
-                + "&From=" + encode(from)
-                + "&Url=" + encode(publicBaseUrl + "/webhooks/twilio/voice");
-        return HttpRequest.newBuilder(URI.create("https://api.twilio.com/2010-04-01/Accounts/" + accountSid + "/Calls.json"))
-                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString((accountSid + ":" + authToken).getBytes(StandardCharsets.UTF_8)))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build();
-    }
-
-    private String encode(String value) {
-        return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
-    }
-
-    private String extractSid(String body) {
-        try {
-            return body == null ? "" : objectMapper.readTree(body).path("sid").asText("");
-        } catch (Exception exception) {
-            return "";
         }
     }
 }

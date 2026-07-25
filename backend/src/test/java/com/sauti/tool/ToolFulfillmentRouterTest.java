@@ -230,7 +230,7 @@ class ToolFulfillmentRouterTest {
                 calendar,
                 webhook,
                 mock(SautiSmsFulfillment.class),
-                mock(TwilioTransferFulfillment.class),
+                mock(TelnyxTransferFulfillment.class),
                 mock(DuringCallIntegrationFulfillment.class),
                 mock(NoopFulfillment.class),
                 mock(ConversationStateTool.class),

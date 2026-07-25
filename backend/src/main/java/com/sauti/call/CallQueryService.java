@@ -28,6 +28,13 @@ public class CallQueryService {
     }
 
     @Transactional(readOnly = true)
+    public Call findActiveByProviderCallId(String providerCallId) {
+        return callRepository.findByTwilioCallSid(providerCallId)
+                .filter(Call::isActive)
+                .orElseThrow(() -> new EntityNotFoundException("Active call not found"));
+    }
+
+    @Transactional(readOnly = true)
     public String firstAgentResponse(UUID tenantId, UUID callId) {
         get(tenantId, callId);
         return callTurnRepository.findByCall_IdOrderByTurnIndexAsc(callId).stream()

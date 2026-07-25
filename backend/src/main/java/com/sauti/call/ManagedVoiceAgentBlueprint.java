@@ -7,6 +7,7 @@ public record ManagedVoiceAgentBlueprint(
         String name,
         String greeting,
         String instructions,
+        String voiceId,
         String language,
         List<String> supportedLanguages,
         List<LlmToolDefinition> tools,

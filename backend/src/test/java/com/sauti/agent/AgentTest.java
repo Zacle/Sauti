@@ -20,7 +20,7 @@ class AgentTest {
         agent.update(
                 "Sarah", null,
                 "Bonjour, c'est Amélie de Tranquil AI. Comment puis-je vous aider ?",
-                "Help callers.", "fr", List.of("fr"), "cartesia:voice", null,
+                "Help callers.", "fr", List.of("fr"), "Telnyx.NaturalHD.astra", null,
                 List.of(), true, "Europe/Paris", "", "always", 300, true, false
         );
 

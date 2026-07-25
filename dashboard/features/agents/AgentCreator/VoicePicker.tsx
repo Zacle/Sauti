@@ -5,8 +5,6 @@ import { Check, ChevronDown, CircleAlert, LoaderCircle, Mic2, Pause, Play, Searc
 import { listVoices } from "@/lib/api/voices";
 import type { VoiceOption } from "@/types/api";
 
-const SUPPORTED_VOICE_LANGUAGES = ["en", "fr", "ar"];
-
 type VoicePickerProps = {
   value: string;
   primaryLanguage: string;
@@ -39,10 +37,10 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
         setVoices(catalog.voices);
         setEnabledProviders(catalog.enabledProviders);
         setProviderEnabled(catalog.enabledProviders.length > 0);
-        if (!initialSelection.value || initialSelection.value.startsWith("openai:")) {
-          const cartesiaDefault = catalog.voices.find((voice) => voice.languages.includes(initialSelection.primaryLanguage))
+        if (!initialSelection.value || !initialSelection.value.toLowerCase().startsWith("telnyx.")) {
+          const telnyxDefault = catalog.voices.find((voice) => voice.languages.includes(initialSelection.primaryLanguage))
             ?? catalog.voices[0];
-          if (cartesiaDefault) initialSelection.onChange(cartesiaDefault.id);
+          if (telnyxDefault) initialSelection.onChange(telnyxDefault.id);
         }
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load voices."))
@@ -60,8 +58,11 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   );
   const selectedVoice = voices.find((voice) => voice.id === value);
   const visibleLanguages = useMemo(
-    () => Array.from(new Set([...SUPPORTED_VOICE_LANGUAGES, ...configuredLanguages])),
-    [configuredLanguages],
+    () => Array.from(new Set([
+      ...configuredLanguages,
+      ...voices.flatMap((voice) => voice.languages),
+    ])).sort((left, right) => languageName(left).localeCompare(languageName(right))),
+    [configuredLanguages, voices],
   );
   const accentBaseVoices = useMemo(
     () => voices.filter((voice) => languageFilter === "recommended"
@@ -241,7 +242,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
 
             <div className="voice-engine-summary">
               <span><Mic2 size={17} /></span>
-              <div><strong>Cartesia voice library</strong><small>Fast multilingual speech, powered by Sauti&apos;s OpenAI Realtime conversation engine.</small></div>
+              <div><strong>Telnyx voice library</strong><small>Native Telnyx voices for browser and telephone conversations.</small></div>
               <i>{voices.length} voices</i>
             </div>
 
@@ -266,7 +267,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               {previewError && <div className="voice-preview-error">{previewError}</div>}
               {loading && <div className="voice-picker-state"><LoaderCircle className="spin" size={22} /> Loading available voices...</div>}
               {!loading && error && <div className="voice-picker-state error">{error}<small>Check the configured TTS provider credentials.</small></div>}
-              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure Cartesia credentials in the backend environment.</small></div>}
+              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure TELNYX_API_KEY in the backend environment.</small></div>}
               {!loading && !error && providerEnabled && unsupportedLanguage && (
                 <div className="voice-language-unavailable">
                   <CircleAlert aria-hidden="true" size={20} />
@@ -361,7 +362,12 @@ function coverage(voice: VoiceOption, languages: string[]) {
 }
 
 function languageName(code: string) {
-  return ({ fr: "French", en: "English", ar: "Arabic", multilingual: "Multilingual" } as Record<string, string>)[code] ?? code.toUpperCase();
+  if (code === "multilingual") return "Multilingual";
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code.toUpperCase();
+  } catch {
+    return code.toUpperCase();
+  }
 }
 
 function titleCase(value: string) {
@@ -369,13 +375,10 @@ function titleCase(value: string) {
 }
 
 function unsupportedLanguageMessage(language: string, enabledProviders: string[]) {
-  if (language === "fr" || language === "ar") {
-    if (!enabledProviders.includes("cartesia")) {
-      return "Cartesia is not enabled in the backend environment. Add CARTESIA_API_KEY to production so native non-English voices can load.";
-    }
-    return `No ${languageName(language)} voice was returned by Cartesia. Check provider language support and credentials.`;
+  if (!enabledProviders.includes("telnyx")) {
+    return "Telnyx is not enabled in the backend environment. Add TELNYX_API_KEY so the native voice catalog can load.";
   }
-  return "The current speech model returned no compatible voice for this language.";
+  return `No ${languageName(language)} voice was returned by Telnyx. Choose a compatible language or voice.`;
 }
 
 function compareVoiceQuality(left: VoiceOption, right: VoiceOption, languages: string[]) {
@@ -386,11 +389,11 @@ function compareVoiceQuality(left: VoiceOption, right: VoiceOption, languages: s
 }
 
 function providerRank(provider: string) {
-  return provider === "cartesia" ? 0 : 1;
+  return provider === "telnyx" ? 0 : 1;
 }
 
 function providerName(provider: string) {
-  return provider === "cartesia" ? "Cartesia" : titleCase(provider);
+  return provider === "telnyx" ? "Telnyx" : titleCase(provider);
 }
 
 function categoryRank(category: string) {

@@ -64,6 +64,7 @@ public class AgentService {
     @Transactional
     public Agent create(UUID tenantId, AgentRequest request) {
         validateLanguages(request.defaultLanguage(), request.supportedLanguages());
+        validateTelnyxVoice(request.ttsVoiceId());
         validateAvailability(request);
         var timezone = validateTimezone(request.timezone());
         var tenant = tenantRepository.findById(tenantId).orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
@@ -102,6 +103,7 @@ public class AgentService {
     @Transactional
     public Agent update(UUID tenantId, UUID agentId, AgentRequest request) {
         validateLanguages(request.defaultLanguage(), request.supportedLanguages());
+        validateTelnyxVoice(request.ttsVoiceId());
         validateAvailability(request);
         var timezone = validateTimezone(request.timezone());
         var agent = get(tenantId, agentId);
@@ -148,6 +150,15 @@ public class AgentService {
             return java.time.ZoneId.of(normalized).getId();
         } catch (java.time.DateTimeException exception) {
             throw new IllegalArgumentException("Unsupported timezone: " + normalized);
+        }
+    }
+
+    private void validateTelnyxVoice(String voiceId) {
+        if (voiceId == null || voiceId.isBlank()) {
+            return;
+        }
+        if (!voiceId.trim().toLowerCase(java.util.Locale.ROOT).startsWith("telnyx.")) {
+            throw new IllegalArgumentException("Select a Telnyx voice from the available voice catalog");
         }
     }
 

@@ -3,6 +3,7 @@ package com.sauti.agent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.call.Call;
+import com.sauti.call.ManagedVoiceAgentProvisioningService;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -29,23 +30,26 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
     private final String apiKey;
     private final String connectionId;
     private final String apiBaseUrl;
-    private final String mediaWebSocketBaseUrl;
     private final String requirementGroupId;
+    private final ManagedVoiceAgentProvisioningService provisioningService;
+    private final String defaultVoiceId;
 
     public TelnyxTelephonyProvider(
             ObjectMapper objectMapper,
             @Value("${sauti.telnyx.api-key:}") String apiKey,
             @Value("${sauti.telnyx.connection-id:}") String connectionId,
             @Value("${sauti.telnyx.api-base-url:https://api.telnyx.com/v2}") String apiBaseUrl,
-            @Value("${sauti.telnyx.media-websocket-base-url:}") String mediaWebSocketBaseUrl,
-            @Value("${sauti.telnyx.requirement-group-id:}") String requirementGroupId
+            @Value("${sauti.telnyx.requirement-group-id:}") String requirementGroupId,
+            @Value("${sauti.telnyx.default-voice-id:Telnyx.NaturalHD.astra}") String defaultVoiceId,
+            ManagedVoiceAgentProvisioningService provisioningService
     ) {
         this.objectMapper = objectMapper;
         this.apiKey = blank(apiKey);
         this.connectionId = blank(connectionId);
         this.apiBaseUrl = apiBaseUrl.replaceFirst("/+$", "");
-        this.mediaWebSocketBaseUrl = mediaWebSocketBaseUrl.replaceFirst("/+$", "");
         this.requirementGroupId = blank(requirementGroupId);
+        this.provisioningService = provisioningService;
+        this.defaultVoiceId = blank(defaultVoiceId);
     }
 
     @Override
@@ -157,19 +161,9 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         );
     }
 
-    public void answerInboundCall(Call call, String callControlId) {
+    public void answerInboundCall(Call call, String callControlId, String greeting) {
         requireConfigured();
-        if (mediaWebSocketBaseUrl.isBlank()) {
-            throw new IllegalStateException("TELNYX_MEDIA_WEBSOCKET_BASE_URL is required for Telnyx calls");
-        }
         var body = new LinkedHashMap<String, Object>();
-        body.put("stream_url", mediaWebSocketBaseUrl + "/" + encodePath(callControlId));
-        body.put("stream_track", "inbound_track");
-        body.put("stream_bidirectional_mode", "rtp");
-        body.put("stream_bidirectional_codec", "L16");
-        body.put("stream_bidirectional_sampling_rate", 16000);
-        body.put("stream_codec", "L16");
-        body.put("send_silence_when_idle", true);
         body.put("command_id", UUID.randomUUID().toString());
         if (call.getAgent().isRecordCalls()) {
             body.put("record", "record-from-answer");
@@ -178,6 +172,81 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
             body.put("record_track", "both");
         }
         send("POST", apiBaseUrl + "/calls/" + encodePath(callControlId) + "/actions/answer", body);
+        startAiAssistant(call, callControlId, greeting);
+    }
+
+    public void startAiAssistant(Call call, String callControlId, String greeting) {
+        var managed = provisioningService.resolve(call, greeting);
+        var assistant = new LinkedHashMap<String, Object>();
+        assistant.put("id", managed.externalAgentId());
+        assistant.put("dynamic_variables", Map.of("sauti_call_sid", call.getTwilioCallSid()));
+        var body = new LinkedHashMap<String, Object>();
+        body.put("assistant", Map.copyOf(assistant));
+        body.put("greeting", greeting == null ? "" : greeting.trim());
+        var configuredVoice = blank(call.getAgent().getTtsVoiceId());
+        body.put(
+                "voice",
+                configuredVoice.toLowerCase(java.util.Locale.ROOT).startsWith("telnyx.")
+                        ? configuredVoice
+                        : defaultVoiceId
+        );
+        body.put("transcription", Map.of(
+                "model", "deepgram/nova-3",
+                "language", call.getAgent().getSupportedLanguages().size() > 1
+                        ? "auto"
+                        : call.getAgent().getDefaultLanguage()
+        ));
+        body.put("send_message_history_updates", true);
+        body.put("client_state", java.util.Base64.getEncoder().encodeToString(
+                call.getTwilioCallSid().getBytes(StandardCharsets.UTF_8)
+        ));
+        body.put("command_id", UUID.randomUUID().toString());
+        send(
+                "POST",
+                apiBaseUrl + "/calls/" + encodePath(callControlId) + "/actions/ai_assistant_start",
+                body
+        );
+    }
+
+    @Override
+    public String createOutboundCall(String to, String from, String clientState) {
+        requireConfigured();
+        if (to == null || !to.matches("^\\+[1-9]\\d{6,14}$")) {
+            throw new IllegalArgumentException("A valid outbound E.164 destination is required");
+        }
+        if (from == null || !from.matches("^\\+[1-9]\\d{6,14}$")) {
+            throw new IllegalArgumentException("A valid Telnyx E.164 caller number is required");
+        }
+        var body = new LinkedHashMap<String, Object>();
+        body.put("connection_id", connectionId);
+        body.put("to", to);
+        body.put("from", from);
+        body.put("command_id", UUID.randomUUID().toString());
+        if (clientState != null && !clientState.isBlank()) {
+            body.put("client_state", java.util.Base64.getEncoder().encodeToString(
+                    clientState.getBytes(StandardCharsets.UTF_8)
+            ));
+        }
+        var data = send("POST", apiBaseUrl + "/calls", body).path("data");
+        var callControlId = data.path("call_control_id").asText("").trim();
+        if (callControlId.isBlank()) {
+            throw new IllegalStateException("Telnyx did not return a call control id");
+        }
+        return callControlId;
+    }
+
+    @Override
+    public void transfer(String callControlId, String to, String from) {
+        requireConfigured();
+        var body = new LinkedHashMap<String, Object>();
+        body.put("to", to);
+        if (from != null && !from.isBlank()) body.put("from", from);
+        body.put("command_id", UUID.randomUUID().toString());
+        send(
+                "POST",
+                apiBaseUrl + "/calls/" + encodePath(callControlId) + "/actions/transfer",
+                body
+        );
     }
 
     public void hangup(String callControlId) {

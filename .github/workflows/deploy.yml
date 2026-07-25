@@ -70,12 +70,10 @@ jobs:
 
       - name: Sync optional provider secrets
         env:
-          CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
-          VAPI_API_KEY: ${{ secrets.VAPI_API_KEY }}
-          VAPI_PUBLIC_KEY: ${{ secrets.VAPI_PUBLIC_KEY }}
-          RETELL_API_KEY: ${{ secrets.RETELL_API_KEY }}
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           TELNYX_API_KEY: ${{ secrets.TELNYX_API_KEY }}
+          TELNYX_PUBLIC_KEY: ${{ secrets.TELNYX_PUBLIC_KEY }}
+          TELNYX_CONNECTION_ID: ${{ secrets.TELNYX_CONNECTION_ID }}
+          TELNYX_TOOL_WEBHOOK_SECRET: ${{ secrets.TELNYX_TOOL_WEBHOOK_SECRET }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
@@ -103,12 +101,10 @@ jobs:
             "
           }
 
-          sync_provider_secret CARTESIA_API_KEY "$CARTESIA_API_KEY"
-          sync_provider_secret VAPI_API_KEY "$VAPI_API_KEY"
-          sync_provider_secret VAPI_PUBLIC_KEY "$VAPI_PUBLIC_KEY"
-          sync_provider_secret RETELL_API_KEY "$RETELL_API_KEY"
-          sync_provider_secret ELEVENLABS_API_KEY "$ELEVENLABS_API_KEY"
           sync_provider_secret TELNYX_API_KEY "$TELNYX_API_KEY"
+          sync_provider_secret TELNYX_PUBLIC_KEY "$TELNYX_PUBLIC_KEY"
+          sync_provider_secret TELNYX_CONNECTION_ID "$TELNYX_CONNECTION_ID"
+          sync_provider_secret TELNYX_TOOL_WEBHOOK_SECRET "$TELNYX_TOOL_WEBHOOK_SECRET"
 
       - name: Deploy verified images
         env:

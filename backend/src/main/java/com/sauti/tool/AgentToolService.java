@@ -13,7 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AgentToolService {
     private static final Set<String> FULFILLMENT_TYPES = Set.of(
-            "sauti_calendar", "sauti_sms", "sauti_integration", "twilio_transfer", "webhook", "noop"
+            "sauti_calendar", "sauti_sms", "sauti_integration", "call_transfer", "webhook", "noop"
     );
     private static final Set<String> AUTH_TYPES = Set.of("none", "bearer", "api_key", "hmac_sha256");
     private static final Set<String> METHODS = Set.of("GET", "POST");
@@ -144,7 +144,7 @@ public class AgentToolService {
     private ToolActionEffect defaultEffect(AgentToolRequest request) {
         return switch (request.fulfillmentType()) {
             case "sauti_sms" -> ToolActionEffect.EXTERNAL_COMMUNICATION;
-            case "twilio_transfer" -> ToolActionEffect.TRANSFER;
+            case "call_transfer" -> ToolActionEffect.TRANSFER;
             case "sauti_integration" -> ToolActionEffect.DATA_WRITE;
             case "webhook" -> "GET".equals(method(request.webhookMethod()))
                     ? ToolActionEffect.READ_ONLY : ToolActionEffect.DATA_WRITE;

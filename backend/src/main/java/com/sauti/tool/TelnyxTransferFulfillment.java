@@ -7,10 +7,10 @@ import com.sauti.llm.LlmToolResult;
 import org.springframework.stereotype.Component;
 
 @Component
-public class TwilioTransferFulfillment implements ToolFulfillment {
+public class TelnyxTransferFulfillment implements ToolFulfillment {
     private final CallTransferService callTransferService;
 
-    public TwilioTransferFulfillment(CallTransferService callTransferService) {
+    public TelnyxTransferFulfillment(CallTransferService callTransferService) {
         this.callTransferService = callTransferService;
     }
 

@@ -16,7 +16,7 @@ export const metrics = [
   { value: 100, suffix: "%", label: "Data security and compliance", icon: ShieldCheck },
 ];
 
-export const partners = ["twilio", "Deepgram", "Cartesia", "OpenAI", "Google Calendar"];
+export const partners = ["Telnyx", "OpenAI", "Google Calendar"];
 
 export const workflow = [
   { icon: PhoneCall, title: "Answers the call", text: "Natural greeting, understands who you are." },
@@ -26,9 +26,8 @@ export const workflow = [
 ];
 
 export const integrations = [
-  { name: "Twilio", category: "Voice infrastructure", tone: "red", logo: "/logos/twilio.svg" },
+  { name: "Telnyx", category: "Voice infrastructure", tone: "teal", logo: "/logos/telnyx.svg" },
   { name: "Deepgram", category: "Speech intelligence", tone: "teal", logo: "/logos/deepgram.svg" },
-  { name: "Cartesia", category: "Realtime voice", tone: "slate", logo: "/logos/cartesia.svg" },
   { name: "OpenAI", category: "AI reasoning", tone: "green", logo: "/logos/openai.svg" },
   { name: "Google Calendar", category: "Scheduling", tone: "blue", logo: "/logos/google-calendar.svg" },
   { name: "HubSpot", category: "Customer platform", tone: "amber", logo: "/logos/hubspot.svg" },
@@ -44,7 +43,7 @@ export const faq = [
   ["Is Sauti PCI & HIPAA compliant?", "The platform is built with production controls: tenant isolation, signed webhooks, encrypted secrets, and audit-friendly call records."],
   ["Does it support multiple languages?", "Yes. The call pipeline detects language and routes STT, TTS, and response behavior for multilingual agents."],
   ["How does billing work?", "Plans can meter usage by call minutes, booked outcomes, and tenant subscription rules."],
-  ["How is my data protected?", "Dashboard access uses JWTs, Twilio webhooks are signature validated, and outbound webhooks are HMAC signed."],
+  ["How is my data protected?", "Dashboard access uses JWTs, Telnyx webhooks are signature validated, and outbound webhooks are HMAC signed."],
   ["Can I customize my AI agent?", "Yes. Each agent has configurable language, voice, prompt, greeting, schedule, transfer rules, and tools."],
   ["What happens when the AI cannot answer?", "The agent can escalate to a human, end safely, or route the call based on tenant-configured tools."],
 ];

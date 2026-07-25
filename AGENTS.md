@@ -124,14 +124,16 @@ OAuth/callback URLs:
 Telnyx:
 
 - Call Control webhook URL: `https://sauti.uk/webhooks/telnyx/call-control`
-- Media WebSocket base URL is not entered in Telnyx. It belongs in Sauti env:
-  `TELNYX_MEDIA_WEBSOCKET_BASE_URL=wss://sauti.uk/ws/telnyx/media`
+- Managed assistant tools use Sauti endpoints under
+  `https://sauti.uk/webhooks/telnyx/tools/{toolName}` and must send the
+  server-only `TELNYX_TOOL_WEBHOOK_SECRET`.
+- Telnyx owns live media, speech recognition, synthesis, and interruption
+  handling. Sauti does not expose a telephony media WebSocket.
 
 Other public base URLs:
 
 - `PUBLIC_BASE_URL=https://sauti.uk`
 - `DASHBOARD_BASE_URL=https://sauti.uk`
-- `SAUTI_WEB_VOICE_WEBSOCKET_URL=wss://sauti.uk`
 - `SAUTI_CORS_ALLOWED_ORIGINS=https://sauti.uk`
 
 ## Environment handling

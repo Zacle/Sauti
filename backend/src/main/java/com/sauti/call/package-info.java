@@ -1,4 +1,4 @@
 /**
- * module-call: Twilio webhook handling, WebSocket media stream orchestration, and per-turn call loop state.
+ * module-call: Telnyx call lifecycle, managed assistant tools, and durable per-call state.
  */
 package com.sauti.call;

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.TelnyxTelephonyProvider;
 import com.sauti.call.CallPipelineService;
+import com.sauti.call.CallQueryService;
 import jakarta.annotation.PreDestroy;
 import java.time.OffsetDateTime;
 import java.util.concurrent.ExecutorService;
@@ -22,6 +23,7 @@ public class TelnyxCallControlService {
     private final TelnyxWebhookEventRepository eventRepository;
     private final CallPipelineService callPipelineService;
     private final TelnyxTelephonyProvider telephonyProvider;
+    private final CallQueryService callQueryService;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         var thread = new Thread(runnable, "telnyx-call-control");
         thread.setDaemon(true);
@@ -32,12 +34,14 @@ public class TelnyxCallControlService {
             ObjectMapper objectMapper,
             TelnyxWebhookEventRepository eventRepository,
             CallPipelineService callPipelineService,
-            TelnyxTelephonyProvider telephonyProvider
+            TelnyxTelephonyProvider telephonyProvider,
+            CallQueryService callQueryService
     ) {
         this.objectMapper = objectMapper;
         this.eventRepository = eventRepository;
         this.callPipelineService = callPipelineService;
         this.telephonyProvider = telephonyProvider;
+        this.callQueryService = callQueryService;
     }
 
     public void accept(String rawPayload) {
@@ -68,8 +72,10 @@ public class TelnyxCallControlService {
         try {
             switch (eventType) {
                 case "call.initiated" -> handleInitiated(payload);
+                case "call.answered" -> handleAnswered(payload);
                 case "call.hangup" -> handleHangup(payload);
                 case "call.recording.saved" -> handleRecording(payload);
+                case "call.conversation.ended" -> handleConversationEnded(payload);
                 case "streaming.failed" -> handleStreamingFailed(payload);
                 default -> {
                     // Persist and acknowledge lifecycle events that require no Sauti state change.
@@ -93,7 +99,8 @@ public class TelnyxCallControlService {
             return;
         }
         var call = callPipelineService.startInboundCall(to, callControlId, from);
-        telephonyProvider.answerInboundCall(call, callControlId);
+        var greeting = callQueryService.firstAgentResponse(call.getTenant().getId(), call.getId());
+        telephonyProvider.answerInboundCall(call, callControlId, greeting);
     }
 
     private void handleHangup(JsonNode payload) {
@@ -101,17 +108,30 @@ public class TelnyxCallControlService {
         callPipelineService.completeActiveCall(callControlId, outcome(payload.path("hangup_cause").asText("")));
     }
 
+    private void handleAnswered(JsonNode payload) {
+        var callControlId = required(payload, "call_control_id");
+        var call = callQueryService.findActiveByProviderCallId(callControlId);
+        if (!"outbound".equals(call.getDirection())) return;
+        var greeting = callQueryService.firstAgentResponse(call.getTenant().getId(), call.getId());
+        telephonyProvider.startAiAssistant(call, callControlId, greeting);
+    }
+
     private void handleRecording(JsonNode payload) {
         var callControlId = required(payload, "call_control_id");
         var urls = payload.path("recording_urls");
         var url = urls.path("mp3").asText(urls.path("wav").asText(""));
-        callPipelineService.updateTwilioStatus(
+        callPipelineService.updateProviderStatus(
                 callControlId,
                 "",
                 null,
                 url,
                 payload.path("recording_id").asText("")
         );
+    }
+
+    private void handleConversationEnded(JsonNode payload) {
+        var callControlId = required(payload, "call_control_id");
+        callPipelineService.completeActiveCall(callControlId, "completed");
     }
 
     private void handleStreamingFailed(JsonNode payload) {

@@ -43,7 +43,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
                                             MpesaPaymentRequestRepository payments,
                                             ObjectMapper objectMapper,
                                             @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBase,
-                                            @Value("${sauti.telephony.public-base-url}") String publicBaseUrl) {
+                                            @Value("${sauti.telnyx.public-base-url}") String publicBaseUrl) {
         this.integrations = integrations; this.oauth = oauth; this.payments = payments; this.objectMapper = objectMapper;
         this.graphApiBase = graphApiBase.replaceFirst("/+$", "");
         this.publicBaseUrl = publicBaseUrl.replaceFirst("/+$", "");

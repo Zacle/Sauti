@@ -8,8 +8,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -20,19 +18,16 @@ public class CallRecordingService {
     private final CallRepository callRepository;
     private final Path recordingsDirectory;
     private final HttpClient httpClient = HttpClient.newHttpClient();
-    private final String twilioAccountSid;
-    private final String twilioAuthToken;
+    private final String telnyxApiKey;
 
     public CallRecordingService(
             CallRepository callRepository,
             @Value("${sauti.recordings.directory:/data/recordings}") String recordingsDirectory,
-            @Value("${sauti.twilio.account-sid:}") String twilioAccountSid,
-            @Value("${sauti.twilio.auth-token:}") String twilioAuthToken
+            @Value("${sauti.telnyx.api-key:}") String telnyxApiKey
     ) {
         this.callRepository = callRepository;
         this.recordingsDirectory = Path.of(recordingsDirectory).toAbsolutePath().normalize();
-        this.twilioAccountSid = twilioAccountSid;
-        this.twilioAuthToken = twilioAuthToken;
+        this.telnyxApiKey = telnyxApiKey == null ? "" : telnyxApiKey.trim();
     }
 
     @Transactional
@@ -56,20 +51,6 @@ public class CallRecordingService {
         }
     }
 
-    public WebVoiceRecordingWriter startWebVoiceRecording(UUID callId) {
-        return new WebVoiceRecordingWriter(recordingsDirectory.resolve(callId + ".wav").normalize());
-    }
-
-    @Transactional
-    public void completeWebVoiceRecording(UUID tenantId, UUID callId, WebVoiceRecordingWriter writer) {
-        if (writer == null) return;
-        writer.finish();
-        var call = callRepository.findByIdAndTenantId(callId, tenantId)
-                .orElseThrow(() -> new EntityNotFoundException("Call not found"));
-        call.attachRecording("/api/v1/calls/" + callId + "/recording", "WEBVOICE-" + callId);
-        callRepository.save(call);
-    }
-
     @Transactional(readOnly = true)
     public RecordingData read(UUID tenantId, UUID callId) {
         var call = callRepository.findByIdAndTenantId(callId, tenantId)
@@ -77,8 +58,8 @@ public class CallRecordingService {
         if (call.getRecordingUrl() == null || call.getRecordingUrl().isBlank()) {
             throw new EntityNotFoundException("Recording not found");
         }
-        if (call.getRecordingUrl().startsWith("https://api.twilio.com/")) {
-            return readTwilioRecording(call.getRecordingUrl());
+        if (call.getRecordingUrl().startsWith("https://")) {
+            return readTelnyxRecording(call.getRecordingUrl());
         }
         try {
             boolean webVoice = call.getRecordingSid() != null && call.getRecordingSid().startsWith("WEBVOICE-");
@@ -92,29 +73,25 @@ public class CallRecordingService {
         }
     }
 
-    private RecordingData readTwilioRecording(String recordingUrl) {
-        if (twilioAccountSid.isBlank() || twilioAuthToken.isBlank()) {
-            throw new IllegalStateException("Twilio recording credentials are not configured");
+    private RecordingData readTelnyxRecording(String recordingUrl) {
+        if (telnyxApiKey.isBlank()) {
+            throw new IllegalStateException("Telnyx recording credentials are not configured");
         }
         try {
-            var mediaUrl = recordingUrl.endsWith(".mp3") ? recordingUrl : recordingUrl + ".mp3";
-            var authorization = Base64.getEncoder().encodeToString(
-                    (twilioAccountSid + ":" + twilioAuthToken).getBytes(StandardCharsets.UTF_8)
-            );
-            var request = HttpRequest.newBuilder(URI.create(mediaUrl))
-                    .header("Authorization", "Basic " + authorization)
+            var request = HttpRequest.newBuilder(URI.create(recordingUrl))
+                    .header("Authorization", "Bearer " + telnyxApiKey)
                     .GET()
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("Twilio recording download failed with HTTP " + response.statusCode());
+                throw new IllegalStateException("Telnyx recording download failed with HTTP " + response.statusCode());
             }
             return new RecordingData(response.body(), "audio/mpeg");
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Twilio recording download was interrupted", exception);
+            throw new IllegalStateException("Telnyx recording download was interrupted", exception);
         } catch (Exception exception) {
-            throw new IllegalStateException("Unable to download Twilio recording", exception);
+            throw new IllegalStateException("Unable to download Telnyx recording", exception);
         }
     }
 

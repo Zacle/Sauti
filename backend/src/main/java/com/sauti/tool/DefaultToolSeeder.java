@@ -71,7 +71,7 @@ public class DefaultToolSeeder {
                         "message", property("string", "SMS body", "")
                 ), List.of("phone", "message")), "sauti_sms", null, 30);
         seed(agent, "transfer_to_human", "Transfer the call to a human agent.",
-                schema(Map.of("reason", property("string", "Reason for escalation", "")), List.of("reason")), "twilio_transfer", null, 40);
+                schema(Map.of("reason", property("string", "Reason for escalation", "")), List.of("reason")), "call_transfer", null, 40);
         seed(agent, "end_call", "Authorize a respectful call ending only after the caller clearly indicates they are finished, or after a configured terminal transfer, voicemail, or silence workflow. Never use this merely because one answer or booking step is complete.",
                 schema(Map.of(
                         "outcome", property("string", "Final outcome code", ""),

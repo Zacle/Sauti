@@ -56,11 +56,11 @@ const detailBySlug: Record<string, { proof: string[]; title: string; text: strin
     flow: ["Create the tenant agent", "Attach voice and tool providers", "Run controlled live turns", "Record outcome and analytics"],
   },
   "live-call-pipeline": {
-    proof: ["Twilio media events", "STT and TTS streaming", "Barge-in aware turns"],
+    proof: ["Telnyx conversation events", "Managed speech pipeline", "Barge-in aware turns"],
     title: "The call pipeline keeps the conversation moving in real time.",
     text:
-      "This page focuses on the inbound call loop: Twilio streams audio, speech is transcribed, the LLM decides the next action, tools run when needed, and speech is streamed back to the caller.",
-    flow: ["Receive media frames", "Detect final utterance", "Process the agent turn", "Stream voice response"],
+      "This page focuses on the inbound call loop: Telnyx manages the live conversation while Sauti supplies business context, safe tools, and durable outcomes.",
+    flow: ["Receive the call", "Understand the utterance", "Run approved tools", "Continue the conversation"],
   },
   "agent-builder": {
     proof: ["Configurable voice", "Prompt and greeting controls", "Tool permissions per agent"],
@@ -133,18 +133,18 @@ const detailBySlug: Record<string, { proof: string[]; title: string; text: strin
     flow: ["Answer after hours", "Capture caller need", "Book or collect callback", "Notify the team"],
   },
   "voice-infrastructure": {
-    proof: ["Twilio webhooks", "Media stream control", "Authoritative status callbacks"],
+    proof: ["Telnyx webhooks", "Managed AI assistants", "Authoritative status callbacks"],
     title: "Voice Infrastructure connects carrier calls to the Sauti agent runtime.",
     text:
-      "This destination explains how inbound calls enter the system, how media streams are handled, and how Twilio status events update final duration, outcome, and recording references.",
-    flow: ["Validate Twilio request", "Open media stream", "Track call lifecycle", "Persist final status"],
+      "This destination explains how inbound calls enter through Telnyx, attach to a managed assistant, and update final duration, outcome, and recording references.",
+    flow: ["Validate Telnyx request", "Start the assistant", "Track call lifecycle", "Persist final status"],
   },
   "speech-and-voice": {
-    proof: ["Realtime STT", "Streaming TTS", "Provider fallback"],
+    proof: ["Managed transcription", "Multilingual voices", "Natural interruptions"],
     title: "Speech & Voice makes the agent hear and respond naturally.",
     text:
-      "Sauti routes audio through speech-to-text and text-to-speech providers, handles silence and interruptions, and streams voice responses back without waiting for the whole turn to finish.",
-    flow: ["Decode caller audio", "Transcribe utterance", "Generate speech chunks", "Stream response to Twilio"],
+      "Telnyx manages live transcription, synthesis, silence, and interruption behavior while Sauti keeps the selected voice and language policy consistent.",
+    flow: ["Hear caller audio", "Transcribe utterance", "Apply agent policy", "Speak with the selected voice"],
   },
   "ai-models": {
     proof: ["Tool-calling LLMs", "Prompt construction", "Conversation memory"],
@@ -255,7 +255,7 @@ const detailBySlug: Record<string, { proof: string[]; title: string; text: strin
     proof: ["Credential encryption", "Signature validation", "Tenant isolation"],
     title: "Security resources explain how Sauti protects live call operations.",
     text:
-      "This page should help technical and compliance buyers understand encrypted tool credentials, Twilio validation, signed webhooks, and tenant-scoped records.",
+      "This page should help technical and compliance buyers understand encrypted tool credentials, Telnyx validation, signed webhooks, and tenant-scoped records.",
     flow: ["Validate sources", "Protect secrets", "Isolate tenants", "Audit activity"],
   },
 };
@@ -749,9 +749,9 @@ function DestinationVisual({ destination, mode }: { destination: VisualDestinati
         <div className="speech-routing-grid">
           {[
             ["Language", "Auto detected"],
-            ["STT provider", "Deepgram / Intron"],
-            ["TTS voice", "Cartesia"],
-            ["Output", "Twilio μ-law stream"],
+            ["Speech runtime", "Telnyx AI"],
+            ["TTS voice", "Telnyx catalog"],
+            ["Output", "Managed realtime audio"],
           ].map(([label, value]) => (
             <div key={label}>
               <span>{label}</span>
@@ -769,8 +769,8 @@ function DestinationVisual({ destination, mode }: { destination: VisualDestinati
         <VisualHeader section={destination.group.label} />
         <div className="voice-call-path">
           {[
-            ["Inbound call", "Twilio webhook"],
-            ["Media stream", "WebSocket audio"],
+            ["Inbound call", "Telnyx webhook"],
+            ["Conversation", "Managed AI assistant"],
             ["Status callback", "Duration + outcome"],
           ].map(([label, value], index) => (
             <div key={label} className={`voice-path-node voice-path-${index + 1}`}>
@@ -793,7 +793,7 @@ function DestinationVisual({ destination, mode }: { destination: VisualDestinati
       <div className="destination-visual-card visual-pipeline">
         <VisualHeader section={destination.group.label} />
         <div className="pipeline-lanes">
-          {["Twilio stream", "Speech event", "LLM turn", "Voice reply"].map((label, index) => (
+          {["Telnyx call", "Speech event", "Business tool", "Voice reply"].map((label, index) => (
             <div key={label} style={{ animationDelay: `${index * 140}ms` }}>
               <span>{String(index + 1).padStart(2, "0")}</span>
               <strong>{label}</strong>

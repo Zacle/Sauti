@@ -16,14 +16,11 @@ from pathlib import Path
 path = Path(sys.argv[1])
 domain = sys.argv[2].strip().strip("/")
 https = f"https://{domain}"
-wss = f"wss://{domain}"
 
 updates = {
     "DASHBOARD_BASE_URL": https,
     "SAUTI_CORS_ALLOWED_ORIGINS": https,
-    "SAUTI_WEB_VOICE_WEBSOCKET_URL": wss,
     "PUBLIC_BASE_URL": https,
-    "TELNYX_MEDIA_WEBSOCKET_BASE_URL": f"{wss}/ws/telnyx/media",
     "GOOGLE_OAUTH_REDIRECT_URI": f"{https}/api/v1/auth/oauth/google/callback",
     "GOOGLE_CALENDAR_REDIRECT_URI": f"{https}/api/v1/integrations/google-calendar/callback",
     "GOOGLE_SHEETS_REDIRECT_URI": f"{https}/api/v1/integrations/google_sheets/callback",

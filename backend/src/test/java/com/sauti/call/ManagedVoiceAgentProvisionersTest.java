@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -20,166 +19,15 @@ class ManagedVoiceAgentProvisionersTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
-    void retellCreatesItsResponseEngineAndVoiceAgentFromTheSautiBlueprint() throws Exception {
+    void telnyxCreatesAWebAndTelephoneAssistantWithWebhookTools() throws Exception {
         var http = mock(ManagedVoiceProviderHttpClient.class);
-        when(http.post(eq("Retell"), eq(URI.create("https://api.retellai.com/create-retell-llm")), any(), any()))
-                .thenReturn(objectMapper.readTree("{\"llm_id\":\"llm-1\"}"));
-        when(http.post(eq("Retell"), eq(URI.create("https://api.retellai.com/create-agent")), any(), any()))
-                .thenReturn(objectMapper.readTree("{\"agent_id\":\"agent-1\",\"version\":0}"));
-        var provisioner = new RetellManagedVoiceAgentProvisioner(
-                http,
-                objectMapper,
-                "secret",
-                "https://api.retellai.com/",
-                "retell-Cimo",
-                "gpt-4.1-mini"
-        );
-
-        var reference = provisioner.synchronize(blueprint(), null);
-
-        assertThat(reference.externalAgentId()).isEqualTo("agent-1");
-        assertThat(reference.externalResourcesJson()).contains("llm-1");
-        @SuppressWarnings("unchecked")
-        var body = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
-        verify(http).post(
-                eq("Retell"),
-                eq(URI.create("https://api.retellai.com/create-retell-llm")),
-                any(),
-                body.capture()
-        );
-        assertThat(body.getValue())
-                .containsEntry("begin_message", "Hello from Sauti")
-                .containsKey("general_tools");
-        assertThat(body.getValue().toString()).contains("additionalProperties");
-        @SuppressWarnings("unchecked")
-        var retellTools = (List<Map<String, Object>>) body.getValue().get("general_tools");
-        var availabilityTool = retellTools.stream()
-                .filter(tool -> "check_availability".equals(tool.get("name")))
-                .findFirst()
-                .orElseThrow();
-        assertThat(availabilityTool)
-                .containsEntry("speak_during_execution", true)
-                .containsEntry("speak_after_execution", true)
-                .containsEntry("execution_message_type", "prompt")
-                .containsEntry("timeout_ms", 30_000);
-        assertThat(availabilityTool.get("execution_message_description").toString())
-                .contains("caller's current language")
-                .contains("Do not ask a question")
-                .contains("wait for the tool result");
-        assertThat(body.getValue().get("general_prompt").toString())
-                .contains("actionPerformed=true")
-                .contains("Do not ask repeatedly");
-    }
-
-    @Test
-    void elevenLabsCreatesStandaloneToolsAndAttachesThemToTheGeneratedAgent() throws Exception {
-        var http = mock(ManagedVoiceProviderHttpClient.class);
-        when(http.post(eq("ElevenLabs"), eq(URI.create("https://api.elevenlabs.io/v1/convai/tools")), any(), any()))
-                .thenReturn(objectMapper.readTree("{\"id\":\"tool-1\"}"));
         when(http.post(
-                eq("ElevenLabs"),
-                eq(URI.create("https://api.elevenlabs.io/v1/convai/agents/create")),
+                eq("Telnyx"),
+                eq(URI.create("https://api.telnyx.com/v2/ai/assistants")),
                 any(),
                 any()
-        )).thenReturn(objectMapper.readTree("{\"agent_id\":\"eleven-agent\"}"));
-        var provisioner = new ElevenLabsManagedVoiceAgentProvisioner(
-                http,
-                objectMapper,
-                "secret",
-                "https://api.elevenlabs.io/"
-        );
-
-        var reference = provisioner.synchronize(blueprint(), null);
-
-        assertThat(reference.externalAgentId()).isEqualTo("eleven-agent");
-        assertThat(reference.externalResourcesJson()).contains("tool-1").doesNotContain("tool-2");
-        @SuppressWarnings("unchecked")
-        var toolBody = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
-        verify(http, times(1)).post(
-                eq("ElevenLabs"),
-                eq(URI.create("https://api.elevenlabs.io/v1/convai/tools")),
-                any(),
-                toolBody.capture()
-        );
-        assertThat(toolBody.getValue().toString())
-                .contains("check_availability")
-                .doesNotContain("additionalProperties")
-                .doesNotContain("maxLength")
-                .doesNotContain("end_call");
-        @SuppressWarnings("unchecked")
-        var toolConfig = (Map<String, Object>) toolBody.getValue().get("tool_config");
-        @SuppressWarnings("unchecked")
-        var parameters = (Map<String, Object>) toolConfig.get("parameters");
-        @SuppressWarnings("unchecked")
-        var properties = (Map<String, Object>) parameters.get("properties");
-        @SuppressWarnings("unchecked")
-        var clearFields = (Map<String, Object>) properties.get("clear_fields");
-        @SuppressWarnings("unchecked")
-        var clearFieldItems = (Map<String, Object>) clearFields.get("items");
-        assertThat(clearFieldItems)
-                .containsEntry("type", "string")
-                .containsEntry("description", "Value for clear fields item.");
-        @SuppressWarnings("unchecked")
-        var date = (Map<String, Object>) properties.get("date");
-        assertThat(date)
-                .containsEntry("description", "Appointment date. Expected format: date.")
-                .doesNotContainKeys("format", "maxLength");
-        @SuppressWarnings("unchecked")
-        var agentBody = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
-        verify(http).post(
-                eq("ElevenLabs"),
-                eq(URI.create("https://api.elevenlabs.io/v1/convai/agents/create")),
-                any(),
-                agentBody.capture()
-        );
-        assertThat(agentBody.getValue().toString())
-                .contains("Hello from Sauti")
-                .contains("tool_ids")
-                .contains("built_in_tools")
-                .contains("end_call")
-                .doesNotContain("secret");
-        @SuppressWarnings("unchecked")
-        var conversationConfig = (Map<String, Object>) agentBody.getValue().get("conversation_config");
-        @SuppressWarnings("unchecked")
-        var agent = (Map<String, Object>) conversationConfig.get("agent");
-        @SuppressWarnings("unchecked")
-        var prompt = (Map<String, Object>) agent.get("prompt");
-        @SuppressWarnings("unchecked")
-        var builtInTools = (Map<String, Object>) prompt.get("built_in_tools");
-        @SuppressWarnings("unchecked")
-        var endCall = (Map<String, Object>) builtInTools.get("end_call");
-        assertThat(endCall)
-                .containsEntry("type", "system")
-                .containsEntry("name", "end_call");
-        assertThat(endCall.get("params"))
-                .isEqualTo(Map.of("system_tool_type", "end_call"));
-        @SuppressWarnings("unchecked")
-        var turn = (Map<String, Object>) conversationConfig.get("turn");
-        @SuppressWarnings("unchecked")
-        var softTimeout = (Map<String, Object>) turn.get("soft_timeout_config");
-        assertThat(softTimeout)
-                .containsEntry("timeout_seconds", 1.5)
-                .containsEntry("use_llm_generated_message", true)
-                .containsEntry("max_soft_timeouts_per_generation", 1);
-        assertThat(softTimeout.get("llm_generated_message_prompt_override").toString())
-                .contains("caller's current language")
-                .contains("Do not ask a question")
-                .contains("Do not repeat");
-        assertThat(prompt.get("prompt").toString())
-                .contains("actionPerformed=true")
-                .contains("Do not ask repeatedly");
-    }
-
-    @Test
-    void telnyxCreatesAWebEnabledAssistantWithClientSideTools() throws Exception {
-        var http = mock(ManagedVoiceProviderHttpClient.class);
-        when(http.post(eq("Telnyx"), eq(URI.create("https://api.telnyx.com/v2/ai/assistants")), any(), any()))
-                .thenReturn(objectMapper.readTree("{\"id\":\"assistant-1\",\"version_id\":\"main\"}"));
-        var provisioner = new TelnyxManagedVoiceAgentProvisioner(
-                http,
-                "secret",
-                "https://api.telnyx.com/v2/"
-        );
+        )).thenReturn(objectMapper.readTree("{\"id\":\"assistant-1\",\"version_id\":\"main\"}"));
+        var provisioner = provisioner(http);
 
         var reference = provisioner.synchronize(blueprint(), null);
 
@@ -192,38 +40,28 @@ class ManagedVoiceAgentProvisionersTest {
                 any(),
                 body.capture()
         );
+        assertThat(body.getValue())
+                .containsEntry("voice_settings", Map.of("voice", "Telnyx.NaturalHD.astra"))
+                .containsEntry("transcription", Map.of(
+                        "model", "deepgram/nova-3",
+                        "language", "auto"
+                ));
         assertThat(body.getValue().toString())
-                .contains("client_side_tool")
+                .contains("type=webhook")
+                .contains("type=hangup")
+                .contains("name=hang_up")
+                .contains("https://sauti.example/webhooks/telnyx/tools/check_availability")
+                .contains("callSid={{sauti_call_sid}}")
+                .contains("async=false")
+                .contains("timeout_ms=30000")
                 .contains("end_call")
-                .doesNotContain("type=hangup")
-                .doesNotContain("timeout_ms")
-                .doesNotContain("promote_to_main")
-                .contains("supports_unauthenticated_web_calls")
-                .contains("Hello from Sauti")
-                .doesNotContain("secret");
+                .doesNotContain("client_side_tool")
+                .doesNotContain("promote_to_main");
         @SuppressWarnings("unchecked")
-        var telephonySettings = (Map<String, Object>) body.getValue().get("telephony_settings");
-        assertThat(telephonySettings.get("recording_settings"))
-                .isEqualTo(Map.of("enabled", false));
+        var telephony = (Map<String, Object>) body.getValue().get("telephony_settings");
+        assertThat(telephony.get("recording_settings")).isEqualTo(Map.of("enabled", false));
         assertThat(body.getValue().get("privacy_settings"))
                 .isEqualTo(Map.of("data_retention", false));
-        @SuppressWarnings("unchecked")
-        var telnyxTools = (List<Map<String, Object>>) body.getValue().get("tools");
-        @SuppressWarnings("unchecked")
-        var telnyxAvailability = (Map<String, Object>) telnyxTools.stream()
-                .map(tool -> tool.get("client_side_tool"))
-                .filter(Map.class::isInstance)
-                .map(Map.class::cast)
-                .filter(tool -> "check_availability".equals(tool.get("name")))
-                .findFirst()
-                .orElseThrow();
-        assertThat(telnyxAvailability.get("description").toString())
-                .contains("Immediately before invoking it")
-                .contains("caller's current language")
-                .contains("continue automatically");
-        assertThat(body.getValue().get("instructions").toString())
-                .contains("actionPerformed=true")
-                .contains("Do not ask repeatedly");
     }
 
     @Test
@@ -234,14 +72,11 @@ class ManagedVoiceAgentProvisionersTest {
                 eq(URI.create("https://api.telnyx.com/v2/ai/assistants/assistant-1")),
                 any(),
                 any()
-        )).thenReturn(objectMapper.readTree("{\"id\":\"assistant-1\",\"version_id\":\"version-2\"}"));
-        var provisioner = new TelnyxManagedVoiceAgentProvisioner(
-                http,
-                "secret",
-                "https://api.telnyx.com/v2/"
-        );
+        )).thenReturn(objectMapper.readTree(
+                "{\"id\":\"assistant-1\",\"version_id\":\"version-2\"}"
+        ));
 
-        var reference = provisioner.synchronize(
+        var reference = provisioner(http).synchronize(
                 blueprint(),
                 new ManagedVoiceAgentReference("assistant-1", "main", "{}")
         );
@@ -255,10 +90,18 @@ class ManagedVoiceAgentProvisionersTest {
                 any(),
                 body.capture()
         );
-        assertThat(body.getValue())
-                .containsEntry("promote_to_main", true);
-        assertThat(body.getValue().toString())
-                .doesNotContain("timeout_ms");
+        assertThat(body.getValue()).containsEntry("promote_to_main", true);
+    }
+
+    private TelnyxManagedVoiceAgentProvisioner provisioner(ManagedVoiceProviderHttpClient http) {
+        return new TelnyxManagedVoiceAgentProvisioner(
+                http,
+                "secret",
+                "https://api.telnyx.com/v2/",
+                "https://sauti.example",
+                "tool-secret",
+                "Telnyx.NaturalHD.astra"
+        );
     }
 
     private ManagedVoiceAgentBlueprint blueprint() {
@@ -266,8 +109,9 @@ class ManagedVoiceAgentProvisionersTest {
                 "Sauti Test",
                 "Hello from Sauti",
                 "Be concise and professional.",
+                "Telnyx.NaturalHD.astra",
                 "en",
-                List.of("en"),
+                List.of("en", "fr"),
                 List.of(
                         new LlmToolDefinition(
                                 "check_availability",
@@ -275,22 +119,7 @@ class ManagedVoiceAgentProvisionersTest {
                                 Map.of(
                                         "type", "object",
                                         "properties", Map.of(
-                                                "date", Map.of(
-                                                        "type", "string",
-                                                        "description", "Appointment date.",
-                                                        "format", "date",
-                                                        "maxLength", 10
-                                                ),
-                                                "clear_fields", Map.of(
-                                                        "type", "array",
-                                                        "description", "Fields to clear.",
-                                                        "items", Map.of("type", "string")
-                                                ),
-                                                "customer_details", Map.of(
-                                                        "type", "object",
-                                                        "properties", Map.of(),
-                                                        "additionalProperties", true
-                                                )
+                                                "date", Map.of("type", "string")
                                         ),
                                         "additionalProperties", false
                                 ),

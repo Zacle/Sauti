@@ -49,7 +49,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/agent-templates/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/voices/**").permitAll()
                         .requestMatchers("/api/v1/public/**").permitAll()
-                        .requestMatchers("/webhooks/twilio/**").permitAll()
                         .requestMatchers("/webhooks/whatsapp", "/webhooks/whatsapp/**").permitAll()
                         .requestMatchers("/webhooks/telnyx", "/webhooks/telnyx/**").permitAll()
                         .requestMatchers("/webhooks/mpesa/**").permitAll()

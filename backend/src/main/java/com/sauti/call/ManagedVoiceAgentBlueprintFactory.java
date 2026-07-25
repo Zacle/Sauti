@@ -42,6 +42,7 @@ public class ManagedVoiceAgentBlueprintFactory {
                 "Sauti " + agent.getName(),
                 greeting == null ? "" : greeting.trim(),
                 conversationOrchestrator.realtimeInstructions(call, language),
+                agent.getTtsVoiceId(),
                 language,
                 List.copyOf(agent.getSupportedLanguages()),
                 agentToolLoader.loadForAgent(agent.getId()),

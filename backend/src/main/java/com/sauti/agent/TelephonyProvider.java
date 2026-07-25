@@ -31,6 +31,14 @@ public interface TelephonyProvider {
         return null;
     }
 
+    default String createOutboundCall(String to, String from, String clientState) {
+        throw new UnsupportedOperationException("Outbound calls are not supported by this provider");
+    }
+
+    default void transfer(String callControlId, String to, String from) {
+        throw new UnsupportedOperationException("Call transfers are not supported by this provider");
+    }
+
     default String buildMediaStreamTwiMl(
             String websocketUrl,
             String callSid,

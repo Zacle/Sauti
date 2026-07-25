@@ -1,0 +1,1 @@
+ALTER TABLE agents ALTER COLUMN tts_voice_id TYPE VARCHAR(255);

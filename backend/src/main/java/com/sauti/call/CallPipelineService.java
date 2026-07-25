@@ -157,6 +157,29 @@ public class CallPipelineService {
     }
 
     @Transactional
+    public Call startOutboundCall(Agent agent, String callControlId, String targetNumber) {
+        synchronizeBusinessHours(agent);
+        var call = callRepository.findByTwilioCallSid(callControlId)
+                .orElseGet(() -> callRepository.save(
+                        new Call(agent.getTenant(), agent, callControlId, targetNumber, "outbound")
+                ));
+        callSessionStore.createIfAbsent(callControlId, CallSession.fromCall(call, ""));
+        if (openingGreeting(call).isBlank()) {
+            var opening = instantGreeting(agent, agent.getDefaultLanguage());
+            if (!opening.isBlank()) {
+                call.appendAgentMessage(agent.getDefaultLanguage(), opening);
+                var turnIndex = callTurnRepository.countByCall_Id(call.getId()) + 1;
+                callTurnRepository.save(new CallTurn(
+                        call, turnIndex, "", opening, agent.getDefaultLanguage(), 0, 0, 0, false
+                ));
+                callRepository.save(call);
+            }
+        }
+        dashboardEventPublisher.callStarted(call);
+        return call;
+    }
+
+    @Transactional
     public Call startWhatsAppConversation(String phoneNumberId, String customerNumber) {
         var agent = agentRepository.findByWhatsappPhoneNumberId(phoneNumberId)
                 .filter(Agent::isActive)
@@ -381,16 +404,16 @@ public class CallPipelineService {
     }
 
     @Transactional
-    public void updateTwilioStatus(String twilioCallSid, String callStatus, Integer durationSeconds, String recordingUrl, String recordingSid) {
+    public void updateProviderStatus(String twilioCallSid, String callStatus, Integer durationSeconds, String recordingUrl, String recordingSid) {
         callRepository.findByTwilioCallSid(twilioCallSid)
                 .ifPresent(call -> {
-                    call.applyTwilioStatus(callStatus, durationSeconds, recordingUrl, recordingSid);
-                    if (isTerminalTwilioStatus(callStatus)) {
+                    call.applyProviderStatus(callStatus, durationSeconds, recordingUrl, recordingSid);
+                    if (isTerminalProviderStatus(callStatus)) {
                         archiveSession(call);
                         analyzePostCall(call);
                     }
                     callRepository.save(call);
-                    if (isTerminalTwilioStatus(callStatus)) {
+                    if (isTerminalProviderStatus(callStatus)) {
                         dashboardEventPublisher.callEnded(call);
                     }
                 });
@@ -715,7 +738,7 @@ public class CallPipelineService {
         callSessionStore.delete(callSid);
     }
 
-    private boolean isTerminalTwilioStatus(String callStatus) {
+    private boolean isTerminalProviderStatus(String callStatus) {
         if (callStatus == null || callStatus.isBlank()) {
             return false;
         }

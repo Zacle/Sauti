@@ -9,37 +9,42 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 
 @Service
-public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProvisioner {
+public class TelnyxManagedVoiceAgentProvisioner {
     private final ManagedVoiceProviderHttpClient httpClient;
     private final String apiKey;
     private final String apiBaseUrl;
+    private final String publicBaseUrl;
+    private final String toolWebhookSecret;
+    private final String defaultVoiceId;
 
     public TelnyxManagedVoiceAgentProvisioner(
             ManagedVoiceProviderHttpClient httpClient,
             @Value("${sauti.telnyx.api-key:}") String apiKey,
-            @Value("${sauti.telnyx.api-base-url:https://api.telnyx.com/v2}") String apiBaseUrl
+            @Value("${sauti.telnyx.api-base-url:https://api.telnyx.com/v2}") String apiBaseUrl,
+            @Value("${sauti.telnyx.public-base-url:http://localhost:8080}") String publicBaseUrl,
+            @Value("${sauti.telnyx.tool-webhook-secret:}") String toolWebhookSecret,
+            @Value("${sauti.telnyx.default-voice-id:Telnyx.NaturalHD.astra}") String defaultVoiceId
     ) {
         this.httpClient = httpClient;
         this.apiKey = trim(apiKey);
         this.apiBaseUrl = stripTrailingSlash(apiBaseUrl);
+        this.publicBaseUrl = stripTrailingSlash(publicBaseUrl);
+        this.toolWebhookSecret = trim(toolWebhookSecret);
+        this.defaultVoiceId = trim(defaultVoiceId);
     }
 
-    @Override
     public String provider() {
         return "telnyx";
     }
 
-    @Override
     public boolean isConfigured() {
-        return !apiKey.isBlank();
+        return !apiKey.isBlank() && !publicBaseUrl.isBlank() && !toolWebhookSecret.isBlank();
     }
 
-    @Override
     public String configurationVersion() {
-        return "8";
+        return "11";
     }
 
-    @Override
     public ManagedVoiceAgentReference synchronize(
             ManagedVoiceAgentBlueprint blueprint,
         ManagedVoiceAgentReference existing
@@ -77,25 +82,47 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
     ) {
         var tools = new ArrayList<Map<String, Object>>();
         blueprint.tools().forEach(tool -> {
-            var clientTool = new LinkedHashMap<String, Object>();
-            clientTool.put("name", tool.name());
+            var webhook = new LinkedHashMap<String, Object>();
+            webhook.put("name", tool.name());
             var description = tool.description() == null ? "" : tool.description();
             if ("end_call".equals(tool.name())) {
-                description = "Required terminal action. Call this immediately after one brief respectful farewell "
-                        + "when the caller is finished or says goodbye. Do not wait for another caller turn.";
+                description = "Record the terminal outcome after one brief respectful farewell when the caller is "
+                        + "finished. After this webhook succeeds, immediately invoke the native hang-up tool.";
             } else if (tool.callerWaitExpected()) {
                 description += " This operation may take noticeable time. Immediately before invoking it, say one "
                         + "brief, natural, professional progress acknowledgment in the caller's current language. "
                         + "Do not ask a question and do not imply success or failure. After the result returns, "
                         + "continue automatically and explain only the factual outcome.";
             }
-            clientTool.put("description", description.trim());
-            clientTool.put("parameters", tool.inputSchema());
+            webhook.put("description", description.trim());
+            webhook.put(
+                    "url",
+                    publicBaseUrl + "/webhooks/telnyx/tools/" + path(tool.name())
+                            + "?callSid={{sauti_call_sid}}"
+            );
+            webhook.put("method", "POST");
+            // Sauti keeps factual CRUD results synchronous so Telnyx resumes the
+            // same turn with the authoritative response. Telnyx otherwise uses
+            // a roughly five-second default, which is too short for a guarded
+            // calendar or integration operation.
+            webhook.put("async", false);
+            webhook.put("timeout_ms", 30_000);
+            webhook.put("headers", java.util.List.of(
+                    Map.of("name", "x-sauti-tool-secret", "value", toolWebhookSecret)
+            ));
+            webhook.put("body_parameters", tool.inputSchema());
             tools.add(Map.of(
-                    "type", "client_side_tool",
-                    "client_side_tool", Map.copyOf(clientTool)
+                    "type", "webhook",
+                    "webhook", Map.copyOf(webhook)
             ));
         });
+        tools.add(Map.of(
+                "type", "hangup",
+                "hangup", Map.of(
+                        "name", "hang_up",
+                        "description", "End the voice session after the farewell and successful end_call webhook."
+                )
+        ));
         var body = new LinkedHashMap<String, Object>();
         body.put("name", shorten(blueprint.name(), 100));
         body.put("instructions", blueprint.instructions() + """
@@ -116,10 +143,18 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
                   invoking it, without asking the caller a question.
                 - After every tool result, continue automatically in the same turn; never wait for more caller speech.
                 - Keep each spoken answer continuous and concise.
-                - When the caller is finished, say one brief respectful farewell and call end_call in the same turn.
-                - Never finish a farewell without calling end_call. Never wait for another caller turn after the farewell.
+                - When the caller is finished, say one brief respectful farewell, call end_call, then immediately call
+                  the native hang_up tool. Never wait for another caller turn after the farewell.
                 """);
         body.put("greeting", blueprint.greeting());
+        body.put("voice_settings", Map.of("voice", selectedVoice(blueprint.voiceId())));
+        var transcription = new LinkedHashMap<String, Object>();
+        transcription.put("model", "deepgram/nova-3");
+        transcription.put(
+                "language",
+                blueprint.supportedLanguages().size() > 1 ? "auto" : blueprint.language()
+        );
+        body.put("transcription", Map.copyOf(transcription));
         body.put("tools", tools);
         body.put("enabled_features", java.util.List.of("telephony"));
         body.put("telephony_settings", Map.of(
@@ -151,6 +186,13 @@ public class TelnyxManagedVoiceAgentProvisioner implements ManagedVoiceAgentProv
 
     private static String path(String value) {
         return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private String selectedVoice(String configuredVoice) {
+        var normalized = trim(configuredVoice);
+        return normalized.toLowerCase(java.util.Locale.ROOT).startsWith("telnyx.")
+                ? normalized
+                : defaultVoiceId;
     }
 
     private static String shorten(String value, int maximum) {

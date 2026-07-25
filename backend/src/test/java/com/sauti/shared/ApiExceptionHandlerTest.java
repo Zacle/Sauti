@@ -10,13 +10,13 @@ class ApiExceptionHandlerTest {
     @Test
     void returnsAUsefulServiceUnavailableResponseForVoiceRuntimeConfiguration() {
         var response = new ApiExceptionHandler().voiceRuntimeUnavailable(
-                new VoiceRuntimeUnavailableException("vapi test calls are not configured")
+                new VoiceRuntimeUnavailableException("telnyx test calls are not configured")
         );
 
         assertThat(response.getStatusCode().value()).isEqualTo(503);
         assertThat(response.getBody()).isEqualTo(new ApiError(
                 "voice_runtime_unavailable",
-                "vapi test calls are not configured"
+                "telnyx test calls are not configured"
         ));
     }
 

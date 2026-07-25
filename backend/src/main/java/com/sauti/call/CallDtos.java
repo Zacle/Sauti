@@ -73,7 +73,7 @@ public final class CallDtos {
     public record SimulatedTurnResponse(String language, String response, String transcript, String outcome, boolean acceptedTranscript) {
     }
 
-    public record StartTestCallRequest(UUID agentId, String ttsVoiceId, String runtimeProvider) {
+    public record StartTestCallRequest(UUID agentId, String ttsVoiceId) {
     }
 
     public record CompleteTestCallRequest(String outcome) {
@@ -82,23 +82,8 @@ public final class CallDtos {
     public record StartTestCallResponse(
             CallResponse call,
             String greeting,
-            String greetingAudioBase64,
             TestCallSettings settings,
-            String websocketUrl,
-            String token,
-            int inputSampleRate,
-            String mode,
-            boolean availabilityToolEnabled,
-            BrowserVoiceRuntimeSession runtime,
-            BrowserTtsSession browserTts
-    ) {
-    }
-
-    public record BrowserTtsSession(
-            String provider,
-            String clientToken,
-            String voiceId,
-            String modelId
+            BrowserVoiceRuntimeSession runtime
     ) {
     }
 
@@ -126,19 +111,6 @@ public final class CallDtos {
                     agent.isHandleCallScreening()
             );
         }
-    }
-
-    public record TestAudioTurnResponse(
-            String callerTranscript,
-            String language,
-            String response,
-            String outcome,
-            String audioBase64,
-            int sttLatencyMs,
-            int llmLatencyMs,
-            int ttsLatencyMs,
-            int totalLatencyMs
-    ) {
     }
 
     public record CallTurnResponse(

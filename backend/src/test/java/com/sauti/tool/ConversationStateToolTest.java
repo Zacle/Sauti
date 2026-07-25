@@ -500,6 +500,88 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void completingBookingIdentityForcesLookupEvenWhenTheModelOnlyRequestedAReply() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("identity-complete-call");
+        when(sessions.conversationState("identity-complete-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of("booking_number", "SAT-OHM2KFA6HOP1"),
+                        ConversationState.SUBJECT_UNKNOWN,
+                        ConversationState.INTENT_ACTIVE,
+                        3
+                )
+        ));
+        var repository = mock(AgentToolRepository.class);
+        var lookup = mock(AgentTool.class);
+        when(lookup.actionEffect()).thenReturn(ToolActionEffect.READ_ONLY);
+        when(repository.findByAgent_IdAndToolNameAndIsActiveTrue(
+                call.getAgent().getId(), "lookup_booking"
+        )).thenReturn(Optional.of(lookup));
+        var tool = new ConversationStateTool(sessions, repository);
+
+        var result = tool.execute(call, toolCall(arguments(
+                "updates", Map.of("caller_phone", "0115752441"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "turn_understanding", "clear",
+                "caller_question", "none",
+                "action_authorization", "not_applicable",
+                "call_disposition", "continue",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Let me check that booking."
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "lookup_booking")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "booking_number", "SAT-OHM2KFA6HOP1",
+                        "caller_phone", "0115752441"
+                ))
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void semanticCallDispositionAuthorizesOneServerOwnedFarewell() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("farewell-call");
+        when(sessions.conversationState("farewell-call"))
+                .thenReturn(Optional.of(ConversationState.empty()));
+        var tool = new ConversationStateTool(sessions);
+
+        var result = tool.execute(call, toolCall(arguments(
+                "updates", Map.of(),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "turn_understanding", "clear",
+                "caller_question", "none",
+                "action_authorization", "not_applicable",
+                "call_disposition", "end",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "You're welcome, Zachary. Have a good day. Goodbye."
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "end_call")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "outcome", "completed",
+                        "spoken_farewell", "You're welcome, Zachary. Have a good day. Goodbye.",
+                        "question_handling", "ready_for_action",
+                        "confirmation_state", "confirmed"
+                ))
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
     void cancellationUsesTheStoredBookingNumberWithoutAnotherModelTurn() {
         var sessions = mock(CallSessionStore.class);
         var call = call("cancel-booking-call");
@@ -881,7 +963,8 @@ class ConversationStateToolTest {
                 .contains(
                         "turn_understanding", "gibberish", "booking_number", "yyyy-MM-dd", "HH:mm",
                         "caller_question", "answered_in_spoken_response", "requires_business_tool",
-                        "action_authorization", "unconditional", "blocked"
+                        "action_authorization", "unconditional", "blocked",
+                        "call_disposition", "continue", "end"
                 )
                 .doesNotContain("my name is Zachary", "don't book", "call back later");
     }

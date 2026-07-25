@@ -132,9 +132,9 @@ public class Call extends Auditable {
         this.tenant.addMinutesUsed(Math.max(1, (int) Math.ceil(durationSeconds / 60.0)));
     }
 
-    public void applyTwilioStatus(String callStatus, Integer authoritativeDurationSeconds, String recordingUrl, String recordingSid) {
+    public void applyProviderStatus(String callStatus, Integer authoritativeDurationSeconds, String recordingUrl, String recordingSid) {
         int previousBilledMinutes = billedMinutes(outcome, durationSeconds, endedAt != null);
-        if (isTerminalTwilioStatus(callStatus)) {
+        if (isTerminalProviderStatus(callStatus)) {
             var normalizedStatus = callStatus.replace("-", "_");
             if (!"completed".equals(normalizedStatus) || isActive()) {
                 this.outcome = normalizedStatus;
@@ -265,7 +265,7 @@ public class Call extends Auditable {
         return Math.max(1, (int) Math.ceil(seconds / 60.0));
     }
 
-    private boolean isTerminalTwilioStatus(String callStatus) {
+    private boolean isTerminalProviderStatus(String callStatus) {
         if (callStatus == null || callStatus.isBlank()) {
             return false;
         }

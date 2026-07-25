@@ -1,6 +1,5 @@
 package com.sauti.call;
 
-import com.sauti.call.CallDtos.BrowserTtsSession;
 import java.util.List;
 import java.util.UUID;
 
@@ -30,23 +29,9 @@ public final class WebVoiceDtos {
             UUID callId,
             String sessionId,
             String token,
-            String websocketUrl,
             String greeting,
-            String greetingAudioBase64,
-            int inputSampleRate,
             String language,
-            String mode,
-            boolean availabilityToolEnabled,
-            BrowserTtsSession browserTts
-    ) {
-    }
-
-    public record WebVoiceAudioTurnResponse(
-            String callerTranscript,
-            String language,
-            String response,
-            String outcome,
-            String audioBase64
+            BrowserVoiceRuntimeSession runtime
     ) {
     }
 }

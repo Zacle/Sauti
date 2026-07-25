@@ -34,7 +34,7 @@ class ManagedVoiceProviderHttpClientTest {
 
         assertThatThrownBy(() -> client.get(
                 "ElevenLabs",
-                URI.create("https://api.elevenlabs.io/v1/convai/tools"),
+                URI.create("https://api.telnyx.com/v2/ai/assistants"),
                 Map.of("xi-api-key", "secret")
         ))
                 .isInstanceOf(ManagedVoiceProviderException.class)

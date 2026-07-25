@@ -48,6 +48,7 @@ public class ConversationStateTool {
     private static final Set<String> ACTION_AUTHORIZATION = Set.of(
             "not_applicable", "unconditional", "blocked"
     );
+    private static final Set<String> CALL_DISPOSITIONS = Set.of("continue", "end");
 
     private final CallSessionStore sessions;
     private final AgentToolRepository agentTools;
@@ -117,7 +118,7 @@ public class ConversationStateTool {
         ));
         properties.put("spoken_response", Map.of(
                 "type", "string",
-                "description", "A concise, polite, natural reply in the caller's current language. Answer direct questions first. Leave empty only when a separate business tool must run before any reply. Never include tool syntax, JSON, headings, or private reasoning."
+                "description", "A concise, polite, natural reply in the caller's current language. Answer direct questions first. When call_disposition is end, this must be the complete brief respectful farewell and must not be empty. Otherwise leave empty only when a separate business tool must run before any reply. Never include tool syntax, JSON, headings, or private reasoning."
         ));
         properties.put("caller_question", Map.of(
                 "type", "string",
@@ -128,6 +129,11 @@ public class ConversationStateTool {
                 "type", "string",
                 "enum", List.of("not_applicable", "unconditional", "blocked"),
                 "description", "Independent semantic safety judgment for the complete latest caller turn in any language. Use unconditional only when the caller clearly and consistently authorizes the exact pending side effect with no contradiction, rejection, correction, condition, hesitation, or separate request. Use blocked when any such conflict is present, even if the same turn also contains approval wording. Use not_applicable when this turn is not authorizing a side effect."
+        ));
+        properties.put("call_disposition", Map.of(
+                "type", "string",
+                "enum", List.of("continue", "end"),
+                "description", "Semantic call disposition in any language. Use end only when the caller clearly says they are finished, declines further help, says goodbye, or explicitly asks to end the call. Use continue while any request, correction, question, confirmation, or business operation remains unresolved. Do not decide from keywords alone."
         ));
         properties.put("next_action", Map.of(
                 "type", "string",
@@ -148,7 +154,7 @@ public class ConversationStateTool {
                                 "updates", "additional_details", "clear_fields",
                                 "booking_subject", "booking_intent", "turn_understanding",
                                 "spoken_response", "caller_question", "action_authorization",
-                                "next_action", "business_tool"
+                                "call_disposition", "next_action", "business_tool"
                         ),
                         "additionalProperties", false
                 )
@@ -258,6 +264,15 @@ public class ConversationStateTool {
                     && ConversationState.INTENT_ACTIVE.equals(next.bookingIntent())
                     && (turnUpdates.containsKey("preferred_day") || turnUpdates.containsKey("preferred_time"))
                     && configuredFor(call, "check_availability");
+            var bookingIdentityBecameReady = (turnUpdates.containsKey("booking_number")
+                    || turnUpdates.containsKey("caller_phone"))
+                    && bookingIdentityArguments(next).isPresent()
+                    && configuredFor(call, "lookup_booking");
+            var callDisposition = choice(
+                    toolCall.arguments().get("call_disposition"), CALL_DISPOSITIONS, "continue"
+            );
+            var callMustEnd = "end".equals(callDisposition)
+                    && configuredFor(call, "end_call");
             // Approval and correction of a server-generated booking review are
             // workflow transitions, not another conversational confirmation.
             // The model supplies the multilingual meaning; the server owns the
@@ -269,14 +284,22 @@ public class ConversationStateTool {
             var questionTool = "requires_business_tool".equals(callerQuestion)
                     && !sideEffecting(call, requestedBusinessTool)
                     ? requestedBusinessTool : "";
-            var nextAction = "answered_in_spoken_response".equals(callerQuestion)
+            var nextAction = callMustEnd
+                    ? "use_business_tool"
+                    : bookingIdentityBecameReady
+                    ? "use_business_tool"
+                    : "answered_in_spoken_response".equals(callerQuestion)
                     ? "reply"
                     : "requires_business_tool".equals(callerQuestion)
                         ? (questionTool.isBlank() ? "reply" : "use_business_tool")
                         : approvedPendingAction || reviewMustContinue || availabilityMustContinue || bookingBecameReady
                             ? "use_business_tool"
                             : choice(toolCall.arguments().get("next_action"), NEXT_ACTIONS, "reply");
-            var businessTool = !questionTool.isBlank()
+            var businessTool = callMustEnd
+                    ? "end_call"
+                    : bookingIdentityBecameReady
+                    ? "lookup_booking"
+                    : !questionTool.isBlank()
                     ? questionTool
                     : approvedPendingAction
                         ? pendingAction.orElseThrow().toolName()
@@ -312,6 +335,18 @@ public class ConversationStateTool {
                     bookingIdentityArguments(next).ifPresent(arguments ->
                             result.put("nextToolArguments", arguments)
                     );
+                } else if ("end_call".equals(businessTool)) {
+                    var farewell = VoiceOutputGuard.speechText(
+                            stringArgument(toolCall.arguments(), "spoken_response")
+                    );
+                    if (!farewell.isBlank()) {
+                        result.put("nextToolArguments", Map.of(
+                                "outcome", "completed",
+                                "spoken_farewell", farewell,
+                                "question_handling", "ready_for_action",
+                                "confirmation_state", "confirmed"
+                        ));
+                    }
                 } else if ("get_business_hours".equals(businessTool)) {
                     // This read has no arguments. Supplying the authoritative
                     // empty object lets Realtime execute it directly instead of

@@ -18,6 +18,7 @@ import com.sauti.auth.AuthEmailService;
 import com.sauti.auth.AuthRateLimitService;
 import com.sauti.auth.User;
 import com.sauti.auth.VerificationCodeService;
+import com.sauti.call.CallPipelineService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -34,6 +35,9 @@ class AuthAgentFlowTest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @Autowired
+    CallPipelineService callPipelineService;
 
     @MockitoBean
     AuthEmailService authEmailService;
@@ -69,7 +73,7 @@ class AuthAgentFlowTest {
                   "systemPrompt": "You answer calls for Demo Clinic.",
                   "defaultLanguage": "fr",
                   "supportedLanguages": ["fr", "en"],
-                  "ttsVoiceId": "provider-voice-123",
+                  "ttsVoiceId": "Telnyx.NaturalHD.astra",
                   "humanTransferNumber": "+221770000000",
                   "escalationPhrases": ["speak to a human"],
                   "bookingEnabled": true,
@@ -89,7 +93,7 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.name").value("Amina"))
                 .andExpect(jsonPath("$.description").value("Multilingual clinic booking agent"))
                 .andExpect(jsonPath("$.supportedLanguages[1]").value("en"))
-                .andExpect(jsonPath("$.ttsVoiceId").value("provider-voice-123"))
+                .andExpect(jsonPath("$.ttsVoiceId").value("Telnyx.NaturalHD.astra"))
                 .andExpect(jsonPath("$.twilioPhoneNumber").doesNotExist())
                 .andExpect(jsonPath("$.bookingEnabled").value(true))
                 .andExpect(jsonPath("$.maxCallDurationSeconds").value(420))
@@ -207,23 +211,7 @@ class AuthAgentFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("cancelled"));
 
-        var twiml = mvc.perform(post("/webhooks/twilio/voice")
-                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                        .param("To", twilioNumber)
-                        .param("From", "+221771234567")
-                        .param("CallSid", "CA123"))
-                .andExpect(status().isOk())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        assertThat(twiml)
-                .contains("<Connect>")
-                .contains("<Stream url=\"ws://localhost:8080/ws/twilio/media/CA123\">")
-                .contains("<Parameter name=\"callSid\" value=\"CA123\"/>")
-                .contains("<Parameter name=\"tenantId\"")
-                .contains("<Parameter name=\"agentId\"")
-                .doesNotContain("<Say>");
+        callPipelineService.startInboundCall(twilioNumber, "CA123", "+221771234567");
 
         mvc.perform(post("/api/v1/calls/CA123/simulate-turn")
                         .header("Authorization", "Bearer " + token)
@@ -262,12 +250,7 @@ class AuthAgentFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA123')].outcome").value("booking_made"));
 
-        mvc.perform(post("/webhooks/twilio/voice")
-                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                        .param("To", twilioNumber)
-                        .param("From", "+221771234568")
-                        .param("CallSid", "CA124"))
-                .andExpect(status().isOk());
+        callPipelineService.startInboundCall(twilioNumber, "CA124", "+221771234568");
 
         mvc.perform(post("/api/v1/calls/CA124/simulate-turn")
                         .header("Authorization", "Bearer " + token)
@@ -296,20 +279,20 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$[0].bookingCalls").value(1))
                 .andExpect(jsonPath("$[0].bookingRate").value(50.0));
 
-        mvc.perform(post("/webhooks/twilio/status")
-                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                        .param("CallSid", "CA124")
-                        .param("CallStatus", "completed")
-                        .param("CallDuration", "73")
-                        .param("RecordingUrl", "https://api.twilio.com/recordings/RE123"))
-                .andExpect(status().isOk());
+        callPipelineService.updateProviderStatus(
+                "CA124",
+                "completed",
+                73,
+                "https://api.telnyx.com/recordings/RE123",
+                "RE123"
+        );
 
         mvc.perform(get("/api/v1/calls")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].outcome").value("completed"))
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].durationSeconds").value(73))
-                .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].recordingUrl").value("https://api.twilio.com/recordings/RE123"));
+                .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].recordingUrl").value("https://api.telnyx.com/recordings/RE123"));
     }
 
     private String registerVerifyResetPasswordAndReturnToken() throws Exception {
