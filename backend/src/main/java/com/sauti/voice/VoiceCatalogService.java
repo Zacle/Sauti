@@ -18,6 +18,34 @@ import org.springframework.stereotype.Service;
 public class VoiceCatalogService {
     private static final Logger LOGGER = LoggerFactory.getLogger(VoiceCatalogService.class);
     private static final int MAX_PREVIEW_TEXT_LENGTH = 240;
+    private static final Map<String, String> LANGUAGE_NAME_CODES = Map.ofEntries(
+            Map.entry("arabic", "ar"),
+            Map.entry("chinese", "zh"),
+            Map.entry("dutch", "nl"),
+            Map.entry("english", "en"),
+            Map.entry("french", "fr"),
+            Map.entry("german", "de"),
+            Map.entry("greek", "el"),
+            Map.entry("hebrew", "he"),
+            Map.entry("hindi", "hi"),
+            Map.entry("indonesian", "id"),
+            Map.entry("italian", "it"),
+            Map.entry("japanese", "ja"),
+            Map.entry("korean", "ko"),
+            Map.entry("polish", "pl"),
+            Map.entry("portuguese", "pt"),
+            Map.entry("romanian", "ro"),
+            Map.entry("russian", "ru"),
+            Map.entry("spanish", "es"),
+            Map.entry("swahili", "sw"),
+            Map.entry("swedish", "sv"),
+            Map.entry("tamil", "ta"),
+            Map.entry("telugu", "te"),
+            Map.entry("thai", "th"),
+            Map.entry("turkish", "tr"),
+            Map.entry("ukrainian", "uk"),
+            Map.entry("vietnamese", "vi")
+    );
 
     private final TelnyxVoiceCatalogClient telnyxClient;
     private final Map<PreviewKey, byte[]> previewCache = new ConcurrentHashMap<>();
@@ -97,7 +125,7 @@ public class VoiceCatalogService {
     private VoiceCatalogResponse loadTelnyxVoices() {
         var byId = new LinkedHashMap<String, MutableVoice>();
         for (var node : telnyxClient.listNativeVoices().withArray("voices")) {
-            var voiceId = node.path("voice_id").asText("").trim();
+            var voiceId = firstNonBlank(node.path("id").asText(""), node.path("voice_id").asText(""));
             if (voiceId.isBlank()) {
                 continue;
             }
@@ -109,11 +137,16 @@ public class VoiceCatalogService {
             if (language.isBlank()) {
                 continue;
             }
-            var name = node.path("name").asText(voiceId).trim();
+            var name = firstNonBlank(
+                    node.path("name").asText(""),
+                    node.path("label").asText(""),
+                    voiceId
+            );
             var gender = node.path("gender").asText("").trim();
+            var model = firstNonBlank(node.path("model_id").asText(""), modelFromVoiceId(voiceId));
             var mutable = byId.computeIfAbsent(
                     voiceId,
-                    ignored -> new MutableVoice(voiceId, name, modelFromVoiceId(voiceId), gender)
+                    ignored -> new MutableVoice(voiceId, name, model, gender)
             );
             mutable.languages.add(language);
         }
@@ -122,6 +155,15 @@ public class VoiceCatalogService {
                 .sorted(Comparator.comparing(VoiceOption::name).thenComparing(VoiceOption::id))
                 .toList();
         return new VoiceCatalogResponse(List.of("telnyx"), voices);
+    }
+
+    private String firstNonBlank(String... values) {
+        for (var value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
     }
 
     private VoiceOption requireVoice(String voiceId) {
@@ -157,8 +199,20 @@ public class VoiceCatalogService {
         if (normalized.isBlank()) {
             return "";
         }
+        var namedLanguage = LANGUAGE_NAME_CODES.entrySet().stream()
+                .filter(entry -> containsWord(normalized, entry.getKey()))
+                .map(Map.Entry::getValue)
+                .findFirst();
+        if (namedLanguage.isPresent()) {
+            return namedLanguage.get();
+        }
         var separator = normalized.indexOf('-');
         return separator > 0 ? normalized.substring(0, separator) : normalized;
+    }
+
+    private boolean containsWord(String value, String word) {
+        var padded = " " + value.replaceAll("[^a-z]+", " ").trim() + " ";
+        return padded.contains(" " + word + " ");
     }
 
     private String modelFromVoiceId(String voiceId) {

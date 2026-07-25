@@ -225,6 +225,22 @@ Expected:
 
 ## Change log
 
+### 2026-07-25 - Parse the current Telnyx voice catalog
+
+- Fixed Agent Studio reporting that no compatible voice was available for every language even though Telnyx was enabled.
+- A read-only inspection of the live Telnyx response found 1,214 voices and confirmed the payload now identifies each voice with `id` and its model with `model_id`. Sauti read only the older documented `voice_id` field, so it discarded every entry before language filtering.
+- The server-side voice catalog now reads the current `id` and `model_id` fields while retaining compatibility with the earlier `voice_id` shape.
+- Language values are normalized to stable ISO base codes. This handles the live BCP-47 values such as `en-US` and `ar-AE` and remains tolerant of human-readable labels such as `English` or `American English`.
+- Added regression coverage for the live catalog shape across English and Arabic, the legacy catalog shape, and human-readable language labels.
+- Files touched:
+  - `backend/src/main/java/com/sauti/voice/VoiceCatalogService.java`
+  - `backend/src/test/java/com/sauti/voice/VoiceCatalogServiceTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.voice.VoiceCatalogServiceTest" --rerun-tasks` passed.
+  - `.\gradlew.bat :backend:test --rerun-tasks` passed; Gradle reported `BUILD SUCCESSFUL`.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+
 ### 2026-07-24 - Unify managed-provider CRUD execution and outcome semantics
 
 - Re-verified Retell, ElevenLabs, and Telnyx tool behavior against their current official documentation before changing the implementation.
