@@ -26,6 +26,7 @@ export async function connectTelnyxRuntime(
   const client = new TelnyxAIAgent({
     agentId,
     versionId: configString(session.configuration, "versionId") || "main",
+    conversationId: configString(session.configuration, "conversationId") || undefined,
     environment,
     region: region || undefined,
     vad: {

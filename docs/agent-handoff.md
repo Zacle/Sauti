@@ -225,6 +225,45 @@ Expected:
 
 ## Change log
 
+### 2026-07-26 - Correlate Telnyx recordings through a call-scoped AI conversation
+
+- Investigated diagnostic file `sauti-telnyx-diagnostics-1785072433760.json` for Sauti call `75343c7a-bb83-4bfe-a6ba-c08698db26d3` without reading transcript content.
+- The diagnostic proved:
+  - the browser call completed normally;
+  - no `provider_call_correlated` event occurred during the entire call;
+  - the SDK therefore supplied no Call Control ID to the live correlation endpoint or completion request.
+- A read-only Telnyx metadata query confirmed the exact call still produced a completed 49.258-second dual-channel recording:
+  - recording ID `324b189c-a5be-4032-943c-c98b4c160249`;
+  - Call Control ID `v3:Hni_e0_h2jIu9NijHck8LAFunzzw-n19O6gTmFtyzcDkMeMgKM321w`;
+  - Telnyx conversation ID `236da7b5-0738-4977-8cd1-9c72db86eda5`.
+- The same Call Control ID was present in Telnyx's server-side conversation metadata even though `activeCall.telnyxIDs.telnyxCallControlId` remained empty in the browser SDK.
+- Replaced the SDK-only correlation dependency with a durable provider-side path:
+  - Sauti pre-creates a Telnyx AI conversation for each browser voice call with the random Sauti call ID/SID in metadata;
+  - the conversation ID is persisted as a pending recording reference before WebRTC starts;
+  - the dashboard passes that exact conversation ID to `TelnyxAIAgent`;
+  - after the call, the reconciler retrieves that exact conversation, reads only its Call Control ID metadata, and then retrieves the completed recording.
+- Added a guarded recovery path for browser calls completed before conversation pre-creation existed:
+  - only uncorrelated `test`/`web` calls from the last 24 hours are considered;
+  - Telnyx conversations are searched from the call's start window;
+  - a match is accepted only when the resolved system prompt contains the exact random Sauti `callSid` embedded in the managed tool URL;
+  - ambiguous matches are rejected, and transcript messages are never requested or inspected.
+- The supplied completed call is eligible for this exact-reference recovery after deployment while it remains within the 24-hour recovery window.
+- Calls UI treats both pending conversation and pending Call Control references as `Finalizing recording...` and continues polling.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/{Call,CallRepository,TelnyxAiBrowserVoiceRuntimeService,TelnyxAiConversationService,TelnyxRecordingReconciliationService}.java`
+  - `backend/src/test/java/com/sauti/call/{ManagedBrowserVoiceRuntimeServicesTest,TelnyxAiConversationServiceTest,TelnyxRecordingReconciliationServiceTest}.java`
+  - `dashboard/features/calls/CallsPage/CallsPage.tsx`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused conversation/runtime/recording reconciliation and call pipeline backend tests - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run test:voice` - passed all 11 tests.
+  - `npm.cmd run build` - passed; Next.js completed the optimized production build.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after deployment, open the supplied call in Calls and allow one or two reconciliation cycles (normally 10-20 seconds). Confirm the player replaces `Finalizing recording...`. Then complete a fresh browser call and confirm the same transition occurs through the pre-created conversation path.
+
 ### 2026-07-26 - Reduce browser test-call startup latency
 
 - Investigated the reported seven-to-eight-second wait between starting a Telnyx browser test and hearing the opening greeting.

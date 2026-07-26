@@ -19,17 +19,20 @@ public class TelnyxRecordingReconciliationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(TelnyxRecordingReconciliationService.class);
     private final CallRepository callRepository;
     private final ManagedVoiceProviderHttpClient httpClient;
+    private final TelnyxAiConversationService conversationService;
     private final String apiKey;
     private final String apiBaseUrl;
 
     public TelnyxRecordingReconciliationService(
             CallRepository callRepository,
             ManagedVoiceProviderHttpClient httpClient,
+            TelnyxAiConversationService conversationService,
             @Value("${sauti.telnyx.api-key:}") String apiKey,
             @Value("${sauti.telnyx.api-base-url:https://api.telnyx.com/v2}") String apiBaseUrl
     ) {
         this.callRepository = callRepository;
         this.httpClient = httpClient;
+        this.conversationService = conversationService;
         this.apiKey = trim(apiKey);
         this.apiBaseUrl = stripTrailingSlash(apiBaseUrl);
     }
@@ -38,11 +41,21 @@ public class TelnyxRecordingReconciliationService {
     @Transactional
     public void reconcilePending() {
         if (apiKey.isBlank()) return;
-        var pending = callRepository
+        var pending = new java.util.LinkedHashMap<java.util.UUID, Call>();
+        callRepository
                 .findTop25ByRecordingUrlIsNullAndRecordingSidStartingWithAndEndedAtIsNotNullOrderByEndedAtAsc(
                         PENDING_PREFIX
-                );
-        for (var call : pending) {
+                ).forEach(call -> pending.put(call.getId(), call));
+        callRepository
+                .findTop25ByRecordingUrlIsNullAndRecordingSidStartingWithAndEndedAtIsNotNullOrderByEndedAtAsc(
+                        "TELNYX-CONVERSATION:"
+                ).forEach(call -> pending.put(call.getId(), call));
+        callRepository
+                .findTop25ByRecordingUrlIsNullAndRecordingSidIsNullAndEndedAtIsNotNullAndDirectionInAndEndedAtAfterOrderByEndedAtAsc(
+                        java.util.List.of("test", "web"),
+                        OffsetDateTime.now().minusHours(24)
+                ).forEach(call -> pending.put(call.getId(), call));
+        for (var call : pending.values()) {
             try {
                 reconcile(call);
             } catch (Exception exception) {
@@ -53,12 +66,20 @@ public class TelnyxRecordingReconciliationService {
 
     void reconcile(Call call) {
         var callControlId = call.pendingTelnyxCallControlId();
-        if (callControlId.isBlank()) return;
         if (call.getEndedAt().isBefore(OffsetDateTime.now().minusHours(24))) {
             call.markTelnyxRecordingUnavailable();
             callRepository.save(call);
             LOGGER.warn("Telnyx recording was not available within 24 hours callId={}", call.getId());
             return;
+        }
+        if (callControlId.isBlank()) {
+            var conversationId = call.pendingTelnyxConversationId();
+            callControlId = conversationId.isBlank()
+                    ? conversationService.callControlIdForSautiCall(call)
+                    : conversationService.callControlId(conversationId);
+            if (callControlId.isBlank()) return;
+            call.awaitTelnyxRecording(callControlId);
+            callRepository.save(call);
         }
 
         var headers = Map.of(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey);

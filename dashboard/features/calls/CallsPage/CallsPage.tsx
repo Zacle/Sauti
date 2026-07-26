@@ -139,7 +139,10 @@ export function CallsPage() {
   const selectedRecordingPending = Boolean(
     selectedCall?.endedAt
     && !selectedCall.recordingUrl
-    && selectedCall.recordingSid?.startsWith("TELNYX-CALL-CONTROL:"),
+    && (
+      selectedCall.recordingSid?.startsWith("TELNYX-CALL-CONTROL:")
+      || selectedCall.recordingSid?.startsWith("TELNYX-CONVERSATION:")
+    ),
   );
 
   const selectedBooking = selectedCall ? bookingsByCall.get(selectedCall.id) ?? null : null;
