@@ -177,6 +177,35 @@ class BookingServiceTest {
         verify(fixture.provider, never()).createEvent(any());
     }
 
+    @Test
+    void removesBookingDependenciesBeforePermanentlyDeletingTheBooking() {
+        var fixture = fixture("Set up later");
+        var booking = new Booking(
+                fixture.tenant,
+                fixture.requestAgent,
+                null,
+                fixture.request.callerName(),
+                fixture.request.callerPhone(),
+                fixture.request.callerEmail(),
+                fixture.request.serviceType(),
+                fixture.request.appointmentAt(),
+                fixture.request.durationMinutes(),
+                "{}"
+        );
+        when(fixture.bookingRepository.findByIdAndTenantId(booking.getId(), fixture.tenant.getId()))
+                .thenReturn(Optional.of(booking));
+
+        fixture.service.delete(fixture.tenant.getId(), booking.getId());
+
+        var ordered = inOrder(fixture.outboundCallService, fixture.callRepository, fixture.bookingRepository);
+        ordered.verify(fixture.outboundCallService)
+                .deleteBookingReminders(fixture.tenant.getId(), booking.getId());
+        ordered.verify(fixture.callRepository)
+                .clearLegacyBookingReference(fixture.tenant.getId(), booking.getId());
+        ordered.verify(fixture.bookingRepository).delete(booking);
+        ordered.verify(fixture.bookingRepository).flush();
+    }
+
     private Fixture fixture(String calendarProvider) {
         var tenant = new Tenant("Hairy", "owner@example.com", "KE");
         var agent = new Agent(tenant, "Ailsa", "Hello", "Prompt");
@@ -199,12 +228,14 @@ class BookingServiceTest {
         when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
         var provider = mock(CalendarProvider.class);
         var eventPublisher = mock(ApplicationEventPublisher.class);
+        var callRepository = mock(CallRepository.class);
+        var outboundCallService = mock(OutboundCallService.class);
         var service = new BookingService(
                 bookingRepository,
                 agentRepository,
-                mock(CallRepository.class),
+                callRepository,
                 mock(WebhookDeliveryService.class),
-                mock(OutboundCallService.class),
+                outboundCallService,
                 mock(CalendarProviderFactory.class),
                 new ObjectMapper(),
                 eventPublisher,
@@ -214,13 +245,26 @@ class BookingServiceTest {
                 agent.getId(), null, "Zachary", "01115753441", null, "Haircut",
                 OffsetDateTime.now().plusDays(2), 60, Map.of("style", "Fade")
         );
-        return new Fixture(tenant, agent, bookingRepository, transactionManager, provider, eventPublisher, service, request);
+        return new Fixture(
+                tenant,
+                agent,
+                bookingRepository,
+                callRepository,
+                outboundCallService,
+                transactionManager,
+                provider,
+                eventPublisher,
+                service,
+                request
+        );
     }
 
     private record Fixture(
             Tenant tenant,
             Agent requestAgent,
             BookingRepository bookingRepository,
+            CallRepository callRepository,
+            OutboundCallService outboundCallService,
             PlatformTransactionManager transactionManager,
             CalendarProvider provider,
             ApplicationEventPublisher eventPublisher,

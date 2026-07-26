@@ -33,8 +33,10 @@ import {
   type BookingViewModel,
 } from "../domain/bookings";
 import styles from "./BookingsPage.module.css";
+import polish from "./BookingsPagePolish.module.css";
 import { BookingActionDialog, type BookingAction } from "./BookingActionDialog";
 import { BookingDateRangePicker } from "./BookingDateRangePicker";
+import { BookingEditor, type BookingEditorValues } from "./BookingEditor";
 
 const FILTERS: Array<{ value: BookingStatusFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -44,15 +46,6 @@ const FILTERS: Array<{ value: BookingStatusFilter; label: string }> = [
   { value: "cancelled", label: "Cancelled" },
   { value: "past", label: "Past" },
 ];
-
-type BookingEditorValues = {
-  callerName: string;
-  callerPhone: string;
-  callerEmail: string;
-  serviceType: string;
-  appointmentAt: string;
-  durationMinutes: number;
-};
 
 type BookingView = "list" | "calendar";
 
@@ -71,6 +64,7 @@ export function BookingsPage() {
   const [view, setView] = useState<BookingView>("list");
   const [cancellingId, setCancellingId] = useState("");
   const [editingBooking, setEditingBooking] = useState<BookingViewModel | null>(null);
+  const [editorError, setEditorError] = useState("");
   const [savingId, setSavingId] = useState("");
   const [pendingAction, setPendingAction] = useState<BookingAction | null>(null);
   const [actionError, setActionError] = useState("");
@@ -135,7 +129,7 @@ export function BookingsPage() {
 
   async function onUpdate(booking: Booking, values: BookingEditorValues) {
     setSavingId(booking.id);
-    setError("");
+    setEditorError("");
     try {
       const updated = await updateBooking(booking.id, {
         ...values,
@@ -146,7 +140,7 @@ export function BookingsPage() {
       setBookings((current) => current.map((item) => item.id === updated.id ? updated : item));
       setEditingBooking(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update this booking.");
+      setEditorError(caught instanceof Error ? caught.message : "Unable to update this booking.");
     } finally {
       setSavingId("");
     }
@@ -172,19 +166,19 @@ export function BookingsPage() {
         </div>
       </header>
 
-      <section className={styles.metrics} aria-label="Booking summary">
+      <section className={`${styles.metrics} ${polish.metrics}`} aria-label="Booking summary">
         <Metric detail="Next 7 days" icon={CalendarCheck2} label="Upcoming" value={summary.upcoming} tone="cyan" />
         <Metric detail="Scheduled for today" icon={Clock3} label="Today" value={summary.today} tone="blue" />
         <Metric detail="All confirmed bookings" icon={CheckCircle2} label="Confirmed" value={summary.confirmed} tone="green" />
         <Metric detail="All cancelled bookings" icon={XCircle} label="Cancelled" value={summary.cancelled} tone="orange" />
-        <article className={styles.nextMetric}>
+        <article className={`${styles.nextMetric} ${polish.metricCard}`}>
           <span><CalendarClock size={20} /></span>
           <div><small>Next appointment</small><strong>{summary.nextBooking ? formatAppointment(summary.nextBooking.appointmentDate) : "No upcoming booking"}</strong></div>
         </article>
       </section>
 
       <section className={styles.controls}>
-        <div className={styles.controlRow}>
+        <div className={`${styles.controlRow} ${polish.controlRow}`}>
           <label className={styles.search}>
             <Search size={18} />
             <input aria-label="Search bookings" onChange={(event) => setQuery(event.target.value)} placeholder="Search bookings..." value={query} />
@@ -230,13 +224,16 @@ export function BookingsPage() {
       ) : visibleBookings.length === 0 ? (
         <Empty icon={<Search size={25} />} title="No matching bookings">Adjust the date, agent, search, or status filters to see more appointments.</Empty>
       ) : view === "calendar" ? (
-        <CalendarView bookings={visibleBookings} onEdit={setEditingBooking} />
+        <CalendarView bookings={visibleBookings} onEdit={(booking) => {
+          setEditorError("");
+          setEditingBooking(booking);
+        }} />
       ) : (
         <section className={styles.groupList}>
           {groupedBookings.map(([label, items]) => (
             <section className={styles.dayGroup} key={label}>
               <h2>{label}<span>{items.length} {items.length === 1 ? "booking" : "bookings"}</span></h2>
-              <div className={styles.dayRows}>
+              <div className={`${styles.dayRows} ${polish.dayRows}`}>
                 {items.map((booking) => (
                   <BookingRow
                     booking={booking}
@@ -244,7 +241,10 @@ export function BookingsPage() {
                     key={booking.id}
                     onCancel={() => requestAction("cancel", booking)}
                     onDelete={() => requestAction("delete", booking)}
-                    onEdit={() => setEditingBooking(booking)}
+                    onEdit={() => {
+                      setEditorError("");
+                      setEditingBooking(booking);
+                    }}
                     saving={savingId === booking.id}
                   />
                 ))}
@@ -253,7 +253,20 @@ export function BookingsPage() {
           ))}
         </section>
       )}
-      {editingBooking && <BookingEditor booking={editingBooking} busy={savingId === editingBooking.id} onClose={() => setEditingBooking(null)} onSave={(values) => void onUpdate(editingBooking, values)} />}
+      {editingBooking && (
+        <BookingEditor
+          booking={editingBooking}
+          busy={savingId === editingBooking.id}
+          error={editorError}
+          onClose={() => {
+            if (!savingId) {
+              setEditorError("");
+              setEditingBooking(null);
+            }
+          }}
+          onSave={(values) => void onUpdate(editingBooking, values)}
+        />
+      )}
       {pendingAction && (
         <BookingActionDialog
           action={pendingAction}
@@ -272,14 +285,14 @@ export function BookingsPage() {
 }
 
 function Metric({ icon: Icon, label, value, detail, tone }: { icon: typeof CalendarCheck2; label: string; value: number; detail: string; tone: "cyan" | "green" | "blue" | "orange" }) {
-  return <article className={`${styles.metric} ${styles[tone]}`}><span><Icon size={20} /></span><div><div><strong>{value}</strong><small>{label}</small></div><p>{detail}</p></div></article>;
+  return <article className={`${styles.metric} ${styles[tone]} ${polish.metricCard} ${polish[tone]}`}><span><Icon size={20} /></span><div><div><strong>{value}</strong><small>{label}</small></div><p>{detail}</p></div></article>;
 }
 
 function BookingRow({ booking, cancelling, saving, onCancel, onDelete, onEdit }: { booking: BookingViewModel; cancelling: boolean; saving: boolean; onCancel: () => void; onDelete: () => void; onEdit: () => void }) {
   const cancelled = booking.status === "cancelled";
   const synced = booking.calendarSyncStatus === "synced";
   return (
-    <article className={`${styles.bookingRow} ${cancelled ? styles.cancelled : ""}`}>
+    <article className={`${styles.bookingRow} ${polish.bookingRow} ${cancelled ? styles.cancelled : ""}`}>
       <div className={styles.timeColumn}><strong>{formatTime(booking.appointmentDate)}</strong><span><Clock3 size={13} /> {booking.durationMinutes} min</span></div>
       <div className={styles.bookingBody}>
         <div className={styles.bookingTitle}><i className={cancelled ? styles.cancelledDot : synced ? styles.syncedDot : styles.pendingDot} /><h3>{booking.serviceType}</h3></div>
@@ -293,10 +306,10 @@ function BookingRow({ booking, cancelling, saving, onCancel, onDelete, onEdit }:
         <div className={styles.rowMeta}><span>Booked <strong>{formatAppointment(booking.bookedDate)}</strong></span><span>Calendar <strong>{synced ? "Synced" : "Owner follow-up"}</strong></span></div>
       </div>
       <div className={styles.rowActions}>
-        <span className={`${styles.status} ${cancelled ? styles.statusCancelled : synced ? styles.statusConfirmed : styles.statusPending}`}>{humanize(booking.status)}</span>
+        <span className={`${styles.status} ${cancelled ? styles.statusCancelled : synced ? `${styles.statusConfirmed} ${polish.statusConfirmed}` : styles.statusPending}`}>{humanize(booking.status)}</span>
         {!cancelled && <button disabled={saving || cancelling} onClick={onEdit} type="button"><Pencil size={14} /> Reschedule</button>}
         <a href={`tel:${booking.callerPhone}`}><Phone size={14} /> Call</a>
-        {!cancelled && <button className={styles.cancelAction} disabled={saving || cancelling} onClick={onCancel} type="button">{cancelling ? "Cancelling..." : "Cancel"}</button>}
+        {!cancelled && <button className={styles.cancelAction} disabled={saving || cancelling} onClick={onCancel} type="button"><X size={14} /> {cancelling ? "Cancelling..." : "Cancel"}</button>}
         <button aria-label={`Delete ${booking.bookingReference}`} className={styles.deleteAction} disabled={saving || cancelling} onClick={onDelete} type="button"><Trash2 size={15} /></button>
       </div>
     </article>
@@ -317,11 +330,6 @@ function CalendarView({ bookings, onEdit }: { bookings: BookingViewModel[]; onEd
 
 function Empty({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return <section className={styles.empty}><span>{icon}</span><h2>{title}</h2><p>{children}</p></section>;
-}
-
-function BookingEditor({ booking, busy, onClose, onSave }: { booking: BookingViewModel; busy: boolean; onClose: () => void; onSave: (values: BookingEditorValues) => void }) {
-  const [values, setValues] = useState<BookingEditorValues>({ callerName: booking.callerName, callerPhone: booking.callerPhone, callerEmail: booking.callerEmail ?? "", serviceType: booking.serviceType, appointmentAt: toLocalDateTimeInput(booking.appointmentDate), durationMinutes: booking.durationMinutes });
-  return <div className={styles.editorBackdrop} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><form className={styles.editor} onSubmit={(event) => { event.preventDefault(); onSave(values); }}><header><div><small>{booking.bookingReference}</small><h2>Reschedule or edit booking</h2></div><button aria-label="Close editor" onClick={onClose} type="button"><X size={20} /></button></header><div className={styles.editorGrid}><label>Customer name<input required value={values.callerName} onChange={(event) => setValues({ ...values, callerName: event.target.value })} /></label><label>Phone number<input required value={values.callerPhone} onChange={(event) => setValues({ ...values, callerPhone: event.target.value })} /></label><label>Email<input type="email" value={values.callerEmail} onChange={(event) => setValues({ ...values, callerEmail: event.target.value })} /></label><label>Service<input required value={values.serviceType} onChange={(event) => setValues({ ...values, serviceType: event.target.value })} /></label><label>Date and time<input required type="datetime-local" value={values.appointmentAt} onChange={(event) => setValues({ ...values, appointmentAt: event.target.value })} /></label><label>Duration (minutes)<input min={5} max={480} required type="number" value={values.durationMinutes} onChange={(event) => setValues({ ...values, durationMinutes: Number(event.target.value) })} /></label></div><footer><button onClick={onClose} type="button">Close</button><button disabled={busy} type="submit">{busy ? "Saving..." : "Save changes"}</button></footer></form></div>;
 }
 
 function groupBookings(bookings: BookingViewModel[]): Array<[string, BookingViewModel[]]> {
@@ -345,7 +353,6 @@ function dayLabel(value: Date) {
 
 function defaultRange() { const start = new Date(); const end = new Date(); end.setDate(end.getDate() + 7); return { start: toDateInput(start), end: toDateInput(end) }; }
 function toDateInput(value: Date) { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 10); }
-function toLocalDateTimeInput(value: Date) { const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); }
 function startOfDay(value: Date) { const copy = new Date(value); copy.setHours(0, 0, 0, 0); return copy; }
 function endOfDay(value: Date) { const copy = new Date(value); copy.setHours(23, 59, 59, 999); return copy; }
 function formatRange(start: string, end: string) { if (!start && !end) return "All dates"; const formatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }); const from = start ? formatter.format(new Date(`${start}T00:00:00`)) : "Any"; const to = end ? formatter.format(new Date(`${end}T00:00:00`)) : "Any"; return `${from} – ${to}`; }

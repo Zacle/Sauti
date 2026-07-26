@@ -329,7 +329,10 @@ public class BookingService {
         } catch (RuntimeException ignored) {
             // The owner explicitly requested deletion; the local record must still be removed.
         }
+        outboundCallService.deleteBookingReminders(tenantId, bookingId);
+        callRepository.clearLegacyBookingReference(tenantId, bookingId);
         bookingRepository.delete(booking);
+        bookingRepository.flush();
     }
 
     private String json(java.util.Map<String, Object> value) {

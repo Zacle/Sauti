@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -28,6 +29,21 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
             String direction,
             String callerNumber,
             String outcome
+    );
+
+    @Modifying
+    @Query(
+            value = """
+                    update calls
+                    set booking_id = null
+                    where booking_id = :bookingId
+                      and tenant_id = :tenantId
+                    """,
+            nativeQuery = true
+    )
+    int clearLegacyBookingReference(
+            @Param("tenantId") UUID tenantId,
+            @Param("bookingId") UUID bookingId
     );
 
     long countByTenantId(UUID tenantId);

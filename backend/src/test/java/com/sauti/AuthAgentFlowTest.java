@@ -293,6 +293,14 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].outcome").value("completed"))
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].durationSeconds").value(73))
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].recordingUrl").value("https://api.telnyx.com/recordings/RE123"));
+
+        mvc.perform(delete("/api/v1/bookings/" + bookingId + "/permanent")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/bookings/" + bookingId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
     }
 
     private String registerVerifyResetPasswordAndReturnToken() throws Exception {

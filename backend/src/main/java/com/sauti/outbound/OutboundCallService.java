@@ -62,6 +62,11 @@ public class OutboundCallService {
         return scheduledCallRepository.save(new ScheduledCall(agent.getTenant(), agent, null, "callback", targetPhone, scheduledFor));
     }
 
+    @Transactional
+    public int deleteBookingReminders(UUID tenantId, UUID bookingId) {
+        return scheduledCallRepository.deleteAllForBooking(tenantId, bookingId);
+    }
+
     @Scheduled(fixedDelayString = "${sauti.telnyx.outbound.poll-delay-ms:60000}")
     @Transactional
     public void initiateDueCalls() {

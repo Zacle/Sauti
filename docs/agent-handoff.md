@@ -225,6 +225,55 @@ Expected:
 
 ## Change log
 
+### 2026-07-26 - Refine the bookings console and replace the native reschedule picker
+
+- Refined the bookings page toward the supplied console reference without changing its API behavior:
+  - summary cards have stronger tone-specific borders and the highlighted upcoming treatment;
+  - the search, date, filter, view, and status controls now read as one compact toolbar card;
+  - grouped booking rows are denser, confirmed status uses the reference's blue treatment, and cancel has an explicit icon;
+  - the upcoming summary now correctly counts only bookings in the next seven days, matching its label.
+- Replaced the browser-native `datetime-local` reschedule control with a dedicated in-app booking editor:
+  - styled single-date calendar with past dates disabled;
+  - explicit hour, five-minute, and AM/PM controls;
+  - 30/45/60/90-minute duration presets while preserving a booking's existing non-standard duration;
+  - a live appointment summary before saving;
+  - customer/service editing kept in a separate visual section;
+  - inline API errors, busy-state protection, Escape/backdrop dismissal, body scroll lock, dialog semantics, reduced-motion support, and a responsive mobile bottom-sheet layout.
+- Files touched:
+  - `dashboard/features/bookings/domain/bookings.ts`
+  - `dashboard/features/bookings/presentation/BookingsPage.tsx`
+  - `dashboard/features/bookings/presentation/BookingsPagePolish.module.css`
+  - `dashboard/features/bookings/presentation/BookingEditor.tsx`
+  - `dashboard/features/bookings/presentation/BookingEditor.module.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed after the completed changes.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js completed the optimized production build.
+  - `git diff --check` - passed.
+- Visual QA note: browser-control setup was attempted for the local `/bookings` page, but this session exposed no available browser surface. Interaction and responsive visual QA therefore remain a maintainer follow-up.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+
+### 2026-07-26 - Fix permanent booking deletion with scheduled reminders
+
+- Fixed the `Internal Server Error` returned by `DELETE /api/v1/bookings/{id}/permanent`.
+- Root cause: future bookings create a `scheduled_calls` reminder whose foreign key still referenced the booking, so the database rejected the booking delete.
+- Permanent deletion now removes tenant-scoped scheduled reminder rows first, clears the obsolete tenant-scoped `calls.booking_id` reference for compatibility with legacy data, deletes the booking, and flushes the delete within the service transaction.
+- Calendar-provider deletion remains best effort; an unavailable external provider does not prevent the owner-requested local deletion.
+- Added both a service ordering regression test and an authenticated database-backed flow that creates a real reminder, permanently deletes its booking, and confirms the booking returns `404`.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/BookingService.java`
+  - `backend/src/main/java/com/sauti/call/CallRepository.java`
+  - `backend/src/main/java/com/sauti/outbound/{OutboundCallService,ScheduledCallRepository}.java`
+  - `backend/src/test/java/com/sauti/{AuthAgentFlowTest,calendar/BookingServiceTest}.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.calendar.BookingServiceTest` - passed.
+  - `.\gradlew.bat :backend:test --tests com.sauti.AuthAgentFlowTest` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 11 seconds.
+  - `git diff --check` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: after deployment, retry permanent deletion for the affected booking and confirm the modal closes and the booking disappears from the list.
+
 ### 2026-07-26 - Reconcile completed Telnyx recordings after browser and phone calls
 
 - Diagnosed the reported missing post-call recording against the live Telnyx account without reading transcript content:
