@@ -581,6 +581,8 @@ class ConversationOrchestratorTest {
                 .contains("normalize `preferred_day` to yyyy-MM-dd")
                 .contains("deterministic state reducer also updates the appointment recipient")
                 .contains("Do not invent your own review preamble")
+                .contains("Never promise that a failed or deferred booking change will be processed later")
+                .contains("state plainly that the booking was not changed")
                 .contains("Never emit JSON");
     }
 

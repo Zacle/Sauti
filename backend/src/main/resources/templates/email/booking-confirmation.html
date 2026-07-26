@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>New Sauti booking</title>
+</head>
+<body style="margin:0;padding:0;background:#061421;color:#eaf4ff;font-family:Arial,Helvetica,sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;"
+     th:text="|${booking.service} on ${booking.appointmentDate} at ${booking.appointmentTime} ${booking.timezone}|">
+    Booking details
+</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="width:100%;background:#061421;">
+    <tr>
+        <td align="center" style="padding:32px 14px;">
+            <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0"
+                   style="width:100%;max-width:620px;background:#0a1d2d;border:1px solid #1e4055;border-radius:22px;overflow:hidden;">
+                <tr>
+                    <td style="padding:30px 34px 26px;background:linear-gradient(135deg,#0c263b,#0a1d2d);border-bottom:1px solid #1e4055;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                            <tr>
+                                <td>
+                                    <div style="font-size:22px;font-weight:800;letter-spacing:-0.4px;color:#ffffff;">Sauti</div>
+                                    <div style="margin-top:7px;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#55e4db;">
+                                        New booking confirmed
+                                    </div>
+                                </td>
+                                <td align="right" valign="top">
+                                    <span style="display:inline-block;padding:8px 12px;border:1px solid #2c6272;border-radius:999px;font-size:12px;font-weight:700;color:#b8cedc;"
+                                          th:text="${booking.bookingNumber}">SAT-XXXXXXXXXXXX</span>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:30px 34px 10px;">
+                        <div style="font-size:14px;color:#8fa9bb;">Appointment date</div>
+                        <div style="margin-top:7px;font-size:25px;line-height:1.25;font-weight:800;color:#ffffff;"
+                             th:text="${booking.appointmentDate}">Monday, 3 August 2026</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:12px 34px 28px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="background:#071824;border:1px solid #245067;border-radius:16px;">
+                            <tr>
+                                <td style="padding:22px 24px;">
+                                    <div style="font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#55e4db;">
+                                        Appointment time
+                                    </div>
+                                    <div style="margin-top:7px;font-size:38px;line-height:1;font-weight:800;color:#ffffff;"
+                                         th:text="${booking.appointmentTime}">9:00 AM</div>
+                                    <div style="margin-top:11px;font-size:13px;line-height:1.5;color:#9eb6c6;"
+                                         th:text="|Business local time · ${booking.timezone}|">
+                                        Business local time · Africa/Cairo · UTC+03:00
+                                    </div>
+                                </td>
+                                <td align="right" valign="middle" style="padding:22px 24px;">
+                                    <div style="font-size:12px;color:#8fa9bb;">Duration</div>
+                                    <div style="margin-top:5px;font-size:16px;font-weight:700;color:#eaf4ff;"
+                                         th:text="${booking.duration}">1 hour</div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:0 34px 28px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="border-collapse:collapse;">
+                            <tr>
+                                <td style="padding:15px 0;border-bottom:1px solid #1a394c;color:#89a3b5;font-size:13px;">Customer</td>
+                                <td align="right" style="padding:15px 0;border-bottom:1px solid #1a394c;color:#ffffff;font-size:14px;font-weight:700;"
+                                    th:text="${booking.customerName}">Customer name</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:15px 0;border-bottom:1px solid #1a394c;color:#89a3b5;font-size:13px;">Service</td>
+                                <td align="right" style="padding:15px 0;border-bottom:1px solid #1a394c;color:#ffffff;font-size:14px;font-weight:700;"
+                                    th:text="${booking.service}">Service</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:15px 0;border-bottom:1px solid #1a394c;color:#89a3b5;font-size:13px;">Phone</td>
+                                <td align="right" style="padding:15px 0;border-bottom:1px solid #1a394c;color:#ffffff;font-size:14px;"
+                                    th:text="${booking.customerPhone}">Phone</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:15px 0;color:#89a3b5;font-size:13px;">Captured by</td>
+                                <td align="right" style="padding:15px 0;color:#ffffff;font-size:14px;"
+                                    th:text="${booking.agentName}">Agent</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr th:if="${calendarSyncFailed}">
+                    <td style="padding:0 34px 26px;">
+                        <div style="padding:15px 17px;background:#2a1b1d;border:1px solid #743a3f;border-radius:12px;color:#ffb7ad;font-size:13px;line-height:1.5;">
+                            <strong>Calendar follow-up required.</strong>
+                            <span th:text="${booking.calendarError}">The external calendar could not be updated.</span>
+                        </div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:0 34px 32px;">
+                        <a th:href="${bookingsUrl}" href="https://sauti.uk/bookings"
+                           style="display:block;padding:15px 20px;background:#45d8d0;border-radius:12px;color:#03151c;text-align:center;text-decoration:none;font-size:15px;font-weight:800;">
+                            View booking in Sauti
+                        </a>
+                        <div style="margin-top:16px;text-align:center;font-size:12px;line-height:1.5;color:#718b9d;">
+                            Confirmation captured
+                            <span th:text="${booking.confirmedAt}">3 Aug 2026 at 8:42 AM</span>
+                            in the business timezone.
+                        </div>
+                    </td>
+                </tr>
+            </table>
+            <div style="padding:18px 12px 0;font-size:12px;color:#607b8d;">
+                Sent by Sauti for your workspace booking notifications.
+            </div>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

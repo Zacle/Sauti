@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
+import com.sauti.session.CallSession;
 import com.sauti.session.CallSessionStore;
 import com.sauti.tool.ToolFulfillmentRouter;
 import java.nio.charset.StandardCharsets;
@@ -131,6 +132,15 @@ public class ManagedVoiceToolService {
         Map<String, Object> response;
         boolean success;
         try {
+            // A managed provider can deliver tool callbacks after another
+            // lifecycle path has removed or failed to persist the short-lived
+            // call session. Mutation guards deliberately do not retain an
+            // action without a session, which would otherwise turn every
+            // caller approval into another first-time proposal forever.
+            // Recreate the minimal server-owned session idempotently before
+            // routing any managed tool; existing sessions and their retained
+            // actions remain untouched.
+            sessions.createIfAbsent(call.getTwilioCallSid(), managedSession(call));
             var toolCall = bridgeManagedConfirmation(
                     call,
                     new LlmToolCall(invocationId, name, arguments)
@@ -161,6 +171,22 @@ public class ManagedVoiceToolService {
                 response,
                 java.time.Instant.now().plusSeconds(Math.max(120, call.getAgent().getMaxCallDurationSeconds() + 120L))
         );
+    }
+
+    private CallSession managedSession(Call call) {
+        var session = new CallSession();
+        session.setCallId(call.getId());
+        session.setCallSid(call.getTwilioCallSid());
+        if (call.getAgent() != null) {
+            session.setAgentId(call.getAgent().getId());
+        }
+        if (call.getTenant() != null) {
+            session.setTenantId(call.getTenant().getId());
+        }
+        session.setCallerPhone(call.getCallerNumber());
+        session.setStartedAt(call.getStartedAt());
+        session.touch();
+        return session;
     }
 
     /**

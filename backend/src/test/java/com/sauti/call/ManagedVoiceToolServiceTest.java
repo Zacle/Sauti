@@ -2,6 +2,7 @@ package com.sauti.call;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -10,16 +11,123 @@ import org.mockito.ArgumentCaptor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.Agent;
+import com.sauti.integration.DuringCallIntegrationFulfillment;
 import com.sauti.llm.LlmToolResult;
+import com.sauti.session.CallSession;
 import com.sauti.session.CallSessionStore;
 import com.sauti.session.PendingAction;
+import com.sauti.session.RedisCallSessionStore;
+import com.sauti.tool.AgentTool;
+import com.sauti.tool.AgentToolRepository;
+import com.sauti.tool.ConversationStateTool;
+import com.sauti.tool.NoopFulfillment;
+import com.sauti.tool.SautiCalendarFulfillment;
+import com.sauti.tool.SautiSmsFulfillment;
+import com.sauti.tool.TelnyxTransferFulfillment;
+import com.sauti.tool.ToolActionEffect;
+import com.sauti.tool.ToolActionPolicy;
+import com.sauti.tool.ToolConfirmationPolicy;
 import com.sauti.tool.ToolFulfillmentRouter;
+import com.sauti.tool.WebhookToolFulfillment;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 
 class ManagedVoiceToolServiceTest {
+    @Test
+    void executesRescheduleAfterOneCallerApprovalWhenManagedSessionWasMissing() throws Exception {
+        var callRepository = mock(CallRepository.class);
+        var agentToolRepository = mock(AgentToolRepository.class);
+        var calendar = mock(SautiCalendarFulfillment.class);
+        var redis = mock(StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        var values = (ValueOperations<String, String>) mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(values);
+        when(values.get(any())).thenReturn(null);
+        var objectMapper = new ObjectMapper().findAndRegisterModules();
+        var sessions = new RedisCallSessionStore(redis, objectMapper, 7200);
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.getId()).thenReturn(UUID.randomUUID());
+        when(call.getTwilioCallSid()).thenReturn("missing-session-reschedule");
+        when(call.getAgent()).thenReturn(agent);
+        when(call.isActive()).thenReturn(true);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getMaxCallDurationSeconds()).thenReturn(300);
+        when(callRepository.findByTwilioCallSid("missing-session-reschedule"))
+                .thenReturn(Optional.of(call));
+        var tool = new AgentTool(
+                agent,
+                "reschedule_booking",
+                "Reschedule a verified booking",
+                Map.of("type", "object", "properties", Map.of()),
+                "sauti_calendar",
+                true,
+                1
+        );
+        tool.configureActionPolicy(ToolActionEffect.DATA_WRITE, ToolConfirmationPolicy.EXPLICIT);
+        when(agentToolRepository.findByAgent_IdAndToolNameAndIsActiveTrue(
+                agentId, "reschedule_booking"
+        )).thenReturn(Optional.of(tool));
+        when(calendar.execute(any(), any(), any())).thenAnswer(invocation -> {
+            var toolCall = (com.sauti.llm.LlmToolCall) invocation.getArgument(2);
+            return LlmToolResult.success(toolCall, Map.of(
+                    "status", "booking_rescheduled",
+                    "updated", true
+            ));
+        });
+        var router = new ToolFulfillmentRouter(
+                agentToolRepository,
+                calendar,
+                mock(WebhookToolFulfillment.class),
+                mock(SautiSmsFulfillment.class),
+                mock(TelnyxTransferFulfillment.class),
+                mock(DuringCallIntegrationFulfillment.class),
+                mock(NoopFulfillment.class),
+                mock(ConversationStateTool.class),
+                new ToolActionPolicy(sessions)
+        );
+        var service = new ManagedVoiceToolService(
+                callRepository,
+                mock(WebVoiceTokenService.class),
+                router,
+                sessions,
+                objectMapper
+        );
+        var payload = objectMapper.readTree("""
+                {
+                  "booking_number": "SAT-AB12CD34",
+                  "caller_phone": "0115752441",
+                  "appointment_at": "2026-08-03T09:00:00+03:00",
+                  "duration_minutes": 60,
+                  "question_handling": "ready_for_action",
+                  "confirmation_state": "confirmed"
+                }
+                """);
+
+        var proposal = service.executeTelnyxWebhook(
+                "missing-session-reschedule", "reschedule-proposal",
+                "reschedule_booking", payload
+        );
+        var approved = service.executeTelnyxWebhook(
+                "missing-session-reschedule", "reschedule-approved",
+                "reschedule_booking", payload
+        );
+
+        assertThat(proposal)
+                .containsEntry("status", "action_deferred")
+                .containsEntry("actionPerformed", false);
+        assertThat(approved)
+                .containsEntry("status", "booking_rescheduled")
+                .containsEntry("actionPerformed", true)
+                .containsEntry("updated", true);
+        verify(calendar, times(1)).execute(any(), any(), any());
+    }
+
     @Test
     void telnyxWebhookExecutesDirectBodyArgumentsAndDeduplicatesRedelivery() throws Exception {
         var repository = mock(CallRepository.class);
@@ -65,6 +173,10 @@ class ManagedVoiceToolServiceTest {
         assertThat(retry).isEqualTo(first);
         var routed = ArgumentCaptor.forClass(com.sauti.llm.LlmToolCall.class);
         verify(router, times(1)).route(any(), routed.capture());
+        var recoveredSession = ArgumentCaptor.forClass(CallSession.class);
+        verify(sessions).createIfAbsent(eq("telnyx-call-42"), recoveredSession.capture());
+        assertThat(recoveredSession.getValue().getCallSid()).isEqualTo("telnyx-call-42");
+        assertThat(recoveredSession.getValue().getCallId()).isEqualTo(call.getId());
         assertThat(routed.getValue().arguments())
                 .containsEntry("date", "2026-07-31")
                 .containsEntry("time", "10:00");

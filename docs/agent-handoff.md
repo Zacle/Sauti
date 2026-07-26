@@ -225,6 +225,42 @@ Expected:
 
 ## Change log
 
+### 2026-07-26 - Complete managed phone reschedules and redesign booking email
+
+- Investigated the live Telnyx conversation `a949bea2-6104-43a0-9d9b-5c1602b5c619` after the caller repeatedly approved a reschedule that never completed.
+- The provider trace established that:
+  - availability and booking lookup succeeded;
+  - Telnyx called `reschedule_booking` four times with `confirmation_state=confirmed`;
+  - every call returned `verified_confirmation_required` with `actionPerformed=false`;
+  - no reschedule was performed, yet the model incorrectly promised that the request would be processed later.
+- Root cause: the managed confirmation bridge depends on a short-lived `CallSession` to retain the exact proposed mutation. Session-store proposal updates intentionally do nothing when that session is absent, so a missing/removed session makes every approval look like a first proposal and creates an endless confirmation loop.
+- `ManagedVoiceToolService` now idempotently recreates a minimal call session before routing every managed provider tool callback. `createIfAbsent` preserves a healthy existing session and its pending action, while allowing the first guarded mutation to retain a proposal when lifecycle persistence was missing.
+- Added an end-to-end managed-tool regression matching the observed Telnyx behavior: the initial `reschedule_booking` call retains the exact proposal, the caller's next approval bridges to that retained action, and the calendar fulfillment returns `booking_rescheduled`, `updated=true`, and `actionPerformed=true` exactly once.
+- Hardened the shared voice contract: without an explicit successful escalation or messaging result, the agent must never promise that a failed/deferred booking change will be processed later. It must say that the booking was not changed and offer a retry or an actually available human-contact route.
+- Replaced the plain-text owner booking email and raw ISO appointment timestamp with a branded responsive HTML email:
+  - the appointment date and large 12-hour appointment time are visually separated;
+  - the business timezone and exact UTC offset are explicit;
+  - duration, customer, service, phone, booking reference, capturing agent, and confirmation-capture time have clear labels;
+  - calendar synchronization failures have a dedicated warning panel;
+  - the subject includes a concise local appointment date/time, and the email includes a direct Bookings dashboard action;
+  - a readable plain-text alternative remains available for mail clients without HTML support.
+- Added regression assertions for managed-session recovery, the complete one-approval reschedule mutation, the no-false-follow-up instruction, business-timezone formatting, and HTML template rendering.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceToolService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingNotificationService.java`
+  - `backend/src/main/resources/templates/email/booking-confirmation.html`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceToolServiceTest.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingNotificationServiceTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.ManagedVoiceToolServiceTest" --tests "com.sauti.calendar.BookingNotificationServiceTest" --tests "com.sauti.llm.ConversationOrchestratorTest" --rerun-tasks --console=plain` passed;
+  - `.\gradlew.bat :backend:test --console=plain` passed;
+  - `git diff --check` passed (Git emitted only the repository's existing LF-to-CRLF working-tree warnings).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Live follow-up after deployment: repeat one reschedule. After availability is confirmed, the agent should review the exact old/new appointment once, accept one natural unconditional approval, return `booking_rescheduled` with `actionPerformed=true`, and state only that factual result.
+
 ### 2026-07-26 - Revert voice-conversation injection and correlate recordings by Telnyx leg ID
 
 - Investigated diagnostic file `sauti-telnyx-diagnostics-1785082032648.json` for Sauti call `d48ec04c-5a6b-4166-a5d6-33f3a7918cb9` without reading transcript content.
