@@ -9,12 +9,14 @@ import {
 } from "./managedRuntimeConfig";
 import { finalizeTelnyxEndConversation } from "./telnyxEndConversation";
 import { startTelnyxConversationWhenReady } from "./telnyxReadiness";
+import { callerClearlyRequestedBrowserEnd } from "./terminalIntent";
 
 export async function connectTelnyxRuntime(
   session: BrowserVoiceRuntimeSession,
   callbacks: BrowserVoiceRuntimeCallbacks,
 ): Promise<BrowserVoiceRuntimeConnection> {
   const { TelnyxAIAgent } = await import("@telnyx/ai-agent-lib");
+  callbacks.onStartupStage?.("sdk_loaded");
   const agentId = configString(session.configuration, "agentId");
   if (!agentId) throw new Error("Telnyx did not return an AI assistant id.");
   const environment = configString(session.configuration, "environment") === "development"
@@ -43,10 +45,27 @@ export async function connectTelnyxRuntime(
   let agentSpeaking = false;
   let latestAgentText = "";
   let conversationStarted = false;
+  let endingRequested = false;
   let providerCallControlId = "";
+  let terminalIntentPending = false;
+  let terminalFarewellStarted = false;
+  let terminalEndTimer: number | undefined;
+
+  const retainProviderCallControlId = (value: string | null | undefined) => {
+    const normalized = value?.trim() ?? "";
+    if (!normalized || normalized === providerCallControlId) return;
+    providerCallControlId = normalized;
+    callbacks.onProviderCallControlId?.(normalized);
+  };
+
+  const clearTerminalEndTimer = () => {
+    if (terminalEndTimer !== undefined) window.clearTimeout(terminalEndTimer);
+    terminalEndTimer = undefined;
+  };
 
   const finish = () => {
     if (!conversationStarted || ended || stopped) return;
+    clearTerminalEndTimer();
     ended = true;
     agentSpeaking = false;
     callbacks.onAgentSpeaking(false);
@@ -55,15 +74,28 @@ export async function connectTelnyxRuntime(
     callbacks.onEnded("completed");
   };
 
+  const endBrowserConversation = () => {
+    if (!conversationStarted || endingRequested || ended || stopped) return;
+    endingRequested = true;
+    clearTerminalEndTimer();
+    retainProviderCallControlId(client.activeCall?.telnyxIDs.telnyxCallControlId);
+    void finalizeTelnyxEndConversation(
+      () => client.endConversation(),
+      (error) => callbacks.onError(providerError("Telnyx", error)),
+      finish,
+    );
+  };
+
+  const scheduleTerminalEnd = (delayMs: number) => {
+    clearTerminalEndTimer();
+    terminalEndTimer = window.setTimeout(endBrowserConversation, delayMs);
+  };
+
   client.registerClientTool("end_browser_call", () => {
     // Acknowledge the tool before closing WebRTC so the SDK does not discard
     // its result as an output from an already-shut-down conversation.
     window.setTimeout(() => {
-      void finalizeTelnyxEndConversation(
-        () => client.endConversation(),
-        (error) => callbacks.onError(providerError("Telnyx", error)),
-        finish,
-      );
+      endBrowserConversation();
     }, 100);
     return { success: true, ending: true };
   });
@@ -79,8 +111,7 @@ export async function connectTelnyxRuntime(
   });
   client.on("agent.disconnected", finish);
   client.on("conversation.update", (notification) => {
-    providerCallControlId = notification.call?.telnyxIDs.telnyxCallControlId?.trim()
-      || providerCallControlId;
+    retainProviderCallControlId(notification.call?.telnyxIDs.telnyxCallControlId);
     const stream = notification.call?.remoteStream;
     if (stream && audio.srcObject !== stream) {
       audio.srcObject = stream;
@@ -90,6 +121,7 @@ export async function connectTelnyxRuntime(
   client.on("conversation.agent.state", ({ state }) => {
     if (state === "speaking") {
       agentSpeaking = true;
+      if (terminalIntentPending) terminalFarewellStarted = true;
       callbacks.onAgentSpeaking(true);
       if (latestAgentText) callbacks.onAgentCaption(latestAgentText);
       return;
@@ -98,13 +130,19 @@ export async function connectTelnyxRuntime(
       if (agentSpeaking) callbacks.onInterrupted();
       callbacks.onCallerSpeechEnded();
     }
+    const completedTerminalFarewell = agentSpeaking && terminalIntentPending && terminalFarewellStarted;
     agentSpeaking = false;
     callbacks.onAgentSpeaking(false);
+    if (completedTerminalFarewell) scheduleTerminalEnd(450);
   });
   client.on("transcript.item", (item) => {
     const text = item.content.trim();
     if (!text) return;
     if (item.role === "user") {
+      terminalIntentPending = callerClearlyRequestedBrowserEnd(text);
+      terminalFarewellStarted = false;
+      clearTerminalEndTimer();
+      if (terminalIntentPending) scheduleTerminalEnd(12_000);
       callbacks.onCallerTranscript(text);
       return;
     }
@@ -128,18 +166,30 @@ export async function connectTelnyxRuntime(
         },
       }),
       subscribe: ({ ready, failed, disconnected }) => {
-        client.on("agent.connected", ready);
+        const signalingReady = (info: {
+          dc: string | null;
+          region: string | null;
+          callReportId: string | null;
+        }) => {
+          callbacks.onStartupStage?.("signaling_ready", {
+            dc: info.dc,
+            region: info.region,
+          });
+          ready();
+        };
+        client.on("agent.connected", signalingReady);
         client.on("agent.error", failed);
         client.on("agent.disconnected", disconnected);
         return () => {
-          client.off("agent.connected", ready);
+          client.off("agent.connected", signalingReady);
           client.off("agent.error", failed);
           client.off("agent.disconnected", disconnected);
         };
       },
     });
     conversationStarted = true;
-    providerCallControlId = client.activeCall?.telnyxIDs.telnyxCallControlId?.trim() ?? "";
+    callbacks.onStartupStage?.("conversation_started");
+    retainProviderCallControlId(client.activeCall?.telnyxIDs.telnyxCallControlId);
     callbacks.onConnected();
   } catch (error) {
     stopped = true;
@@ -158,6 +208,8 @@ export async function connectTelnyxRuntime(
     },
     async stop() {
       if (stopped) return;
+      clearTerminalEndTimer();
+      retainProviderCallControlId(client.activeCall?.telnyxIDs.telnyxCallControlId);
       stopped = true;
       ended = true;
       await client.endConversation();

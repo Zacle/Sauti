@@ -281,6 +281,21 @@ public class CallPipelineService {
     }
 
     @Transactional
+    public Call correlateTestCall(
+            java.util.UUID tenantId,
+            java.util.UUID callId,
+            String providerCallControlId
+    ) {
+        var call = callRepository.findByIdAndTenantId(callId, tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Call not found"));
+        if (!"test".equals(call.getDirection())) {
+            throw new IllegalArgumentException("Only browser test calls can be correlated here");
+        }
+        call.awaitTelnyxRecording(providerCallControlId);
+        return callRepository.save(call);
+    }
+
+    @Transactional
     public void markTestCallInterrupted(java.util.UUID tenantId, java.util.UUID callId) {
         var call = callRepository.findByIdAndTenantId(callId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Call not found"));

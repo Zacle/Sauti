@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "16";
+        return "17";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -130,7 +130,8 @@ public class TelnyxManagedVoiceAgentProvisioner {
                         "name", "end_browser_call",
                         "description", "For web_call conversations only: after one brief respectful farewell, "
                                 + "immediately end the browser voice conversation when the caller clearly indicates "
-                                + "they are finished.",
+                                + "they are finished. Speaking the farewell without invoking this tool does not end "
+                                + "the conversation.",
                         "parameters", Map.of(
                                 "type", "object",
                                 "properties", Map.of(),
@@ -163,7 +164,8 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   brief respectful farewell and immediately invoke `end_browser_call`. For `phone_call`, say one brief
                   respectful farewell and immediately invoke Telnyx's native `hangup`. Do not pass spoken_farewell,
                   outcome, or summary arguments, do not call a webhook first, and never wait for another caller turn
-                  after the farewell.
+                  after the farewell. A spoken farewell alone is not a terminal action: the selected terminal tool is
+                  mandatory and must be invoked in the same turn.
                 """);
         body.put("greeting", blueprint.greeting());
         // Telnyx currently reports AI Agent SDK WebRTC sessions as phone_call.

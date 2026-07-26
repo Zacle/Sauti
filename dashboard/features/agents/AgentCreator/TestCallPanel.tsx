@@ -4,12 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { Download, LoaderCircle, Mic, Phone, PhoneOff, Send, Volume2 } from "lucide-react";
 import {
   completeTestCall,
+  correlateTestCall,
   recordTestRealtimeTranscript,
   startTestCall,
 } from "@/lib/api/calls";
 import {
   connectBrowserVoiceRuntime,
+  preloadBrowserVoiceRuntime,
   type BrowserVoiceRuntimeConnection,
+  warmBrowserMicrophone,
 } from "@/features/voice-runtime/browserVoiceRuntime";
 import type { VoiceDiagnosticEntry } from "@/features/voice-runtime/voiceDiagnostics";
 
@@ -51,6 +54,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const diagnosticSequenceRef = useRef(0);
   const agentCaptionIdRef = useRef("");
   const endingRef = useRef(false);
+  const firstAgentAudioRef = useRef(false);
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({
@@ -62,6 +66,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   useEffect(() => () => {
     void connectionRef.current?.stop();
     connectionRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    void preloadBrowserVoiceRuntime().catch(() => undefined);
   }, []);
 
   function updateStatus(next: CallStatus) {
@@ -142,18 +150,32 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     setMessages([]);
     setError("");
     endingRef.current = false;
+    firstAgentAudioRef.current = false;
     updateStatus("connecting");
     try {
-      const started = await startTestCall(agentId, voiceId);
+      const callPromise = startTestCall(agentId, voiceId).then((started) => {
+        recordDiagnostic("call_created", {
+          provider: started.runtime?.provider ?? "unknown",
+        });
+        return started;
+      });
+      const microphonePromise = warmBrowserMicrophone()
+        .then(() => recordDiagnostic("microphone_ready"))
+        .catch(() => recordDiagnostic("microphone_warmup_failed", undefined, "warn"));
+      const [started] = await Promise.all([
+        callPromise,
+        microphonePromise,
+        preloadBrowserVoiceRuntime(),
+      ]);
       if (!started.runtime || started.runtime.provider.toLowerCase() !== "telnyx") {
         throw new Error("The backend did not create a Telnyx test session.");
       }
       callIdRef.current = started.call.id;
       setCallId(started.call.id);
-      recordDiagnostic("call_created", {
-        provider: started.runtime.provider,
-      });
       connectionRef.current = await connectBrowserVoiceRuntime(started.runtime, {
+        onStartupStage(stage, details) {
+          recordDiagnostic(`startup_${stage}`, details);
+        },
         onConnected() {
           recordDiagnostic("runtime_connected");
           updateStatus("listening");
@@ -180,6 +202,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             .catch(() => recordDiagnostic("agent_transcript_write_failed", undefined, "warn"));
         },
         onAgentSpeaking(speaking) {
+          if (speaking && !firstAgentAudioRef.current) {
+            firstAgentAudioRef.current = true;
+            recordDiagnostic("first_agent_audio");
+          }
           updateStatus(speaking ? "speaking" : "listening");
         },
         onInterrupted() {
@@ -195,6 +221,11 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         },
         onToolError(toolName, reason) {
           recordDiagnostic("tool_error", { toolName, reason }, "error");
+        },
+        onProviderCallControlId(callControlId) {
+          recordDiagnostic("provider_call_correlated");
+          void correlateTestCall(started.call.id, callControlId)
+            .catch(() => recordDiagnostic("provider_call_correlation_failed", undefined, "warn"));
         },
         onError(message) {
           recordDiagnostic("runtime_error", { message }, "error");

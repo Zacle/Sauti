@@ -78,7 +78,8 @@ class ManagedVoiceAgentProvisionersTest {
                         "name", "end_browser_call",
                         "description", "For web_call conversations only: after one brief respectful farewell, "
                                 + "immediately end the browser voice conversation when the caller clearly indicates "
-                                + "they are finished.",
+                                + "they are finished. Speaking the farewell without invoking this tool does not end "
+                                + "the conversation.",
                         "parameters", Map.of(
                                 "type", "object",
                                 "properties", Map.of(),
@@ -92,7 +93,7 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("{{sauti_conversation_channel}}", "web_call", "end_browser_call", "phone_call")
                 .doesNotContain("{{telnyx_conversation_channel}}")
                 .contains("native", "hangup")
-                .contains("Do not pass spoken_farewell", "call a webhook first");
+                .contains("Do not pass spoken_farewell", "call a webhook first", "spoken farewell alone");
         assertThat(body.getValue().get("dynamic_variables"))
                 .isEqualTo(Map.of("sauti_conversation_channel", "phone_call"));
         @SuppressWarnings("unchecked")

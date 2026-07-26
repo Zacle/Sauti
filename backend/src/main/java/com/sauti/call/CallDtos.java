@@ -79,6 +79,9 @@ public final class CallDtos {
     public record CompleteTestCallRequest(String outcome, String providerCallControlId) {
     }
 
+    public record ProviderCallCorrelationRequest(String providerCallControlId) {
+    }
+
     public record StartTestCallResponse(
             CallResponse call,
             String greeting,

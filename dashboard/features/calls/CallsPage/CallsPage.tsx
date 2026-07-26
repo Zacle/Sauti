@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { listAgents } from "@/lib/api/agents";
 import { listBookings } from "@/lib/api/bookings";
-import { getCallRecording, listCalls, listCallTurns } from "@/lib/api/calls";
+import { getCall, getCallRecording, listCalls, listCallTurns } from "@/lib/api/calls";
 import type { Agent, Booking, Call, CallTurn } from "@/types/api";
 import styles from "./CallsPage.module.css";
 
@@ -136,8 +136,32 @@ export function CallsPage() {
     () => calls.find((call) => call.id === selectedId) ?? null,
     [calls, selectedId],
   );
+  const selectedRecordingPending = Boolean(
+    selectedCall?.endedAt
+    && !selectedCall.recordingUrl
+    && selectedCall.recordingSid?.startsWith("TELNYX-CALL-CONTROL:"),
+  );
 
   const selectedBooking = selectedCall ? bookingsByCall.get(selectedCall.id) ?? null : null;
+
+  useEffect(() => {
+    if (!selectedId || !selectedRecordingPending) return;
+    let cancelled = false;
+    const refresh = () => {
+      void getCall(selectedId)
+        .then((updated) => {
+          if (cancelled) return;
+          setCalls((current) => current.map((call) => call.id === updated.id ? updated : call));
+        })
+        .catch(() => undefined);
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedId, selectedRecordingPending]);
 
   async function openDetails(callId: string) {
     setSelectedId(callId);
@@ -286,7 +310,11 @@ export function CallsPage() {
               <section className={styles.panelSection}>
                 <div className={styles.sectionStatic}><span><Headphones size={17} /> Recording</span></div>
                 <div className={styles.recordingCard}>
-                  {selectedCall.recordingUrl ? <RecordingPlayer callId={selectedCall.id} /> : <span className={styles.unavailable}>No recording captured</span>}
+                  {selectedCall.recordingUrl
+                    ? <RecordingPlayer callId={selectedCall.id} />
+                    : selectedRecordingPending
+                      ? <span className={styles.unavailable}><LoaderCircle className="spin" size={15} /> Finalizing recording...</span>
+                      : <span className={styles.unavailable}>No recording captured</span>}
                 </div>
               </section>
 

@@ -615,6 +615,36 @@ class CallPipelineServiceTest {
     }
 
     @Test
+    void retainsBrowserProviderCorrelationBeforeTheTestCallEnds() {
+        var callRepository = mock(CallRepository.class);
+        var service = new CallPipelineService(
+                callRepository,
+                mock(CallTurnRepository.class),
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                mock(LanguageDetector.class),
+                mock(ConversationOrchestrator.class),
+                mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class),
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var tenant = new Tenant("Demo Clinic", "owner@example.com", "SN");
+        var agent = new Agent(tenant, "Amina", "Bonjour", "Prompt");
+        var call = new Call(tenant, agent, "TEST-" + java.util.UUID.randomUUID(), "Browser test", "test");
+        var providerCallControlId = "v3:1gRx5XCaFYqWq7dXepPmGoYSuneETzAE6GnsLeFB0aBr6ByJc_qBqw";
+        when(callRepository.findByIdAndTenantId(call.getId(), tenant.getId())).thenReturn(Optional.of(call));
+        when(callRepository.save(call)).thenReturn(call);
+
+        var result = service.correlateTestCall(tenant.getId(), call.getId(), providerCallControlId);
+
+        assertThat(result.pendingTelnyxCallControlId()).isEqualTo(providerCallControlId);
+        assertThat(result.getEndedAt()).isNull();
+        verify(callRepository).save(call);
+    }
+
+    @Test
     void recoversFromShortCrossLanguageTranscriptDriftAfterLanguageIsStable() {
         var callRepository = mock(CallRepository.class);
         var callTurnRepository = mock(CallTurnRepository.class);

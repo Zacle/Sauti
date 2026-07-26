@@ -4,6 +4,7 @@ import com.sauti.auth.AuthenticatedUser;
 import com.sauti.call.CallDtos.CallResponse;
 import com.sauti.call.CallDtos.CallTurnResponse;
 import com.sauti.call.CallDtos.CompleteTestCallRequest;
+import com.sauti.call.CallDtos.ProviderCallCorrelationRequest;
 import com.sauti.call.CallDtos.SimulatedTurnRequest;
 import com.sauti.call.CallDtos.SimulatedTurnResponse;
 import com.sauti.call.CallDtos.StartTestCallRequest;
@@ -126,6 +127,17 @@ public class CallController {
         var providerCallControlId = request == null ? "" : request.providerCallControlId();
         return CallResponse.from(callPipelineService.completeTestCall(
                 user.tenantId(), id, outcome, providerCallControlId
+        ));
+    }
+
+    @PostMapping("/{id}/provider-correlation")
+    CallResponse correlateTestCall(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID id,
+            @RequestBody ProviderCallCorrelationRequest request
+    ) {
+        return CallResponse.from(callPipelineService.correlateTestCall(
+                user.tenantId(), id, request.providerCallControlId()
         ));
     }
 

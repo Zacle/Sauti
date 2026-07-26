@@ -225,6 +225,78 @@ Expected:
 
 ## Change log
 
+### 2026-07-26 - Reduce browser test-call startup latency
+
+- Investigated the reported seven-to-eight-second wait between starting a Telnyx browser test and hearing the opening greeting.
+- The Sauti startup path performed avoidable work serially: it waited for the backend call/runtime session before loading the large Telnyx browser runtime and before WebRTC requested microphone access.
+- The Agent test panel now preloads the Telnyx runtime chunk while the panel is open, before the user starts a call.
+- On Start Call, microphone permission/device warm-up now runs concurrently with backend call preparation and runtime preloading. The temporary warm-up stream is stopped immediately; the Telnyx SDK still owns the actual call media stream.
+- The runtime import is shared by preload and connection, resets safely after a failed import, and does not create a Telnyx conversation before the user clicks Start Call.
+- Added privacy-safe startup diagnostics for:
+  - backend call creation;
+  - microphone readiness;
+  - SDK readiness;
+  - Telnyx signaling readiness, including only the selected Telnyx data center/region;
+  - conversation start;
+  - first agent audio.
+- These timings distinguish remaining provider/media/greeting latency from Sauti loading latency without recording conversation content.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/browserVoiceRuntime.ts`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run test:voice` - passed all 11 tests.
+  - `npm.cmd run build` - passed; Next.js completed the optimized production build.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: WebRTC signaling, media negotiation, and Telnyx's assistant greeting generation remain provider/network work after `conversation_started`. After deployment, compare `startup_conversation_started` with `first_agent_audio` in the downloadable test-call diagnostics. If that provider-only interval remains several seconds, test Telnyx `AUTO` against the geographically closest supported region rather than adding unsafe client-side greeting duplication.
+
+### 2026-07-26 - Persist browser recording correlation before call shutdown
+
+- Investigated the fresh `No recording captured` report against deployed commit `6656d8e` and Telnyx without reading conversation transcript content.
+- Production CI/deploy history confirmed the earlier recording reconciler was deployed successfully.
+- Telnyx confirmed the latest browser conversation produced a completed 49.5-second dual-channel MP3. The recording uses a valid `v3:` Call Control ID, and the exact filtered `/recordings` request used by Sauti returns the completed recording and MP3 URL.
+- Privacy-safe terminal inspection confirmed:
+  - the custom `X-Sauti-Conversation-Channel` header resolved correctly and the conversation's system prompt selected `web_call`;
+  - the resolved prompt explicitly required a farewell followed immediately by `end_browser_call`;
+  - the latest conversation contained seven ordinary user/assistant messages and zero tool calls, so Telnyx spoke its last response without invoking the required client tool.
+- This isolates the failures to Sauti's browser-call correlation/refresh boundary and nondeterministic model tool compliance rather than provider recording generation or channel resolution.
+- Browser test calls now persist the Call Control ID to Sauti as soon as the Telnyx SDK exposes it during the live call:
+  - added the authenticated `POST /api/v1/calls/{id}/provider-correlation` endpoint;
+  - tenant-scoped backend validation accepts only browser test calls and stores the pending recording reference without ending the call;
+  - the Telnyx runtime retains and publishes the ID from call updates, immediately after startup when available, before tool-driven hangup, and before manual teardown;
+  - completion still resubmits the cached ID as a final fallback.
+- The Calls detail drawer now recognizes pending Telnyx correlation, displays `Finalizing recording...`, and refreshes that call every five seconds until reconciliation attaches the recording player. It no longer leaves a stale `No recording captured` state when the page loaded before Telnyx finished the MP3.
+- Browser hangup no longer relies exclusively on the model:
+  - a conservative multilingual terminal-intent detector covers clear English, French, Swahili, and Arabic endings while rejecting qualified continuations such as “no thanks, but…”;
+  - after clear caller end intent, the runtime waits for the assistant's farewell speaking turn to finish and then ends the WebRTC conversation itself;
+  - a 12-second terminal timeout ends the session if Telnyx does not emit a complete farewell speech-state sequence;
+  - the provider tool remains the primary path, with duplicate end requests guarded;
+  - Telnyx configuration version is now `17`, and the managed prompt/tool description explicitly states that speaking a farewell without invoking the terminal tool does not end the call.
+- Added a backend regression test confirming correlation can be retained while a test call is still active.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/call/{CallDtos,CallPipelineService,TelnyxManagedVoiceAgentProvisioner}.java`
+  - `backend/src/test/java/com/sauti/call/{CallPipelineServiceTest,ManagedVoiceAgentProvisionersTest}.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/calls/CallsPage/CallsPage.tsx`
+  - `dashboard/features/voice-runtime/{browserVoiceRuntime,telnyxRuntime,terminalIntent}.ts`
+  - `dashboard/features/voice-runtime/terminalIntent.test.ts`
+  - `dashboard/lib/api/calls.ts`
+  - `dashboard/package.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `CallPipelineServiceTest`, `TelnyxRecordingReconciliationServiceTest`, and `ManagedVoiceAgentProvisionersTest` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run test:voice` - passed all 11 tests, including multilingual terminal intent and guarded continuation cases.
+  - `npm.cmd run build` - passed; Next.js completed the optimized production build.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after deployment and automatic agent resynchronization to configuration version `17`, complete a new browser test by clearly saying goodbye. Confirm the assistant speaks one farewell and the browser call ends without manual Hang Up, then open it in Calls and confirm `Finalizing recording...` changes to the player within roughly 5-20 seconds. A historical call without a stored Sauti correlation cannot be safely backfilled automatically from timing alone.
+
 ### 2026-07-26 - Refine the bookings console and replace the native reschedule picker
 
 - Refined the bookings page toward the supplied console reference without changing its API behavior:

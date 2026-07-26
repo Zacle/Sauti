@@ -22,6 +22,17 @@ export function completeTestCall(callId: string, outcome = "completed", provider
   });
 }
 
+export function correlateTestCall(callId: string, providerCallControlId: string) {
+  return apiRequest<Call>(`/calls/${callId}/provider-correlation`, {
+    method: "POST",
+    body: JSON.stringify({ providerCallControlId }),
+  });
+}
+
+export function getCall(callId: string) {
+  return apiRequest<Call>(`/calls/${callId}`);
+}
+
 export function listCallTurns(callId: string) {
   return apiRequest<CallTurn[]>(`/calls/${callId}/turns`);
 }
