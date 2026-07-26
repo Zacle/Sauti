@@ -1,9 +1,12 @@
 "use client";
 
+import * as Select from "@radix-ui/react-select";
 import { format, startOfDay } from "date-fns";
 import {
   CalendarClock,
   Check,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   LoaderCircle,
   Mail,
@@ -185,13 +188,19 @@ export function BookingEditor({ booking, busy, error, onClose, onSave }: Props) 
             <div className={styles.timeSection}>
               <label><Clock3 size={15} /> Appointment time</label>
               <div className={styles.timeControls}>
-                <select aria-label="Hour" onChange={(event) => selectHour(Number(event.target.value))} value={hour12}>
-                  {Array.from({ length: 12 }, (_, index) => index + 1).map((hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}</option>)}
-                </select>
+                <TimeSelect
+                  label="Hour"
+                  onChange={(value) => selectHour(Number(value))}
+                  options={Array.from({ length: 12 }, (_, index) => String(index + 1))}
+                  value={String(hour12)}
+                />
                 <span>:</span>
-                <select aria-label="Minute" onChange={(event) => selectMinute(event.target.value)} value={minute}>
-                  {(MINUTES.includes(minute) ? MINUTES : [...MINUTES, minute].sort()).map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
+                <TimeSelect
+                  label="Minute"
+                  onChange={selectMinute}
+                  options={MINUTES.includes(minute) ? MINUTES : [...MINUTES, minute].sort()}
+                  value={minute}
+                />
                 <div className={styles.periodToggle}>
                   {(["AM", "PM"] as const).map((item) => <button className={period === item ? styles.periodSelected : ""} key={item} onClick={() => selectPeriod(item)} type="button">{item}</button>)}
                 </div>
@@ -236,6 +245,31 @@ export function BookingEditor({ booking, busy, error, onClose, onSave }: Props) 
 
 function Field({ icon: Icon, label, children }: { icon: typeof UserRound; label: string; children: React.ReactNode }) {
   return <label className={styles.field}><span><Icon size={14} /> {label}</span>{children}</label>;
+}
+
+function TimeSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <Select.Root onValueChange={onChange} value={value}>
+      <Select.Trigger aria-label={label} className={styles.timeSelectTrigger}>
+        <Select.Value>{value.padStart(2, "0")}</Select.Value>
+        <Select.Icon className={styles.timeSelectIcon}><ChevronDown size={16} /></Select.Icon>
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Content className={styles.timeSelectContent} collisionPadding={12} position="popper" sideOffset={6}>
+          <Select.ScrollUpButton className={styles.timeSelectScroll}><ChevronUp size={15} /></Select.ScrollUpButton>
+          <Select.Viewport className={styles.timeSelectViewport}>
+            {options.map((option) => (
+              <Select.Item className={styles.timeSelectItem} key={option} value={option}>
+                <Select.ItemText>{option.padStart(2, "0")}</Select.ItemText>
+                <Select.ItemIndicator className={styles.timeSelectIndicator}><Check size={13} /></Select.ItemIndicator>
+              </Select.Item>
+            ))}
+          </Select.Viewport>
+          <Select.ScrollDownButton className={styles.timeSelectScroll}><ChevronDown size={15} /></Select.ScrollDownButton>
+        </Select.Content>
+      </Select.Portal>
+    </Select.Root>
+  );
 }
 
 function to24Hour(hour: number, period: "AM" | "PM") {

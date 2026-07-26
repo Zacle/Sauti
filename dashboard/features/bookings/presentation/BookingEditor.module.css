@@ -145,8 +145,7 @@
   font-weight: 560;
 }
 
-.field input,
-.timeControls select {
+.field input {
   width: 100%;
   min-height: 44px;
   border: 1px solid rgba(94, 153, 201, 0.2);
@@ -163,8 +162,7 @@
 .field input { padding: 0 12px; }
 .field input::placeholder { color: #516b80; }
 
-.field input:focus,
-.timeControls select:focus {
+.field input:focus {
   border-color: #28dcd0;
   box-shadow: 0 0 0 3px rgba(31, 220, 207, 0.08);
 }
@@ -196,29 +194,57 @@
 
 .nav {
   position: absolute;
-  top: 4px;
+  top: 2px;
   right: 0;
   display: flex;
-  gap: 5px;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid rgba(92, 151, 198, 0.17);
+  border-radius: 12px;
+  background: rgba(5, 25, 42, 0.78);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025), 0 10px 24px -20px rgba(0, 0, 0, 0.9);
 }
 
 .previous,
 .next {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   place-items: center;
-  border: 1px solid rgba(92, 151, 198, 0.17);
-  border-radius: 8px;
-  color: #8fa5b8;
-  background: rgba(255, 255, 255, 0.025);
+  border: 0;
+  border-radius: 9px;
+  color: #7f97aa;
+  background: transparent;
   cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
 }
 
 .previous:hover,
 .next:hover {
-  border-color: rgba(35, 221, 209, 0.34);
-  color: #2de4d8;
+  color: #052727;
+  background: linear-gradient(135deg, #25d8ce, #60e8d7);
+  box-shadow: 0 8px 18px -10px rgba(38, 222, 210, 0.9);
+  transform: translateY(-1px);
+}
+
+.previous:focus-visible,
+.next:focus-visible {
+  outline: 2px solid rgba(45, 228, 216, 0.75);
+  outline-offset: 2px;
+}
+
+.previous:disabled,
+.next:disabled {
+  cursor: not-allowed;
+  opacity: 0.32;
+  transform: none;
+}
+
+.previous svg,
+.next svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.4;
 }
 
 .monthGrid {
@@ -296,14 +322,117 @@
   gap: 7px;
 }
 
-.timeControls select {
-  padding: 0 10px;
-  cursor: pointer;
-}
-
 .timeControls > span {
   color: #6e879b;
   font-weight: 700;
+}
+
+.timeSelectTrigger {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid rgba(94, 153, 201, 0.2);
+  border-radius: 11px;
+  outline: 0;
+  color: #e7f2fa;
+  background: linear-gradient(145deg, rgba(8, 31, 52, 0.98), rgba(5, 24, 42, 0.98));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.025);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 620;
+  cursor: pointer;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.timeSelectTrigger:hover,
+.timeSelectTrigger[data-state="open"] {
+  border-color: rgba(38, 222, 210, 0.48);
+  background: linear-gradient(145deg, rgba(9, 38, 60, 1), rgba(5, 27, 46, 1));
+  box-shadow: 0 0 0 3px rgba(31, 220, 207, 0.065);
+}
+
+.timeSelectTrigger:focus-visible {
+  border-color: #28dcd0;
+  box-shadow: 0 0 0 3px rgba(31, 220, 207, 0.1);
+}
+
+.timeSelectIcon {
+  display: grid;
+  place-items: center;
+  color: #6f879a;
+  transition: color 150ms ease, transform 160ms ease;
+}
+
+.timeSelectTrigger:hover .timeSelectIcon,
+.timeSelectTrigger[data-state="open"] .timeSelectIcon {
+  color: #2de2d6;
+}
+
+.timeSelectTrigger[data-state="open"] .timeSelectIcon {
+  transform: rotate(180deg);
+}
+
+.timeSelectContent {
+  z-index: 1100;
+  width: var(--radix-select-trigger-width);
+  max-height: min(270px, var(--radix-select-content-available-height));
+  overflow: hidden;
+  border: 1px solid rgba(38, 211, 201, 0.34);
+  border-radius: 12px;
+  color: #dce9f2;
+  background: linear-gradient(145deg, rgba(7, 30, 49, 0.995), rgba(3, 18, 31, 0.995));
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.58), 0 0 38px -25px rgba(36, 220, 208, 0.8);
+  backdrop-filter: blur(20px);
+  animation: selectIn 140ms ease-out;
+}
+
+.timeSelectViewport {
+  padding: 5px;
+}
+
+.timeSelectItem {
+  position: relative;
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  padding: 0 34px 0 11px;
+  border-radius: 8px;
+  outline: 0;
+  color: #9db1c1;
+  font-size: 0.68rem;
+  font-weight: 570;
+  cursor: pointer;
+  user-select: none;
+}
+
+.timeSelectItem[data-highlighted] {
+  color: #efffff;
+  background: rgba(29, 207, 196, 0.1);
+}
+
+.timeSelectItem[data-state="checked"] {
+  color: #2de3d7;
+  background: rgba(8, 117, 117, 0.17);
+}
+
+.timeSelectIndicator {
+  position: absolute;
+  right: 11px;
+  display: grid;
+  place-items: center;
+}
+
+.timeSelectScroll {
+  display: grid;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  color: #62a7ab;
+  background: rgba(4, 20, 34, 0.94);
 }
 
 .periodToggle {
@@ -441,6 +570,7 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dialogIn { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes selectIn { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 @media (max-width: 760px) {
   .backdrop { align-items: end; padding: 10px; }

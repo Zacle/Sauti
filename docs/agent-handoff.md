@@ -235,6 +235,8 @@ Expected:
 - Replaced the browser-native `datetime-local` reschedule control with a dedicated in-app booking editor:
   - styled single-date calendar with past dates disabled;
   - explicit hour, five-minute, and AM/PM controls;
+  - hour and minute controls use Radix Select menus rather than native browser dropdowns, with keyboard navigation, visible selected states, matching dark popovers, and animated trigger chevrons;
+  - previous/next month actions are presented as one compact segmented navigation control with smaller icons and explicit hover, focus, and disabled states;
   - 30/45/60/90-minute duration presets while preserving a booking's existing non-standard duration;
   - a live appointment summary before saving;
   - customer/service editing kept in a separate visual section;
