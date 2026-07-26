@@ -69,17 +69,20 @@ class ManagedVoiceAgentProvisionersTest {
         assertThat(tools).filteredOn(tool -> "hangup".equals(tool.get("type")))
                 .singleElement()
                 .satisfies(tool -> assertThat(tool.get("hangup")).isEqualTo(Map.of(
-                        "description", "For phone_call conversations only: after one brief respectful farewell, "
-                                + "immediately end the call when the caller clearly indicates they are finished."
+                        "description", "For phone_call conversations only: when the caller clearly indicates they "
+                                + "are finished, first speak one complete farewell of no more than six words. Invoke "
+                                + "this tool only after the final word has finished playing. Never invoke it while "
+                                + "farewell speech is still being generated or played."
                 )));
         assertThat(tools).filteredOn(tool -> "client_side_tool".equals(tool.get("type")))
                 .singleElement()
                 .satisfies(tool -> assertThat(tool.get("client_side_tool")).isEqualTo(Map.of(
                         "name", "end_browser_call",
-                        "description", "For web_call conversations only: after one brief respectful farewell, "
-                                + "immediately end the browser voice conversation when the caller clearly indicates "
-                                + "they are finished. Speaking the farewell without invoking this tool does not end "
-                                + "the conversation.",
+                        "description", "For web_call conversations only: when the caller clearly indicates they are "
+                                + "finished, first speak one complete farewell of no more than six words. Invoke this "
+                                + "tool only after the final word has finished playing. Never invoke it while farewell "
+                                + "speech is still being generated or played. Speaking the farewell without invoking "
+                                + "this tool does not end the conversation.",
                         "parameters", Map.of(
                                 "type", "object",
                                 "properties", Map.of(),
@@ -93,7 +96,13 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("{{sauti_conversation_channel}}", "web_call", "end_browser_call", "phone_call")
                 .doesNotContain("{{telnyx_conversation_channel}}")
                 .contains("native", "hangup")
-                .contains("Do not pass spoken_farewell", "call a webhook first", "spoken farewell alone");
+                .contains(
+                        "spoken_farewell, outcome",
+                        "call a webhook first",
+                        "spoken farewell alone",
+                        "final word has completely finished",
+                        "Never invoke a terminal tool in parallel"
+                );
         assertThat(body.getValue().get("dynamic_variables"))
                 .isEqualTo(Map.of("sauti_conversation_channel", "phone_call"));
         @SuppressWarnings("unchecked")

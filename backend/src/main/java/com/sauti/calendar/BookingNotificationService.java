@@ -3,6 +3,7 @@ package com.sauti.calendar;
 import com.sauti.dashboard.DashboardEventPublisher;
 import com.sauti.notification.WorkspaceNotificationService;
 import jakarta.mail.MessagingException;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -14,8 +15,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import org.thymeleaf.TemplateEngine;
@@ -25,6 +26,15 @@ import org.thymeleaf.context.Context;
 @Service
 public class BookingNotificationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(BookingNotificationService.class);
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern(
+            "EEEE, d MMMM uuuu", Locale.ENGLISH
+    );
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern(
+            "h:mm a", Locale.ENGLISH
+    );
+    private static final DateTimeFormatter ACTION_TIME = DateTimeFormatter.ofPattern(
+            "d MMM uuuu 'at' h:mm a", Locale.ENGLISH
+    );
 
     private final BookingRepository bookingRepository;
     private final WorkspaceNotificationService workspaceNotificationService;
@@ -73,15 +83,45 @@ public class BookingNotificationService {
             }
         }
         dashboardEventPublisher.bookingCreated(booking);
+        sendBookingEmail(booking, BookingEmailStatus.CONFIRMED, null, booking.getBookedAt());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void bookingStatusChanged(BookingStatusChangedEvent event) {
+        var booking = bookingRepository.findById(event.bookingId()).orElse(null);
+        if (booking == null) return;
+        sendBookingEmail(
+                booking,
+                event.status(),
+                event.previousAppointmentAt(),
+                event.statusChangedAt()
+        );
+    }
+
+    private void sendBookingEmail(
+            Booking booking,
+            BookingEmailStatus status,
+            OffsetDateTime previousAppointmentAt,
+            OffsetDateTime statusChangedAt
+    ) {
         if (!booking.getAgent().getBookingNotificationChannels().contains("email")) return;
         var configured = booking.getAgent().getBookingNotificationRecipient();
         var recipient = configured == null || configured.isBlank()
                 ? booking.getTenant().getEmail()
                 : configured;
+        var calendarSyncFailed = "pending_owner_action".equals(booking.getCalendarSyncStatus());
         try {
             var view = emailView(booking);
+            var notification = emailNotification(
+                    booking,
+                    status,
+                    previousAppointmentAt,
+                    statusChangedAt
+            );
             var context = new Context(Locale.ENGLISH);
             context.setVariable("booking", view);
+            context.setVariable("notification", notification);
             context.setVariable("calendarSyncFailed", calendarSyncFailed);
             context.setVariable("bookingsUrl", dashboardBaseUrl + "/bookings");
             var html = templateEngine.process("email/booking-confirmation", context);
@@ -90,9 +130,10 @@ public class BookingNotificationService {
             helper.setFrom(fromName + " <" + fromAddress + ">");
             helper.setReplyTo(replyToAddress);
             helper.setTo(recipient);
-            helper.setSubject((calendarSyncFailed ? "Action required" : "New booking")
-                    + " · " + view.shortAppointment() + " · " + booking.getBookingReference());
-            helper.setText(plainText(view, calendarSyncFailed), html);
+            helper.setSubject((calendarSyncFailed ? "Action required: " : "")
+                    + notification.subjectPrefix() + " | " + view.shortAppointment()
+                    + " | " + booking.getBookingReference());
+            helper.setText(plainText(view, notification, calendarSyncFailed), html);
             mailSender.send(message);
         } catch (MessagingException | RuntimeException exception) {
             LOGGER.warn("Booking owner notification failed bookingId={} recipient={}: {}",
@@ -110,38 +151,79 @@ public class BookingNotificationService {
                 booking.getCallerName(),
                 booking.getCallerPhone(),
                 booking.getServiceType(),
-                appointment.format(DateTimeFormatter.ofPattern("EEEE, d MMMM uuuu", Locale.ENGLISH)),
-                appointment.format(DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)),
+                appointment.format(DATE),
+                appointment.format(TIME),
                 timezoneLabel(timezone, appointment),
                 durationLabel(booking.getDurationMinutes()),
-                captured.format(DateTimeFormatter.ofPattern("d MMM uuuu 'at' h:mm a", Locale.ENGLISH)),
+                captured.format(ACTION_TIME),
                 booking.getCalendarSyncStatus(),
                 booking.getCalendarSyncError(),
                 appointment.format(DateTimeFormatter.ofPattern("EEE, d MMM 'at' h:mm a", Locale.ENGLISH))
         );
     }
 
-    private String plainText(BookingEmailView view, boolean calendarSyncFailed) {
+    BookingEmailNotification emailNotification(
+            Booking booking,
+            BookingEmailStatus status,
+            OffsetDateTime previousAppointmentAt,
+            OffsetDateTime statusChangedAt
+    ) {
+        var timezone = safeTimezone(booking.getAgent().getTimezone());
+        var actionTime = (statusChangedAt == null ? booking.getBookedAt() : statusChangedAt)
+                .atZoneSameInstant(timezone);
+        var previousAppointment = previousAppointmentAt == null ? "" : previousAppointmentAt
+                .atZoneSameInstant(timezone)
+                .format(DateTimeFormatter.ofPattern("EEEE, d MMMM uuuu 'at' h:mm a", Locale.ENGLISH))
+                + " in " + timezoneLabel(
+                        timezone, previousAppointmentAt.atZoneSameInstant(timezone)
+                );
+        return switch (status) {
+            case CONFIRMED -> new BookingEmailNotification(
+                    "New booking confirmed", "CONFIRMED", "New booking",
+                    "Confirmation captured at", actionTime.format(ACTION_TIME), "", false
+            );
+            case RESCHEDULED -> new BookingEmailNotification(
+                    "Booking rescheduled", "RESCHEDULED", "Booking rescheduled",
+                    "Reschedule confirmed at", actionTime.format(ACTION_TIME), previousAppointment, false
+            );
+            case CANCELLED -> new BookingEmailNotification(
+                    "Booking cancelled", "CANCELLED", "Booking cancelled",
+                    "Cancellation confirmed at", actionTime.format(ACTION_TIME), "", true
+            );
+        };
+    }
+
+    private String plainText(
+            BookingEmailView view,
+            BookingEmailNotification notification,
+            boolean calendarSyncFailed
+    ) {
         return """
-                New booking captured by %s
+                %s
+                Status: %s
+                Captured by: %s
 
                 %s
-                %s · %s
+                %s | %s
                 Duration: %s
+                %s
 
                 Customer: %s
                 Phone: %s
                 Service: %s
                 Booking number: %s
-                Confirmation captured: %s
+                %s: %s
                 Calendar status: %s
                 %s
 
                 Review this booking: %s/bookings
                 """.formatted(
-                view.agentName(), view.appointmentDate(), view.appointmentTime(), view.timezone(),
-                view.duration(), view.customerName(), view.customerPhone(), view.service(),
-                view.bookingNumber(), view.confirmedAt(), view.calendarStatus(),
+                notification.heading(), notification.statusLabel(), view.agentName(),
+                view.appointmentDate(), view.appointmentTime(), view.timezone(), view.duration(),
+                notification.previousAppointment().isBlank()
+                        ? "" : "Previous appointment: " + notification.previousAppointment(),
+                view.customerName(), view.customerPhone(), view.service(), view.bookingNumber(),
+                notification.actionTimeLabel(), notification.actionTime(), view.calendarStatus(),
                 calendarSyncFailed ? "Calendar issue: " + view.calendarError() : "",
                 dashboardBaseUrl
         );
@@ -158,7 +240,7 @@ public class BookingNotificationService {
     private String timezoneLabel(ZoneId timezone, ZonedDateTime appointment) {
         var offset = appointment.getOffset().getId();
         if ("Z".equals(offset)) offset = "+00:00";
-        return timezone.getId().replace('_', ' ') + " · UTC" + offset;
+        return timezone.getId().replace('_', ' ') + " (UTC" + offset + ")";
     }
 
     private String durationLabel(int durationMinutes) {
@@ -190,5 +272,28 @@ public class BookingNotificationService {
             String shortAppointment
     ) { }
 
+    record BookingEmailNotification(
+            String heading,
+            String statusLabel,
+            String subjectPrefix,
+            String actionTimeLabel,
+            String actionTime,
+            String previousAppointment,
+            boolean cancelled
+    ) { }
+
+    public enum BookingEmailStatus {
+        CONFIRMED,
+        RESCHEDULED,
+        CANCELLED
+    }
+
     public record BookingCreatedEvent(UUID bookingId) { }
+
+    public record BookingStatusChangedEvent(
+            UUID bookingId,
+            BookingEmailStatus status,
+            OffsetDateTime previousAppointmentAt,
+            OffsetDateTime statusChangedAt
+    ) { }
 }

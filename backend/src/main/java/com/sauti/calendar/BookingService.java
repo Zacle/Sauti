@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.Objects;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -282,12 +283,19 @@ public class BookingService {
         }
         booking.cancel();
         webhookDeliveryService.bookingCancelled(booking);
+        eventPublisher.publishEvent(new BookingNotificationService.BookingStatusChangedEvent(
+                booking.getId(),
+                BookingNotificationService.BookingEmailStatus.CANCELLED,
+                null,
+                OffsetDateTime.now()
+        ));
         return booking;
     }
 
     @Transactional
     public Booking reschedule(UUID tenantId, UUID bookingId, BookingDtos.RescheduleBookingRequest request) {
         var booking = get(tenantId, bookingId);
+        var previousAppointmentAt = booking.getAppointmentAt();
         booking.reschedule(request.appointmentAt(), request.durationMinutes() == null
                 ? booking.getDurationMinutes() : request.durationMinutes());
         try {
@@ -298,6 +306,12 @@ public class BookingService {
         } catch (RuntimeException exception) {
             booking.markCalendarActionFailed(exception.getMessage());
         }
+        eventPublisher.publishEvent(new BookingNotificationService.BookingStatusChangedEvent(
+                booking.getId(),
+                BookingNotificationService.BookingEmailStatus.RESCHEDULED,
+                previousAppointmentAt,
+                OffsetDateTime.now()
+        ));
         return booking;
     }
 

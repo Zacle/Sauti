@@ -225,6 +225,52 @@ Expected:
 
 ## Change log
 
+### 2026-07-26 - Let the final Telnyx farewell finish before ending the call
+
+- Fixed the reported terminal-audio race where Telnyx ended a call before the assistant finished its last sentence.
+- Root cause:
+  - the managed Telnyx contract told the model to invoke the terminal tool “immediately” after a farewell, allowing native hangup to race speech that was still being synthesized or played;
+  - the browser client-side terminal tool independently closed WebRTC only 100 ms after invocation, even when the SDK still reported the agent as speaking.
+- Updated the managed Telnyx terminal contract for both conversation channels:
+  - the farewell must be complete and no more than six words;
+  - the selected terminal tool may run only after the final word has finished playing;
+  - hangup and speech must never run in parallel;
+  - the terminal tool remains mandatory after playback, so this does not reintroduce calls that wait indefinitely for manual hangup.
+- Browser `end_browser_call` now keeps WebRTC open while Telnyx reports the agent as speaking. It ends 450 ms after the speaking state stops, uses 650 ms only when the terminal tool arrives after speech has already stopped, and retains the existing 12-second safety fallback if the SDK omits the final speaking-state transition.
+- Advanced the managed Telnyx configuration version from `17` to `18`, forcing existing Sauti-managed assistants to receive the corrected terminal-tool descriptions and execution contract on their next synchronization.
+- Telnyx's current assistant schema exposes a description for the native Hang Up tool but no audio-drain delay setting: https://developers.telnyx.com/api-reference/assistants/create-an-assistant
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.call.ManagedVoiceAgentProvisionersTest" --console=plain` passed;
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location` passed;
+  - `git diff --check` passed with only the repository's LF-to-CRLF working-tree warnings.
+- Deployment status: not deployed. These changes and the pending booking-status email changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: let synchronization advance the assistant to Telnyx configuration version `18`, complete one phone call and one browser test with a natural goodbye, and confirm the entire short farewell is audible before each call ends automatically.
+
+### 2026-07-26 - Email owners when bookings are rescheduled or cancelled
+
+- Extended the existing owner-selected booking email channel beyond creation events. A committed reschedule or cancellation now publishes a booking-status event and sends the configured owner recipient a branded status email after the transaction commits.
+- Status emails use distinct `RESCHEDULED` and `CANCELLED` labels and subjects. Reschedule emails show both the previous appointment and the new date/time; cancellation emails clearly mark the appointment as cancelled.
+- Captured the status-change timestamp at the point of mutation so the email shows the exact reschedule/cancellation confirmation time in the agent's business timezone, including the UTC offset. The appointment time remains visually prominent and explicitly labelled as business-local time.
+- Preserved current notification preferences: these messages are sent only when the agent's booking notification channels include `email`, using the configured booking-notification recipient or the workspace owner email fallback.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/BookingNotificationService.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingService.java`
+  - `backend/src/main/resources/templates/email/booking-confirmation.html`
+  - `backend/src/test/java/com/sauti/calendar/BookingNotificationServiceTest.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingServiceTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.calendar.BookingNotificationServiceTest" --tests "com.sauti.calendar.BookingServiceTest" --rerun-tasks --console=plain` passed;
+  - `.\gradlew.bat :backend:test --console=plain` passed;
+  - `git diff --check` passed with only the repository's LF-to-CRLF working-tree warnings.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Live follow-up after deployment: create or use one booking with email notifications enabled, reschedule it once and cancel it once, then confirm the configured recipient receives one status email per committed action with the correct booking reference, business-local appointment time, and status-change time.
+
 ### 2026-07-26 - Retry transient Telnyx browser authentication propagation
 
 - Investigated the reported `Telnyx: Authentication failed` startup error.

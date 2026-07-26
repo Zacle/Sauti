@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "17";
+        return "18";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -120,18 +120,21 @@ public class TelnyxManagedVoiceAgentProvisioner {
         tools.add(Map.of(
                 "type", "hangup",
                 "hangup", Map.of(
-                        "description", "For phone_call conversations only: after one brief respectful farewell, "
-                                + "immediately end the call when the caller clearly indicates they are finished."
+                        "description", "For phone_call conversations only: when the caller clearly indicates they "
+                                + "are finished, first speak one complete farewell of no more than six words. Invoke "
+                                + "this tool only after the final word has finished playing. Never invoke it while "
+                                + "farewell speech is still being generated or played."
                 )
         ));
         tools.add(Map.of(
                 "type", "client_side_tool",
                 "client_side_tool", Map.of(
                         "name", "end_browser_call",
-                        "description", "For web_call conversations only: after one brief respectful farewell, "
-                                + "immediately end the browser voice conversation when the caller clearly indicates "
-                                + "they are finished. Speaking the farewell without invoking this tool does not end "
-                                + "the conversation.",
+                        "description", "For web_call conversations only: when the caller clearly indicates they are "
+                                + "finished, first speak one complete farewell of no more than six words. Invoke this "
+                                + "tool only after the final word has finished playing. Never invoke it while farewell "
+                                + "speech is still being generated or played. Speaking the farewell without invoking "
+                                + "this tool does not end the conversation.",
                         "parameters", Map.of(
                                 "type", "object",
                                 "properties", Map.of(),
@@ -160,12 +163,13 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 - After every tool result, continue automatically in the same turn; never wait for more caller speech.
                 - Keep each spoken answer continuous and concise.
                 - On Telnyx, do not call the portable end_call webhook. Use Sauti's explicit conversation channel
-                  `{{sauti_conversation_channel}}` to select exactly one terminal action. For `web_call`, say one
-                  brief respectful farewell and immediately invoke `end_browser_call`. For `phone_call`, say one brief
-                  respectful farewell and immediately invoke Telnyx's native `hangup`. Do not pass spoken_farewell,
-                  outcome, or summary arguments, do not call a webhook first, and never wait for another caller turn
-                  after the farewell. A spoken farewell alone is not a terminal action: the selected terminal tool is
-                  mandatory and must be invoked in the same turn.
+                  `{{sauti_conversation_channel}}` to select exactly one terminal action. First speak one complete,
+                  natural farewell of no more than six words. Wait until its final word has completely finished
+                  playing, then invoke `end_browser_call` for `web_call` or Telnyx's native `hangup` for `phone_call`.
+                  Never invoke a terminal tool in parallel with generated or playing speech. Do not pass
+                  spoken_farewell, outcome, or summary arguments, do not call a webhook first, and never wait for
+                  another caller turn after the farewell. A spoken farewell alone is not a terminal action: invoke
+                  the selected terminal tool immediately after farewell playback completes.
                 """);
         body.put("greeting", blueprint.greeting());
         // Telnyx currently reports AI Agent SDK WebRTC sessions as phone_call.

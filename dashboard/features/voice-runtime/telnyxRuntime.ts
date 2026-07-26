@@ -108,11 +108,16 @@ export async function connectTelnyxRuntime(
   };
 
   client.registerClientTool("end_browser_call", () => {
-    // Acknowledge the tool before closing WebRTC so the SDK does not discard
-    // its result as an output from an already-shut-down conversation.
-    window.setTimeout(() => {
-      endBrowserConversation();
-    }, 100);
+    // The model can emit the terminal tool before remote TTS has drained.
+    // Keep WebRTC open until Telnyx reports that the farewell stopped playing;
+    // the longer timer is only a fallback for a missing speaking-state event.
+    terminalIntentPending = true;
+    if (agentSpeaking) {
+      terminalFarewellStarted = true;
+      scheduleTerminalEnd(12_000);
+    } else {
+      scheduleTerminalEnd(650);
+    }
     return { success: true, ending: true };
   });
   client.on("client.tool.invoked", ({ toolName }) => callbacks.onToolInvoked?.(toolName));

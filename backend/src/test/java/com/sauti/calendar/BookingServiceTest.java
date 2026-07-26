@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
@@ -204,6 +205,69 @@ class BookingServiceTest {
                 .clearLegacyBookingReference(fixture.tenant.getId(), booking.getId());
         ordered.verify(fixture.bookingRepository).delete(booking);
         ordered.verify(fixture.bookingRepository).flush();
+    }
+
+    @Test
+    void publishesACancelledEmailStatusAfterCancellingTheBooking() {
+        var fixture = fixture("Set up later");
+        var booking = existingBooking(fixture);
+        when(fixture.bookingRepository.findByIdAndTenantId(booking.getId(), fixture.tenant.getId()))
+                .thenReturn(Optional.of(booking));
+
+        fixture.service.cancel(fixture.tenant.getId(), booking.getId());
+
+        var event = captureStatusEvent(fixture);
+        assertThat(booking.getStatus()).isEqualTo("cancelled");
+        assertThat(event.bookingId()).isEqualTo(booking.getId());
+        assertThat(event.status()).isEqualTo(BookingNotificationService.BookingEmailStatus.CANCELLED);
+        assertThat(event.previousAppointmentAt()).isNull();
+        assertThat(event.statusChangedAt()).isNotNull();
+    }
+
+    @Test
+    void publishesARescheduledEmailStatusWithTheOldAppointment() {
+        var fixture = fixture("Set up later");
+        var booking = existingBooking(fixture);
+        var previousAppointment = booking.getAppointmentAt();
+        var newAppointment = previousAppointment.plusDays(3).withHour(9);
+        when(fixture.bookingRepository.findByIdAndTenantId(booking.getId(), fixture.tenant.getId()))
+                .thenReturn(Optional.of(booking));
+
+        fixture.service.reschedule(
+                fixture.tenant.getId(),
+                booking.getId(),
+                new BookingDtos.RescheduleBookingRequest(newAppointment, 45)
+        );
+
+        var event = captureStatusEvent(fixture);
+        assertThat(booking.getAppointmentAt()).isEqualTo(newAppointment);
+        assertThat(event.bookingId()).isEqualTo(booking.getId());
+        assertThat(event.status()).isEqualTo(BookingNotificationService.BookingEmailStatus.RESCHEDULED);
+        assertThat(event.previousAppointmentAt()).isEqualTo(previousAppointment);
+        assertThat(event.statusChangedAt()).isNotNull();
+    }
+
+    private Booking existingBooking(Fixture fixture) {
+        return new Booking(
+                fixture.tenant,
+                fixture.requestAgent,
+                null,
+                fixture.request.callerName(),
+                fixture.request.callerPhone(),
+                fixture.request.callerEmail(),
+                fixture.request.serviceType(),
+                fixture.request.appointmentAt(),
+                fixture.request.durationMinutes(),
+                "{}"
+        );
+    }
+
+    private BookingNotificationService.BookingStatusChangedEvent captureStatusEvent(Fixture fixture) {
+        var captor = ArgumentCaptor.forClass(
+                BookingNotificationService.BookingStatusChangedEvent.class
+        );
+        verify(fixture.eventPublisher).publishEvent(captor.capture());
+        return captor.getValue();
     }
 
     private Fixture fixture(String calendarProvider) {

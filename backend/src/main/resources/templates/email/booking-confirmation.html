@@ -3,11 +3,11 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>New Sauti booking</title>
+    <title th:text="${notification.heading}">Sauti booking status</title>
 </head>
 <body style="margin:0;padding:0;background:#061421;color:#eaf4ff;font-family:Arial,Helvetica,sans-serif;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;"
-     th:text="|${booking.service} on ${booking.appointmentDate} at ${booking.appointmentTime} ${booking.timezone}|">
+     th:text="|${notification.heading}: ${booking.service} on ${booking.appointmentDate} at ${booking.appointmentTime} ${booking.timezone}|">
     Booking details
 </div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
@@ -22,16 +22,32 @@
                             <tr>
                                 <td>
                                     <div style="font-size:22px;font-weight:800;letter-spacing:-0.4px;color:#ffffff;">Sauti</div>
-                                    <div style="margin-top:7px;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#55e4db;">
-                                        New booking confirmed
+                                    <div style="margin-top:7px;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#55e4db;"
+                                         th:text="${notification.heading}">
+                                        Booking status updated
                                     </div>
                                 </td>
                                 <td align="right" valign="top">
-                                    <span style="display:inline-block;padding:8px 12px;border:1px solid #2c6272;border-radius:999px;font-size:12px;font-weight:700;color:#b8cedc;"
+                                    <span th:if="${!notification.cancelled}"
+                                          style="display:inline-block;margin-bottom:7px;padding:6px 10px;background:#0d3b3b;border:1px solid #247b76;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.8px;color:#63ece3;"
+                                          th:text="${notification.statusLabel}">CONFIRMED</span>
+                                    <span th:if="${notification.cancelled}"
+                                          style="display:inline-block;margin-bottom:7px;padding:6px 10px;background:#3a2023;border:1px solid #8f464d;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.8px;color:#ffaaa2;"
+                                          th:text="${notification.statusLabel}">CANCELLED</span>
+                                    <br>
+                                    <span style="display:inline-block;padding:7px 11px;border:1px solid #2c6272;border-radius:999px;font-size:11px;font-weight:700;color:#b8cedc;"
                                           th:text="${booking.bookingNumber}">SAT-XXXXXXXXXXXX</span>
                                 </td>
                             </tr>
                         </table>
+                    </td>
+                </tr>
+                <tr th:if="${!#strings.isEmpty(notification.previousAppointment)}">
+                    <td style="padding:0 34px 24px;">
+                        <div style="padding:14px 16px;background:#101f2b;border:1px solid #294455;border-radius:12px;font-size:13px;line-height:1.55;color:#9eb6c6;">
+                            <strong style="color:#dceaf3;">Previous appointment:</strong>
+                            <span th:text="${notification.previousAppointment}">Friday, 31 July 2026 at 1:00 PM</span>
+                        </div>
                     </td>
                 </tr>
                 <tr>
@@ -53,8 +69,8 @@
                                     <div style="margin-top:7px;font-size:38px;line-height:1;font-weight:800;color:#ffffff;"
                                          th:text="${booking.appointmentTime}">9:00 AM</div>
                                     <div style="margin-top:11px;font-size:13px;line-height:1.5;color:#9eb6c6;"
-                                         th:text="|Business local time · ${booking.timezone}|">
-                                        Business local time · Africa/Cairo · UTC+03:00
+                                         th:text="${'Business local time | ' + booking.timezone}">
+                                        Business local time | Africa/Cairo (UTC+03:00)
                                     </div>
                                 </td>
                                 <td align="right" valign="middle" style="padding:22px 24px;">
@@ -108,8 +124,9 @@
                             View booking in Sauti
                         </a>
                         <div style="margin-top:16px;text-align:center;font-size:12px;line-height:1.5;color:#718b9d;">
-                            Confirmation captured
-                            <span th:text="${booking.confirmedAt}">3 Aug 2026 at 8:42 AM</span>
+                            <span th:text="${notification.actionTimeLabel}">Status updated</span>
+                            &nbsp;
+                            <span th:text="${notification.actionTime}">3 Aug 2026 at 8:42 AM</span>
                             in the business timezone.
                         </div>
                     </td>
