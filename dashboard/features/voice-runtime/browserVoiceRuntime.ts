@@ -2,7 +2,7 @@ import type { BrowserVoiceRuntimeSession } from "@/types/api";
 
 export type BrowserVoiceRuntimeCallbacks = {
   onStartupStage?(
-    stage: "sdk_loaded" | "signaling_ready" | "conversation_started",
+    stage: "sdk_loaded" | "authentication_retry" | "signaling_ready" | "conversation_started",
     details?: Record<string, string | number | boolean | null>,
   ): void;
   onConnected(): void;

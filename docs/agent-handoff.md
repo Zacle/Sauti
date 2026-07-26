@@ -225,6 +225,34 @@ Expected:
 
 ## Change log
 
+### 2026-07-26 - Retry transient Telnyx browser authentication propagation
+
+- Investigated the reported `Telnyx: Authentication failed` startup error.
+- Evidence:
+  - the newest exported diagnostic at the time, `sauti-telnyx-diagnostics-1785085845673.json`, was an earlier healthy call that reached signaling, produced agent audio, and ended normally;
+  - the current local Telnyx API credential successfully authenticated against assistant `assistant-48cc782f-b14b-4551-a22e-c0442f99280a`;
+  - the failed attempt created assistant version `20260726T182851934907`, but Telnyx created no AI conversation afterward, localizing the failure to RTC admission before conversation start;
+  - the new and last-working assistant versions had the same non-secret access settings, including `supports_unauthenticated_web_calls=true`, model, voice, TeXML application, recording configuration, and retention;
+  - the installed Telnyx AI Agent SDK identifies error `46001` as `LOGIN_FAILED / Authentication failed` and explicitly exposes `clearReconnectToken()` for retrying `Login Incorrect` caused by assistant/version propagation lag across RTC edges.
+- Added a narrowly scoped startup recovery:
+  - only Telnyx error code `46001`, `Authentication failed`, or `Login Incorrect` is retryable;
+  - before retrying, Sauti clears the sticky Telnyx reconnect token so the next attempt may use a different RTC edge;
+  - retry delays are 500 ms and 1.5 seconds;
+  - an `authentication_retry` startup diagnostic is recorded;
+  - microphone, network, timeout, and unrelated provider failures still fail immediately.
+- Files touched:
+  - `dashboard/features/voice-runtime/browserVoiceRuntime.ts`
+  - `dashboard/features/voice-runtime/telnyxReadiness.ts`
+  - `dashboard/features/voice-runtime/telnyxReadiness.test.ts`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `node --test --experimental-strip-types features\voice-runtime\telnyxReadiness.test.ts` passed all four tests;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run build` passed and generated the optimized production dashboard.
+- Deployment status: the authentication-retry changes remain uncommitted and are not deployed. The phone-reschedule and booking-email baseline was externally committed and deployed separately as `df1da0af4816c31fc2189e79ef4a5b4aeee3ea18`.
+- Live follow-up after deployment: start a browser test immediately after an agent prompt/configuration change. A transient first login rejection should produce `startup_authentication_retry`, then proceed to `startup_signaling_ready` and `startup_conversation_started` without showing an error.
+
 ### 2026-07-26 - Complete managed phone reschedules and redesign booking email
 
 - Investigated the live Telnyx conversation `a949bea2-6104-43a0-9d9b-5c1602b5c619` after the caller repeatedly approved a reschedule that never completed.
@@ -258,7 +286,7 @@ Expected:
   - `.\gradlew.bat :backend:test --tests "com.sauti.call.ManagedVoiceToolServiceTest" --tests "com.sauti.calendar.BookingNotificationServiceTest" --tests "com.sauti.llm.ConversationOrchestratorTest" --rerun-tasks --console=plain` passed;
   - `.\gradlew.bat :backend:test --console=plain` passed;
   - `git diff --check` passed (Git emitted only the repository's existing LF-to-CRLF working-tree warnings).
-- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Deployment status: externally committed and deployed as `df1da0af4816c31fc2189e79ef4a5b4aeee3ea18`. CI run `30214465292` and deploy run `30214535745` both passed; `https://sauti.uk/health` returned HTTP 200 with `{"status":"UP"}` after deployment.
 - Live follow-up after deployment: repeat one reschedule. After availability is confirmed, the agent should review the exact old/new appointment once, accept one natural unconditional approval, return `booking_rescheduled` with `actionPerformed=true`, and state only that factual result.
 
 ### 2026-07-26 - Revert voice-conversation injection and correlate recordings by Telnyx leg ID

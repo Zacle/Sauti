@@ -8,7 +8,10 @@ import {
   providerError,
 } from "./managedRuntimeConfig";
 import { finalizeTelnyxEndConversation } from "./telnyxEndConversation";
-import { startTelnyxConversationWhenReady } from "./telnyxReadiness";
+import {
+  startTelnyxConversationWithAuthenticationRetry,
+  startTelnyxConversationWhenReady,
+} from "./telnyxReadiness";
 import { callerClearlyRequestedBrowserEnd } from "./terminalIntent";
 
 export async function connectTelnyxRuntime(
@@ -166,40 +169,44 @@ export async function connectTelnyxRuntime(
   });
 
   try {
-    await startTelnyxConversationWhenReady({
-      connect: () => client.connect(),
-      startConversation: () => client.startConversation({
-        customHeaders: [
-          { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
-          { name: "X-Sauti-Conversation-Channel", value: "web_call" },
-        ],
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
+    await startTelnyxConversationWithAuthenticationRetry({
+      start: () => startTelnyxConversationWhenReady({
+        connect: () => client.connect(),
+        startConversation: () => client.startConversation({
+          customHeaders: [
+            { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
+            { name: "X-Sauti-Conversation-Channel", value: "web_call" },
+          ],
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        }),
+        subscribe: ({ ready, failed, disconnected }) => {
+          const signalingReady = (info: {
+            dc: string | null;
+            region: string | null;
+            callReportId: string | null;
+          }) => {
+            callbacks.onStartupStage?.("signaling_ready", {
+              dc: info.dc,
+              region: info.region,
+            });
+            ready();
+          };
+          client.on("agent.connected", signalingReady);
+          client.on("agent.error", failed);
+          client.on("agent.disconnected", disconnected);
+          return () => {
+            client.off("agent.connected", signalingReady);
+            client.off("agent.error", failed);
+            client.off("agent.disconnected", disconnected);
+          };
         },
       }),
-      subscribe: ({ ready, failed, disconnected }) => {
-        const signalingReady = (info: {
-          dc: string | null;
-          region: string | null;
-          callReportId: string | null;
-        }) => {
-          callbacks.onStartupStage?.("signaling_ready", {
-            dc: info.dc,
-            region: info.region,
-          });
-          ready();
-        };
-        client.on("agent.connected", signalingReady);
-        client.on("agent.error", failed);
-        client.on("agent.disconnected", disconnected);
-        return () => {
-          client.off("agent.connected", signalingReady);
-          client.off("agent.error", failed);
-          client.off("agent.disconnected", disconnected);
-        };
-      },
+      clearReconnectToken: () => client.clearReconnectToken(),
+      onRetry: (attempt) => callbacks.onStartupStage?.("authentication_retry", { attempt }),
     });
     conversationStarted = true;
     callbacks.onStartupStage?.("conversation_started");
