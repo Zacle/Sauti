@@ -225,6 +225,68 @@ Expected:
 
 ## Change log
 
+### 2026-07-26 - Reconcile completed Telnyx recordings after browser and phone calls
+
+- Diagnosed the reported missing post-call recording against the live Telnyx account without reading transcript content:
+  - Ailsa's live managed assistant has `recording_settings.enabled=true`, MP3 format, dual channels, and `privacy_settings.data_retention=true`, so provisioning is no longer the failure.
+  - The latest completed Ailsa conversation had a Telnyx Call Control ID and Telnyx had produced one completed dual-channel MP3 recording for it.
+  - The recording lasted 60.47 seconds and had a valid MP3 download URL.
+  - Sauti only attached recordings from its Call Control `call.recording.saved` webhook. Telnyx's browser/WebRTC assistant path stored the recording but did not deliver that event to Sauti's webhook, leaving the Sauti call row without `recordingUrl`.
+- Browser test calls and public Web Voice now retain the real Telnyx Call Control ID exposed by the WebRTC SDK and send it to Sauti when completing the call. The ID is cached before provider teardown so both manual and provider-driven endings preserve it.
+- Phone calls already use their Telnyx Call Control ID as the provider call ID. Call completion now queues that ID as a fallback whenever the normal recording webhook has not already attached a recording.
+- Added durable post-call recording reconciliation:
+  - calls awaiting a Telnyx recording retain a bounded pending reference in `recording_sid`;
+  - a scheduled worker checks up to 25 pending calls every 10 seconds;
+  - it queries Telnyx recordings by Call Control ID and attaches only a completed recording with a valid MP3 or WAV URL and recording ID;
+  - the existing webhook remains the immediate path and wins naturally because reconciled queries exclude calls that already have `recording_url`;
+  - provider failures leave the reference pending for retry, while a recording still unavailable after 24 hours is marked unavailable so it is not retried forever.
+- Recording playback now refreshes Telnyx's temporary download URL from the durable recording ID before downloading audio, with the stored URL retained as a fallback.
+- Public Web Voice submits recording correlation only when the agent's recording setting is enabled.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/{CallController,PublicWebVoiceController}.java`
+  - `backend/src/main/java/com/sauti/call/{Call,CallDtos,CallPipelineService,CallRecordingService,CallRepository,TelnyxRecordingReconciliationService,WebVoiceDtos}.java`
+  - `backend/src/test/java/com/sauti/call/TelnyxRecordingReconciliationServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/{browserVoiceRuntime,telnyxRuntime}.ts`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/lib/api/{calls,public-web-voice}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused recording reconciliation and call-pipeline backend tests - passed.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 1 second.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run test:voice` - passed all 9 tests.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js completed the optimized production build.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after reviewed deployment, complete one browser test and one phone call. Telnyx may need several seconds to finalize each recording; refresh the Calls page after roughly 10-20 seconds and verify the player appears and streams audio. The already completed browser call cannot be safely backfilled automatically because its Telnyx Call Control ID was not persisted in the old Sauti call row.
+
+### 2026-07-26 - Replace native booking confirmations with an in-app dialog
+
+- Replaced the browser-native `window.confirm` prompts used to cancel and permanently delete bookings with a booking-specific confirmation dialog that matches the dark console UI.
+- Cancellation and deletion now have distinct icons, risk wording, and action labels. The dialog also shows the customer, booking reference, and appointment time so the owner can verify the target before continuing.
+- Improved interaction safety and accessibility:
+  - focus starts on the safe `Keep booking` action;
+  - Escape and backdrop clicks dismiss the dialog when no request is running;
+  - cancellation/deletion disables dismissal and shows an explicit loading state while the API request runs;
+  - API failures stay visible inside the dialog so the action can be retried;
+  - the dialog declares its title/description and modal semantics for assistive technology;
+  - body scrolling is locked while the dialog is open;
+  - motion is removed when the user prefers reduced motion;
+  - actions stack to full width on narrow screens.
+- Files touched:
+  - `dashboard/features/bookings/presentation/BookingActionDialog.tsx`
+  - `dashboard/features/bookings/presentation/BookingActionDialog.module.css`
+  - `dashboard/features/bookings/presentation/BookingsPage.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js completed the optimized production build.
+  - Browser interaction QA was not available because no connected browser surface was exposed in this session.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: perform a quick authenticated visual check of both booking actions at desktop and mobile widths before release.
+
 ### 2026-07-25 - Override Telnyx's incorrect WebRTC channel and restore recording
 
 - Diagnosed `sauti-telnyx-diagnostics-1784989184039.json` for Sauti test call `6c511a53-013f-47fa-8e40-15d9c2383435`.

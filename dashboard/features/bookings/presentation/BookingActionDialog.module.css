@@ -1,0 +1,215 @@
+.backdrop {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 8, 16, 0.82);
+  backdrop-filter: blur(12px);
+  animation: fade-in 0.16s ease-out;
+}
+
+.dialog {
+  position: relative;
+  width: min(470px, 100%);
+  padding: 28px;
+  border: 1px solid rgba(107, 160, 202, 0.24);
+  border-radius: 22px;
+  color: #eaf4fb;
+  background:
+    radial-gradient(circle at 15% 0, rgba(22, 82, 107, 0.28), transparent 42%),
+    linear-gradient(145deg, #09243c, #041523 70%);
+  box-shadow: 0 36px 110px rgba(0, 0, 0, 0.62);
+  animation: slide-in 0.2s ease-out;
+}
+
+.close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(105, 156, 198, 0.18);
+  border-radius: 10px;
+  color: #8299ad;
+  background: rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+}
+
+.close:hover {
+  border-color: rgba(42, 218, 205, 0.35);
+  color: #e8ffff;
+}
+
+.icon {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  place-items: center;
+  margin-bottom: 18px;
+  border: 1px solid currentColor;
+  border-radius: 15px;
+}
+
+.dangerIcon {
+  color: #ff7057;
+  background: rgba(164, 49, 31, 0.16);
+  box-shadow: 0 0 30px rgba(255, 82, 52, 0.08);
+}
+
+.warningIcon {
+  color: #ffad54;
+  background: rgba(153, 86, 23, 0.14);
+  box-shadow: 0 0 30px rgba(255, 166, 67, 0.07);
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: #7890a5;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.dialog h2 {
+  margin: 0;
+  color: #f7fbff;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.dialog > p {
+  margin: 10px 0 0;
+  color: #91a7b9;
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+
+.dialog > p strong {
+  color: #dce9f3;
+  font-weight: 600;
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(87, 149, 197, 0.16);
+  border-radius: 11px;
+  color: #8fa6b8;
+  background: rgba(2, 16, 28, 0.46);
+  font-size: 0.67rem;
+}
+
+.summary strong {
+  color: #28ded2;
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+}
+
+.error {
+  margin-top: 14px;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 102, 74, 0.28);
+  border-radius: 10px;
+  color: #ff9a84;
+  background: rgba(136, 38, 22, 0.16);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.dialog footer button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 16px;
+  border: 1px solid rgba(92, 151, 198, 0.23);
+  border-radius: 11px;
+  color: #a9bdcc;
+  background: rgba(255, 255, 255, 0.025);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dialog footer button:hover {
+  border-color: rgba(43, 219, 207, 0.38);
+  color: #efffff;
+}
+
+.dialog footer .danger {
+  border-color: rgba(255, 104, 74, 0.48);
+  color: #fff;
+  background: linear-gradient(135deg, #df503c, #b9352b);
+  box-shadow: 0 12px 28px rgba(143, 39, 29, 0.22);
+}
+
+.dialog footer .danger:hover {
+  border-color: #ff8069;
+  color: #fff;
+  background: linear-gradient(135deg, #ec5a44, #c33b30);
+}
+
+.dialog button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .dialog {
+    animation: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .backdrop {
+    padding: 14px;
+  }
+
+  .dialog {
+    padding: 23px 20px;
+  }
+
+  .dialog footer {
+    flex-direction: column-reverse;
+  }
+
+  .dialog footer button {
+    width: 100%;
+  }
+
+  .summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

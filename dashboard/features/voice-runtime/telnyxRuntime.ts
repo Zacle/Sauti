@@ -43,6 +43,7 @@ export async function connectTelnyxRuntime(
   let agentSpeaking = false;
   let latestAgentText = "";
   let conversationStarted = false;
+  let providerCallControlId = "";
 
   const finish = () => {
     if (!conversationStarted || ended || stopped) return;
@@ -78,6 +79,8 @@ export async function connectTelnyxRuntime(
   });
   client.on("agent.disconnected", finish);
   client.on("conversation.update", (notification) => {
+    providerCallControlId = notification.call?.telnyxIDs.telnyxCallControlId?.trim()
+      || providerCallControlId;
     const stream = notification.call?.remoteStream;
     if (stream && audio.srcObject !== stream) {
       audio.srcObject = stream;
@@ -136,6 +139,7 @@ export async function connectTelnyxRuntime(
       },
     });
     conversationStarted = true;
+    providerCallControlId = client.activeCall?.telnyxIDs.telnyxCallControlId?.trim() ?? "";
     callbacks.onConnected();
   } catch (error) {
     stopped = true;
@@ -148,6 +152,9 @@ export async function connectTelnyxRuntime(
   return {
     sendUserText(text: string) {
       client.sendConversationMessage(text);
+    },
+    providerCallControlId() {
+      return providerCallControlId;
     },
     async stop() {
       if (stopped) return;

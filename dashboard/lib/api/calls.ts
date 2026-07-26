@@ -15,10 +15,10 @@ export function startTestCall(agentId: string, ttsVoiceId?: string) {
   });
 }
 
-export function completeTestCall(callId: string, outcome = "completed") {
+export function completeTestCall(callId: string, outcome = "completed", providerCallControlId = "") {
   return apiRequest<Call>(`/calls/${callId}/complete-test`, {
     method: "POST",
-    body: JSON.stringify({ outcome }),
+    body: JSON.stringify({ outcome, providerCallControlId }),
   });
 }
 

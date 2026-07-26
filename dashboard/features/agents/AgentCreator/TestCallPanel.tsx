@@ -234,7 +234,13 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     const activeCallId = callIdRef.current;
     try {
       if (stopProvider) await connectionRef.current?.stop();
-      if (activeCallId) await completeTestCall(activeCallId, outcome);
+      if (activeCallId) {
+        await completeTestCall(
+          activeCallId,
+          outcome,
+          connectionRef.current?.providerCallControlId() ?? "",
+        );
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to complete the test call.");
     } finally {

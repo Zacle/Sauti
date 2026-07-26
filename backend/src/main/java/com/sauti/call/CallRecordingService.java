@@ -18,16 +18,22 @@ public class CallRecordingService {
     private final CallRepository callRepository;
     private final Path recordingsDirectory;
     private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final ManagedVoiceProviderHttpClient providerHttpClient;
     private final String telnyxApiKey;
+    private final String telnyxApiBaseUrl;
 
     public CallRecordingService(
             CallRepository callRepository,
+            ManagedVoiceProviderHttpClient providerHttpClient,
             @Value("${sauti.recordings.directory:/data/recordings}") String recordingsDirectory,
-            @Value("${sauti.telnyx.api-key:}") String telnyxApiKey
+            @Value("${sauti.telnyx.api-key:}") String telnyxApiKey,
+            @Value("${sauti.telnyx.api-base-url:https://api.telnyx.com/v2}") String telnyxApiBaseUrl
     ) {
         this.callRepository = callRepository;
+        this.providerHttpClient = providerHttpClient;
         this.recordingsDirectory = Path.of(recordingsDirectory).toAbsolutePath().normalize();
         this.telnyxApiKey = telnyxApiKey == null ? "" : telnyxApiKey.trim();
+        this.telnyxApiBaseUrl = stripTrailingSlash(telnyxApiBaseUrl);
     }
 
     @Transactional
@@ -59,7 +65,9 @@ public class CallRecordingService {
             throw new EntityNotFoundException("Recording not found");
         }
         if (call.getRecordingUrl().startsWith("https://")) {
-            return readTelnyxRecording(call.getRecordingUrl());
+            return readTelnyxRecording(currentTelnyxDownloadUrl(
+                    call.getRecordingSid(), call.getRecordingUrl()
+            ));
         }
         try {
             boolean webVoice = call.getRecordingSid() != null && call.getRecordingSid().startsWith("WEBVOICE-");
@@ -93,6 +101,33 @@ public class CallRecordingService {
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to download Telnyx recording", exception);
         }
+    }
+
+    private String currentTelnyxDownloadUrl(String recordingId, String fallbackUrl) {
+        if (telnyxApiKey.isBlank()
+                || recordingId == null || recordingId.isBlank()
+                || recordingId.startsWith("TEST-")
+                || recordingId.startsWith("WEBVOICE-")) {
+            return fallbackUrl;
+        }
+        try {
+            var response = providerHttpClient.get(
+                    "Telnyx",
+                    URI.create(telnyxApiBaseUrl + "/recordings/"
+                            + java.net.URLEncoder.encode(recordingId, java.nio.charset.StandardCharsets.UTF_8)),
+                    java.util.Map.of("Authorization", "Bearer " + telnyxApiKey)
+            ).path("data").path("download_urls");
+            var current = response.path("mp3").asText(response.path("wav").asText("")).trim();
+            return current.isBlank() ? fallbackUrl : current;
+        } catch (Exception exception) {
+            return fallbackUrl;
+        }
+    }
+
+    private static String stripTrailingSlash(String value) {
+        var normalized = value == null ? "" : value.trim();
+        while (normalized.endsWith("/")) normalized = normalized.substring(0, normalized.length() - 1);
+        return normalized;
     }
 
     public record RecordingData(byte[] bytes, String mediaType) {

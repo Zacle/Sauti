@@ -252,6 +252,16 @@ public class CallPipelineService {
 
     @Transactional
     public Call completeTestCall(java.util.UUID tenantId, java.util.UUID callId, String requestedOutcome) {
+        return completeTestCall(tenantId, callId, requestedOutcome, "");
+    }
+
+    @Transactional
+    public Call completeTestCall(
+            java.util.UUID tenantId,
+            java.util.UUID callId,
+            String requestedOutcome,
+            String providerCallControlId
+    ) {
         var call = callRepository.findByIdAndTenantId(callId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Call not found"));
         if (!"test".equals(call.getDirection())) {
@@ -263,6 +273,7 @@ public class CallPipelineService {
                     : "completed";
             call.complete(outcome);
         }
+        call.awaitTelnyxRecording(providerCallControlId);
         analyzePostCall(call);
         archiveSession(call);
         dashboardEventPublisher.callEnded(call);
@@ -390,12 +401,21 @@ public class CallPipelineService {
 
     @Transactional
     public void completeActiveCall(String twilioCallSid, String outcome) {
+        completeActiveCall(twilioCallSid, outcome, "");
+    }
+
+    @Transactional
+    public void completeActiveCall(String twilioCallSid, String outcome, String providerCallControlId) {
         callRepository.findByTwilioCallSid(twilioCallSid)
                 .ifPresent(call -> {
                     realtimeCallerTranscripts.remove(call.getId());
                     if (call.isActive()) {
                         call.complete(outcome);
                     }
+                    var recordingCallControlId = providerCallControlId == null || providerCallControlId.isBlank()
+                            ? (twilioCallSid.startsWith("v3:") ? twilioCallSid : "")
+                            : providerCallControlId;
+                    call.awaitTelnyxRecording(recordingCallControlId);
                     analyzePostCall(call);
                     archiveSession(call);
                     callRepository.save(call);

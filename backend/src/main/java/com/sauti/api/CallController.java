@@ -123,7 +123,10 @@ public class CallController {
             @RequestBody(required = false) CompleteTestCallRequest request
     ) {
         var outcome = request == null ? "completed" : request.outcome();
-        return CallResponse.from(callPipelineService.completeTestCall(user.tenantId(), id, outcome));
+        var providerCallControlId = request == null ? "" : request.providerCallControlId();
+        return CallResponse.from(callPipelineService.completeTestCall(
+                user.tenantId(), id, outcome, providerCallControlId
+        ));
     }
 
     @GetMapping("/{id}/turns")

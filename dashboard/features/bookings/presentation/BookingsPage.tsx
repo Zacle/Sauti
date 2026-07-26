@@ -33,6 +33,7 @@ import {
   type BookingViewModel,
 } from "../domain/bookings";
 import styles from "./BookingsPage.module.css";
+import { BookingActionDialog, type BookingAction } from "./BookingActionDialog";
 import { BookingDateRangePicker } from "./BookingDateRangePicker";
 
 const FILTERS: Array<{ value: BookingStatusFilter; label: string }> = [
@@ -71,6 +72,8 @@ export function BookingsPage() {
   const [cancellingId, setCancellingId] = useState("");
   const [editingBooking, setEditingBooking] = useState<BookingViewModel | null>(null);
   const [savingId, setSavingId] = useState("");
+  const [pendingAction, setPendingAction] = useState<BookingAction | null>(null);
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     Promise.all([listBookings(), listAgents()])
@@ -95,18 +98,38 @@ export function BookingsPage() {
   }, [agentId, filter, query, rangeEnd, rangeStart, viewModels]);
   const groupedBookings = useMemo(() => groupBookings(visibleBookings), [visibleBookings]);
 
-  async function onCancel(booking: BookingViewModel) {
-    if (booking.status === "cancelled" || cancellingId) return;
-    if (!window.confirm(`Cancel ${booking.serviceType} for ${booking.callerName}?`)) return;
-    setCancellingId(booking.id);
+  function requestAction(kind: BookingAction["kind"], booking: BookingViewModel) {
+    if (booking.status === "cancelled" && kind === "cancel") return;
+    if (cancellingId || savingId) return;
+    setActionError("");
+    setPendingAction({ kind, booking });
+  }
+
+  async function confirmAction() {
+    if (!pendingAction) return;
+    const { kind, booking } = pendingAction;
+    if (kind === "cancel") setCancellingId(booking.id);
+    else setSavingId(booking.id);
     setError("");
+    setActionError("");
     try {
-      const updated = await cancelBooking(booking.id);
-      setBookings((current) => current.map((item) => item.id === updated.id ? updated : item));
+      if (kind === "cancel") {
+        const updated = await cancelBooking(booking.id);
+        setBookings((current) => current.map((item) => item.id === updated.id ? updated : item));
+      } else {
+        await deleteBooking(booking.id);
+        setBookings((current) => current.filter((item) => item.id !== booking.id));
+      }
+      setPendingAction(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to cancel this booking.");
+      setActionError(caught instanceof Error
+        ? caught.message
+        : kind === "cancel"
+          ? "Unable to cancel this booking."
+          : "Unable to delete this booking.");
     } finally {
-      setCancellingId("");
+      if (kind === "cancel") setCancellingId("");
+      else setSavingId("");
     }
   }
 
@@ -124,20 +147,6 @@ export function BookingsPage() {
       setEditingBooking(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to update this booking.");
-    } finally {
-      setSavingId("");
-    }
-  }
-
-  async function onDelete(booking: BookingViewModel) {
-    if (!window.confirm(`Permanently delete booking ${booking.bookingReference}? This cannot be undone.`)) return;
-    setSavingId(booking.id);
-    setError("");
-    try {
-      await deleteBooking(booking.id);
-      setBookings((current) => current.filter((item) => item.id !== booking.id));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to delete this booking.");
     } finally {
       setSavingId("");
     }
@@ -233,8 +242,8 @@ export function BookingsPage() {
                     booking={booking}
                     cancelling={cancellingId === booking.id}
                     key={booking.id}
-                    onCancel={() => void onCancel(booking)}
-                    onDelete={() => void onDelete(booking)}
+                    onCancel={() => requestAction("cancel", booking)}
+                    onDelete={() => requestAction("delete", booking)}
                     onEdit={() => setEditingBooking(booking)}
                     saving={savingId === booking.id}
                   />
@@ -245,6 +254,19 @@ export function BookingsPage() {
         </section>
       )}
       {editingBooking && <BookingEditor booking={editingBooking} busy={savingId === editingBooking.id} onClose={() => setEditingBooking(null)} onSave={(values) => void onUpdate(editingBooking, values)} />}
+      {pendingAction && (
+        <BookingActionDialog
+          action={pendingAction}
+          busy={pendingAction.kind === "cancel"
+            ? cancellingId === pendingAction.booking.id
+            : savingId === pendingAction.booking.id}
+          error={actionError}
+          onClose={() => {
+            if (!cancellingId && !savingId) setPendingAction(null);
+          }}
+          onConfirm={() => void confirmAction()}
+        />
+      )}
     </main>
   );
 }

@@ -76,7 +76,7 @@ public final class CallDtos {
     public record StartTestCallRequest(UUID agentId, String ttsVoiceId) {
     }
 
-    public record CompleteTestCallRequest(String outcome) {
+    public record CompleteTestCallRequest(String outcome, String providerCallControlId) {
     }
 
     public record StartTestCallResponse(

@@ -152,7 +152,11 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     try {
       if (stopProvider) await connectionRef.current?.stop();
       if (sessionIdRef.current && tokenRef.current) {
-        await completePublicWebVoiceSession(sessionIdRef.current, tokenRef.current);
+        await completePublicWebVoiceSession(
+          sessionIdRef.current,
+          tokenRef.current,
+          connectionRef.current?.providerCallControlId() ?? "",
+        );
       }
     } catch {
       // The provider may already have ended the session.

@@ -34,4 +34,7 @@ public final class WebVoiceDtos {
             BrowserVoiceRuntimeSession runtime
     ) {
     }
+
+    public record CompleteWebVoiceSessionRequest(String providerCallControlId) {
+    }
 }

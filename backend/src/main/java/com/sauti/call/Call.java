@@ -16,6 +16,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "calls")
 public class Call extends Auditable {
+    private static final String TELNYX_CALL_CONTROL_PREFIX = "TELNYX-CALL-CONTROL:";
     @Id
     private UUID id;
 
@@ -92,6 +93,26 @@ public class Call extends Auditable {
     public void attachRecording(String recordingUrl, String recordingSid) {
         this.recordingUrl = recordingUrl;
         this.recordingSid = recordingSid;
+    }
+
+    public void awaitTelnyxRecording(String callControlId) {
+        if (recordingUrl != null && !recordingUrl.isBlank()) return;
+        var normalized = callControlId == null ? "" : callControlId.trim();
+        if (normalized.isBlank()) return;
+        if (!normalized.startsWith("v3:") || normalized.length() > 75) {
+            throw new IllegalArgumentException("Invalid Telnyx call control id");
+        }
+        this.recordingSid = TELNYX_CALL_CONTROL_PREFIX + normalized;
+    }
+
+    public String pendingTelnyxCallControlId() {
+        if (recordingSid == null || !recordingSid.startsWith(TELNYX_CALL_CONTROL_PREFIX)) return "";
+        return recordingSid.substring(TELNYX_CALL_CONTROL_PREFIX.length());
+    }
+
+    public void markTelnyxRecordingUnavailable() {
+        var callControlId = pendingTelnyxCallControlId();
+        if (!callControlId.isBlank()) this.recordingSid = "TELNYX-RECORDING-UNAVAILABLE:" + callControlId;
     }
 
     public void markAfterHours() {

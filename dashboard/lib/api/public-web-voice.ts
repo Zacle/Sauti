@@ -49,10 +49,15 @@ export async function startPublicWebVoiceSession(
   return payload as WebVoiceSession;
 }
 
-export async function completePublicWebVoiceSession(sessionId: string, token: string) {
+export async function completePublicWebVoiceSession(
+  sessionId: string,
+  token: string,
+  providerCallControlId = "",
+) {
   const response = await fetch(`/api/v1/public/web-voice/sessions/${encodeURIComponent(sessionId)}/complete`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ providerCallControlId }),
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({})) as { message?: string };

@@ -18,6 +18,7 @@ export type BrowserVoiceRuntimeCallbacks = {
 
 export type BrowserVoiceRuntimeConnection = {
   sendUserText(text: string): void;
+  providerCallControlId(): string;
   stop(): Promise<void>;
 };
 

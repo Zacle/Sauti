@@ -7,6 +7,7 @@ import com.sauti.call.PublicWebVoiceRateLimitService;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptResponse;
 import com.sauti.call.WebVoiceDtos.PublicAgentResponse;
+import com.sauti.call.WebVoiceDtos.CompleteWebVoiceSessionRequest;
 import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionRequest;
 import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionResponse;
 import com.sauti.call.WebVoiceTokenService;
@@ -111,6 +112,7 @@ public class PublicWebVoiceController {
     @PostMapping("/sessions/{sessionId}/complete")
     void completeSession(
             @PathVariable String sessionId,
+            @RequestBody(required = false) CompleteWebVoiceSessionRequest completion,
             HttpServletRequest request
     ) {
         var principal = verifyBearer(request);
@@ -119,7 +121,10 @@ public class PublicWebVoiceController {
         }
         var call = accessService.requireCall(sessionId, principal.publicAgentId());
         if (call.isActive()) {
-            callPipelineService.completeActiveCall(sessionId, "completed");
+            var providerCallControlId = call.getAgent().isRecordCalls() && completion != null
+                    ? completion.providerCallControlId()
+                    : "";
+            callPipelineService.completeActiveCall(sessionId, "completed", providerCallControlId);
         }
     }
 
