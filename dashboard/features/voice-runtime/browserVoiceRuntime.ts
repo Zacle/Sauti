@@ -17,6 +17,7 @@ export type BrowserVoiceRuntimeCallbacks = {
   onToolCompleted?(toolName: string, isError: boolean): void;
   onToolError?(toolName: string, reason: string): void;
   onProviderCallControlId?(callControlId: string): void;
+  onProviderCallLegId?(callLegId: string): void;
   onError(message: string): void;
   onEnded(outcome?: string): void;
 };
@@ -24,6 +25,7 @@ export type BrowserVoiceRuntimeCallbacks = {
 export type BrowserVoiceRuntimeConnection = {
   sendUserText(text: string): void;
   providerCallControlId(): string;
+  providerCallLegId(): string;
   stop(): Promise<void>;
 };
 

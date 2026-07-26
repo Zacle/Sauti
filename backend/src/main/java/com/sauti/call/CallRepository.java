@@ -24,11 +24,6 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
             String recordingSidPrefix
     );
 
-    List<Call> findTop25ByRecordingUrlIsNullAndRecordingSidIsNullAndEndedAtIsNotNullAndDirectionInAndEndedAtAfterOrderByEndedAtAsc(
-            List<String> directions,
-            OffsetDateTime endedAfter
-    );
-
     Optional<Call> findFirstByAgent_IdAndDirectionAndCallerNumberAndOutcomeOrderByStartedAtDesc(
             UUID agentId,
             String direction,

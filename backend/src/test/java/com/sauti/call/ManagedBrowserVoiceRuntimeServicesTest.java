@@ -14,16 +14,12 @@ class ManagedBrowserVoiceRuntimeServicesTest {
     @Test
     void telnyxExposesOnlyPublicAssistantConfiguration() {
         var provisioning = mock(ManagedVoiceAgentProvisioningService.class);
-        var conversations = mock(TelnyxAiConversationService.class);
-        var calls = mock(CallRepository.class);
         var fixture = fixture();
         when(provisioning.isConfigured()).thenReturn(true);
         when(provisioning.resolve(fixture.call(), "Hello"))
                 .thenReturn(new ManagedVoiceAgentReference("assistant-42", "main", "{}"));
-        when(conversations.create(fixture.call()))
-                .thenReturn("236da7b5-0738-4977-8cd1-9c72db86eda5");
         var service = new TelnyxAiBrowserVoiceRuntimeService(
-                provisioning, conversations, calls, "development", "eu-west"
+                provisioning, "development", "eu-west"
         );
 
         var session = service.prepare(fixture.call(), "Hello", "call-token");
@@ -34,7 +30,6 @@ class ManagedBrowserVoiceRuntimeServicesTest {
                 .containsEntry("agentId", "assistant-42")
                 .containsEntry("environment", "development")
                 .containsEntry("region", "eu-west")
-                .containsEntry("conversationId", "236da7b5-0738-4977-8cd1-9c72db86eda5")
                 .doesNotContainValue("call-token");
     }
 
@@ -42,11 +37,7 @@ class ManagedBrowserVoiceRuntimeServicesTest {
     void telnyxIsUnavailableUntilItsServerConfigurationIsPresent() {
         var provisioning = mock(ManagedVoiceAgentProvisioningService.class);
         var service = new TelnyxAiBrowserVoiceRuntimeService(
-                provisioning,
-                mock(TelnyxAiConversationService.class),
-                mock(CallRepository.class),
-                "production",
-                ""
+                provisioning, "production", ""
         );
 
         assertThat(service.isConfigured()).isFalse();

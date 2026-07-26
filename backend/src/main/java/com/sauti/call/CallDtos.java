@@ -76,10 +76,14 @@ public final class CallDtos {
     public record StartTestCallRequest(UUID agentId, String ttsVoiceId) {
     }
 
-    public record CompleteTestCallRequest(String outcome, String providerCallControlId) {
+    public record CompleteTestCallRequest(
+            String outcome,
+            String providerCallControlId,
+            String providerCallLegId
+    ) {
     }
 
-    public record ProviderCallCorrelationRequest(String providerCallControlId) {
+    public record ProviderCallCorrelationRequest(String providerCallControlId, String providerCallLegId) {
     }
 
     public record StartTestCallResponse(

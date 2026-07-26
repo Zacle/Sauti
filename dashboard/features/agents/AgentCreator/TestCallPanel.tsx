@@ -227,6 +227,11 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           void correlateTestCall(started.call.id, callControlId)
             .catch(() => recordDiagnostic("provider_call_correlation_failed", undefined, "warn"));
         },
+        onProviderCallLegId(callLegId) {
+          recordDiagnostic("provider_call_leg_correlated");
+          void correlateTestCall(started.call.id, "", callLegId)
+            .catch(() => recordDiagnostic("provider_call_leg_correlation_failed", undefined, "warn"));
+        },
         onError(message) {
           recordDiagnostic("runtime_error", { message }, "error");
           setError(message);
@@ -270,6 +275,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           activeCallId,
           outcome,
           connectionRef.current?.providerCallControlId() ?? "",
+          connectionRef.current?.providerCallLegId() ?? "",
         );
       }
     } catch (caught) {

@@ -125,8 +125,9 @@ public class CallController {
     ) {
         var outcome = request == null ? "completed" : request.outcome();
         var providerCallControlId = request == null ? "" : request.providerCallControlId();
+        var providerCallLegId = request == null ? "" : request.providerCallLegId();
         return CallResponse.from(callPipelineService.completeTestCall(
-                user.tenantId(), id, outcome, providerCallControlId
+                user.tenantId(), id, outcome, providerCallControlId, providerCallLegId
         ));
     }
 
@@ -137,7 +138,7 @@ public class CallController {
             @RequestBody ProviderCallCorrelationRequest request
     ) {
         return CallResponse.from(callPipelineService.correlateTestCall(
-                user.tenantId(), id, request.providerCallControlId()
+                user.tenantId(), id, request.providerCallControlId(), request.providerCallLegId()
         ));
     }
 

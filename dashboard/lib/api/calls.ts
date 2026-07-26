@@ -15,17 +15,26 @@ export function startTestCall(agentId: string, ttsVoiceId?: string) {
   });
 }
 
-export function completeTestCall(callId: string, outcome = "completed", providerCallControlId = "") {
+export function completeTestCall(
+  callId: string,
+  outcome = "completed",
+  providerCallControlId = "",
+  providerCallLegId = "",
+) {
   return apiRequest<Call>(`/calls/${callId}/complete-test`, {
     method: "POST",
-    body: JSON.stringify({ outcome, providerCallControlId }),
+    body: JSON.stringify({ outcome, providerCallControlId, providerCallLegId }),
   });
 }
 
-export function correlateTestCall(callId: string, providerCallControlId: string) {
+export function correlateTestCall(
+  callId: string,
+  providerCallControlId = "",
+  providerCallLegId = "",
+) {
   return apiRequest<Call>(`/calls/${callId}/provider-correlation`, {
     method: "POST",
-    body: JSON.stringify({ providerCallControlId }),
+    body: JSON.stringify({ providerCallControlId, providerCallLegId }),
   });
 }
 

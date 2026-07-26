@@ -26,7 +26,6 @@ export async function connectTelnyxRuntime(
   const client = new TelnyxAIAgent({
     agentId,
     versionId: configString(session.configuration, "versionId") || "main",
-    conversationId: configString(session.configuration, "conversationId") || undefined,
     environment,
     region: region || undefined,
     vad: {
@@ -48,6 +47,7 @@ export async function connectTelnyxRuntime(
   let conversationStarted = false;
   let endingRequested = false;
   let providerCallControlId = "";
+  let providerCallLegId = "";
   let terminalIntentPending = false;
   let terminalFarewellStarted = false;
   let terminalEndTimer: number | undefined;
@@ -57,6 +57,18 @@ export async function connectTelnyxRuntime(
     if (!normalized || normalized === providerCallControlId) return;
     providerCallControlId = normalized;
     callbacks.onProviderCallControlId?.(normalized);
+  };
+
+  const retainProviderCallLegId = (value: string | null | undefined) => {
+    const normalized = value?.trim() ?? "";
+    if (!normalized || normalized === providerCallLegId) return;
+    providerCallLegId = normalized;
+    callbacks.onProviderCallLegId?.(normalized);
+  };
+
+  const retainProviderIds = () => {
+    retainProviderCallControlId(client.activeCall?.telnyxIDs.telnyxCallControlId);
+    retainProviderCallLegId(client.activeCall?.telnyxIDs.telnyxLegId);
   };
 
   const clearTerminalEndTimer = () => {
@@ -79,7 +91,7 @@ export async function connectTelnyxRuntime(
     if (!conversationStarted || endingRequested || ended || stopped) return;
     endingRequested = true;
     clearTerminalEndTimer();
-    retainProviderCallControlId(client.activeCall?.telnyxIDs.telnyxCallControlId);
+    retainProviderIds();
     void finalizeTelnyxEndConversation(
       () => client.endConversation(),
       (error) => callbacks.onError(providerError("Telnyx", error)),
@@ -113,6 +125,7 @@ export async function connectTelnyxRuntime(
   client.on("agent.disconnected", finish);
   client.on("conversation.update", (notification) => {
     retainProviderCallControlId(notification.call?.telnyxIDs.telnyxCallControlId);
+    retainProviderCallLegId(notification.call?.telnyxIDs.telnyxLegId);
     const stream = notification.call?.remoteStream;
     if (stream && audio.srcObject !== stream) {
       audio.srcObject = stream;
@@ -190,7 +203,7 @@ export async function connectTelnyxRuntime(
     });
     conversationStarted = true;
     callbacks.onStartupStage?.("conversation_started");
-    retainProviderCallControlId(client.activeCall?.telnyxIDs.telnyxCallControlId);
+    retainProviderIds();
     callbacks.onConnected();
   } catch (error) {
     stopped = true;
@@ -207,10 +220,13 @@ export async function connectTelnyxRuntime(
     providerCallControlId() {
       return providerCallControlId;
     },
+    providerCallLegId() {
+      return providerCallLegId;
+    },
     async stop() {
       if (stopped) return;
       clearTerminalEndTimer();
-      retainProviderCallControlId(client.activeCall?.telnyxIDs.telnyxCallControlId);
+      retainProviderIds();
       stopped = true;
       ended = true;
       await client.endConversation();

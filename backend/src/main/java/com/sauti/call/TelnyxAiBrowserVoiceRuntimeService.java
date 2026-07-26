@@ -4,26 +4,19 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TelnyxAiBrowserVoiceRuntimeService {
     private final ManagedVoiceAgentProvisioningService provisioningService;
-    private final TelnyxAiConversationService conversationService;
-    private final CallRepository callRepository;
     private final String environment;
     private final String region;
 
     public TelnyxAiBrowserVoiceRuntimeService(
             ManagedVoiceAgentProvisioningService provisioningService,
-            TelnyxAiConversationService conversationService,
-            CallRepository callRepository,
             @Value("${sauti.telnyx.ai-environment:production}") String environment,
             @Value("${sauti.telnyx.ai-region:}") String region
     ) {
         this.provisioningService = provisioningService;
-        this.conversationService = conversationService;
-        this.callRepository = callRepository;
         this.environment = "development".equalsIgnoreCase(trim(environment))
                 ? "development"
                 : "production";
@@ -38,15 +31,11 @@ public class TelnyxAiBrowserVoiceRuntimeService {
         return provisioningService.isConfigured();
     }
 
-    @Transactional
     public BrowserVoiceRuntimeSession prepare(Call call, String greeting, String callbackToken) {
         if (!isConfigured()) {
             throw new IllegalStateException("Telnyx browser calls require TELNYX_API_KEY.");
         }
         var managedAgent = provisioningService.resolve(call, greeting);
-        var conversationId = conversationService.create(call);
-        call.awaitTelnyxConversation(conversationId);
-        callRepository.save(call);
         var configuration = new LinkedHashMap<String, Object>();
         configuration.put("agentId", managedAgent.externalAgentId());
         configuration.put(
@@ -56,7 +45,6 @@ public class TelnyxAiBrowserVoiceRuntimeService {
         configuration.put("environment", environment);
         configuration.put("greeting", greeting == null ? "" : greeting);
         configuration.put("callSid", call.getTwilioCallSid());
-        configuration.put("conversationId", conversationId);
         if (!region.isBlank()) configuration.put("region", region);
         return new BrowserVoiceRuntimeSession(provider(), "", "", Map.copyOf(configuration));
     }

@@ -225,6 +225,49 @@ Expected:
 
 ## Change log
 
+### 2026-07-26 - Revert voice-conversation injection and correlate recordings by Telnyx leg ID
+
+- Investigated diagnostic file `sauti-telnyx-diagnostics-1785082032648.json` for Sauti call `d48ec04c-5a6b-4166-a5d6-33f3a7918cb9` without reading transcript content.
+- The browser path itself was healthy:
+  - backend/runtime preparation completed in 993 ms;
+  - Telnyx EU signaling was ready at 3.156 seconds;
+  - first provider audio arrived at 5.969 seconds;
+  - no browser SDK error or Sauti runtime error was emitted.
+- Telnyx's first audio said an application error occurred because the previously introduced pre-created conversation was incompatible with this Voice AI SDK call path:
+  - Sauti successfully created conversation `0ed5213a-96e4-4d54-97c6-f23f82ba125e`;
+  - Telnyx never attached the voice call to it;
+  - the conversation retained only Sauti metadata and had no call identifiers or messages.
+- Removed pre-created conversation creation, persistence, and `conversationId` injection from browser voice startup. Do not reintroduce this approach without explicit Telnyx support for attaching an AI Agent SDK voice call to a generic AI conversation.
+- Also rejected server-side resolved-prompt correlation after a live read-only check proved successful Telnyx voice conversations do not expose the custom Sauti `callSid` marker in their retrievable `system_prompt`.
+- Implemented provider-supported recording correlation using `telnyx_leg_id`:
+  - Telnyx ringing/answer events populate `activeCall.telnyxIDs.telnyxLegId` even when `telnyxCallControlId` is missing;
+  - the browser runtime now retains and publishes both identifiers independently;
+  - the authenticated correlation and completion requests accept both identifiers;
+  - the backend prefers Call Control ID when present and otherwise persists the validated UUID call-leg reference;
+  - recording reconciliation queries Telnyx by `filter[call_leg_id]` for the fallback path;
+  - the Calls drawer treats both reference types as `Finalizing recording...`.
+- Live read-only provider verification proved the exact call-leg filter returns recording `324b189c-a5be-4032-943c-c98b4c160249`, the completed 49.258-second dual-channel recording from the earlier successful call.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/call/{Call,CallDtos,CallPipelineService,CallRepository,TelnyxAiBrowserVoiceRuntimeService,TelnyxRecordingReconciliationService}.java`
+  - removed `backend/src/main/java/com/sauti/call/TelnyxAiConversationService.java`
+  - `backend/src/test/java/com/sauti/call/{CallPipelineServiceTest,ManagedBrowserVoiceRuntimeServicesTest,TelnyxRecordingReconciliationServiceTest}.java`
+  - removed `backend/src/test/java/com/sauti/call/TelnyxAiConversationServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/calls/CallsPage/CallsPage.tsx`
+  - `dashboard/features/voice-runtime/{browserVoiceRuntime,telnyxRuntime}.ts`
+  - `dashboard/lib/api/calls.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused browser runtime, call pipeline, and recording reconciliation backend tests - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run test:voice` - passed all 11 tests.
+  - `npm.cmd run build` - passed; Next.js completed the optimized production build.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification: after deployment, make a fresh browser test call. Confirm diagnostics contain `provider_call_leg_correlated`, the call no longer plays the application-error farewell, and the Calls drawer changes from `Finalizing recording...` to the player after reconciliation.
+
 ### 2026-07-26 - Correlate Telnyx recordings through a call-scoped AI conversation
 
 - Investigated diagnostic file `sauti-telnyx-diagnostics-1785072433760.json` for Sauti call `75343c7a-bb83-4bfe-a6ba-c08698db26d3` without reading transcript content.

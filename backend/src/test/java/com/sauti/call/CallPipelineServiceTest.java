@@ -637,9 +637,43 @@ class CallPipelineServiceTest {
         when(callRepository.findByIdAndTenantId(call.getId(), tenant.getId())).thenReturn(Optional.of(call));
         when(callRepository.save(call)).thenReturn(call);
 
-        var result = service.correlateTestCall(tenant.getId(), call.getId(), providerCallControlId);
+        var result = service.correlateTestCall(
+                tenant.getId(), call.getId(), providerCallControlId, ""
+        );
 
         assertThat(result.pendingTelnyxCallControlId()).isEqualTo(providerCallControlId);
+        assertThat(result.getEndedAt()).isNull();
+        verify(callRepository).save(call);
+    }
+
+    @Test
+    void retainsBrowserCallLegCorrelationWhenCallControlIdIsUnavailable() {
+        var callRepository = mock(CallRepository.class);
+        var service = new CallPipelineService(
+                callRepository,
+                mock(CallTurnRepository.class),
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                mock(LanguageDetector.class),
+                mock(ConversationOrchestrator.class),
+                mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class),
+                mock(DashboardEventPublisher.class),
+                mock(PostCallAnalysisService.class)
+        );
+        var tenant = new Tenant("Demo Clinic", "owner@example.com", "SN");
+        var agent = new Agent(tenant, "Amina", "Bonjour", "Prompt");
+        var call = new Call(tenant, agent, "TEST-" + java.util.UUID.randomUUID(), "Browser test", "test");
+        var providerCallLegId = "9311b6ba-88f5-11f1-b7ef-02420a21041f";
+        when(callRepository.findByIdAndTenantId(call.getId(), tenant.getId())).thenReturn(Optional.of(call));
+        when(callRepository.save(call)).thenReturn(call);
+
+        var result = service.correlateTestCall(
+                tenant.getId(), call.getId(), "", providerCallLegId
+        );
+
+        assertThat(result.pendingTelnyxCallLegId()).isEqualTo(providerCallLegId);
         assertThat(result.getEndedAt()).isNull();
         verify(callRepository).save(call);
     }

@@ -141,7 +141,7 @@ export function CallsPage() {
     && !selectedCall.recordingUrl
     && (
       selectedCall.recordingSid?.startsWith("TELNYX-CALL-CONTROL:")
-      || selectedCall.recordingSid?.startsWith("TELNYX-CONVERSATION:")
+      || selectedCall.recordingSid?.startsWith("TELNYX-CALL-LEG:")
     ),
   );
 

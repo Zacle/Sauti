@@ -17,7 +17,7 @@ import java.util.UUID;
 @Table(name = "calls")
 public class Call extends Auditable {
     private static final String TELNYX_CALL_CONTROL_PREFIX = "TELNYX-CALL-CONTROL:";
-    private static final String TELNYX_CONVERSATION_PREFIX = "TELNYX-CONVERSATION:";
+    private static final String TELNYX_CALL_LEG_PREFIX = "TELNYX-CALL-LEG:";
     @Id
     private UUID id;
 
@@ -106,30 +106,31 @@ public class Call extends Auditable {
         this.recordingSid = TELNYX_CALL_CONTROL_PREFIX + normalized;
     }
 
-    public void awaitTelnyxConversation(String conversationId) {
-        if (recordingUrl != null && !recordingUrl.isBlank()) return;
-        var normalized = conversationId == null ? "" : conversationId.trim();
-        try {
-            normalized = UUID.fromString(normalized).toString();
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("Invalid Telnyx conversation id", exception);
-        }
-        this.recordingSid = TELNYX_CONVERSATION_PREFIX + normalized;
-    }
-
     public String pendingTelnyxCallControlId() {
         if (recordingSid == null || !recordingSid.startsWith(TELNYX_CALL_CONTROL_PREFIX)) return "";
         return recordingSid.substring(TELNYX_CALL_CONTROL_PREFIX.length());
     }
 
-    public String pendingTelnyxConversationId() {
-        if (recordingSid == null || !recordingSid.startsWith(TELNYX_CONVERSATION_PREFIX)) return "";
-        return recordingSid.substring(TELNYX_CONVERSATION_PREFIX.length());
+    public void awaitTelnyxRecordingByCallLegId(String callLegId) {
+        if (recordingUrl != null && !recordingUrl.isBlank()) return;
+        var normalized = callLegId == null ? "" : callLegId.trim();
+        if (normalized.isBlank()) return;
+        try {
+            normalized = UUID.fromString(normalized).toString();
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid Telnyx call leg id", exception);
+        }
+        this.recordingSid = TELNYX_CALL_LEG_PREFIX + normalized;
+    }
+
+    public String pendingTelnyxCallLegId() {
+        if (recordingSid == null || !recordingSid.startsWith(TELNYX_CALL_LEG_PREFIX)) return "";
+        return recordingSid.substring(TELNYX_CALL_LEG_PREFIX.length());
     }
 
     public void markTelnyxRecordingUnavailable() {
         var callControlId = pendingTelnyxCallControlId();
-        var reference = callControlId.isBlank() ? pendingTelnyxConversationId() : callControlId;
+        var reference = callControlId.isBlank() ? pendingTelnyxCallLegId() : callControlId;
         if (!reference.isBlank()) this.recordingSid = "TELNYX-RECORDING-UNAVAILABLE:" + reference;
     }
 

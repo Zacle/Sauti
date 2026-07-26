@@ -252,7 +252,7 @@ public class CallPipelineService {
 
     @Transactional
     public Call completeTestCall(java.util.UUID tenantId, java.util.UUID callId, String requestedOutcome) {
-        return completeTestCall(tenantId, callId, requestedOutcome, "");
+        return completeTestCall(tenantId, callId, requestedOutcome, "", "");
     }
 
     @Transactional
@@ -260,7 +260,8 @@ public class CallPipelineService {
             java.util.UUID tenantId,
             java.util.UUID callId,
             String requestedOutcome,
-            String providerCallControlId
+            String providerCallControlId,
+            String providerCallLegId
     ) {
         var call = callRepository.findByIdAndTenantId(callId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Call not found"));
@@ -273,7 +274,7 @@ public class CallPipelineService {
                     : "completed";
             call.complete(outcome);
         }
-        call.awaitTelnyxRecording(providerCallControlId);
+        retainTelnyxRecordingCorrelation(call, providerCallControlId, providerCallLegId);
         analyzePostCall(call);
         archiveSession(call);
         dashboardEventPublisher.callEnded(call);
@@ -284,15 +285,28 @@ public class CallPipelineService {
     public Call correlateTestCall(
             java.util.UUID tenantId,
             java.util.UUID callId,
-            String providerCallControlId
+            String providerCallControlId,
+            String providerCallLegId
     ) {
         var call = callRepository.findByIdAndTenantId(callId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Call not found"));
         if (!"test".equals(call.getDirection())) {
             throw new IllegalArgumentException("Only browser test calls can be correlated here");
         }
-        call.awaitTelnyxRecording(providerCallControlId);
+        retainTelnyxRecordingCorrelation(call, providerCallControlId, providerCallLegId);
         return callRepository.save(call);
+    }
+
+    private void retainTelnyxRecordingCorrelation(
+            Call call,
+            String providerCallControlId,
+            String providerCallLegId
+    ) {
+        if (providerCallControlId != null && !providerCallControlId.isBlank()) {
+            call.awaitTelnyxRecording(providerCallControlId);
+            return;
+        }
+        call.awaitTelnyxRecordingByCallLegId(providerCallLegId);
     }
 
     @Transactional
