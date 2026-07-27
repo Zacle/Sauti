@@ -87,6 +87,7 @@ sauti:
     secret: ${JWT_SECRET:dev-only-change-me-dev-only-change-me}
     access-token-minutes: 15
     refresh-token-days: 30
+    refresh-token-rotation-grace-seconds: 30
   auth:
     expose-dev-tokens: ${AUTH_EXPOSE_DEV_TOKENS:true}
     google:

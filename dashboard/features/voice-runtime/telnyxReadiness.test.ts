@@ -78,6 +78,40 @@ test("clears the sticky Telnyx edge and retries a transient authentication failu
   assert.deepEqual(order, ["start:1", "clear", "retry:1", "wait:500", "start:2"]);
 });
 
+test("allows the Telnyx assistant version time to propagate across signaling edges", async () => {
+  const delays: number[] = [];
+  let attempts = 0;
+
+  await startTelnyxConversationWithAuthenticationRetry({
+    start: async () => {
+      attempts += 1;
+      if (attempts <= 4) {
+        throw Object.assign(new Error("Authentication failed"), { code: 46001 });
+      }
+    },
+    clearReconnectToken: () => undefined,
+    wait: async (delayMs) => {
+      delays.push(delayMs);
+    },
+  });
+
+  assert.equal(attempts, 5);
+  assert.deepEqual(delays, [500, 1_500, 3_000, 5_000]);
+});
+
+test("distinguishes exhausted Telnyx authentication from a Sauti login failure", async () => {
+  await assert.rejects(
+    startTelnyxConversationWithAuthenticationRetry({
+      start: async () => {
+        throw Object.assign(new Error("Authentication failed"), { code: 46001 });
+      },
+      clearReconnectToken: () => undefined,
+      retryDelaysMs: [],
+    }),
+    /separate from your Sauti dashboard session/,
+  );
+});
+
 test("does not retry unrelated Telnyx startup failures", async () => {
   let cleared = false;
 

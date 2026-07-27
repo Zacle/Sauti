@@ -17,6 +17,7 @@ import com.sauti.tenant.TenantRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.UUID;
@@ -36,6 +37,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final long refreshTokenDays;
+    private final Duration refreshTokenRotationGrace;
     private final boolean exposeDevTokens;
 
     public AuthService(
@@ -48,6 +50,7 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             @Value("${sauti.jwt.refresh-token-days}") long refreshTokenDays,
+            @Value("${sauti.jwt.refresh-token-rotation-grace-seconds:30}") long refreshTokenRotationGraceSeconds,
             @Value("${sauti.auth.expose-dev-tokens:true}") boolean exposeDevTokens
     ) {
         this.tenantRepository = tenantRepository;
@@ -59,6 +62,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.refreshTokenDays = refreshTokenDays;
+        this.refreshTokenRotationGrace = Duration.ofSeconds(Math.max(0, refreshTokenRotationGraceSeconds));
         this.exposeDevTokens = exposeDevTokens;
     }
 
@@ -180,10 +184,10 @@ public class AuthService {
     public AuthResponse refresh(RefreshRequest request) {
         var existing = refreshTokenRepository.findByTokenHash(hash(request.refreshToken()))
                 .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
-        if (!existing.isActive()) {
+        if (!existing.canRotate(refreshTokenRotationGrace)) {
             throw new IllegalArgumentException("Invalid refresh token");
         }
-        existing.revoke();
+        existing.markRotated();
         return issueTokens(existing.getUser());
     }
 

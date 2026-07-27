@@ -1,0 +1,2 @@
+ALTER TABLE refresh_tokens
+    ADD COLUMN rotated_at TIMESTAMP WITH TIME ZONE;

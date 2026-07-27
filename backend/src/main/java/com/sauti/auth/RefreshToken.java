@@ -7,6 +7,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -25,6 +26,8 @@ public class RefreshToken {
 
     @Column(nullable = false)
     private OffsetDateTime expiresAt;
+
+    private OffsetDateTime rotatedAt;
 
     private OffsetDateTime revokedAt;
 
@@ -47,7 +50,24 @@ public class RefreshToken {
     }
 
     public boolean isActive() {
-        return revokedAt == null && expiresAt.isAfter(OffsetDateTime.now());
+        return rotatedAt == null && revokedAt == null && expiresAt.isAfter(OffsetDateTime.now());
+    }
+
+    public boolean canRotate(Duration gracePeriod) {
+        return canRotate(gracePeriod, OffsetDateTime.now());
+    }
+
+    boolean canRotate(Duration gracePeriod, OffsetDateTime now) {
+        if (revokedAt != null || !expiresAt.isAfter(now)) return false;
+        return rotatedAt == null || rotatedAt.plus(gracePeriod).isAfter(now);
+    }
+
+    public void markRotated() {
+        markRotated(OffsetDateTime.now());
+    }
+
+    void markRotated(OffsetDateTime now) {
+        if (rotatedAt == null) rotatedAt = now;
     }
 
     public void revoke() {

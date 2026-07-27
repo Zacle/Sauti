@@ -8,6 +8,7 @@ export class ApiError extends Error {
 }
 
 let refreshPromise: Promise<AuthSession> | null = null;
+const SESSION_REFRESH_LOCK = "sauti-auth-session-refresh";
 
 async function parseError(response: Response) {
   try {
@@ -18,21 +19,51 @@ async function parseError(response: Response) {
   }
 }
 
+async function requestSessionRefresh(session: AuthSession) {
+  const latest = readSession();
+  if (!latest) throw new ApiError("Your session has expired. Please log in again.", 401);
+  if (latest.refreshToken !== session.refreshToken) return latest;
+
+  let response: Response;
+  try {
+    response = await fetch("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: latest.refreshToken }),
+    });
+  } catch {
+    // The server may have rotated the token even when the response was lost.
+    // Retry immediately while the backend's bounded rotation grace is active.
+    response = await fetch("/api/v1/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: latest.refreshToken }),
+    });
+  }
+
+  if (!response.ok) {
+    const concurrentSession = readSession();
+    if (concurrentSession && concurrentSession.refreshToken !== latest.refreshToken) {
+      return concurrentSession;
+    }
+    clearSession();
+    throw new ApiError("Your session has expired. Please log in again.", 401);
+  }
+  const refreshed = (await response.json()) as AuthSession;
+  writeSession(refreshed);
+  return refreshed;
+}
+
 async function refreshSession(session: AuthSession) {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const response = await fetch("/api/v1/auth/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: session.refreshToken }),
-      });
-      if (!response.ok) {
-        clearSession();
-        throw new ApiError("Your session has expired. Please log in again.", 401);
+      if (typeof navigator !== "undefined" && navigator.locks) {
+        return navigator.locks.request(
+          SESSION_REFRESH_LOCK,
+          () => requestSessionRefresh(session),
+        );
       }
-      const refreshed = (await response.json()) as AuthSession;
-      writeSession(refreshed);
-      return refreshed;
+      return requestSessionRefresh(session);
     })().finally(() => {
       refreshPromise = null;
     });

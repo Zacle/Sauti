@@ -225,6 +225,38 @@ Expected:
 
 ## Change log
 
+### 2026-07-27 - Stabilize dashboard sessions and Telnyx browser authentication
+
+- Diagnosed two independent failures that were presented similarly in the dashboard:
+  - Sauti access tokens expire after 15 minutes and single-use refresh-token rotation could race across browser tabs. The losing tab treated the already-rotated token as expired and cleared the shared browser session.
+  - Telnyx browser signaling can temporarily return error `46001` while an assistant/version or reconnect credential propagates between RTC edges. This is provider authentication, not the Sauti login.
+- Made dashboard refresh coordination cross-tab safe with the browser Web Locks API. A tab entering the refresh lock rereads browser storage and reuses a session already rotated by another tab instead of submitting the stale token.
+- Added one immediate transport retry when a refresh response is lost. The backend now supports that recovery and concurrent-tab rotation with a bounded 30-second grace window.
+- Kept explicit logout and password-reset revocation strict. Rotation and revocation now have separate persisted timestamps, so a logged-out token cannot use the concurrency grace.
+- Added Flyway migration `V39__refresh_token_rotation_grace.sql` for the nullable `rotated_at` refresh-token timestamp.
+- Extended Telnyx authentication propagation retries from 2 seconds to a bounded 10 seconds (`500ms`, `1.5s`, `3s`, `5s`) while clearing the sticky reconnect token before each retry.
+- When all Telnyx authentication retries are exhausted, the caller now sees a message that explicitly distinguishes the Telnyx voice session from the still-valid Sauti dashboard session.
+- Files touched:
+  - `backend/src/main/java/com/sauti/auth/{AuthService,RefreshToken}.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/resources/db/migration/V39__refresh_token_rotation_grace.sql`
+  - `backend/src/test/java/com/sauti/AuthAgentFlowTest.java`
+  - `backend/src/test/java/com/sauti/auth/RefreshTokenTest.java`
+  - `dashboard/lib/api/client.ts`
+  - `dashboard/features/voice-runtime/{telnyxReadiness,telnyxReadiness.test}.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused auth flow and refresh-token tests passed;
+  - `.\gradlew.bat :backend:test` passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 20 seconds;
+  - `npm.cmd run test:voice` passed all 15 tests;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run build` passed, including Next.js lint and TypeScript validation;
+  - `git diff --check` passed.
+- Deployment status: uncommitted and not deployed. Ready for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after reviewed deployment:
+  - keep two authenticated Sauti tabs open for longer than the 15-minute access-token lifetime, then trigger API requests in both; both tabs should remain signed in;
+  - start a Telnyx test call immediately after an agent configuration change; transient `46001` failures should recover within the bounded retry window, while a persistent provider failure should state that the Sauti login remains valid.
+
 ### 2026-07-27 - Compact the customer-channel setup notice
 
 - Replaced the alert-style customer-channel warning in Main Settings with a quiet, neutral status row so the missing optional channel does not read like an error.

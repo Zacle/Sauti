@@ -66,7 +66,7 @@ export async function startTelnyxConversationWithAuthenticationRetry({
   start,
   clearReconnectToken,
   onRetry,
-  retryDelaysMs = [500, 1_500],
+  retryDelaysMs = [500, 1_500, 3_000, 5_000],
   wait = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
 }: TelnyxAuthenticationRetryOptions): Promise<void> {
   for (let attempt = 0; ; attempt += 1) {
@@ -75,7 +75,13 @@ export async function startTelnyxConversationWithAuthenticationRetry({
       return;
     } catch (error) {
       const retryDelay = retryDelaysMs[attempt];
-      if (retryDelay === undefined || !isTelnyxAuthenticationFailure(error)) throw error;
+      if (!isTelnyxAuthenticationFailure(error)) throw error;
+      if (retryDelay === undefined) {
+        throw new Error(
+          "Telnyx could not establish the voice session after retrying. "
+          + "This is separate from your Sauti dashboard session; please try the call again shortly.",
+        );
+      }
       // Telnyx documents this reset for transient "Login Incorrect" failures
       // caused by assistant/version propagation lag between RTC edges.
       clearReconnectToken();

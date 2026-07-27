@@ -369,7 +369,9 @@ class AuthAgentFlowTest {
         mvc.perform(post("/api/v1/auth/refresh")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"refreshToken\":\"" + verifiedRefreshToken + "\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken").isString())
+                .andExpect(jsonPath("$.refreshToken").isString());
 
         String activeRefreshToken = objectMapper.readTree(rotatedJson).get("refreshToken").asText();
 
