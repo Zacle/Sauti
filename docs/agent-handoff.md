@@ -225,6 +225,43 @@ Expected:
 
 ## Change log
 
+### 2026-07-27 - Consume managed cancellation confirmation exactly once
+
+- Investigated browser diagnostic `sauti-telnyx-diagnostics-1785135874545.json` and correlated its 2026-07-27 07:02-07:04 UTC window read-only with Telnyx conversation `b3e17cad-17a9-462d-bf28-a3e5eab5f484`.
+- Lookup succeeded for `SAT-1WGBV5CNTF0A` using phone `0115754331`, 31 July, 11:00. The booking was not cancelled.
+- The provider trace showed three later `cancel_booking` calls, each with `confirmation_state=confirmed` and `question_handling=ready_for_action`. Sauti returned `verified_confirmation_required` every time, causing the repeated confirmation review.
+- Root cause was the managed-provider confirmation bridge: it attempted to approve a retained proposal by mutating conversation revision and then consuming the proposal in a separate session operation. The live webhook path did not complete that two-operation handoff, so each confirmed invocation was treated as another first proposal.
+- Added an atomic `takePendingAction` session operation. It returns and removes a retained proposal only when the tool name matches, so concurrent or repeated provider callbacks cannot consume it twice.
+- The managed bridge now replaces all provider arguments with the exact server-retained business arguments and adds an in-process authorization marker. The marker is an object identity that cannot be reconstructed from webhook JSON and is removed before business fulfillment.
+- The generic action policy accepts this server-only marker as confirmation that the exact retained managed action was consumed. A provider-supplied `confirmed` string without a retained proposal remains insufficient and creates only a proposal.
+- Any material conversation-state correction now clears the retained side-effect proposal. The semantic `review_decision` approval itself does not clear it, preserving the portable non-managed confirmation path.
+- The trace also showed that Telnyx spoke a cancellation confirmation immediately after lookup without first invoking `cancel_booking` with `not_confirmed`. That meant the caller's first “yes” could only create the server proposal, even after fixing proposal consumption.
+- Added `requested_action` to `lookup_booking` and `existing_booking_action` to semantic state. A successful cancellation lookup now deterministically chains into `cancel_booking` with `not_confirmed` before any review is spoken. The resulting server review is the only review, and the caller's first subsequent unconditional approval consumes the retained cancellation.
+- Advanced the default lookup tool schema version from `20` to `21` so managed assistants receive the required requested-action field through normal synchronization.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceToolService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/session/CallSessionStore.java`
+  - `backend/src/main/java/com/sauti/session/RedisCallSessionStore.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - `backend/src/main/java/com/sauti/tool/AgentToolLoader.java`
+  - `backend/src/main/java/com/sauti/tool/DefaultToolSeeder.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/main/java/com/sauti/tool/ToolActionPolicy.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceToolServiceTest.java`
+  - `backend/src/test/java/com/sauti/session/RedisCallSessionStoreTest.java`
+  - `backend/src/test/java/com/sauti/tool/AgentToolLoaderTest.java`
+  - `backend/src/test/java/com/sauti/tool/ConversationStateToolTest.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `backend/src/test/java/com/sauti/tool/ToolFulfillmentRouterTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed voice, action policy, Redis session, semantic state, lookup schema/fulfillment, and orchestrator tests passed (`108` tests);
+  - `.\gradlew.bat :backend:test` passed (`282` tests);
+  - `git diff --check` passed with only the repository's LF-to-CRLF working-tree warnings.
+- Deployment status: uncommitted and not deployed. Ready for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: retry the same cancellation. The first review must be the only review; the caller's first subsequent unconditional “yes” must cancel exactly once, return `actionPerformed=true`, and trigger the cancellation status email.
+
 ### 2026-07-27 - Centralize multilingual existing-booking identity
 
 - Replaced the speech-sensitive phone/date/saved-name lookup contract with a reusable, language-neutral identity service under the calendar feature.

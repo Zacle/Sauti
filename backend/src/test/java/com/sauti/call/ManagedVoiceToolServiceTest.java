@@ -468,7 +468,7 @@ class ManagedVoiceToolServiceTest {
         when(agent.getId()).thenReturn(agentId);
         when(agent.getMaxCallDurationSeconds()).thenReturn(300);
         when(repository.findByTwilioCallSid("call-later-confirm")).thenReturn(Optional.of(call));
-        when(sessions.pendingAction("call-later-confirm")).thenReturn(Optional.of(
+        when(sessions.takePendingAction("call-later-confirm", "cancel_booking")).thenReturn(Optional.of(
                 new PendingAction(
                         "cancel_booking",
                         Map.of("booking_number", "SAT-AB12CD34", "caller_phone", "0115752441"),
@@ -500,10 +500,9 @@ class ManagedVoiceToolServiceTest {
 
         var result = service.execute("telnyx", "call-later-confirm", token, payload);
 
-        verify(sessions).recordManagedConfirmation(
+        verify(sessions).takePendingAction(
                 "call-later-confirm",
-                "cancel_booking",
-                Map.of("booking_number", "SAT-AB12CD34", "caller_phone", "0115752441")
+                "cancel_booking"
         );
         assertThat(result)
                 .containsEntry("success", true)
@@ -539,7 +538,7 @@ class ManagedVoiceToolServiceTest {
         when(agent.getMaxCallDurationSeconds()).thenReturn(300);
         when(repository.findByTwilioCallSid("call-reschedule-confirm"))
                 .thenReturn(Optional.of(call));
-        when(sessions.pendingAction("call-reschedule-confirm")).thenReturn(Optional.of(
+        when(sessions.takePendingAction("call-reschedule-confirm", "reschedule_booking")).thenReturn(Optional.of(
                 new PendingAction("reschedule_booking", retainedArguments, 9)
         ));
         when(router.route(any(), any())).thenAnswer(invocation -> {
@@ -567,8 +566,8 @@ class ManagedVoiceToolServiceTest {
 
         var result = service.execute("telnyx", "call-reschedule-confirm", token, payload);
 
-        verify(sessions).recordManagedConfirmation(
-                "call-reschedule-confirm", "reschedule_booking", retainedArguments
+        verify(sessions).takePendingAction(
+                "call-reschedule-confirm", "reschedule_booking"
         );
         var routed = ArgumentCaptor.forClass(com.sauti.llm.LlmToolCall.class);
         verify(router).route(any(), routed.capture());

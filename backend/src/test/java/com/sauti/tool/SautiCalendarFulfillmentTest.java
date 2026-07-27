@@ -1217,6 +1217,44 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
+    void verifiedCancellationLookupAuthorizesProposalBeforeAnyReviewIsSpoken() {
+        var fixture = fixture(HOURS, List.of());
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(booking.getBookingReference()).thenReturn("SAT-AB12CD34EF56");
+        when(booking.getCallerPhone()).thenReturn("0115754331");
+        when(booking.getCallerName()).thenReturn("Alexandria");
+        when(booking.getServiceType()).thenReturn("women hairstyle");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
+        when(booking.getDurationMinutes()).thenReturn(60);
+        when(booking.getStatus()).thenReturn("confirmed");
+        when(fixture.bookingService.findOnAppointmentDate(
+                any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
+        )).thenReturn(List.of(booking));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-for-cancel", "lookup_booking", Map.of(
+                        "caller_phone", "0115754331",
+                        "booking_date", "2026-07-31",
+                        "booking_time", "11:00",
+                        "requested_action", "cancel"
+                )
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_found")
+                .containsEntry("nextTool", "cancel_booking")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "question_handling", "ready_for_action",
+                        "confirmation_state", "not_confirmed"
+                ));
+        assertThat(result.result().get("instruction").toString())
+                .contains("retain the exact cancellation proposal")
+                .contains("do not ask an additional confirmation");
+    }
+
+    @Test
     void lookupDoesNotUseARecognizedNameAsAnIdentityFactor() {
         var fixture = fixture(HOURS, List.of());
         var booking = mock(com.sauti.calendar.Booking.class);

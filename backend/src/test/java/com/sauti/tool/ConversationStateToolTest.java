@@ -119,7 +119,8 @@ class ConversationStateToolTest {
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
                         "booking_number", "SAT-3PP4JIQ35XVB",
-                        "caller_phone", "0115753441"
+                        "caller_phone", "0115753441",
+                        "requested_action", "lookup"
                 ))
                 .doesNotContainKey("spokenResponse");
     }
@@ -598,7 +599,8 @@ class ConversationStateToolTest {
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
                         "booking_number", "SAT-AB12CD34EF56",
-                        "caller_phone", "0115752441"
+                        "caller_phone", "0115752441",
+                        "requested_action", "lookup"
                 ))
                 .doesNotContainKey("spokenResponse");
     }
@@ -644,20 +646,22 @@ class ConversationStateToolTest {
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
                         "booking_number", "SAT-OHM2KFA6HOP1",
-                        "caller_phone", "0115752441"
+                        "caller_phone", "0115752441",
+                        "requested_action", "lookup"
                 ))
                 .doesNotContainKey("spokenResponse");
     }
 
     @Test
-    void completingPhoneDateAndTimeForcesAReferenceFreeLookup() {
+    void completingCancellationIdentityCarriesTheRequestedActionIntoLookup() {
         var sessions = mock(CallSessionStore.class);
         var call = call("details-identity-call");
         when(sessions.conversationState("details-identity-call")).thenReturn(Optional.of(
                 new ConversationState(
                         Map.of(
                                 "caller_phone", "0115752441",
-                                "booking_date", "2026-07-31"
+                                "booking_date", "2026-07-31",
+                                "existing_booking_action", "cancel"
                         ),
                         ConversationState.SUBJECT_UNKNOWN,
                         ConversationState.INTENT_ACTIVE,
@@ -694,7 +698,8 @@ class ConversationStateToolTest {
                 .containsEntry("nextToolArguments", Map.of(
                         "caller_phone", "0115752441",
                         "booking_date", "2026-07-31",
-                        "booking_time", "11:00"
+                        "booking_time", "11:00",
+                        "requested_action", "cancel"
                 ))
                 .doesNotContainKey("spokenResponse");
     }
@@ -741,7 +746,8 @@ class ConversationStateToolTest {
         assertThat(result.result()).containsEntry("nextToolArguments", Map.of(
                 "caller_phone", "0115752441",
                 "booking_date", "2026-07-31",
-                "booking_time", "14:30"
+                "booking_time", "14:30",
+                "requested_action", "lookup"
         ));
     }
 

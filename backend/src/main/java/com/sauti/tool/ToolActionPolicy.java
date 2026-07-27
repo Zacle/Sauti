@@ -21,6 +21,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class ToolActionPolicy {
+    private static final String SERVER_CONFIRMATION = "__sauti_server_confirmation";
+    private static final Object SERVER_CONFIRMATION_MARKER = new Object();
     private static final String SAFETY = "Classify the complete latest caller turn semantically in any language. "
             + "Use answer_before_action when a question, condition, hesitation, correction, or information request "
             + "must be resolved first. Use ready_for_action only when nothing customer-facing remains unresolved.";
@@ -95,11 +97,14 @@ public class ToolActionPolicy {
             }
             var proposedArguments = businessCall(call).arguments();
             var state = conversationState(businessCall);
-            var approvedOnLaterTurn = "confirmed".equals(argument(call, "confirmation_state"))
+            var approvedByManagedBridge =
+                    call.arguments().get(SERVER_CONFIRMATION) == SERVER_CONFIRMATION_MARKER;
+            var approvedOnLaterTurn = approvedByManagedBridge
+                    || ("confirmed".equals(argument(call, "confirmation_state"))
                     && sessions != null
                     && sessions.consumeConfirmedAction(
                             businessCall.getTwilioCallSid(), call.name(), proposedArguments
-                    );
+                    ));
             if (!approvedOnLaterTurn) {
                 rememberProposal(businessCall, call.name(), proposedArguments, state.revision());
                 return Optional.of(deferred(call, tool, "verified_confirmation_required",
@@ -139,8 +144,29 @@ public class ToolActionPolicy {
         var arguments = new LinkedHashMap<>(call.arguments());
         arguments.remove("question_handling");
         arguments.remove("confirmation_state");
+        arguments.remove(SERVER_CONFIRMATION);
         arguments.values().removeIf(java.util.Objects::isNull);
         return new LlmToolCall(call.id(), call.name(), Map.copyOf(arguments));
+    }
+
+    /**
+     * Marks one call as authorized by a server-consumed managed-provider
+     * proposal. The private marker cannot be reconstructed from webhook JSON.
+     */
+    public static LlmToolCall managedConfirmedCall(
+            LlmToolCall providerCall,
+            Map<String, Object> retainedBusinessArguments
+    ) {
+        var arguments = new LinkedHashMap<String, Object>();
+        if (retainedBusinessArguments != null) arguments.putAll(retainedBusinessArguments);
+        arguments.put("question_handling", "ready_for_action");
+        arguments.put("confirmation_state", "confirmed");
+        arguments.put(SERVER_CONFIRMATION, SERVER_CONFIRMATION_MARKER);
+        return new LlmToolCall(
+                providerCall.id(),
+                providerCall.name(),
+                java.util.Collections.unmodifiableMap(arguments)
+        );
     }
 
     private LlmToolResult deferred(LlmToolCall call, AgentTool tool, String reason, String instruction) {

@@ -186,6 +186,25 @@ public class RedisCallSessionStore implements CallSessionStore {
     }
 
     @Override
+    public Optional<PendingAction> takePendingAction(String callSid, String toolName) {
+        if (callSid == null || callSid.isBlank() || toolName == null || toolName.isBlank()) {
+            return Optional.empty();
+        }
+        var taken = new PendingAction[1];
+        mutate(callSid, session -> {
+            if (session == null) return null;
+            var pending = session.getPendingAction();
+            if (pending != null && pending.toolName().equals(toolName.trim())) {
+                taken[0] = pending;
+                session.setPendingAction(null);
+                session.touch();
+            }
+            return session;
+        });
+        return Optional.ofNullable(taken[0]);
+    }
+
+    @Override
     public boolean recordManagedConfirmation(
             String callSid,
             String toolName,

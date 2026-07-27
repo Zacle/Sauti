@@ -663,20 +663,38 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     private Map<String, Object> lookupBooking(Call call, LlmToolCall toolCall) {
         var booking = lookupVerifiedBooking(call, toolCall.arguments());
         rememberVerifiedBookingIdentity(call, booking);
-        return Map.of(
-                "status", "booking_found",
-                "bookingFound", true,
-                "bookingNumber", booking.getBookingReference(),
-                "bookingStatus", booking.getStatus(),
-                "appointmentName", booking.getCallerName(),
-                "serviceType", booking.getServiceType(),
-                "appointmentAt", inBusinessTimezone(call, booking.getAppointmentAt()).toString(),
-                "durationMinutes", booking.getDurationMinutes(),
-                "instruction", "Tell the caller in their current language that the booking was found. Do not read "
-                        + "the booking number unless the caller explicitly asks for it. "
-                        + "Use only bookingNumber, bookingStatus, appointmentName, serviceType, "
-                        + "appointmentAt, and durationMinutes from this result. Do not disclose contact details."
-        );
+        var result = new LinkedHashMap<String, Object>();
+        result.put("status", "booking_found");
+        result.put("bookingFound", true);
+        result.put("bookingNumber", booking.getBookingReference());
+        result.put("bookingStatus", booking.getStatus());
+        result.put("appointmentName", booking.getCallerName());
+        result.put("serviceType", booking.getServiceType());
+        result.put("appointmentAt", inBusinessTimezone(call, booking.getAppointmentAt()).toString());
+        result.put("durationMinutes", booking.getDurationMinutes());
+        if ("cancel".equals(stringArg(toolCall.arguments(), "requested_action", ""))) {
+            result.put("nextTool", "cancel_booking");
+            result.put("nextToolAuthorized", true);
+            result.put("nextToolArguments", Map.of(
+                    "question_handling", "ready_for_action",
+                    "confirmation_state", "not_confirmed"
+            ));
+            result.put(
+                    "instruction",
+                    "The booking was verified. Sauti will now retain the exact cancellation proposal before any "
+                            + "review is spoken. Follow the chained cancellation result; do not ask an additional "
+                            + "confirmation from this lookup result."
+            );
+        } else {
+            result.put(
+                    "instruction",
+                    "Tell the caller in their current language that the booking was found. Do not read the booking "
+                            + "number unless the caller explicitly asks for it. Use only bookingNumber, bookingStatus, "
+                            + "appointmentName, serviceType, appointmentAt, and durationMinutes from this result. "
+                            + "Do not disclose contact details."
+            );
+        }
+        return Map.copyOf(result);
     }
 
     private Map<String, Object> updateBooking(Call call, LlmToolCall toolCall) {

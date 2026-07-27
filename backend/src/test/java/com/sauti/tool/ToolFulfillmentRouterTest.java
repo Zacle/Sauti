@@ -203,6 +203,39 @@ class ToolFulfillmentRouterTest {
         ));
     }
 
+    @Test
+    void serverConsumedManagedProposalExecutesOnceWithoutExposingItsMarker() {
+        var fixture = fixture(
+                "cancel_booking",
+                ToolActionEffect.DATA_WRITE,
+                ToolConfirmationPolicy.EXPLICIT
+        );
+        var retainedArguments = Map.<String, Object>of("reason", "caller requested");
+        var providerResult = LlmToolResult.success(
+                new LlmToolCall("managed-confirm", fixture.tool.getToolName(), retainedArguments),
+                Map.of("status", "booking_cancelled", "cancelled", true)
+        );
+        when(fixture.webhook.execute(any(), any(), any())).thenReturn(providerResult);
+        var providerCall = new LlmToolCall(
+                "managed-confirm",
+                fixture.tool.getToolName(),
+                Map.of("confirmation_state", "confirmed", "question_handling", "ready_for_action")
+        );
+
+        var result = fixture.router.route(
+                fixture.call,
+                ToolActionPolicy.managedConfirmedCall(providerCall, retainedArguments)
+        );
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_cancelled")
+                .containsEntry("actionPerformed", true);
+        verify(fixture.sessions, never()).consumeConfirmedAction(any(), any(), any());
+        verify(fixture.webhook).execute(any(), any(), argThat(call ->
+                call.arguments().equals(retainedArguments)
+        ));
+    }
+
     private Fixture fixture(
             String name,
             ToolActionEffect effect,

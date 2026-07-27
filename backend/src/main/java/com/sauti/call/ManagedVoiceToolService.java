@@ -8,6 +8,7 @@ import com.sauti.llm.LlmToolResult;
 import com.sauti.session.CallSession;
 import com.sauti.session.CallSessionStore;
 import com.sauti.tool.ToolFulfillmentRouter;
+import com.sauti.tool.ToolActionPolicy;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -258,24 +259,13 @@ public class ManagedVoiceToolService {
                 || !"ready_for_action".equals(stringArgument(toolCall, "question_handling"))) {
             return toolCall;
         }
-        var retained = sessions.pendingAction(call.getTwilioCallSid())
-                .filter(action -> action.toolName().equals(toolCall.name()));
+        var retained = sessions.takePendingAction(
+                call.getTwilioCallSid(), toolCall.name()
+        );
         if (retained.isEmpty()) return toolCall;
 
         var businessArguments = retained.orElseThrow().arguments();
-        sessions.recordManagedConfirmation(
-                call.getTwilioCallSid(),
-                toolCall.name(),
-                businessArguments
-        );
-        var verifiedArguments = new java.util.LinkedHashMap<>(businessArguments);
-        verifiedArguments.put("question_handling", "ready_for_action");
-        verifiedArguments.put("confirmation_state", "confirmed");
-        return new LlmToolCall(
-                toolCall.id(),
-                toolCall.name(),
-                Map.copyOf(verifiedArguments)
-        );
+        return ToolActionPolicy.managedConfirmedCall(toolCall, businessArguments);
     }
 
     private Map<String, Object> response(LlmToolResult routed) {

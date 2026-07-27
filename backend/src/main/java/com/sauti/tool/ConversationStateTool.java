@@ -46,6 +46,7 @@ public class ConversationStateTool {
             "caller_name", "appointment_name", "recipient_relation", "service_type",
             "caller_phone", "new_caller_phone", "caller_email",
             "booking_number", "booking_date", "booking_lookup_name", "booking_time",
+            "existing_booking_action",
             "preferred_day", "preferred_time",
             "review_decision"
     );
@@ -95,7 +96,8 @@ public class ConversationStateTool {
                     case "booking_number" -> "Accumulated customer-facing booking number supplied for a lookup, update, reschedule, or cancellation. Normalize spelled characters, number words, and dash/hyphen into the SAT-XXXXXXXXXXXX form, where exactly twelve characters follow SAT-. Consecutive partial fragments are valid updates, but never claim to look up a partial reference.";
                     case "booking_date" -> "Date of an existing appointment, normalized to yyyy-MM-dd in the business timezone. This identifies an existing booking and is distinct from preferred_day for a new or replacement date.";
                     case "booking_lookup_name" -> "Name the caller says the existing booking was saved under. If the caller spells the name letter by letter, reconstruct the name from those letters and prefer that explicit spelling over a nearby speech-to-text word. Never fill this from a name disclosed by a tool result.";
-                    case "booking_time" -> "Exact time of an existing appointment normalized to HH:mm, only when the server reports that phone, date, and saved name match more than one booking.";
+                    case "booking_time" -> "Exact time of an existing appointment normalized to HH:mm for private phone/date/time verification.";
+                    case "existing_booking_action" -> "Explicit requested operation for an existing booking: lookup, update, reschedule, or cancel.";
                     case "preferred_day" -> "Clearly understood appointment date normalized to yyyy-MM-dd using TODAY IN THE BUSINESS TIMEZONE. Omit when the date is unclear.";
                     case "preferred_time" -> "Clearly understood exact appointment time normalized to HH:mm, or a clear broad period such as morning or afternoon. Omit when the time is unclear.";
                     case "review_decision" -> "Meaning of the caller's latest response to the immediately preceding server-retained booking review or action confirmation: approved, corrected, rejected, or unclear. This is turn-scoped and never inferred from politeness alone.";
@@ -256,6 +258,15 @@ public class ConversationStateTool {
                             ? Set.of()
                             : Set.copyOf(call.getAgent().getBookingRequiredFields())
             );
+            var hasMaterialCorrection = turnUpdates.keySet().stream()
+                    .anyMatch(field -> !"review_decision".equals(field));
+            if (hasMaterialCorrection || !clearedFields.isEmpty()) {
+                // Any corrected material state invalidates a previously spoken
+                // side-effect review. A later confirmation must be for a new
+                // server-retained proposal built from the corrected values.
+                sessions.updatePendingAction(call.getTwilioCallSid(), null);
+                pendingAction = Optional.empty();
+            }
             var changesExistingBookingIdentity = Set.of(
                     "caller_phone", "booking_date", "booking_time", "booking_number"
             ).stream().anyMatch(field -> turnUpdates.containsKey(field) || clearedFields.contains(field));
@@ -295,7 +306,8 @@ public class ConversationStateTool {
                     || turnUpdates.containsKey("caller_phone")
                     || turnUpdates.containsKey("booking_date")
                     || turnUpdates.containsKey("booking_lookup_name")
-                    || turnUpdates.containsKey("booking_time"))
+                    || turnUpdates.containsKey("booking_time")
+                    || turnUpdates.containsKey("existing_booking_action"))
                     && !incompleteBookingReference
                     && lookupBookingArguments(next).isPresent()
                     && configuredFor(call, "lookup_booking");
@@ -488,10 +500,11 @@ public class ConversationStateTool {
         var bookingNumber = state.values().getOrDefault("booking_number", "").trim();
         var callerPhone = state.values().getOrDefault("caller_phone", "").trim();
         if (completeBookingNumber(bookingNumber) && !callerPhone.isBlank()) {
-            return Optional.of(Map.of(
-                    "booking_number", bookingNumber,
-                    "caller_phone", callerPhone
-            ));
+            var arguments = new LinkedHashMap<String, Object>();
+            arguments.put("booking_number", bookingNumber);
+            arguments.put("caller_phone", callerPhone);
+            arguments.put("requested_action", existingBookingAction(state));
+            return Optional.of(Map.copyOf(arguments));
         }
         var bookingDate = state.values().getOrDefault("booking_date", "").trim();
         try {
@@ -511,7 +524,14 @@ public class ConversationStateTool {
             return Optional.empty();
         }
         arguments.put("booking_time", bookingTime);
+        arguments.put("requested_action", existingBookingAction(state));
         return Optional.of(Map.copyOf(arguments));
+    }
+
+    private String existingBookingAction(ConversationState state) {
+        var requestedAction = state.values().getOrDefault("existing_booking_action", "").trim();
+        return Set.of("lookup", "update", "reschedule", "cancel").contains(requestedAction)
+                ? requestedAction : "lookup";
     }
 
     private boolean incompleteBookingReference(

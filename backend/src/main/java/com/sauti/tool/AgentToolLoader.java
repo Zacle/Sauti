@@ -160,6 +160,11 @@ public class AgentToolLoader {
                     "type", "string",
                     "description", "Exact existing appointment time in HH:mm. Required with booking_date as a private verification challenge."
             ));
+            properties.put("requested_action", Map.of(
+                    "type", "string",
+                    "enum", List.of("lookup", "update", "reschedule", "cancel"),
+                    "description", "The existing-booking operation the caller explicitly requested. Use cancel for cancellation so Sauti can retain the cancellation proposal before asking for confirmation."
+            ));
         } else {
             properties.remove("booking_number");
             properties.remove("caller_phone");
@@ -173,7 +178,7 @@ public class AgentToolLoader {
             ));
         }
         var identityFields = "lookup_booking".equals(definition.name())
-                ? List.of("caller_phone")
+                ? List.of("caller_phone", "requested_action")
                 : List.<String>of();
         for (var field : identityFields) {
             if (!required.contains(field)) required.add(field);
@@ -185,7 +190,8 @@ public class AgentToolLoader {
                 definition.description() + ("lookup_booking".equals(definition.name())
                         ? " Identify the booking from caller-supplied phone, existing appointment date, and exact time, "
                                 + "or phone plus a complete reference the caller volunteers. Names are not identity "
-                                + "factors. Never reveal booking facts until the server verifies the supplied values."
+                                + "factors. Set requested_action from the caller's explicit request. Never reveal booking "
+                                + "facts until the server verifies the supplied values."
                         : " This action uses the server-owned identity established by lookup_booking. Do not supply, ask "
                                 + "for, or infer a booking number or phone for this mutation."),
                 Map.copyOf(schema),

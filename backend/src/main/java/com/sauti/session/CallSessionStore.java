@@ -41,6 +41,13 @@ public interface CallSessionStore {
 
     void updatePendingAction(String callSid, PendingAction action);
 
+    /**
+     * Atomically removes and returns the retained action only when its tool
+     * name matches. Used by managed-provider confirmation callbacks so a
+     * proposal can be authorized exactly once across webhook invocations.
+     */
+    Optional<PendingAction> takePendingAction(String callSid, String toolName);
+
     boolean recordManagedConfirmation(
             String callSid,
             String toolName,

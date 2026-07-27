@@ -15,6 +15,27 @@ import org.springframework.data.redis.core.ValueOperations;
 
 class RedisCallSessionStoreTest {
     @Test
+    void atomicallyTakesOnlyTheMatchingManagedActionOnce() {
+        var redis = mock(StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        var values = (ValueOperations<String, String>) mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(values);
+        when(values.get(anyString())).thenReturn(null);
+        var store = new RedisCallSessionStore(redis, new ObjectMapper().findAndRegisterModules(), 7200);
+        var session = new CallSession();
+        var pending = new PendingAction(
+                "cancel_booking", Map.of("reason", "caller requested"), 3
+        );
+        session.setPendingAction(pending);
+        store.create("managed-take", session);
+
+        assertThat(store.takePendingAction("managed-take", "reschedule_booking")).isEmpty();
+        assertThat(store.takePendingAction("managed-take", "cancel_booking")).contains(pending);
+        assertThat(store.takePendingAction("managed-take", "cancel_booking")).isEmpty();
+        assertThat(store.pendingAction("managed-take")).isEmpty();
+    }
+
+    @Test
     void retainsVerifiedBookingIdentityOutsideModelVisibleConversationState() {
         var redis = mock(StringRedisTemplate.class);
         @SuppressWarnings("unchecked")
