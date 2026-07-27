@@ -31,6 +31,7 @@ export const previewDashboardData: DashboardData = {
       humanTransferNumber: "+254 700 000 000",
       escalationPhrases: ["speak to a person"],
       bookingEnabled: true,
+      defaultBookingDurationMinutes: 60,
       timezone: "Africa/Nairobi",
       knowledgeBase: null,
       operatingHours: "workspace",

@@ -123,14 +123,17 @@ public class BookingService {
         var existing = matchingBookingForCall(tenantId, request);
         if (existing.isPresent()) return existing.get();
         var booking = persistLocalBooking(tenantId, request);
-        return synchronizeCreatedBooking(booking, providerFor(booking.getAgent()));
+        runPostSaveActions(booking);
+        return booking;
     }
 
+    /**
+     * Compatibility overload for existing callers. Calendar synchronization is
+     * intentionally durable and asynchronous; a request-scoped provider must
+     * never determine whether the Sauti booking is committed.
+     */
     public Booking create(UUID tenantId, CreateBookingRequest request, CalendarProvider provider) {
-        var existing = matchingBookingForCall(tenantId, request);
-        if (existing.isPresent()) return existing.get();
-        var booking = persistLocalBooking(tenantId, request);
-        return synchronizeCreatedBooking(booking, provider);
+        return create(tenantId, request);
     }
 
     private java.util.Optional<Booking> matchingBookingForCall(UUID tenantId, CreateBookingRequest request) {
@@ -186,7 +189,7 @@ public class BookingService {
             call = callRepository.findByIdAndTenantId(request.callId(), tenantId)
                     .orElseThrow(() -> new EntityNotFoundException("Call not found"));
         }
-        return bookingRepository.saveAndFlush(new Booking(
+        var booking = new Booking(
                 agent.getTenant(),
                 agent,
                 call,
@@ -196,7 +199,12 @@ public class BookingService {
                 request.serviceType(),
                 request.appointmentAt(), requestedDuration,
                 json(request.capturedData())
-        ));
+        );
+        if (hasExternalCalendar(agent)) booking.queueCalendarSync();
+        else booking.markLocalOnly();
+        var persisted = bookingRepository.saveAndFlush(booking);
+        eventPublisher.publishEvent(new BookingNotificationService.BookingCreatedEvent(persisted.getId()));
+        return persisted;
         }));
     }
 
@@ -224,38 +232,6 @@ public class BookingService {
             java.time.OffsetDateTime secondEnd
     ) {
         return firstStart.isBefore(secondEnd) && secondStart.isBefore(firstEnd);
-    }
-
-    private Booking synchronizeCreatedBooking(Booking localBooking, CalendarProvider provider) {
-        var integrationConfigured = hasExternalCalendar(localBooking.getAgent());
-        String externalEventId = null;
-        String syncError = null;
-        try {
-            if (integrationConfigured && provider == null) {
-                throw new IllegalStateException("The selected calendar integration is not connected");
-            }
-            if (integrationConfigured) externalEventId = provider.createEvent(localBooking).externalEventId();
-            if (!integrationConfigured) externalEventId = null;
-            if (integrationConfigured && (externalEventId == null || externalEventId.isBlank())) {
-                throw new IllegalStateException("Calendar provider did not return an event identifier");
-            }
-        } catch (RuntimeException exception) {
-            syncError = safeSyncError(exception);
-        }
-
-        var finalExternalEventId = externalEventId;
-        var finalSyncError = syncError;
-        var booking = Objects.requireNonNull(requiresNewTransaction.execute(status -> {
-            var persisted = bookingRepository.findById(localBooking.getId())
-                    .orElseThrow(() -> new EntityNotFoundException("Booking not found after local save"));
-            if (!integrationConfigured) persisted.markLocalOnly();
-            else if (finalSyncError == null) persisted.markSynced(finalExternalEventId);
-            else persisted.markSyncFailed(finalSyncError);
-            eventPublisher.publishEvent(new BookingNotificationService.BookingCreatedEvent(persisted.getId()));
-            return bookingRepository.saveAndFlush(persisted);
-        }));
-        runPostSaveActions(booking);
-        return booking;
     }
 
     private void runPostSaveActions(Booking booking) {
@@ -373,17 +349,6 @@ public class BookingService {
         if (configured == null || configured.isBlank()) return false;
         return !java.util.Set.of("set up later", "provider default", "local", "sauti")
                 .contains(configured.trim().toLowerCase(java.util.Locale.ROOT));
-    }
-
-    private String safeSyncError(RuntimeException exception) {
-        var message = exception.getMessage() == null ? "" : exception.getMessage().toLowerCase(java.util.Locale.ROOT);
-        if (message.contains("not connected") || message.contains("credential") || message.contains("authoriz")) {
-            return "Calendar connection is missing or no longer authorized";
-        }
-        if (message.contains("event identifier")) {
-            return "The calendar did not confirm the event creation";
-        }
-        return "External calendar synchronization failed";
     }
 
     private String normalizeReference(String value) {

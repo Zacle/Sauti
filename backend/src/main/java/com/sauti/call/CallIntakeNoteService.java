@@ -55,7 +55,12 @@ public class CallIntakeNoteService {
 
     public Map<String, String> notes(Call call, String currentCallerTranscript) {
         var semantic = semanticState(call);
-        if (semantic != null && semantic.revision() > 0) return semantic.asNotes();
+        if (semantic != null && semantic.revision() > 0) {
+            // The multilingual semantic boundary owns identity extraction.
+            // The legacy transcript parser is intentionally not allowed to
+            // rewrite that state using a finite list of language phrases.
+            return semantic.asNotes();
+        }
         return snapshot(call, currentCallerTranscript).notes();
     }
 

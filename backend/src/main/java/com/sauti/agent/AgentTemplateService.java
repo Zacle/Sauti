@@ -94,11 +94,13 @@ public class AgentTemplateService {
         String operatingHours = textOrNull(configuration, "operatingHours");
         String afterHoursBehavior = textOrNull(configuration, "afterHoursBehavior");
         String afterHoursMessage = textOrNull(configuration, "afterHoursMessage");
+        int configuredBookingDuration = boundedDuration(configuration.path("bookingDurationMinutes").asInt(60));
         List<String> bookingRequiredFields = stringList(configuration, "bookingRequiredFields");
         List<String> bookingNotificationChannels = stringList(configuration, "bookingNotificationChannels");
         String requestedName = request == null ? null : request.name();
         String requestedTimezone = request == null ? null : request.timezone();
         String transferNumber = request == null ? null : request.humanTransferNumber();
+        Integer requestedBookingDuration = request == null ? null : request.defaultBookingDurationMinutes();
         var agentRequest = new AgentRequest(
                 requestedName == null || requestedName.isBlank() ? template.getName() : requestedName.trim(),
                 template.getDescription(),
@@ -110,6 +112,7 @@ public class AgentTemplateService {
                 transferNumber,
                 escalationPhrases,
                 bookingEnabled,
+                requestedBookingDuration == null ? configuredBookingDuration : requestedBookingDuration,
                 requestedTimezone == null || requestedTimezone.isBlank() ? "Africa/Nairobi" : requestedTimezone,
                 "",
                 operatingHours,
@@ -130,6 +133,10 @@ public class AgentTemplateService {
         var agent = agentService.create(tenantId, agentRequest);
         agentVariableService.seedDefinitions(agent, configuration);
         return agent;
+    }
+
+    private int boundedDuration(int durationMinutes) {
+        return durationMinutes < 5 || durationMinutes > 480 ? 60 : durationMinutes;
     }
 
     private List<String> stringList(JsonNode configuration, String field) {

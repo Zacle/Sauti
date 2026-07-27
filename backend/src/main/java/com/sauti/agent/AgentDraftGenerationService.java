@@ -88,11 +88,13 @@ public class AgentDraftGenerationService {
                   "greetingMessage": "brief instruction for how the opening should be generated at call time, not exact words to say",
                   "systemPrompt": "a complete Markdown-formatted operating manual for the voice agent",
                   "bookingEnabled": true,
+                  "defaultBookingDurationMinutes": 60,
                   "defaultLanguage": "a valid BCP 47 language code such as en or fr-CA",
                   "supportedLanguages": ["one or more valid BCP 47 language codes"],
                   "escalationPhrases": ["specific caller phrases"],
                   "variables": [
-                    {"key":"business_name","label":"Business name","description":"Official business name","required":true}
+                    {"key":"business_name","label":"Business name","description":"Official business name","required":true},
+                    {"key":"faq","label":"Frequently asked questions","description":"Optional approved answers","required":false}
                   ]
                 }
 
@@ -104,7 +106,9 @@ public class AgentDraftGenerationService {
                 - Include one or more domain-specific workflow sections with numbered steps and branches where relevant.
                 - Include specific escalation, safety, and prohibited-behavior instructions.
                 - Include tool rules. If booking is enabled, require availability checks before offering or confirming times.
+                - For booking agents, state that confirmed bookings are saved in Sauti first and optional external calendars synchronize afterward.
                 - For booking agents, specify a phone-friendly collection order: service or reason, full name, date, time preference, then contact detail.
+                - Make every caller-facing instruction language-neutral: respond, read values back, and request confirmation in the caller's current language. Never require an English phonetic alphabet.
                 - For healthcare agents, do not collect date of birth, medical history, insurance, symptoms, or other sensitive details unless explicitly required by the brief.
                 - Finish with a ## Tone section describing how the agent should communicate.
                 - Write detailed, actionable instructions, not a short summary or a collection of generic sentences.
@@ -112,10 +116,14 @@ public class AgentDraftGenerationService {
 
                 Use {{variable_name}} placeholders throughout systemPrompt for business facts the user should provide.
                 Every placeholder except {{agent_name}} and {{timezone}} must have one matching variables entry.
-                Return only variables actually referenced in systemPrompt. Mark facts required when the agent cannot operate correctly without them.
+                Return only variables actually referenced in systemPrompt. Include both required and optional business variables:
+                mark facts required when the agent cannot operate correctly without them, and mark useful enrichment such as FAQs,
+                website, pricing guidance, or tone optional. Include at least one variable of each kind.
                 The greetingMessage field is direction for the live LLM. It must not be a fixed greeting script, and it must tell the live agent to introduce itself by {{agent_name}} once.
                 Do not assume a city, country, currency, emergency number, business name, or opening hours.
                 Only enable booking if the brief requires appointments, reservations, or scheduling.
+                For booking agents, set defaultBookingDurationMinutes between 5 and 480. Use 60 when the brief does not specify a normal duration.
+                For non-booking agents, return 60 for defaultBookingDurationMinutes; the setting is ignored until booking is enabled.
                 Keep variables reusable and use lowercase snake_case keys.
                 """;
         var userMessage = "Business brief:\n" + brief.trim();
@@ -219,7 +227,8 @@ public class AgentDraftGenerationService {
             escalationPhrases.add("emergency");
         }
         String tools = booking
-                ? "Use the calendar availability tool before offering times and the booking tool only after confirmation."
+                ? "Use the calendar availability tool before offering times and the booking tool only after confirmation. "
+                    + "Save confirmed bookings in Sauti first; optional external calendars synchronize afterward."
                 : "Use only approved knowledge and configured tools.";
         String prompt = """
                 You are {{agent_name}}, the professional %s voice agent for {{business_name}}.
@@ -232,6 +241,8 @@ public class AgentDraftGenerationService {
                 - Business name: {{business_name}}
                 - Operating hours: {{business_hours}} ({{timezone}})
                 - Services: {{services}}
+                - Website when configured: {{business_website}}
+                - Approved FAQs when configured: {{faq}}
 
                 ## Conversation Flow
                 1. Greet the caller and identify their goal.
@@ -260,13 +271,16 @@ public class AgentDraftGenerationService {
                 openingDirection(booking),
                 prompt.trim(),
                 booking,
+                60,
                 "en",
                 List.of("en", "fr", "ar"),
                 List.copyOf(escalationPhrases),
                 List.of(
                         new GeneratedVariable("business_name", "Business name", "Official business name", true),
                         new GeneratedVariable("business_hours", "Operating hours", "Regular opening and closing hours", true),
-                        new GeneratedVariable("services", "Services", "Services the agent may discuss", true)
+                        new GeneratedVariable("services", "Services", "Services the agent may discuss", true),
+                        new GeneratedVariable("business_website", "Business website", "Optional public website", false),
+                        new GeneratedVariable("faq", "Frequently asked questions", "Optional approved questions and answers", false)
                 )
         );
     }
@@ -300,13 +314,55 @@ public class AgentDraftGenerationService {
                         (first, ignored) -> first,
                         LinkedHashMap::new
                 ));
+        var normalizedPrompt = generated.systemPrompt().trim();
         var referencedKeys = new LinkedHashSet<String>();
-        var matcher = PLACEHOLDER.matcher(generated.systemPrompt());
+        var matcher = PLACEHOLDER.matcher(normalizedPrompt);
         while (matcher.find()) {
             var key = matcher.group(1);
             if (!"agent_name".equals(key) && !"timezone".equals(key)) referencedKeys.add(key);
         }
-        var variables = referencedKeys.stream()
+        String requiredKey = referencedKeys.stream()
+                .filter(key -> !variableMap.containsKey(key) || variableMap.get(key).required())
+                .findFirst()
+                .orElse("business_name");
+        if (!referencedKeys.contains(requiredKey)) {
+            normalizedPrompt += "\n\n## Required Business Context\n- Business name: {{business_name}}";
+            referencedKeys.add(requiredKey);
+        }
+        variableMap.compute(requiredKey, (key, definition) -> definition == null
+                ? new GeneratedVariable(key, humanize(key), "Required business context", true)
+                : new GeneratedVariable(
+                        definition.key(), definition.label(), definition.description(), true
+                ));
+
+        String optionalKey = referencedKeys.stream()
+                .filter(key -> variableMap.containsKey(key) && !variableMap.get(key).required())
+                .findFirst()
+                .orElse("additional_business_context");
+        if (!referencedKeys.contains(optionalKey)) {
+            normalizedPrompt += """
+
+                    ## Optional Business Context
+                    Use {{additional_business_context}} only when the owner provides it. Never invent a value when it is blank.
+                    """;
+            referencedKeys.add(optionalKey);
+        }
+        variableMap.compute(optionalKey, (key, definition) -> definition == null
+                ? new GeneratedVariable(
+                        key,
+                        "Additional business context",
+                        "Optional approved context, FAQs, or guidance",
+                        false
+                )
+                : new GeneratedVariable(
+                        definition.key(), definition.label(), definition.description(), false
+                ));
+
+        var orderedKeys = new LinkedHashSet<String>();
+        orderedKeys.add(requiredKey);
+        orderedKeys.add(optionalKey);
+        orderedKeys.addAll(referencedKeys);
+        var variables = orderedKeys.stream()
                 .limit(20)
                 .map(key -> variableMap.getOrDefault(
                         key,
@@ -326,8 +382,11 @@ public class AgentDraftGenerationService {
                 generated.name().trim(),
                 blank(generated.description()),
                 generated.greetingMessage().trim(),
-                generated.systemPrompt().trim(),
+                normalizedPrompt,
                 generated.bookingEnabled(),
+                generated.defaultBookingDurationMinutes() < 5 || generated.defaultBookingDurationMinutes() > 480
+                        ? 60
+                        : generated.defaultBookingDurationMinutes(),
                 defaultLanguage,
                 List.copyOf(supported),
                 phrases,

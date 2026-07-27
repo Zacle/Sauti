@@ -136,7 +136,14 @@ export function AgentVariablesPage({ agentId }: { agentId: string }) {
             <div className={styles.readiness}>
               <header><div><span>Activation checklist</span><h3>{readiness.active ? "Agent is active" : readiness.readyToActivate ? "Ready to activate" : "Finish setup"}</h3></div><i>{[readiness.businessDetailsComplete, readiness.calendarConfigured, readiness.channelConfigured, readiness.active].filter(Boolean).length}/4</i></header>
               <SetupCheck label="Business details" done={readiness.businessDetailsComplete} detail={readiness.businessDetailsComplete ? "Required values are complete" : readiness.missingRequiredVariables.join(", ")} />
-              <SetupCheck label="Calendar connection" done={readiness.calendarConfigured} detail={readiness.calendarRequired ? (readiness.calendarConfigured ? "Booking destination connected" : "Required for appointment booking") : "Not required for this agent"} href={!readiness.calendarConfigured ? `/dashboard/integrations?provider=google_calendar&agentId=${agentId}` : undefined} />
+              <SetupCheck
+                label="External calendar sync"
+                done={!readiness.calendarRequired || readiness.calendarConfigured}
+                detail={readiness.calendarConfigured
+                  ? "Connected as an optional synchronization destination"
+                  : "Optional — bookings are saved in Sauti first"}
+                href={!readiness.calendarConfigured ? `/dashboard/integrations?provider=google_calendar&agentId=${agentId}` : undefined}
+              />
               <SetupCheck
                 label="Live channel"
                 done={readiness.channelConfigured}

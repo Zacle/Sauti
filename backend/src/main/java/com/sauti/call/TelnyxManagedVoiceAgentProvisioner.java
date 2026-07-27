@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "18";
+        return "20";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -149,7 +149,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 TELNYX EXECUTION CONTRACT:
                 - Call a required business tool before speaking about its result.
                 - success=true means the tool request was processed. It does not by itself mean a business mutation
-                  happened. Only actionPerformed=true means external data changed.
+                  happened. Only actionPerformed=true means Sauti's authoritative business state changed.
                 - Treat the returned result as authoritative. For any mutation, claim success only when the result
                   explicitly contains actionPerformed=true.
                 - workflowPending=true or actionPerformed=false is a valid workflow step, not a tool failure. Follow

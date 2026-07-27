@@ -4,6 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,6 +25,7 @@ public final class AgentDtos {
             String humanTransferNumber,
             List<String> escalationPhrases,
             boolean bookingEnabled,
+            @Min(5) @Max(480) Integer defaultBookingDurationMinutes,
             String timezone,
             @Size(max = 10000) String knowledgeBase,
             String operatingHours,
@@ -81,6 +84,7 @@ public final class AgentDtos {
             String humanTransferNumber,
             List<String> escalationPhrases,
             boolean bookingEnabled,
+            int defaultBookingDurationMinutes,
             String timezone,
             String knowledgeBase,
             String operatingHours,
@@ -144,6 +148,7 @@ public final class AgentDtos {
                     agent.getHumanTransferNumber(),
                     agent.getEscalationPhrases(),
                     agent.isBookingEnabled(),
+                    agent.getDefaultBookingDurationMinutes(),
                     agent.getTimezone(),
                     agent.getKnowledgeBase(),
                     agent.getOperatingHours(),

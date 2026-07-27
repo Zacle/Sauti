@@ -66,6 +66,11 @@ public class Booking extends Auditable {
     private String calendarSyncError;
 
     @Column(nullable = false)
+    private int calendarSyncAttempts = 0;
+
+    private OffsetDateTime calendarSyncNextAttemptAt;
+
+    @Column(nullable = false)
     private String status = "confirmed";
 
     @Column(nullable = false)
@@ -105,25 +110,44 @@ public class Booking extends Auditable {
         this.externalEventId = externalEventId;
         this.calendarSyncStatus = "synced";
         this.calendarSyncError = null;
+        this.calendarSyncNextAttemptAt = null;
     }
 
     public void markLocalOnly() {
         this.externalEventId = null;
         this.calendarSyncStatus = "not_configured";
         this.calendarSyncError = null;
+        this.calendarSyncNextAttemptAt = null;
+        this.status = "confirmed";
+    }
+
+    public void queueCalendarSync() {
+        this.externalEventId = null;
+        this.calendarSyncStatus = "pending";
+        this.calendarSyncError = null;
+        this.calendarSyncAttempts = 0;
+        this.calendarSyncNextAttemptAt = OffsetDateTime.now();
         this.status = "confirmed";
     }
 
     public void markSyncFailed(String error) {
-        this.calendarSyncStatus = "pending_owner_action";
+        this.calendarSyncAttempts++;
         this.calendarSyncError = error == null || error.isBlank() ? "Calendar synchronization failed" : error;
-        this.status = "pending_confirmation";
+        if (this.calendarSyncAttempts >= 5) {
+            this.calendarSyncStatus = "pending_owner_action";
+            this.calendarSyncNextAttemptAt = null;
+        } else {
+            this.calendarSyncStatus = "pending";
+            this.calendarSyncNextAttemptAt = OffsetDateTime.now()
+                    .plusSeconds((long) Math.pow(2, this.calendarSyncAttempts) * 30);
+        }
+        this.status = "confirmed";
     }
 
     public void markCalendarActionFailed(String error) {
         this.calendarSyncStatus = "pending_owner_action";
         this.calendarSyncError = error == null || error.isBlank() ? "Calendar synchronization failed" : error;
-        if (!"cancelled".equals(status)) this.status = "pending_confirmation";
+        if (!"cancelled".equals(status)) this.status = "confirmed";
     }
 
     public void updateDetails(String callerName, String callerPhone, String callerEmail, String serviceType,
@@ -182,6 +206,8 @@ public class Booking extends Auditable {
     public String getCapturedData() { return capturedData; }
     public String getCalendarSyncStatus() { return calendarSyncStatus; }
     public String getCalendarSyncError() { return calendarSyncError; }
+    public int getCalendarSyncAttempts() { return calendarSyncAttempts; }
+    public OffsetDateTime getCalendarSyncNextAttemptAt() { return calendarSyncNextAttemptAt; }
 
     public String getExternalEventId() {
         return externalEventId;

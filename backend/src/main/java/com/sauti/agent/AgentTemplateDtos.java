@@ -2,6 +2,8 @@ package com.sauti.agent;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -68,7 +70,8 @@ public final class AgentTemplateDtos {
     public record CreateAgentFromTemplateRequest(
             @Size(max = 100) String name,
             @Size(max = 100) String timezone,
-            @Size(max = 30) String humanTransferNumber
+            @Size(max = 30) String humanTransferNumber,
+            @Min(5) @Max(480) Integer defaultBookingDurationMinutes
     ) {
     }
 }

@@ -1,5 +1,6 @@
 package com.sauti;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -63,15 +64,18 @@ class AgentTemplateApiTest {
                 .andReturn().getResponse().getContentAsString();
 
         String systemTemplateId = null;
+        String systemTemplateConfiguration = null;
         for (var template : objectMapper.readTree(systemTemplatesJson)) {
             if ("Medical Receptionist".equals(template.get("name").asText())) {
                 systemTemplateId = template.get("id").asText();
+                systemTemplateConfiguration = template.get("configurationJson").asText();
                 break;
             }
         }
         if (systemTemplateId == null) {
             throw new IllegalStateException("Medical Receptionist system template was not seeded");
         }
+        assertThat(systemTemplateConfiguration).contains("\"bookingDurationMinutes\":60");
 
         var createdJson = mvc.perform(post("/api/v1/agent-templates")
                         .header("Authorization", bearer(ownerToken))
@@ -110,7 +114,8 @@ class AgentTemplateApiTest {
                                 {
                                   "name": "Amina",
                                   "timezone": "Africa/Nairobi",
-                                  "humanTransferNumber": "+254700000000"
+                                  "humanTransferNumber": "+254700000000",
+                                  "defaultBookingDurationMinutes": 45
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -118,6 +123,7 @@ class AgentTemplateApiTest {
                 .andExpect(jsonPath("$.defaultLanguage").value("en"))
                 .andExpect(jsonPath("$.supportedLanguages[0]").value("en"))
                 .andExpect(jsonPath("$.bookingEnabled").value(true))
+                .andExpect(jsonPath("$.defaultBookingDurationMinutes").value(45))
                 .andExpect(jsonPath("$.active").value(false))
                 .andReturn().getResponse().getContentAsString();
         var agentId = objectMapper.readTree(agentJson).get("id").asText();
@@ -127,6 +133,7 @@ class AgentTemplateApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.key == 'business_name')].required").value(true))
                 .andExpect(jsonPath("$[?(@.key == 'business_name')].filled").value(false))
+                .andExpect(jsonPath("$[?(@.required == false)]").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
 
         mvc.perform(post("/api/v1/agents/" + agentId + "/activate")

@@ -226,9 +226,7 @@ class AuthAgentFlowTest {
                 .content("{\"transcript\":\"yes confirm it\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response").value(containsString("Before I save the booking")))
-                .andExpect(jsonPath("$.response").value(containsString(
-                        "F for Foxtrot, A for Alfa, T for Tango, O for Oscar, U for Uniform"
-                )));
+                .andExpect(jsonPath("$.response").value(containsString("the name Fatou")));
 
         mvc.perform(post("/api/v1/calls/CA123/simulate-turn")
                         .header("Authorization", "Bearer " + token)

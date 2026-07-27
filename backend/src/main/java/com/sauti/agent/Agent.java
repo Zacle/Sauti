@@ -134,6 +134,9 @@ public class Agent extends Auditable {
     private String bookingRequiredFields = "caller_name,caller_phone,service_type,appointment_at";
 
     @Column(nullable = false)
+    private int defaultBookingDurationMinutes = 60;
+
+    @Column(nullable = false)
     private String bookingNotificationChannels = "dashboard,email";
 
     @Column(length = 320)
@@ -345,15 +348,21 @@ public class Agent extends Auditable {
         return bookingEnabled;
     }
 
+    public int getDefaultBookingDurationMinutes() { return defaultBookingDurationMinutes; }
     public List<String> getBookingRequiredFields() { return split(bookingRequiredFields); }
     public List<String> getBookingNotificationChannels() { return split(bookingNotificationChannels); }
     public String getBookingNotificationRecipient() { return bookingNotificationRecipient; }
 
     public void configureBookingWorkflow(
+            Integer durationMinutes,
             List<String> requiredFields,
             List<String> notificationChannels,
             String notificationRecipient
     ) {
+        this.defaultBookingDurationMinutes = durationMinutes == null ? 60 : durationMinutes;
+        if (this.defaultBookingDurationMinutes < 5 || this.defaultBookingDurationMinutes > 480) {
+            throw new IllegalArgumentException("Default booking duration must be between 5 and 480 minutes");
+        }
         var configuredFields = requiredFields == null ? List.<String>of() : requiredFields.stream()
                 .map(String::trim)
                 .filter(value -> !value.isBlank())
@@ -381,6 +390,14 @@ public class Agent extends Auditable {
         this.bookingNotificationRecipient = notificationRecipient == null || notificationRecipient.isBlank()
                 ? null
                 : notificationRecipient.trim();
+    }
+
+    public void configureBookingWorkflow(
+            List<String> requiredFields,
+            List<String> notificationChannels,
+            String notificationRecipient
+    ) {
+        configureBookingWorkflow(null, requiredFields, notificationChannels, notificationRecipient);
     }
 
     public String getTimezone() {

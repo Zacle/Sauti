@@ -40,6 +40,35 @@ class CallIntakeNoteServiceTest {
     }
 
     @Test
+    void semanticIdentityIsNeverRewrittenByALanguageSpecificTranscriptParser() {
+        var repository = mock(CallTurnRepository.class);
+        var sessions = mock(com.sauti.session.CallSessionStore.class);
+        var call = mock(Call.class);
+        var callId = UUID.randomUUID();
+        when(call.getId()).thenReturn(callId);
+        when(call.getTwilioCallSid()).thenReturn("french-name-session");
+        var nameTurn = turn("mon nom c'est Zacari", "Merci Zacari.");
+        when(repository.findByCall_IdOrderByTurnIndexAsc(callId)).thenReturn(List.of(nameTurn));
+        when(sessions.conversationState("french-name-session")).thenReturn(Optional.of(
+                new com.sauti.session.ConversationState(
+                        Map.of(
+                                "caller_name", "زكريا",
+                                "appointment_name", "زكريا"
+                        ),
+                        "self",
+                        "active",
+                        4
+                )
+        ));
+
+        var notes = new CallIntakeNoteService(repository, sessions).notes(call, "");
+
+        assertThat(notes)
+                .containsEntry("caller_name", "زكريا")
+                .containsEntry("appointment_name", "زكريا");
+    }
+
+    @Test
     void retainsEarlyCallerDetailsAcrossTheCompleteCall() {
         var repository = mock(CallTurnRepository.class);
         var call = mock(Call.class);

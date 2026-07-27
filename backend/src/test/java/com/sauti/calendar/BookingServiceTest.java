@@ -33,33 +33,78 @@ import org.springframework.transaction.TransactionStatus;
 
 class BookingServiceTest {
     @Test
-    void commitsLocalBookingBeforeCallingConfiguredCalendar() {
+    void commitsLocalBookingAndQueuesConfiguredCalendarWithoutCallingIt() {
         var fixture = fixture("Google Calendar");
         when(fixture.provider.createEvent(any())).thenReturn(new CalendarSyncResult("google-event-1"));
 
         var booking = fixture.service.create(fixture.tenant.getId(), fixture.request, fixture.provider);
 
-        assertThat(booking.getCalendarSyncStatus()).isEqualTo("synced");
-        assertThat(booking.getExternalEventId()).isEqualTo("google-event-1");
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("pending");
+        assertThat(booking.getExternalEventId()).isNull();
+        assertThat(booking.getCalendarSyncNextAttemptAt()).isNotNull();
         var ordered = inOrder(fixture.bookingRepository, fixture.transactionManager, fixture.provider);
         ordered.verify(fixture.bookingRepository).saveAndFlush(any(Booking.class));
         ordered.verify(fixture.transactionManager).commit(any());
-        ordered.verify(fixture.provider).createEvent(any(Booking.class));
+        verify(fixture.provider, never()).createEvent(any(Booking.class));
         verify(fixture.eventPublisher).publishEvent(any(BookingNotificationService.BookingCreatedEvent.class));
     }
 
     @Test
-    void keepsDatabaseBookingAndRequestsOwnerFollowUpWhenCalendarFails() {
+    void liveCreateDoesNotContactAFailingCalendarProvider() {
         var fixture = fixture("Google Calendar");
         when(fixture.provider.createEvent(any())).thenThrow(new IllegalStateException("expired credential token"));
 
         var booking = fixture.service.create(fixture.tenant.getId(), fixture.request, fixture.provider);
 
         assertThat(booking.getId()).isNotNull();
-        assertThat(booking.getCalendarSyncStatus()).isEqualTo("pending_owner_action");
-        assertThat(booking.getStatus()).isEqualTo("pending_confirmation");
-        assertThat(booking.getCalendarSyncError()).isEqualTo("Calendar connection is missing or no longer authorized");
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("pending");
+        assertThat(booking.getStatus()).isEqualTo("confirmed");
+        assertThat(booking.getCalendarSyncError()).isNull();
+        verify(fixture.provider, never()).createEvent(any());
         verify(fixture.eventPublisher).publishEvent(any(BookingNotificationService.BookingCreatedEvent.class));
+    }
+
+    @Test
+    void backgroundWorkerSynchronizesACommittedBooking() {
+        var fixture = fixture("Google Calendar");
+        var booking = fixture.service.create(fixture.tenant.getId(), fixture.request);
+        when(fixture.bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+        when(fixture.calendarProviderFactory.connectedForAgent(fixture.requestAgent.getId()))
+                .thenReturn(Optional.of(fixture.provider));
+        when(fixture.provider.createEvent(booking)).thenReturn(new CalendarSyncResult("google-event-1"));
+        var processor = new BookingCalendarSyncService.BookingCalendarSyncProcessor(
+                fixture.bookingRepository,
+                fixture.calendarProviderFactory
+        );
+
+        processor.synchronize(booking.getId());
+
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("synced");
+        assertThat(booking.getExternalEventId()).isEqualTo("google-event-1");
+    }
+
+    @Test
+    void backgroundWorkerRetainsAndRetriesTheDatabaseBookingWhenCalendarFails() {
+        var fixture = fixture("Google Calendar");
+        var booking = fixture.service.create(fixture.tenant.getId(), fixture.request);
+        when(fixture.bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+        when(fixture.calendarProviderFactory.connectedForAgent(fixture.requestAgent.getId()))
+                .thenReturn(Optional.of(fixture.provider));
+        when(fixture.provider.createEvent(booking))
+                .thenThrow(new IllegalStateException("expired credential token"));
+        var processor = new BookingCalendarSyncService.BookingCalendarSyncProcessor(
+                fixture.bookingRepository,
+                fixture.calendarProviderFactory
+        );
+
+        processor.synchronize(booking.getId());
+
+        assertThat(booking.getStatus()).isEqualTo("confirmed");
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("pending");
+        assertThat(booking.getCalendarSyncAttempts()).isEqualTo(1);
+        assertThat(booking.getCalendarSyncNextAttemptAt()).isNotNull();
+        assertThat(booking.getCalendarSyncError())
+                .isEqualTo("Calendar connection is missing or no longer authorized");
     }
 
     @Test
@@ -291,6 +336,7 @@ class BookingServiceTest {
         var transactionManager = mock(PlatformTransactionManager.class);
         when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
         var provider = mock(CalendarProvider.class);
+        var calendarProviderFactory = mock(CalendarProviderFactory.class);
         var eventPublisher = mock(ApplicationEventPublisher.class);
         var callRepository = mock(CallRepository.class);
         var outboundCallService = mock(OutboundCallService.class);
@@ -300,7 +346,7 @@ class BookingServiceTest {
                 callRepository,
                 mock(WebhookDeliveryService.class),
                 outboundCallService,
-                mock(CalendarProviderFactory.class),
+                calendarProviderFactory,
                 new ObjectMapper(),
                 eventPublisher,
                 transactionManager
@@ -317,6 +363,7 @@ class BookingServiceTest {
                 outboundCallService,
                 transactionManager,
                 provider,
+                calendarProviderFactory,
                 eventPublisher,
                 service,
                 request
@@ -331,6 +378,7 @@ class BookingServiceTest {
             OutboundCallService outboundCallService,
             PlatformTransactionManager transactionManager,
             CalendarProvider provider,
+            CalendarProviderFactory calendarProviderFactory,
             ApplicationEventPublisher eventPublisher,
             BookingService service,
             CreateBookingRequest request

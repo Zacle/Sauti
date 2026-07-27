@@ -58,6 +58,7 @@ public class WebhookCalendarProvider implements CalendarProvider {
             ));
             var requestBuilder = HttpRequest.newBuilder(URI.create(webhookUrl))
                     .header("Content-Type", "application/json")
+                    .header("Idempotency-Key", booking.getId().toString())
                     .POST(HttpRequest.BodyPublishers.ofString(body));
             if (!webhookSecret.isBlank()) {
                 sign(requestBuilder, body);

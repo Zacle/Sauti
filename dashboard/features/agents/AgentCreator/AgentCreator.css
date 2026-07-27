@@ -740,6 +740,39 @@
   margin-top: 18px;
 }
 
+.personalisation-variable-group {
+  display: grid;
+  gap: 12px;
+}
+
+.personalisation-variable-group + .personalisation-variable-group {
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(91, 151, 199, 0.14);
+}
+
+.personalisation-variable-group > header {
+  display: grid;
+  gap: 3px;
+  padding: 0 2px;
+}
+
+.personalisation-variable-group > header strong {
+  color: #dce8f0;
+  font-size: 0.78rem;
+  font-weight: 520;
+}
+
+.personalisation-variable-group > header span {
+  color: #71899d;
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.personalisation-variable-group.optional > header strong {
+  color: #a9bfce;
+}
+
 .personalisation-empty {
   margin-top: 18px;
   padding: 24px;
@@ -2230,6 +2263,30 @@
 .booking-workflow-settings > label {
   display: grid;
   gap: 8px;
+}
+
+.booking-duration-setting {
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(91, 151, 199, 0.14);
+}
+
+.booking-duration-setting > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #cbd9e4;
+  font-size: 0.76rem;
+  font-weight: 520;
+}
+
+.booking-duration-setting > span small {
+  padding: 3px 7px;
+  border: 1px solid rgba(39, 222, 209, 0.2);
+  border-radius: 999px;
+  color: #58d9d0;
+  background: rgba(8, 105, 105, 0.12);
+  font-size: 0.58rem;
+  font-weight: 500;
 }
 
 .booking-workflow-settings > label > small,

@@ -103,6 +103,7 @@ type Template = {
   supportedLanguages: string[];
   escalationPhrases: string[];
   variables: AgentVariableDefinition[];
+  defaultBookingDurationMinutes: number;
   bookingRequiredFields: string[];
   bookingNotificationChannels: string[];
 };
@@ -177,6 +178,7 @@ CONVERSATION STYLE
     source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
+    defaultBookingDurationMinutes: 60,
     bookingRequiredFields: DEFAULT_BOOKING_FIELDS,
     bookingNotificationChannels: DEFAULT_BOOKING_NOTIFICATIONS,
   },
@@ -203,6 +205,7 @@ RULES
     source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
+    defaultBookingDurationMinutes: 60,
     bookingRequiredFields: [],
     bookingNotificationChannels: ["dashboard"],
   },
@@ -229,6 +232,7 @@ RULES
     source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
+    defaultBookingDurationMinutes: 60,
     bookingRequiredFields: DEFAULT_BOOKING_FIELDS,
     bookingNotificationChannels: DEFAULT_BOOKING_NOTIFICATIONS,
   },
@@ -247,6 +251,7 @@ Collect the caller's name, phone number, issue summary, urgency, and preferred c
     source: "custom", defaultLanguage: "en", supportedLanguages: ["en", "fr", "ar"],
     escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
     variables: [],
+    defaultBookingDurationMinutes: 60,
     bookingRequiredFields: DEFAULT_BOOKING_FIELDS,
     bookingNotificationChannels: DEFAULT_BOOKING_NOTIFICATIONS,
   },
@@ -286,6 +291,7 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
   let icon: LucideIcon = Bot;
   let escalationPhrases = ["speak to a person", "talk to a human", "human agent"];
   let variables: AgentVariableDefinition[] = [];
+  let defaultBookingDurationMinutes = 60;
   let bookingRequiredFields = DEFAULT_BOOKING_FIELDS;
   let bookingNotificationChannels = DEFAULT_BOOKING_NOTIFICATIONS;
   try {
@@ -295,6 +301,7 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
       icon?: string;
       escalationPhrases?: string[];
       variables?: AgentVariableDefinition[];
+      bookingDurationMinutes?: number;
       bookingRequiredFields?: string[];
       bookingNotificationChannels?: string[];
     };
@@ -305,6 +312,11 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
     variables = Array.isArray(configuration.variables)
       ? configuration.variables.filter((variable) => !SYSTEM_MANAGED_TEMPLATE_VARIABLES.has(variable.key))
       : [];
+    defaultBookingDurationMinutes = Number.isInteger(configuration.bookingDurationMinutes)
+      && Number(configuration.bookingDurationMinutes) >= 5
+      && Number(configuration.bookingDurationMinutes) <= 480
+      ? Number(configuration.bookingDurationMinutes)
+      : 60;
     bookingRequiredFields = Array.isArray(configuration.bookingRequiredFields)
       ? configuration.bookingRequiredFields
       : bookingRequiredFields;
@@ -329,6 +341,7 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
     supportedLanguages: template.supportedLanguages,
     escalationPhrases,
     variables,
+    defaultBookingDurationMinutes,
     bookingRequiredFields,
     bookingNotificationChannels,
   };
@@ -373,6 +386,7 @@ export function AgentCreator({
   const [greeting, setGreeting] = useState(templates[0].greeting);
   const [prompt, setPrompt] = useState(templates[0].prompt);
   const [bookingEnabled, setBookingEnabled] = useState(true);
+  const [defaultBookingDurationMinutes, setDefaultBookingDurationMinutes] = useState(60);
   const [maxDuration, setMaxDuration] = useState("5");
   const [saveTranscript, setSaveTranscript] = useState(true);
   const [recordCalls, setRecordCalls] = useState(false);
@@ -464,6 +478,7 @@ export function AgentCreator({
           supportedLanguages: agent.supportedLanguages,
           escalationPhrases: agent.escalationPhrases,
           variables: [],
+          defaultBookingDurationMinutes: agent.defaultBookingDurationMinutes,
           bookingRequiredFields: agent.bookingRequiredFields,
           bookingNotificationChannels: agent.bookingNotificationChannels,
         });
@@ -478,6 +493,7 @@ export function AgentCreator({
         setGreeting(agent.greetingMessage);
         setPrompt(agent.systemPrompt);
         setBookingEnabled(agent.bookingEnabled);
+        setDefaultBookingDurationMinutes(agent.defaultBookingDurationMinutes);
         setMaxDuration(String(Math.max(1, Math.round(agent.maxCallDurationSeconds / 60))));
         setSaveTranscript(agent.saveTranscript);
         setRecordCalls(agent.recordCalls);
@@ -551,13 +567,14 @@ export function AgentCreator({
     setLanguage(template.defaultLanguage);
     setSupportedLanguages(Array.from(new Set([template.defaultLanguage, ...template.supportedLanguages])));
     setEscalationPhrases(template.escalationPhrases.join(", "));
+    setDefaultBookingDurationMinutes(template.defaultBookingDurationMinutes);
     setBookingRequiredFields(template.bookingRequiredFields);
     setBookingNotificationChannels(template.bookingNotificationChannels);
     setBookingNotificationRecipient("");
     setCustomVariables([]);
     setVariableValues(Object.fromEntries(template.variables.map((variable) => [variable.key, ""])));
     setStage("studio");
-    setShowPersonalisation(template.variables.length > 0);
+    setShowPersonalisation(template.variables.length > 0 || template.bookingEnabled);
     setActiveSection("main");
   }
 
@@ -582,6 +599,7 @@ export function AgentCreator({
         supportedLanguages: generated.supportedLanguages,
         escalationPhrases: generated.escalationPhrases,
         variables: generated.variables ?? [],
+        defaultBookingDurationMinutes: generated.defaultBookingDurationMinutes,
         bookingRequiredFields: generated.bookingEnabled ? DEFAULT_BOOKING_FIELDS : [],
         bookingNotificationChannels: generated.bookingEnabled ? DEFAULT_BOOKING_NOTIFICATIONS : ["dashboard"],
       };
@@ -614,6 +632,7 @@ export function AgentCreator({
         humanTransferNumber: transferEnabled && transferNumber.trim() ? transferNumber.trim() : null,
         escalationPhrases: escalationPhrases.split(",").map((phrase) => phrase.trim()).filter(Boolean),
         bookingEnabled,
+        defaultBookingDurationMinutes,
         timezone,
         knowledgeBase,
         operatingHours,
@@ -676,6 +695,7 @@ export function AgentCreator({
           name,
           timezone,
           humanTransferNumber: draft.humanTransferNumber,
+          defaultBookingDurationMinutes,
         });
         await updateAgent(created.id, draft);
         if (selectedTemplate.variables.length) {
@@ -853,6 +873,7 @@ export function AgentCreator({
                   maxDuration={maxDuration}
                   greeting={greeting}
                   bookingEnabled={bookingEnabled}
+                  defaultBookingDurationMinutes={defaultBookingDurationMinutes}
                   bookingRequiredFields={bookingRequiredFields}
                   bookingFieldSuggestions={selectedTemplate.bookingRequiredFields}
                   bookingNotificationChannels={bookingNotificationChannels}
@@ -902,6 +923,7 @@ export function AgentCreator({
                   onDuration={setMaxDuration}
                   onGreeting={setGreeting}
                   onBooking={setBookingEnabled}
+                  onDefaultBookingDurationMinutes={setDefaultBookingDurationMinutes}
                   onBookingRequiredFields={setBookingRequiredFields}
                   onBookingNotificationChannels={setBookingNotificationChannels}
                   onBookingNotificationRecipient={setBookingNotificationRecipient}
@@ -1003,6 +1025,8 @@ export function AgentCreator({
               agentSaved={Boolean(agentId)}
               countryName={countryName}
               timezone={timezone}
+              bookingEnabled={bookingEnabled}
+              defaultBookingDurationMinutes={defaultBookingDurationMinutes}
               values={variableValues}
               variables={agentVariables}
               onAdd={addCustomVariable}
@@ -1014,6 +1038,10 @@ export function AgentCreator({
               onTimezone={(value) => {
                 setSaved(false);
                 setTimezone(value);
+              }}
+              onDefaultBookingDurationMinutes={(value) => {
+                setSaved(false);
+                setDefaultBookingDurationMinutes(value);
               }}
               onSave={savePersonalisation}
             />
@@ -1483,7 +1511,7 @@ function languageName(code: string) {
 
 function MainSettings(props: {
   name: string; description: string; language: string; supportedLanguages: string[]; voice: string; timezone: string; maxDuration: string; greeting: string;
-  bookingEnabled: boolean; bookingRequiredFields: string[]; bookingFieldSuggestions: string[]; bookingNotificationChannels: string[];
+  bookingEnabled: boolean; defaultBookingDurationMinutes: number; bookingRequiredFields: string[]; bookingFieldSuggestions: string[]; bookingNotificationChannels: string[];
   bookingNotificationRecipient: string; saveTranscript: boolean; recordCalls: boolean;
   webVoiceEnabled: boolean; webVoiceAllowedOrigins: string; webVoiceRequireConsent: boolean;
   webVoicePublicId?: string; whatsappEnabled: boolean; whatsappPhoneNumberId: string; phoneNumber?: string | null;
@@ -1494,7 +1522,7 @@ function MainSettings(props: {
   onName: (value: string) => void; onDescription: (value: string) => void; onLanguage: (value: string) => void;
   onSupportedLanguages: (value: string[]) => void; onVoice: (value: string) => void;
   onTimezone: (value: string) => void; onDuration: (value: string) => void; onGreeting: (value: string) => void;
-  onBooking: (value: boolean) => void; onBookingRequiredFields: (value: string[]) => void;
+  onBooking: (value: boolean) => void; onDefaultBookingDurationMinutes: (value: number) => void; onBookingRequiredFields: (value: string[]) => void;
   onBookingNotificationChannels: (value: string[]) => void; onBookingNotificationRecipient: (value: string) => void;
   onSaveTranscript: (value: boolean) => void; onRecordCalls: (value: boolean) => void;
   onWebVoiceEnabled: (value: boolean) => void; onWebVoiceAllowedOrigins: (value: string) => void;
@@ -1739,6 +1767,10 @@ function MainSettings(props: {
         <ToggleRow icon={CalendarCheck} title="Appointment booking" detail="Allow the agent to check availability and create bookings." value={props.bookingEnabled} onChange={props.onBooking} />
         {props.bookingEnabled && (
           <div className="booking-workflow-settings">
+            <BookingDurationSetting
+              value={props.defaultBookingDurationMinutes}
+              onChange={props.onDefaultBookingDurationMinutes}
+            />
             <BookingFieldPicker
               fields={props.bookingRequiredFields}
               onChange={props.onBookingRequiredFields}
@@ -1798,6 +1830,46 @@ function MainSettings(props: {
         <small className="field-help">Use clear, natural language. Variables can be added later.</small>
       </div>
     </div>
+  );
+}
+
+const BOOKING_DURATION_OPTIONS = [15, 20, 30, 45, 60, 90, 120];
+
+function bookingDurationOptions(value: number) {
+  return BOOKING_DURATION_OPTIONS.includes(value)
+    ? BOOKING_DURATION_OPTIONS
+    : [...BOOKING_DURATION_OPTIONS, value].sort((left, right) => left - right);
+}
+
+function bookingDurationLabel(minutes: number) {
+  if (minutes === 60) return "1 hour";
+  if (minutes > 60 && minutes % 60 === 0) return `${minutes / 60} hours`;
+  return `${minutes} minutes`;
+}
+
+function BookingDurationSetting({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const options = bookingDurationOptions(value);
+  return (
+    <label className="booking-duration-setting">
+      <span>Standard booking duration <small>Required</small></span>
+      <DarkSelect
+        ariaLabel="Standard booking duration"
+        icon={<Clock3 size={16} />}
+        value={String(value)}
+        onValueChange={(next) => onChange(Number(next))}
+        options={options.map((minutes) => ({
+          value: String(minutes),
+          label: bookingDurationLabel(minutes),
+        }))}
+      />
+      <small>Used for availability checks and new bookings unless the caller explicitly requests a different duration.</small>
+    </label>
   );
 }
 
@@ -2404,10 +2476,13 @@ function PersonalisationDrawer({
   values,
   countryName,
   timezone,
+  bookingEnabled,
+  defaultBookingDurationMinutes,
   onChange,
   onAdd,
   onClose,
   onTimezone,
+  onDefaultBookingDurationMinutes,
   onSave,
 }: {
   agentSaved: boolean;
@@ -2415,13 +2490,18 @@ function PersonalisationDrawer({
   values: Record<string, string>;
   countryName: string;
   timezone: string;
+  bookingEnabled: boolean;
+  defaultBookingDurationMinutes: number;
   onChange: (key: string, value: string) => void;
   onAdd: (variable: CreateAgentVariable) => void;
   onClose: () => void;
   onTimezone: (timezone: string) => void;
+  onDefaultBookingDurationMinutes: (value: number) => void;
   onSave: () => Promise<void>;
 }) {
-  const completed = variables.filter((variable) => values[variable.key]?.trim()).length;
+  const requiredVariables = variables.filter((variable) => variable.required);
+  const optionalVariables = variables.filter((variable) => !variable.required);
+  const completed = requiredVariables.filter((variable) => values[variable.key]?.trim()).length;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -2448,9 +2528,9 @@ function PersonalisationDrawer({
         </header>
         <div className="personalisation-body">
           <div className="personalisation-progress">
-            <div><strong>{completed} of {variables.length}</strong><span>details completed</span></div>
-            <span>{variables.length ? Math.round(completed / variables.length * 100) : 0}%</span>
-            <i><span style={{ width: `${variables.length ? completed / variables.length * 100 : 0}%` }} /></i>
+            <div><strong>{completed} of {requiredVariables.length}</strong><span>required details completed</span></div>
+            <span>{requiredVariables.length ? Math.round(completed / requiredVariables.length * 100) : 100}%</span>
+            <i><span style={{ width: `${requiredVariables.length ? completed / requiredVariables.length * 100 : 100}%` }} /></i>
           </div>
           <AddVariableForm onAdd={onAdd} />
           <div className="personalisation-drawer-fields">
@@ -2468,17 +2548,55 @@ function PersonalisationDrawer({
               />
               <small>Used for opening hours, availability, bookings, and after-hours behaviour.</small>
             </div>
+            {bookingEnabled && (
+              <div className="personalise-field">
+                <span className="personalise-field-label">
+                  Standard booking duration
+                  <i className="required">Required</i>
+                </span>
+                <DarkSelect
+                  ariaLabel="Standard booking duration"
+                  icon={<Clock3 size={16} />}
+                  onValueChange={(value) => onDefaultBookingDurationMinutes(Number(value))}
+                  options={bookingDurationOptions(defaultBookingDurationMinutes).map((minutes) => ({
+                    value: String(minutes),
+                    label: bookingDurationLabel(minutes),
+                  }))}
+                  value={String(defaultBookingDurationMinutes)}
+                />
+                <small>The agent uses this duration for availability and new appointments unless the caller requests otherwise.</small>
+              </div>
+            )}
             {variables.length ? (
               <>
-              {variables.map((variable) => (
-                <VariableValueField
-                  countryName={countryName}
-                  key={variable.key}
-                  variable={variable}
-                  value={values[variable.key] ?? ""}
-                  onChange={(value) => onChange(variable.key, value)}
-                />
-              ))}
+                {requiredVariables.length > 0 && (
+                  <section className="personalisation-variable-group">
+                    <header><strong>Required details</strong><span>Needed before this agent can go live.</span></header>
+                    {requiredVariables.map((variable) => (
+                      <VariableValueField
+                        countryName={countryName}
+                        key={variable.key}
+                        variable={variable}
+                        value={values[variable.key] ?? ""}
+                        onChange={(value) => onChange(variable.key, value)}
+                      />
+                    ))}
+                  </section>
+                )}
+                {optionalVariables.length > 0 && (
+                  <section className="personalisation-variable-group optional">
+                    <header><strong>Optional details</strong><span>Add context that improves answers without blocking setup.</span></header>
+                    {optionalVariables.map((variable) => (
+                      <VariableValueField
+                        countryName={countryName}
+                        key={variable.key}
+                        variable={variable}
+                        value={values[variable.key] ?? ""}
+                        onChange={(value) => onChange(variable.key, value)}
+                      />
+                    ))}
+                  </section>
+                )}
               </>
             ) : <div className="personalisation-empty">No additional business details yet. Add a variable to reference it from the prompt.</div>}
           </div>

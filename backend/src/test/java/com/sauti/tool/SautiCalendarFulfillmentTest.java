@@ -9,7 +9,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 
 import com.sauti.agent.Agent;
 import com.sauti.calendar.BookingService;
@@ -34,6 +33,37 @@ class SautiCalendarFulfillmentTest {
             {"wednesday":{"enabled":false,"start":"09:00","end":"17:00"},
              "thursday":{"enabled":true,"start":"09:00","end":"17:00"}}
             """;
+
+    @Test
+    void usesTheAgentsConfiguredDurationWhenTheToolOmitsIt() {
+        var openHours = """
+                {"wednesday":{"enabled":true,"start":"09:00","end":"17:00"}}
+                """;
+        var slot = new CalendarAvailabilitySlot(
+                OffsetDateTime.parse("2026-07-22T15:00:00Z"),
+                OffsetDateTime.parse("2026-07-22T15:45:00Z"),
+                "15:00"
+        );
+        var fixture = fixture(openHours, List.of());
+        when(fixture.agent.getDefaultBookingDurationMinutes()).thenReturn(45);
+        when(fixture.provider.availability(
+                fixture.agent, LocalDate.of(2026, 7, 22), 45, java.time.ZoneId.of("UTC")
+        )).thenReturn(List.of(slot));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "availability-default-duration",
+                "check_availability",
+                Map.of("date", "2026-07-22", "time_preference", "15:00")
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("durationMinutes", 45)
+                .containsEntry("requestedTimeAvailable", true);
+        verify(fixture.provider).availability(
+                fixture.agent, LocalDate.of(2026, 7, 22), 45, java.time.ZoneId.of("UTC")
+        );
+    }
 
     @Test
     void explainsWhenTheRequestedDayIsClosedAndPreservesTheExactTime() {
@@ -403,7 +433,7 @@ class SautiCalendarFulfillmentTest {
         when(booking.getBookingReference()).thenReturn("SAT-AB12CD34");
         when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T12:00:00Z"));
         when(booking.getCalendarSyncStatus()).thenReturn("pending_owner_action");
-        when(fixture.bookingService.create(any(), any(), isNull())).thenReturn(booking);
+        when(fixture.bookingService.create(any(), any())).thenReturn(booking);
 
         var arguments = new java.util.LinkedHashMap<String, Object>();
         arguments.put("appointment_at", "2026-07-23T12:00:00Z");
@@ -424,9 +454,9 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("bookingCreated", false)
                 .doesNotContainKey("callerGuidanceInstruction");
         assertThat(review.result().get("spokenResponse").toString())
-                .contains("Z for Zulu, A for Alfa, C for Charlie, H for Hotel, A for Alfa, R for Romeo, Y for Yankee")
+                .contains("name Zachary")
                 .contains("0, 1, 1, 1, 5, 7, 5, 3, 4, 4, 1")
-                .contains("at sign", "dot", "G for Golf, M for Mike, A for Alfa, I for India, L for Lima")
+                .contains("zachary.123@gmail.com")
                 .contains("75 minutes", "Preferred Staff: any available staff")
                 .doesNotContain(review.result().get("reviewToken").toString());
         verify(fixture.callSessionStore).updatePendingBooking(
@@ -493,8 +523,8 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.success()).isTrue();
         assertThat(result.result()).containsEntry("status", "booking_review_required");
         assertThat(result.result().get("spokenResponse").toString())
-                .contains("Alexandra: A for Alfa, L for Lima, E for Echo, X for X-ray")
-                .doesNotContain("Zachary: Z for Zulu");
+                .contains("name Alexandra")
+                .doesNotContain("name Zachary");
     }
 
     @Test
@@ -579,7 +609,7 @@ class SautiCalendarFulfillmentTest {
         when(booking.getBookingReference()).thenReturn("SAT-WIFEOK");
         when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T13:00:00Z"));
         when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
-        when(fixture.bookingService.create(any(), any(), any())).thenReturn(booking);
+        when(fixture.bookingService.create(any(), any())).thenReturn(booking);
         when(fixture.callSessionStore.conversationHistory("call-sid"))
                 .thenReturn(List.of(new ConversationMessage("user", "Yes, it is.")));
         var reviewToken = arguments.get("review_token");
@@ -603,7 +633,7 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("bookingNumber", "SAT-WIFEOK");
         verify(fixture.bookingService).create(any(), argThat(request ->
                 "Alexandra".equals(request.callerName())
-        ), any());
+        ));
     }
 
     @Test
@@ -668,7 +698,7 @@ class SautiCalendarFulfillmentTest {
         when(booking.getBookingReference()).thenReturn("SAT-SEMANTIC");
         when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T13:00:00Z"));
         when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
-        when(fixture.bookingService.create(any(), any(), any())).thenReturn(booking);
+        when(fixture.bookingService.create(any(), any())).thenReturn(booking);
         var approved = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "semantic-approved", "book_slot", Map.of("review_token", review.result().get("reviewToken"))
         ));
@@ -678,7 +708,7 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("bookingNumber", "SAT-SEMANTIC");
         verify(fixture.bookingService).create(any(), argThat(request ->
                 "Zachary".equals(request.callerName())
-        ), any());
+        ));
     }
 
     @Test
@@ -822,8 +852,7 @@ class SautiCalendarFulfillmentTest {
                 .isNotEqualTo(first.result().get("reviewToken"));
         assertThat(corrected.result().get("spokenResponse").toString())
                 .contains("Thanks for the correction")
-                .contains("email spelled")
-                .contains("at sign", "G for Golf, M for Mike, A for Alfa, I for India, L for Lima")
+                .contains("email zachary.123@gmail.com")
                 .doesNotContain("the name", "phone number", "Men hairstyle");
         verifyNoInteractions(fixture.bookingService);
     }
@@ -850,7 +879,7 @@ class SautiCalendarFulfillmentTest {
         ));
 
         assertThat(first.result().get("spokenResponse").toString())
-                .contains("Akari: A for Alfa, K for Kilo, A for Alfa, R for Romeo, I for India")
+                .contains("name Akari")
                 .doesNotContain("Zachary")
                 .contains("0, 1, 1, 1, 5, 7, 5, 3, 4, 4, 1")
                 .doesNotContain("0, 1, 1, 1, 7, 5, 7, 5");
@@ -880,7 +909,7 @@ class SautiCalendarFulfillmentTest {
         when(booking.getBookingReference()).thenReturn("SAT-PHONEOK");
         when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T12:00:00Z"));
         when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
-        when(fixture.bookingService.create(any(), any(), any())).thenReturn(booking);
+        when(fixture.bookingService.create(any(), any())).thenReturn(booking);
         when(fixture.callSessionStore.conversationHistory("call-sid"))
                 .thenReturn(List.of(new ConversationMessage("user", "It is okay.")));
         arguments.put("review_token", correction.result().get("reviewToken"));
@@ -900,7 +929,7 @@ class SautiCalendarFulfillmentTest {
         assertThat(booked.result()).containsEntry("bookingCreated", true);
         verify(fixture.bookingService).create(any(), argThat(request ->
                 "0115753441".equals(request.callerPhone()) && "Akari".equals(request.callerName())
-        ), any());
+        ));
     }
 
     @Test
@@ -1417,6 +1446,7 @@ class SautiCalendarFulfillmentTest {
         when(tenant.getId()).thenReturn(tenantId);
         when(call.getLanguageDetected()).thenReturn("en");
         when(agent.getDefaultLanguage()).thenReturn("en");
+        when(agent.getDefaultBookingDurationMinutes()).thenReturn(60);
         when(agent.getId()).thenReturn(java.util.UUID.randomUUID());
         when(agent.getTimezone()).thenReturn("UTC");
         when(agent.getOperatingHours()).thenReturn(hours);

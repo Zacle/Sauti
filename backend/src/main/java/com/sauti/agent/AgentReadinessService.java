@@ -41,8 +41,10 @@ public class AgentReadinessService {
     private AgentReadinessResponse readiness(Agent agent) {
         var missingVariables = agentVariableService.missingRequired(agent.getId());
         boolean businessDetailsComplete = missingVariables.isEmpty();
-        boolean calendarRequired = agent.isBookingEnabled();
-        boolean calendarConfigured = !calendarRequired || hasProductionCalendar(agent);
+        // Sauti bookings are the source of truth. An external calendar is an
+        // optional asynchronous destination, never an activation dependency.
+        boolean calendarRequired = false;
+        boolean calendarConfigured = hasProductionCalendar(agent);
         boolean phoneConfigured = agent.getTwilioPhoneNumber() != null
                 && !agent.getTwilioPhoneNumber().isBlank()
                 && (agent.getPhoneNumberStatus() == null
@@ -52,9 +54,8 @@ public class AgentReadinessService {
                 && agent.getWhatsappPhoneNumberId() != null
                 && !agent.getWhatsappPhoneNumberId().isBlank();
         boolean channelConfigured = phoneConfigured || webVoiceConfigured || whatsappConfigured;
-        boolean readyToActivate = businessDetailsComplete && calendarConfigured && channelConfigured;
+        boolean readyToActivate = businessDetailsComplete && channelConfigured;
         String nextStep = !businessDetailsComplete ? "complete_business_details"
-                : !calendarConfigured ? "connect_calendar"
                 : !channelConfigured ? "enable_channel"
                 : !agent.isActive() ? "activate_agent"
                 : "ready";

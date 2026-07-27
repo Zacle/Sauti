@@ -79,7 +79,7 @@ class SpringAiToolCallingLlmProviderFailoverTest {
         when(openAi.call(any(Prompt.class))).thenReturn(emptyResponse);
         var provider = provider(openAi, gemini);
         var context = new LlmToolTurnContext(
-                new AgentContext(UUID.randomUUID(), "Sarah", true, "UTC", null, List.of(), "standard"),
+                new AgentContext(UUID.randomUUID(), "Sarah", true, 60, "UTC", null, List.of(), "standard"),
                 "Call check_availability before speaking.",
                 "en",
                 List.of(new ConversationMessage("user", "Wednesday at 3 P.M.")),
@@ -111,7 +111,7 @@ class SpringAiToolCallingLlmProviderFailoverTest {
 
     private LlmToolTurnContext context() {
         return new LlmToolTurnContext(
-                new AgentContext(UUID.randomUUID(), "Sarah", true, "UTC", null, List.of(), "standard"),
+                new AgentContext(UUID.randomUUID(), "Sarah", true, 60, "UTC", null, List.of(), "standard"),
                 "You are a concise voice agent.",
                 "en",
                 List.of(new ConversationMessage("user", "Hello", List.of(), null)),

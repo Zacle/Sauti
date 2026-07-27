@@ -54,7 +54,12 @@ export function updateAgentTimezone(agentId: string, timezone: string) {
 
 export function createAgentFromTemplate(
   templateId: string,
-  payload: { name: string; timezone: string; humanTransferNumber: string | null },
+  payload: {
+    name: string;
+    timezone: string;
+    humanTransferNumber: string | null;
+    defaultBookingDurationMinutes: number;
+  },
 ) {
   return apiRequest<Agent>(`/agents/from-template/${templateId}`, {
     method: "POST",

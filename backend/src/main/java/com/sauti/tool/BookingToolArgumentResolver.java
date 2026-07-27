@@ -49,7 +49,9 @@ final class BookingToolArgumentResolver {
         put(arguments, "caller_email", value(notes, "caller_email"));
         put(arguments, "service_type", value(notes, "service_type"));
         arguments.put("appointment_at", appointmentAt.get().toString());
-        arguments.put("duration_minutes", draft.durationMinutes() > 0 ? draft.durationMinutes() : 60);
+        arguments.put("duration_minutes", draft.durationMinutes() > 0
+                ? draft.durationMinutes()
+                : call.getAgent().getDefaultBookingDurationMinutes());
         arguments.put("question_handling", "ready_for_action");
 
         var details = new LinkedHashMap<String, Object>();
@@ -94,7 +96,9 @@ final class BookingToolArgumentResolver {
         return Optional.of(Map.of(
                 "booking_number", bookingNumber,
                 "appointment_at", appointmentAt.get().toString(),
-                "duration_minutes", draft.durationMinutes() > 0 ? draft.durationMinutes() : 60,
+                "duration_minutes", draft.durationMinutes() > 0
+                        ? draft.durationMinutes()
+                        : call.getAgent().getDefaultBookingDurationMinutes(),
                 "question_handling", "ready_for_action",
                 "confirmation_state", "confirmed"
         ));

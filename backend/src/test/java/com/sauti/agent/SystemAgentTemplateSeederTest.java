@@ -43,8 +43,9 @@ class SystemAgentTemplateSeederTest {
         assertThat(dental.supportedLanguages()).containsExactly("en", "fr", "ar", "sw");
         assertThat(dental.configurationJson())
                 .contains(
-                        "\"schemaVersion\":2",
+                        "\"schemaVersion\":4",
                         "\"bookingEnabled\":true",
+                        "\"bookingDurationMinutes\":60",
                         "\"key\":\"business_name\"",
                         "\"key\":\"dental_urgency_policy\"",
                         "\"bookingRequiredFields\":[\"caller_name\",\"caller_phone\",\"patient_status\",\"service_type\",\"appointment_at\"]",
@@ -54,7 +55,9 @@ class SystemAgentTemplateSeederTest {
         assertThat(dental.configurationJson())
                 .doesNotContain("\"key\":\"business_timezone\"", "\"key\":\"calendar_system\"");
         assertThat(dental.systemPrompt())
-                .contains("{{timezone}}", "calendar provider enabled for this agent")
+                .contains("{{timezone}}")
+                .contains("Save a confirmed booking in Sauti first")
+                .contains("caller's current language")
                 .doesNotContain("{{business_timezone}}", "{{calendar_system}}");
 
         var autoRepair = template(templates, "Auto Repair Advisor");

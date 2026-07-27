@@ -16,18 +16,6 @@ import java.util.stream.Collectors;
 
 /** Builds a stable, caller-facing accuracy review before a booking is saved. */
 final class BookingReviewRenderer {
-    private static final Map<Character, String> NATO = Map.ofEntries(
-            Map.entry('A', "Alfa"), Map.entry('B', "Bravo"), Map.entry('C', "Charlie"),
-            Map.entry('D', "Delta"), Map.entry('E', "Echo"), Map.entry('F', "Foxtrot"),
-            Map.entry('G', "Golf"), Map.entry('H', "Hotel"), Map.entry('I', "India"),
-            Map.entry('J', "Juliett"), Map.entry('K', "Kilo"), Map.entry('L', "Lima"),
-            Map.entry('M', "Mike"), Map.entry('N', "November"), Map.entry('O', "Oscar"),
-            Map.entry('P', "Papa"), Map.entry('Q', "Quebec"), Map.entry('R', "Romeo"),
-            Map.entry('S', "Sierra"), Map.entry('T', "Tango"), Map.entry('U', "Uniform"),
-            Map.entry('V', "Victor"), Map.entry('W', "Whiskey"), Map.entry('X', "X-ray"),
-            Map.entry('Y', "Yankee"), Map.entry('Z', "Zulu")
-    );
-
     private BookingReviewRenderer() {
     }
 
@@ -46,19 +34,25 @@ final class BookingReviewRenderer {
 
         var fields = new LinkedHashMap<String, Object>();
         fields.put("callerName", name);
-        fields.put("callerNameReadback", phonetic(name));
+        fields.put("callerNameReadback", name);
         if (!phone.isBlank()) {
             fields.put("callerPhone", phone);
             fields.put("callerPhoneReadback", digits(phone));
         }
         if (!email.isBlank()) {
             fields.put("callerEmail", email);
-            fields.put("callerEmailReadback", phonetic(email));
+            fields.put("callerEmailReadback", email);
         }
         fields.put("service", service);
         fields.put("appointmentAt", appointmentAt.toString());
         fields.put("appointmentSpoken", SpokenDateTimeFormatter.appointment(appointmentAt, language));
-        fields.put("durationMinutes", positiveInteger(arguments.get("duration_minutes"), 60));
+        fields.put(
+                "durationMinutes",
+                positiveInteger(
+                        arguments.get("duration_minutes"),
+                        call.getAgent().getDefaultBookingDurationMinutes()
+                )
+        );
         if (!customerDetails.isEmpty()) fields.put("customerDetails", Map.copyOf(customerDetails));
 
         var canonical = canonical(call, arguments, customerDetails);
@@ -74,7 +68,6 @@ final class BookingReviewRenderer {
 
     private static String fullSpoken(String language, Map<String, Object> fields, Map<String, Object> details) {
         var rawName = fields.get("callerName").toString();
-        var name = fields.get("callerNameReadback").toString();
         var phone = fields.getOrDefault("callerPhoneReadback", "not provided").toString();
         var email = fields.get("callerEmailReadback");
         var service = fields.get("service").toString();
@@ -84,10 +77,10 @@ final class BookingReviewRenderer {
                 .map(entry -> humanize(entry.getKey()) + ": " + entry.getValue())
                 .collect(Collectors.joining("; "));
         var emailPart = email == null ? "" : switch (language) {
-            case "fr" -> ", courriel épelé " + email;
-            case "sw" -> ", barua pepe ikiandikwa " + email;
-            case "ar" -> "، والبريد الإلكتروني تهجئته " + email;
-            default -> ", email spelled " + email;
+            case "fr" -> ", courriel " + email;
+            case "sw" -> ", barua pepe " + email;
+            case "ar" -> "، والبريد الإلكتروني " + email;
+            default -> ", email " + email;
         };
         var extraPart = extra.isBlank() ? "" : switch (language) {
             case "fr" -> ", autres informations " + extra;
@@ -96,19 +89,19 @@ final class BookingReviewRenderer {
             default -> ", other details " + extra;
         };
         return switch (language) {
-            case "fr" -> "Avant d'enregistrer le rendez-vous, je vais épeler le nom phonétiquement, lettre par lettre. "
-                    + rawName + " : " + name + ". J'ai le téléphone " + phone + emailPart + ", pour " + service
+            case "fr" -> "Avant d'enregistrer le rendez-vous, j'ai le nom " + rawName
+                    + " et le téléphone " + phone + emailPart + ", pour " + service
                     + " le " + appointment + ", durée " + duration + " minutes" + extraPart
                     + ". Corrigez-moi simplement si quelque chose est inexact.";
-            case "sw" -> "Kabla nihifadhi miadi, nitasoma jina kifonetiki, herufi kwa herufi. "
-                    + rawName + ": " + name + ". Nina simu " + phone + emailPart + ", kwa " + service + " "
+            case "sw" -> "Kabla nihifadhi miadi, nina jina " + rawName
+                    + " na simu " + phone + emailPart + ", kwa " + service + " "
                     + appointment + ", dakika " + duration + extraPart
                     + ". Tafadhali nisahihishe ikiwa kuna jambo lisilo sahihi.";
-            case "ar" -> "قبل حفظ الموعد، سأتهجّى الاسم صوتياً حرفاً بحرف. " + rawName + ": " + name
-                    + ". لدي رقم الهاتف " + phone + emailPart + "، لخدمة " + service + " في " + appointment
+            case "ar" -> "قبل حفظ الموعد، لدي الاسم " + rawName
+                    + " ورقم الهاتف " + phone + emailPart + "، لخدمة " + service + " في " + appointment
                     + "، لمدة " + duration + " دقيقة" + extraPart + ". صحح لي فقط أي معلومة غير دقيقة.";
-            default -> "Before I save the booking, I’m going to spell the name phonetically, letter by letter. "
-                    + rawName + ": " + name + ". I have the phone number " + phone + emailPart + ", for " + service
+            default -> "Before I save the booking, I have the name " + rawName
+                    + " and phone number " + phone + emailPart + ", for " + service
                     + " on " + appointment + ", for " + duration + " minutes" + extraPart
                     + ". Please correct anything that is wrong.";
         };
@@ -146,14 +139,10 @@ final class BookingReviewRenderer {
     ) {
         return switch (key) {
             case "caller_name" -> switch (language) {
-                case "fr" -> "le nom " + fields.get("callerName") + ", épelé phonétiquement lettre par lettre : "
-                        + fields.get("callerNameReadback");
-                case "sw" -> "jina " + fields.get("callerName") + ", kifonetiki herufi kwa herufi: "
-                        + fields.get("callerNameReadback");
-                case "ar" -> "الاسم " + fields.get("callerName") + "، متهجّى صوتياً حرفاً بحرف: "
-                        + fields.get("callerNameReadback");
-                default -> "the name " + fields.get("callerName")
-                        + ", spelled phonetically letter by letter: " + fields.get("callerNameReadback");
+                case "fr" -> "le nom " + fields.get("callerName");
+                case "sw" -> "jina " + fields.get("callerName");
+                case "ar" -> "الاسم " + fields.get("callerName");
+                default -> "the name " + fields.get("callerName");
             };
             case "caller_phone" -> switch (language) {
                 case "fr" -> "le numéro de téléphone " + fields.getOrDefault("callerPhoneReadback", "non fourni");
@@ -162,10 +151,10 @@ final class BookingReviewRenderer {
                 default -> "the phone number " + fields.getOrDefault("callerPhoneReadback", "not provided");
             };
             case "caller_email" -> switch (language) {
-                case "fr" -> "le courriel épelé " + fields.getOrDefault("callerEmailReadback", "non fourni");
-                case "sw" -> "barua pepe ikiandikwa " + fields.getOrDefault("callerEmailReadback", "haijatolewa");
-                case "ar" -> "البريد الإلكتروني متهجّى " + fields.getOrDefault("callerEmailReadback", "غير متوفر");
-                default -> "the email spelled " + fields.getOrDefault("callerEmailReadback", "not provided");
+                case "fr" -> "le courriel " + fields.getOrDefault("callerEmailReadback", "non fourni");
+                case "sw" -> "barua pepe " + fields.getOrDefault("callerEmailReadback", "haijatolewa");
+                case "ar" -> "البريد الإلكتروني " + fields.getOrDefault("callerEmailReadback", "غير متوفر");
+                default -> "the email " + fields.getOrDefault("callerEmailReadback", "not provided");
             };
             case "service_type" -> label(language, "service", fields.get("service"));
             case "appointment_at" -> label(language, "appointment", fields.get("appointmentSpoken"));
@@ -313,27 +302,6 @@ final class BookingReviewRenderer {
                 .filter(Character::isDigit)
                 .mapToObj(character -> Character.toString((char) character))
                 .collect(Collectors.joining(", "));
-    }
-
-    private static String phonetic(String value) {
-        return value.toUpperCase(Locale.ROOT).chars()
-                .mapToObj(character -> spokenCharacter((char) character))
-                .filter(word -> !word.isBlank())
-                .collect(Collectors.joining(", "));
-    }
-
-    private static String spokenCharacter(char character) {
-        if (NATO.containsKey(character)) return character + " for " + NATO.get(character);
-        if (Character.isDigit(character)) return Character.toString(character);
-        return switch (character) {
-            case '@' -> "at sign";
-            case '.' -> "dot";
-            case '-' -> "hyphen";
-            case '_' -> "underscore";
-            case '+' -> "plus";
-            case '\'' -> "apostrophe";
-            default -> Character.isWhitespace(character) ? "space" : Character.toString(character);
-        };
     }
 
     private static String humanize(String key) {

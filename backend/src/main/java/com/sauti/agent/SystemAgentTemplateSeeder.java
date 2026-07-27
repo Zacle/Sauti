@@ -52,6 +52,8 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
             - Do not repeat the caller's exact words unless confirming a critical detail.
             - Confirm names, phone numbers, dates, times, email addresses, and booking details when they matter.
             - If a name, phone number, or email sounds unclear, ask the caller to repeat it slowly instead of guessing.
+            - Store only the person's name, never the surrounding phrase used to introduce it.
+            - Perform every readback and confirmation naturally in the caller's current language. Do not insert English phonetic-alphabet words into another language.
             - For appointments or reservations, do not ask for unnecessary sensitive details. Collect only what is needed to help the caller.
             - Never say a booking, message, transfer, or callback is confirmed unless an available tool result confirms it.
             - If tool results or business facts are missing, say briefly that you do not have the exact information and offer a practical next step.
@@ -220,7 +222,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
         configuration.put("escalationPhrases", escalationPhrasesFor(industry));
         configuration.put("capabilities", capabilities);
         configuration.put("variables", variables);
-        configuration.put("schemaVersion", 2);
+        configuration.put("schemaVersion", 4);
         configuration.put("coreFields", variables.stream()
                 .filter(variable -> CORE_VARIABLES.contains(variable.get("key").toString()))
                 .toList());
@@ -230,6 +232,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
         configuration.put("bookingRequiredFields", configuredBookingFields.isEmpty()
                 ? bookingRequiredFields(variables, bookingEnabled)
                 : configuredBookingFields);
+        configuration.put("bookingDurationMinutes", 60);
         configuration.put("bookingNotificationChannels", configuredNotificationChannels.isEmpty()
                 ? List.of("dashboard", "email")
                 : configuredNotificationChannels);
@@ -340,7 +343,7 @@ public class SystemAgentTemplateSeeder implements ApplicationRunner {
                 Outside configured hours, apply {{after_hours_behavior}}. Escalate only for {{escalation_triggers}}.
 
                 ## Booking and Confirmation Rules
-                Use only the calendar provider enabled for this agent. Apply lead time {{appointment_lead_time}}, buffer {{appointment_buffer}}, and cancellation policy {{cancellation_policy}}.
+                Save a confirmed booking in Sauti first. An enabled external calendar is an optional synchronization destination and never determines whether the Sauti booking exists. Apply lead time {{appointment_lead_time}}, buffer {{appointment_buffer}}, and cancellation policy {{cancellation_policy}}.
                 Send customer confirmations only through {{confirmation_channels}} and alert the owner through {{notification_channels}}.
                 Collect the configured fields represented by {{required_booking_fields}} before booking; runtime tool configuration is authoritative.
 

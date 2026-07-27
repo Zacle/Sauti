@@ -30,6 +30,7 @@ class LocalToolCallingLlmProviderTest {
                         UUID.randomUUID(),
                         "Amina",
                         false,
+                        60,
                         "Africa/Nairobi",
                         null,
                         List.of("speak to a human"),

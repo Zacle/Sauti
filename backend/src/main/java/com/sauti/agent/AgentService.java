@@ -90,6 +90,7 @@ public class AgentService {
         agent.configureAvailability(request.operatingHours(), request.afterHoursBehavior(), request.afterHoursMessage());
         applyCallBehavior(agent, request);
         agent.configureBookingWorkflow(
+                request.defaultBookingDurationMinutes(),
                 request.bookingRequiredFields(),
                 request.bookingNotificationChannels(),
                 request.bookingNotificationRecipient()
@@ -128,6 +129,7 @@ public class AgentService {
         agent.configureAvailability(request.operatingHours(), request.afterHoursBehavior(), request.afterHoursMessage());
         applyCallBehavior(agent, request);
         agent.configureBookingWorkflow(
+                request.defaultBookingDurationMinutes(),
                 request.bookingRequiredFields(),
                 request.bookingNotificationChannels(),
                 request.bookingNotificationRecipient()
@@ -187,26 +189,6 @@ public class AgentService {
             throw new IllegalArgumentException(
                     "Complete required business details before activation: " + String.join(", ", missingVariables)
             );
-        }
-        if (agent.isBookingEnabled()
-                && agent.getCalendarProvider() != null
-                && "Set up later".equals(agent.getCalendarProvider())) {
-            throw new IllegalArgumentException("Connect a calendar before activating this booking agent");
-        }
-        if (agent.isBookingEnabled()
-                && agent.getCalendarProvider() != null
-                && !"Set up later".equals(agent.getCalendarProvider())) {
-            boolean calendarConfigured = agentToolRepository.findByAgent_IdOrderByDisplayOrderAsc(agentId)
-                    .stream()
-                    .anyMatch(tool -> tool.getCalendarCredentialId() != null
-                            || ("webhook".equals(tool.getFulfillmentType())
-                                && tool.getWebhookUrl() != null
-                                && !tool.getWebhookUrl().isBlank()));
-            if (!calendarConfigured) {
-                throw new IllegalArgumentException(
-                        "Connect " + agent.getCalendarProvider() + " before activating this booking agent"
-                );
-            }
         }
         agent.activate();
         return agent;

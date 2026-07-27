@@ -60,6 +60,7 @@ export type Agent = {
   humanTransferNumber: string | null;
   escalationPhrases: string[];
   bookingEnabled: boolean;
+  defaultBookingDurationMinutes: number;
   timezone: string;
   knowledgeBase: string | null;
   operatingHours: string | null;
@@ -116,6 +117,7 @@ export type AgentDraft = {
   humanTransferNumber: string | null;
   escalationPhrases: string[];
   bookingEnabled: boolean;
+  defaultBookingDurationMinutes: number;
   timezone: string;
   knowledgeBase: string;
   operatingHours: string | null;
@@ -180,6 +182,7 @@ export type GeneratedAgentDraft = {
   greetingMessage: string;
   systemPrompt: string;
   bookingEnabled: boolean;
+  defaultBookingDurationMinutes: number;
   defaultLanguage: string;
   supportedLanguages: string[];
   escalationPhrases: string[];

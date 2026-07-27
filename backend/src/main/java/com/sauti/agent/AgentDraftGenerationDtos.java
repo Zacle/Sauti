@@ -17,6 +17,7 @@ public final class AgentDraftGenerationDtos {
             String greetingMessage,
             String systemPrompt,
             boolean bookingEnabled,
+            int defaultBookingDurationMinutes,
             String defaultLanguage,
             List<String> supportedLanguages,
             List<String> escalationPhrases,

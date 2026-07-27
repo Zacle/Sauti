@@ -75,7 +75,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 case "get_business_hours" -> LlmToolResult.success(toolCall, businessHours(call));
                 case "check_availability" -> LlmToolResult.success(toolCall, checkAvailability(call, toolCall.arguments(), toolConfig));
                 case "lookup_booking" -> LlmToolResult.success(toolCall, lookupBooking(call, toolCall));
-                case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(call, toolCall, toolConfig));
+                case "book_slot" -> LlmToolResult.success(toolCall, bookSlot(call, toolCall));
                 case "reschedule_booking" -> LlmToolResult.success(toolCall, reschedule(call, toolCall));
                 case "cancel_booking" -> LlmToolResult.success(toolCall, cancel(call, toolCall));
                 case "update_booking" -> LlmToolResult.success(toolCall, updateBooking(call, toolCall));
@@ -113,7 +113,11 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             return missingDate(call, timezone);
         }
         if (date == null) return missingDate(call, timezone);
-        var duration = intArg(arguments, "duration_minutes", 60);
+        var duration = intArg(
+                arguments,
+                "duration_minutes",
+                call.getAgent().getDefaultBookingDurationMinutes()
+        );
         var effectiveHours = OperatingHoursSchedule.effective(call.getAgent());
         var operatingRanges = OperatingHoursSchedule.rangesFor(
                 effectiveHours, date, timezone
@@ -317,7 +321,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         }
     }
 
-    private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall, AgentTool toolConfig) {
+    private Map<String, Object> bookSlot(Call call, LlmToolCall toolCall) {
         var modelReviewToken = stringArg(toolCall.arguments(), "review_token", "");
         var reviewAction = stringArg(toolCall.arguments(), "review_action", "");
         var storedReviewToken = pendingReviewToken(call).orElse("");
@@ -404,8 +408,11 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             result.put("spokenResponse", review.spokenResponse());
             result.put("correctionReview", review.correction());
             result.put("changedFields", review.changedFields());
-            result.put("instruction", "Speak spokenResponse exactly once, then stop and wait for the caller. "
-                    + "Never expose reviewToken. On a correction, keep the preceding reviewToken, change only the corrected value, "
+            result.put("instruction", "Present bookingReview exactly once in the caller's current language, then stop and wait. "
+                    + "Preserve every customer value exactly: read the stored name naturally without a phonetic alphabet, "
+                    + "read phone digits individually in the current language, and include service, local date/time, duration, "
+                    + "and custom details. spokenResponse is fallback wording, not a language constraint. Never expose reviewToken. "
+                    + "On a correction, keep the preceding reviewToken, change only the corrected value, "
                     + "and call book_slot with that preceding token so the server confirms only the changed field. "
                     + "After the caller approves the latest review, call book_slot with unchanged values and the latest exact reviewToken.");
             return Map.copyOf(result);
@@ -417,18 +424,6 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     "instruction", "Do not save or repeat the full review. Answer the caller's question if they asked one; otherwise ask them briefly to correct any wrong detail or say that the review is correct. Call book_slot again only after their next clear approval or correction."
             );
         }
-        var selectedProvider = call.getAgent().getCalendarProvider();
-        com.sauti.calendar.CalendarProvider provider = null;
-        try {
-            if (!("Google Calendar".equalsIgnoreCase(selectedProvider)
-                    && (!"google".equalsIgnoreCase(toolConfig.getCalendarType())
-                        || toolConfig.getCalendarCredentialId() == null))) {
-                provider = calendarProviderFactory.forTool(toolConfig, call.getTenant().getId());
-            }
-        } catch (RuntimeException exception) {
-            LOGGER.warn("Booking calendar resolution failed callId={} agentId={}: {}",
-                    call.getId(), call.getAgent().getId(), exception.getMessage());
-        }
         var booking = bookingService.create(
                 call.getTenant().getId(),
                 new CreateBookingRequest(
@@ -439,10 +434,13 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                         stringArg(arguments, "caller_email", ""),
                         requiredStringArg(arguments, "service_type"),
                         OffsetDateTime.parse(requiredStringArg(arguments, "appointment_at")),
-                        intArg(arguments, "duration_minutes", 60),
+                        intArg(
+                                arguments,
+                                "duration_minutes",
+                                call.getAgent().getDefaultBookingDurationMinutes()
+                        ),
                         customerDetails
-                ),
-                provider
+                )
         );
         var externalEventId = booking.getExternalEventId() == null ? "" : booking.getExternalEventId();
         var calendarStatus = booking.getCalendarSyncStatus();
@@ -464,8 +462,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 call, booking, booking.getBookingReference()
         ));
         result.put("instruction", localOnly
-                ? "Tell the caller the booking was saved in Sauti and provide the booking number. Do not claim an external calendar was updated."
-                : "Tell the caller whether the external calendar was confirmed. Always provide the booking number. If calendarSynced is false, say the booking was saved in Sauti for owner follow-up.");
+                ? "In the caller's current language, say the booking was saved in Sauti and provide the booking number. Do not claim an external calendar was updated."
+                : "In the caller's current language, say the booking was saved in Sauti and provide the booking number. External calendar synchronization happens afterward; never make it a condition of the booking. Mention its status only when useful and never describe the Sauti booking as failed.");
         if (call.getTwilioCallSid() != null && !call.getTwilioCallSid().isBlank()) {
             callSessionStore.updatePendingBooking(call.getTwilioCallSid(), null);
         }
@@ -482,7 +480,11 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 stringArg(arguments, "caller_phone", ""),
                 true,
                 reviewToken,
-                intArg(arguments, "duration_minutes", 60)
+                intArg(
+                        arguments,
+                        "duration_minutes",
+                        call.getAgent().getDefaultBookingDurationMinutes()
+                )
         ));
     }
 
@@ -632,7 +634,11 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         var booking = bookingService.reschedule(call.getTenant().getId(), existing.getId(),
                 new com.sauti.calendar.BookingDtos.RescheduleBookingRequest(
                         OffsetDateTime.parse(requiredStringArg(toolCall.arguments(), "appointment_at")),
-                        intArg(toolCall.arguments(), "duration_minutes", 60)));
+                        intArg(
+                                toolCall.arguments(),
+                                "duration_minutes",
+                                existing.getDurationMinutes()
+                        )));
         return Map.of(
                 "status", "booking_rescheduled",
                 "bookingId", booking.getId(),

@@ -9,6 +9,7 @@ import com.sauti.session.CallSessionStore;
 import com.sauti.session.BookingDraft;
 import com.sauti.session.ConversationState;
 import com.sauti.session.PendingAction;
+import com.sauti.session.PersonNameNormalizer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -50,6 +51,9 @@ public class ConversationStateTool {
             "preferred_day", "preferred_time",
             "review_decision"
     );
+    private static final Set<String> PERSON_NAME_FIELDS = Set.of(
+            "caller_name", "appointment_name", "booking_lookup_name"
+    );
     private static final Set<String> SUBJECTS = Set.of(
             "unchanged", ConversationState.SUBJECT_UNKNOWN,
             ConversationState.SUBJECT_SELF, ConversationState.SUBJECT_OTHER
@@ -86,8 +90,8 @@ public class ConversationStateTool {
         COMMON_FIELDS.forEach(field -> valueProperties.put(field, Map.of(
                 "type", "string",
                 "description", switch (field) {
-                    case "caller_name" -> "Name of the person speaking, only when explicitly stated or corrected.";
-                    case "appointment_name" -> "Name of the person receiving the service, only when explicitly stated or corrected.";
+                    case "caller_name" -> "The exact semantic name entity for the person speaking. Return only the name in its original script and with its original diacritics. Exclude every introduction, carrier phrase, title that was not stated as part of the name, and other sentence text in whatever language the caller used. Never return the raw utterance.";
+                    case "appointment_name" -> "The exact semantic name entity for the person receiving the service. Return only the name in its original script and with its original diacritics; exclude all surrounding sentence text in any language.";
                     case "recipient_relation" -> "Relationship of an explicitly different recipient to the caller, expressed compactly.";
                     case "service_type" -> "Requested configured service, only when the meaning is clear.";
                     case "caller_phone" -> "Complete caller-provided phone number.";
@@ -95,18 +99,18 @@ public class ConversationStateTool {
                     case "caller_email" -> "Complete caller-provided email address.";
                     case "booking_number" -> "Accumulated customer-facing booking number supplied for a lookup, update, reschedule, or cancellation. Normalize spelled characters, number words, and dash/hyphen into the SAT-XXXXXXXXXXXX form, where exactly twelve characters follow SAT-. Consecutive partial fragments are valid updates, but never claim to look up a partial reference.";
                     case "booking_date" -> "Date of an existing appointment, normalized to yyyy-MM-dd in the business timezone. This identifies an existing booking and is distinct from preferred_day for a new or replacement date.";
-                    case "booking_lookup_name" -> "Name the caller says the existing booking was saved under. If the caller spells the name letter by letter, reconstruct the name from those letters and prefer that explicit spelling over a nearby speech-to-text word. Never fill this from a name disclosed by a tool result.";
+                    case "booking_lookup_name" -> "The exact semantic name entity the caller says the existing booking was saved under, with no surrounding sentence text in any language. If the caller spells the name letter by letter, reconstruct the name from those letters and prefer that explicit spelling over a nearby speech-to-text word. Never fill this from a name disclosed by a tool result.";
                     case "booking_time" -> "Exact time of an existing appointment normalized to HH:mm for private phone/date/time verification.";
                     case "existing_booking_action" -> "Explicit requested operation for an existing booking: lookup, update, reschedule, or cancel.";
                     case "preferred_day" -> "Clearly understood appointment date normalized to yyyy-MM-dd using TODAY IN THE BUSINESS TIMEZONE. Omit when the date is unclear.";
                     case "preferred_time" -> "Clearly understood exact appointment time normalized to HH:mm, or a clear broad period such as morning or afternoon. Omit when the time is unclear.";
-                    case "review_decision" -> "Meaning of the caller's latest response to the immediately preceding server-retained booking review or action confirmation: approved, corrected, rejected, or unclear. This is turn-scoped and never inferred from politeness alone.";
+                    case "review_decision" -> "Meaning of the caller's latest response to the immediately preceding server-retained booking review or action confirmation: approved, corrected, rejected, or unclear. Interpret the answer in context, not by isolated positive or negative words: when asked to correct anything inaccurate, a response meaning 'no, everything is correct' is approved. This is turn-scoped and never inferred from politeness alone.";
                     default -> "Explicitly provided conversation value.";
                 }
         )));
         var updates = new LinkedHashMap<String, Object>();
         updates.put("type", "object");
-        updates.put("description", "Only values explicitly and clearly stated or corrected in the latest caller turn. Omit unchanged or doubtful values. Never infer a person, service, date, time, or selection from a similar-sounding or incoherent fragment.");
+        updates.put("description", "Only semantic field values explicitly and clearly stated or corrected in the latest caller turn. These are extracted entities, never copied utterances. For every person-name field, preserve the exact name and original script but remove all surrounding words based on meaning in the caller's language. Omit unchanged or doubtful values. Never infer a person, service, date, time, or selection from a similar-sounding or incoherent fragment.");
         updates.put("properties", Map.copyOf(valueProperties));
         updates.put("additionalProperties", false);
 
@@ -587,6 +591,11 @@ public class ConversationStateTool {
                     normalized = previous + normalized.replaceFirst("^-", "");
                 }
                 if (!normalized.isBlank()) values.put(key, normalized);
+                return;
+            }
+            if (PERSON_NAME_FIELDS.contains(key)) {
+                var normalizedName = PersonNameNormalizer.normalize(value);
+                if (!normalizedName.isBlank()) values.put(key, normalizedName);
                 return;
             }
             values.put(key, value);

@@ -59,7 +59,7 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                     field(fields, "callerPhone", context.callerPhone()),
                     true,
                     bookingReview.result().get("reviewToken").toString(),
-                    integerField(fields, "durationMinutes", 60)
+                    integerField(fields, "durationMinutes", context.agent().defaultBookingDurationMinutes())
             ));
             return new LlmToolTurnResponse(bookingReview.result().get("spokenResponse").toString(), List.of());
         }
@@ -83,14 +83,14 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                             pendingBooking.confirmedSlot(), pendingBooking.callerPhone(), true,
                             pendingBooking.reviewToken(), pendingBooking.durationMinutes()
                     ));
-                    var spelling = natoSpelling(pendingBooking.callerName());
+                    var callerName = pendingBooking.callerName();
                     var digits = individualDigits(pendingBooking.callerPhone());
                     return new LlmToolTurnResponse(localized(
                             context.language(),
-                            "Before I book, please confirm the spelling of your name: " + spelling + ", and your phone number: " + digits + ". Is that correct?",
-                            "Avant de reserver, confirmez l'epellation de votre nom : " + spelling + ", et votre numero : " + digits + ". Est-ce correct ?",
-                            "Kabla ya kuweka nafasi, thibitisha tahajia ya jina lako: " + spelling + ", na nambari yako: " + digits + ". Je, ni sahihi?",
-                            "Before I book, please confirm the spelling of your name: " + spelling + ", and your phone number: " + digits + ". Is that correct?"
+                            "Before I book, please confirm your name: " + callerName + ", and your phone number: " + digits + ". Is that correct?",
+                            "Avant de reserver, confirmez votre nom : " + callerName + ", et votre numero : " + digits + ". Est-ce correct ?",
+                            "Kabla ya kuweka nafasi, thibitisha jina lako: " + callerName + ", na nambari yako: " + digits + ". Je, ni sahihi?",
+                            "Before I book, please confirm your name: " + callerName + ", and your phone number: " + digits + ". Is that correct?"
                     ), List.of());
                 }
                 return new LlmToolTurnResponse(localized(
@@ -100,7 +100,11 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                         "Nitathibitisha miadi hiyo sasa.",
                         "سأؤكد هذا الموعد الآن."
                 ), List.of(
-                        tool("book_slot", approvedBookingArguments(context.callSid(), pendingBooking))
+                        tool("book_slot", approvedBookingArguments(
+                                context.callSid(),
+                                pendingBooking,
+                                context.agent().defaultBookingDurationMinutes()
+                        ))
                 ));
             }
         }
@@ -154,7 +158,7 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                         tool("check_availability", Map.of(
                                 "date", appointmentAt.toLocalDate().toString(),
                                 "time_preference", appointmentAt.toLocalTime().toString(),
-                                "duration_minutes", 60,
+                                "duration_minutes", context.agent().defaultBookingDurationMinutes(),
                                 "timezone", context.agent().timezone()
                         ))
                 ));
@@ -211,13 +215,16 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                 .orElse(null);
     }
 
-    private Map<String, Object> bookingArguments(BookingDraft booking) {
+    private Map<String, Object> bookingArguments(BookingDraft booking, int defaultDurationMinutes) {
         var arguments = new java.util.LinkedHashMap<String, Object>();
         arguments.put("appointment_at", booking.confirmedSlot());
         arguments.put("caller_name", booking.callerName());
         arguments.put("caller_phone", booking.callerPhone());
         arguments.put("service_type", booking.serviceType());
-        arguments.put("duration_minutes", booking.durationMinutes() > 0 ? booking.durationMinutes() : 60);
+        arguments.put(
+                "duration_minutes",
+                booking.durationMinutes() > 0 ? booking.durationMinutes() : defaultDurationMinutes
+        );
         arguments.put("question_handling", "ready_for_action");
         if (booking.reviewToken() != null && !booking.reviewToken().isBlank()) {
             arguments.put("review_token", booking.reviewToken());
@@ -228,7 +235,11 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
         return Map.copyOf(arguments);
     }
 
-    private Map<String, Object> approvedBookingArguments(String callSid, BookingDraft booking) {
+    private Map<String, Object> approvedBookingArguments(
+            String callSid,
+            BookingDraft booking,
+            int defaultDurationMinutes
+    ) {
         // The deterministic local provider does not support the semantic state
         // tool. Record its own recognized approval through the same server state
         // boundary before asking fulfillment to save. Production model providers
@@ -242,7 +253,7 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                 current.bookingIntent(),
                 current.revision() + 1
         ));
-        return bookingArguments(booking);
+        return bookingArguments(booking, defaultDurationMinutes);
     }
 
     private String field(Map<?, ?> fields, String key, String fallback) {
@@ -276,28 +287,6 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
         return value.chars()
                 .filter(Character::isDigit)
                 .mapToObj(character -> Character.toString((char) character))
-                .collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    private String natoSpelling(String value) {
-        if (value == null || value.isBlank()) return "not provided";
-        var alphabet = Map.ofEntries(
-                Map.entry('A', "Alfa"), Map.entry('B', "Bravo"), Map.entry('C', "Charlie"),
-                Map.entry('D', "Delta"), Map.entry('E', "Echo"), Map.entry('F', "Foxtrot"),
-                Map.entry('G', "Golf"), Map.entry('H', "Hotel"), Map.entry('I', "India"),
-                Map.entry('J', "Juliett"), Map.entry('K', "Kilo"), Map.entry('L', "Lima"),
-                Map.entry('M', "Mike"), Map.entry('N', "November"), Map.entry('O', "Oscar"),
-                Map.entry('P', "Papa"), Map.entry('Q', "Quebec"), Map.entry('R', "Romeo"),
-                Map.entry('S', "Sierra"), Map.entry('T', "Tango"), Map.entry('U', "Uniform"),
-                Map.entry('V', "Victor"), Map.entry('W', "Whiskey"), Map.entry('X', "X-ray"),
-                Map.entry('Y', "Yankee"), Map.entry('Z', "Zulu")
-        );
-        return value.toUpperCase(Locale.ROOT).chars()
-                .mapToObj(character -> {
-                    if (Character.isWhitespace(character)) return "space";
-                    var letter = (char) character;
-                    return alphabet.getOrDefault(letter, Character.toString(letter));
-                })
                 .collect(java.util.stream.Collectors.joining(", "));
     }
 

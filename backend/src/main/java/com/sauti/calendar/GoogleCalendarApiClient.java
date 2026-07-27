@@ -67,15 +67,28 @@ public class GoogleCalendarApiClient {
     public String createEvent(CalendarCredential credential, Booking booking) {
         var start = booking.getAppointmentAt();
         var end = start.plusMinutes(booking.getDurationMinutes());
+        var eventId = "sauti" + booking.getId().toString()
+                .replace("-", "")
+                .toLowerCase(java.util.Locale.ROOT);
         var body = objectMapper.createObjectNode()
+                .put("id", eventId)
                 .put("summary", booking.getServiceType() + " — " + booking.getCallerName())
                 .put("description", "Booked by Sauti. Caller: " + booking.getCallerPhone());
         body.putObject("start").put("dateTime", start.toString()).put("timeZone", booking.getAgent().getTimezone());
         body.putObject("end").put("dateTime", end.toString()).put("timeZone", booking.getAgent().getTimezone());
-        var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential)) + "/events";
-        var response = send(credential, HttpRequest.newBuilder(URI.create(endpoint))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(body.toString())));
+        var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential))
+                + "/events/" + encode(eventId);
+        final String response;
+        try {
+            response = send(credential, HttpRequest.newBuilder(URI.create(endpoint))
+                    .header("Content-Type", "application/json")
+                    .PUT(HttpRequest.BodyPublishers.ofString(body.toString())));
+        } catch (IllegalStateException exception) {
+            if (exception.getMessage() != null && exception.getMessage().contains("status 409")) {
+                return eventId;
+            }
+            throw exception;
+        }
         try {
             var id = objectMapper.readTree(response).path("id").asText("");
             if (id.isBlank()) throw new IllegalStateException("Google Calendar did not return an event ID");

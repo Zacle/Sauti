@@ -225,6 +225,82 @@ Expected:
 
 ## Change log
 
+### 2026-07-27 - Make Sauti bookings authoritative and external calendar sync asynchronous
+
+- Investigated `sauti-telnyx-diagnostics-1785173179541.json` from the French X-Fit call. The browser diagnostic contains 91 Telnyx lifecycle entries but no managed-tool request/result entries, so the transcript's spoken “confirmed” claim cannot prove that Sauti persisted a booking.
+- Removed the English NATO-phonetic requirement from the platform booking prompt, booking review renderer, and deterministic fallback provider. Names are now read naturally and exactly as stored, phone digits remain individually read in the caller's current language, and email punctuation is rendered naturally in that language.
+- Strengthened multilingual semantic state:
+  - name fields must contain only the name, never the surrounding phrase used to introduce it;
+  - a response meaning “no, everything is correct” to a correction invitation is an approval, regardless of the isolated negative word;
+  - identity extraction belongs exclusively to the language-aware semantic boundary; the finite legacy transcript parser can no longer rewrite authoritative semantic identity;
+  - `PersonNameNormalizer` applies only language-independent Unicode NFC, whitespace normalization, length limits, and structural name validation after semantic extraction. It preserves scripts and diacritics and contains no translated carrier phrases;
+  - semantic name schemas require the exact name entity in its original script and explicitly exclude surrounding sentence text in whatever language the caller used.
+- Made the booking write path provider-independent:
+  - the confirmed booking is committed to the tenant-scoped `bookings` table first;
+  - a configured external calendar is recorded as `calendarSyncStatus=pending`;
+  - the live Telnyx tool returns the durable Sauti booking result and booking number without calling Google Calendar or another calendar provider;
+  - external calendar connectivity is no longer required to activate a booking agent.
+- Added durable background synchronization using the booking row as the job record:
+  - migration `V41__durable_booking_calendar_sync.sql` adds attempt and next-attempt fields plus a due-work index;
+  - `BookingCalendarSyncService` processes committed pending bookings outside the call, retries with exponential backoff, and retains the local booking as confirmed when synchronization fails;
+  - after five failed attempts the calendar status becomes `pending_owner_action`, without invalidating the Sauti booking.
+- Made external creation retries safer:
+  - Google Calendar creation uses a deterministic Sauti-derived event ID and idempotent `PUT`; a conflict means the same event already exists;
+  - calendar webhooks receive the Sauti booking UUID as `Idempotency-Key`.
+- Updated system templates to schema version 4 and prompt-generated templates to state that Sauti is the booking source of truth, external calendars synchronize afterward, and caller-facing behavior follows the caller's current language.
+- Updated Agent Studio readiness copy to describe external calendar synchronization as optional.
+- Bumped the managed Telnyx configuration version to `20` so existing agents receive the revised provider-neutral execution contract and stricter language-neutral name-entity contract.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/{Booking,BookingRepository,BookingService,BookingCalendarSyncService,GoogleCalendarApiClient,WebhookCalendarProvider}.java`
+  - `backend/src/main/java/com/sauti/{agent,call,llm,tool}` prompt, readiness, intake, provisioning, and booking workflow files
+  - `backend/src/main/java/com/sauti/session/PersonNameNormalizer.java`
+  - `backend/src/main/resources/db/migration/V41__durable_booking_calendar_sync.sql`
+  - focused booking, intake, orchestration, template, notification, and managed-provider tests
+  - `dashboard/features/agents/AgentVariables/AgentVariablesPage.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused booking persistence, calendar worker, multilingual identity handling, booking review, semantic state, template, and orchestration tests passed.
+  - the final fallback-provider language-neutrality sweep and focused LLM tests passed.
+  - Unicode-name regressions cover Arabic, Chinese, Devanagari, accented Latin, and Japanese middle-dot names; invalid markup, email-like values, digits-only values, and emoji are rejected.
+  - `.\gradlew.bat :backend:test` passed after the final name-boundary refactor; Gradle reported `BUILD SUCCESSFUL` in 1 minute 31 seconds.
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed; Next.js completed the optimized production build.
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after reviewed deployment:
+  - create a French booking with no external calendar and confirm the booking appears immediately in `/bookings` with a Sauti reference;
+  - repeat with Google Calendar connected and confirm Sauti first shows a durable booking with pending sync, then the worker changes it to synced without delaying the call;
+  - answer the review with `non, tout est correct` and verify exactly one booking is created for `Zacari`, not for the surrounding phrase;
+  - export new diagnostics and correlate the returned Sauti booking number with the dashboard row, because browser lifecycle diagnostics still do not include server webhook tool events.
+
+### 2026-07-27 - Make booking duration and variable requirements first-class agent setup
+
+- Added a persisted `defaultBookingDurationMinutes` agent setting with a guarded 5-480 minute range and Flyway migration `V40__agent_default_booking_duration.sql`; existing agents retain the previous 60-minute behavior.
+- Refactored system templates to schema version 3 and added `bookingDurationMinutes=60` to their structured configuration. Creating an agent from a template may override that duration, and the value is returned by the agent API.
+- Updated Agent Studio so selecting any booking template opens personalisation and explicitly requests a standard booking duration. The same setting is available in the booking workflow editor.
+- Prompt-created agents now receive a generated booking duration and are normalized to include at least one required and one optional variable, both referenced by the generated system prompt. The local fallback now supplies required business details plus optional website and FAQ context.
+- Personalisation now separates required and optional variables. Readiness progress counts only required variables, so blank optional context does not incorrectly block completion.
+- Propagated the configured duration through agent runtime context, prompt instructions, booking argument resolution, booking review, availability checks, booking creation, and the local deterministic tool path. Rescheduling preserves the existing appointment duration when no replacement duration is supplied.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/{Agent,AgentDtos,AgentService,AgentTemplateDtos,AgentTemplateService,SystemAgentTemplateSeeder,AgentDraftGenerationDtos,AgentDraftGenerationService}.java`
+  - `backend/src/main/java/com/sauti/llm/{AgentContext,ConversationOrchestrator,LocalToolCallingLlmProvider}.java`
+  - `backend/src/main/java/com/sauti/tool/{BookingReviewRenderer,BookingToolArgumentResolver,SautiCalendarFulfillment}.java`
+  - `backend/src/main/resources/db/migration/V40__agent_default_booking_duration.sql`
+  - relevant agent-template, draft-generation, LLM, and calendar fulfillment tests
+  - `dashboard/features/agents/AgentCreator/{AgentCreator.tsx,AgentCreator.css}`
+  - `dashboard/features/dashboard/data/preview-data.ts`
+  - `dashboard/lib/api/agents.ts`
+  - `dashboard/types/api.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused template, prompt-draft, and calendar-fulfillment backend tests passed.
+  - `.\gradlew.bat :backend:test` passed; Gradle reported `BUILD SUCCESSFUL` in 2 minutes 19 seconds.
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run build` passed; Next.js completed the optimized production build.
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Follow-up: after reviewed deployment, create one booking agent from a system template and one from a natural-language prompt, choose non-default durations, and confirm Telnyx availability and created bookings use those durations when the caller does not specify one.
+
 ### 2026-07-27 - Stabilize dashboard sessions and Telnyx browser authentication
 
 - Diagnosed two independent failures that were presented similarly in the dashboard:

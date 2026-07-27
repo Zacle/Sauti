@@ -60,7 +60,9 @@ class WorkspaceNotificationServiceTest {
                 tenant, agent, null, "Zachary Nji", "+201115753441", null,
                 "Consultation", OffsetDateTime.now().plusDays(2), 45, "{}"
         );
-        booking.markSyncFailed("Calendar connection is missing or no longer authorized");
+        for (int attempt = 0; attempt < 5; attempt++) {
+            booking.markSyncFailed("Calendar connection is missing or no longer authorized");
+        }
         when(bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         var service = new WorkspaceNotificationService(repository, bookingRepository, mapper);

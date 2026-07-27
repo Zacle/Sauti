@@ -21,6 +21,60 @@ import org.mockito.ArgumentCaptor;
 
 class ConversationStateToolTest {
     @Test
+    void preservesUnicodeNameEntitiesWithoutDependingOnCallerLanguage() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("unicode-name-call");
+        when(sessions.conversationState("unicode-name-call")).thenReturn(Optional.of(
+                ConversationState.empty()
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of(
+                        "caller_name", "  زكريا  ",
+                        "appointment_name", "李 小龍",
+                        "booking_lookup_name", "अनुष्का"
+                ),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "other",
+                "booking_intent", "active",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Thank you."
+        )));
+
+        assertThat(captureState(sessions, "unicode-name-call").values())
+                .containsEntry("caller_name", "زكريا")
+                .containsEntry("appointment_name", "李 小龍")
+                .containsEntry("booking_lookup_name", "अनुष्का");
+    }
+
+    @Test
+    void rejectsNonNameControlContentAtTheSemanticBoundary() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("invalid-name-call");
+        when(sessions.conversationState("invalid-name-call")).thenReturn(Optional.of(
+                ConversationState.empty()
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_name", "Zacari <script>"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "self",
+                "booking_intent", "active",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Please repeat your name."
+        )));
+
+        assertThat(captureState(sessions, "invalid-name-call").values())
+                .doesNotContainKeys("caller_name", "appointment_name");
+    }
+
+    @Test
     void normalizesAndAccumulatesSpelledBookingNumberFragments() {
         var sessions = mock(CallSessionStore.class);
         var call = call("spelled-booking-call");
