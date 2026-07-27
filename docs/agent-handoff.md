@@ -225,6 +225,21 @@ Expected:
 
 ## Change log
 
+### 2026-07-27 - Compact the customer-channel setup notice
+
+- Replaced the tall amber warning treatment in Main Settings with a compact, neutral setup row so the missing optional channel does not read like an error.
+- Shortened the heading and supporting copy, reduced the icon footprint, and retained a slim amber status accent for discoverability.
+- Changed the large outlined action to a compact teal `Choose channel` button that matches the dashboard's interactive color system.
+- Preserved the existing channel-navigation behavior and responsive stacking on narrow screens.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location` passed;
+  - `git diff --check` passed.
+- Deployment status: uncommitted and not deployed. Ready for maintainer review and the normal GitHub Actions CI/CD workflow.
+
 ### 2026-07-27 - Refine the agent identity settings card
 
 - Reworked the Main Settings identity card to reduce the heavy, uniformly bold appearance reported in the agent editor.

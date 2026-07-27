@@ -5531,57 +5531,59 @@
 
 .main-settings-page .identity-channel-notice {
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  margin: 0 0 22px;
-  padding: 11px 12px;
-  border-color: rgba(231, 159, 56, 0.26);
-  border-radius: 13px;
-  background: rgba(92, 56, 13, 0.1);
+  gap: 10px;
+  min-height: 58px;
+  margin: 0 0 20px;
+  padding: 9px 10px 9px 12px;
+  border-color: rgba(91, 151, 199, 0.15);
+  border-radius: 12px;
+  background: rgba(5, 22, 39, 0.5);
+  box-shadow: inset 2px 0 rgba(226, 161, 65, 0.72);
 }
 
 .identity-channel-notice-icon {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 27px;
+  height: 27px;
   place-items: center;
-  border: 1px solid rgba(237, 169, 70, 0.25);
-  border-radius: 10px;
-  color: #efb45c;
-  background: rgba(123, 75, 16, 0.16);
+  border-radius: 8px;
+  color: #dca24c;
+  background: rgba(184, 119, 30, 0.1);
 }
 
 .main-settings-page .identity-channel-notice strong {
-  color: #eac184;
-  font-size: 0.75rem;
-  font-weight: 500;
+  color: #cbd9e4;
+  font-size: 0.73rem;
+  font-weight: 480;
 }
 
 .main-settings-page .identity-channel-notice span:not(.identity-channel-notice-icon) {
-  margin-top: 3px;
-  color: #927e66;
-  font-size: 0.67rem;
-  line-height: 1.4;
+  margin-top: 2px;
+  color: #71889c;
+  font-size: 0.64rem;
+  line-height: 1.35;
 }
 
 .main-settings-page .identity-channel-notice button {
   display: inline-flex;
-  min-height: 34px;
+  min-height: 32px;
   align-items: center;
   gap: 6px;
-  padding: 0 11px;
-  border-color: rgba(222, 157, 59, 0.35);
-  border-radius: 9px;
-  color: #e6ad55;
-  background: rgba(78, 48, 12, 0.12);
-  font-size: 0.68rem;
-  font-weight: 450;
-  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  padding: 0 10px;
+  border-color: rgba(40, 220, 208, 0.26);
+  border-radius: 8px;
+  color: #55d8cf;
+  background: rgba(7, 93, 97, 0.15);
+  font-size: 0.65rem;
+  font-weight: 460;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
 .main-settings-page .identity-channel-notice button:hover {
-  border-color: rgba(239, 178, 82, 0.58);
-  color: #f4c87e;
-  background: rgba(105, 64, 14, 0.18);
+  border-color: rgba(42, 225, 212, 0.5);
+  color: #80eee6;
+  background: rgba(8, 116, 116, 0.22);
+  transform: translateY(-1px);
 }
 
 .identity-settings-section {

@@ -1540,9 +1540,9 @@ function MainSettings(props: {
         <StudioHeading eyebrow="Main settings" title="Identity and call setup" description="Configure the essentials callers experience on every conversation." />
       {!channelConfigured && (
         <div className="studio-warning identity-channel-notice">
-          <span className="identity-channel-notice-icon"><CircleAlert size={17} /></span>
-          <div><strong>No customer channel yet</strong><span>Connect Web Voice, WhatsApp, or a phone number when you&apos;re ready to receive calls.</span></div>
-          <button type="button" onClick={focusChannels}>Set up channel <ArrowRight size={14} /></button>
+          <span className="identity-channel-notice-icon"><RadioTower size={15} /></span>
+          <div><strong>Connect a customer channel</strong><span>Add Web Voice, WhatsApp, or a phone number.</span></div>
+          <button type="button" onClick={focusChannels}>Choose channel <ArrowRight size={13} /></button>
         </div>
       )}
       <div className="identity-settings-section">
