@@ -225,6 +225,25 @@ Expected:
 
 ## Change log
 
+### 2026-07-27 - Refine the agent identity settings card
+
+- Reworked the Main Settings identity card to reduce the heavy, uniformly bold appearance reported in the agent editor.
+- Split the form into two quiet visual groups:
+  - `Agent profile` for the agent name and short description;
+  - `Call defaults` for the phone channel, primary language, and timezone.
+- Replaced the visually dominant customer-channel warning with a lower-contrast setup notice, compact icon treatment, and lighter `Set up channel` action.
+- Reduced input/select height, border contrast, label size, and font weight. Main-setting values now use regular weight instead of inheriting the heavier global dark-select treatment.
+- Made the phone selector full width so the longer number/setup text has room, while language and timezone remain a balanced two-column row.
+- Preserved existing form behavior, channel scrolling, phone assignment, Radix select accessibility, focus states, and the single-column mobile layout.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location` passed;
+  - `git diff --check` passed with only the repository's LF-to-CRLF working-tree warnings.
+- Deployment status: uncommitted and not deployed. Ready for maintainer review and the normal GitHub Actions CI/CD workflow.
+
 ### 2026-07-27 - Consume managed cancellation confirmation exactly once
 
 - Investigated browser diagnostic `sauti-telnyx-diagnostics-1785135874545.json` and correlated its 2026-07-27 07:02-07:04 UTC window read-only with Telnyx conversation `b3e17cad-17a9-462d-bf28-a3e5eab5f484`.

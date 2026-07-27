@@ -1539,36 +1539,50 @@ function MainSettings(props: {
       <section className="main-settings-card main-identity-card">
         <StudioHeading eyebrow="Main settings" title="Identity and call setup" description="Configure the essentials callers experience on every conversation." />
       {!channelConfigured && (
-        <div className="studio-warning">
-          <CircleAlert size={18} />
-          <div><strong>Enable a customer channel</strong><span>Use Web Voice, connect WhatsApp, or assign a phone number.</span></div>
-          <button type="button" onClick={focusChannels}>Choose channel</button>
+        <div className="studio-warning identity-channel-notice">
+          <span className="identity-channel-notice-icon"><CircleAlert size={17} /></span>
+          <div><strong>No customer channel yet</strong><span>Connect Web Voice, WhatsApp, or a phone number when you&apos;re ready to receive calls.</span></div>
+          <button type="button" onClick={focusChannels}>Set up channel <ArrowRight size={14} /></button>
         </div>
       )}
-      <div className="studio-form-grid">
-        <label>Agent name<input value={props.name} onChange={(event) => props.onName(event.target.value)} /></label>
-        <label>Card description<input maxLength={500} value={props.description} onChange={(event) => props.onDescription(event.target.value)} /></label>
-        <label>
-          Phone number
-          <button
-            className="studio-disabled-field studio-phone-selector"
-            disabled={!props.onAssignPhone}
-            onClick={props.onAssignPhone}
-            type="button"
-          >
-            <Phone size={16} />
-            {props.phoneNumber ?? (props.onAssignPhone ? "Choose an available number" : "Save the agent first")}
-            <ChevronDown size={15} />
-          </button>
-        </label>
-        <label>Primary language<DarkSelect ariaLabel="Primary language" icon={<Languages size={16} />} value={props.language} onValueChange={props.onLanguage}
-          options={Array.from(new Set([...LANGUAGE_OPTIONS.map(([value]) => value), ...props.supportedLanguages]))
-            .map((value) => ({ value, label: languageName(value) }))} /></label>
-        <label>
-          Timezone
-          <DarkSelect ariaLabel="Agent timezone" icon={<Clock3 size={16} />} value={props.timezone} onValueChange={props.onTimezone}
-            options={TIMEZONE_OPTIONS} />
-        </label>
+      <div className="identity-settings-section">
+        <div className="identity-settings-section-heading">
+          <span><Bot size={16} /></span>
+          <div><h3>Agent profile</h3><p>How this agent is identified inside your workspace.</p></div>
+        </div>
+        <div className="studio-form-grid identity-profile-grid">
+          <label>Agent name<input value={props.name} onChange={(event) => props.onName(event.target.value)} /></label>
+          <label>Short description<input maxLength={500} value={props.description} onChange={(event) => props.onDescription(event.target.value)} placeholder="Describe this agent&apos;s role" /></label>
+        </div>
+      </div>
+      <div className="identity-settings-section">
+        <div className="identity-settings-section-heading">
+          <span><PhoneCall size={16} /></span>
+          <div><h3>Call defaults</h3><p>Channel, language, and local time used for conversations.</p></div>
+        </div>
+        <div className="studio-form-grid identity-call-grid">
+          <label className="identity-phone-field">
+            Phone number
+            <button
+              className="studio-disabled-field studio-phone-selector"
+              disabled={!props.onAssignPhone}
+              onClick={props.onAssignPhone}
+              type="button"
+            >
+              <Phone size={16} />
+              {props.phoneNumber ?? (props.onAssignPhone ? "Choose an available number" : "Save the agent first")}
+              <ChevronDown size={15} />
+            </button>
+          </label>
+          <label>Primary language<DarkSelect ariaLabel="Primary language" triggerClassName="main-settings-select" icon={<Languages size={16} />} value={props.language} onValueChange={props.onLanguage}
+            options={Array.from(new Set([...LANGUAGE_OPTIONS.map(([value]) => value), ...props.supportedLanguages]))
+              .map((value) => ({ value, label: languageName(value) }))} /></label>
+          <label>
+            Timezone
+            <DarkSelect ariaLabel="Agent timezone" triggerClassName="main-settings-select" icon={<Clock3 size={16} />} value={props.timezone} onValueChange={props.onTimezone}
+              options={TIMEZONE_OPTIONS} />
+          </label>
+        </div>
       </div>
       </section>
       <div
