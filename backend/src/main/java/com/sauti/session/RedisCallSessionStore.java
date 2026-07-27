@@ -138,6 +138,22 @@ public class RedisCallSessionStore implements CallSessionStore {
     }
 
     @Override
+    public Optional<VerifiedBookingIdentity> verifiedBookingIdentity(String callSid) {
+        return get(callSid).map(CallSession::getVerifiedBookingIdentity);
+    }
+
+    @Override
+    public void updateVerifiedBookingIdentity(String callSid, VerifiedBookingIdentity identity) {
+        mutate(callSid, session -> {
+            if (session != null) {
+                session.setVerifiedBookingIdentity(identity);
+                session.touch();
+            }
+            return session;
+        });
+    }
+
+    @Override
     public Optional<BookingDraft> pendingBooking(String callSid) {
         return get(callSid).map(CallSession::getPendingBookingDraft);
     }

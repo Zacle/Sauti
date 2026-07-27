@@ -1,6 +1,7 @@
 package com.sauti.tool;
 
 import com.sauti.calendar.BookingDtos.CreateBookingRequest;
+import com.sauti.calendar.BookingIdentityService;
 import com.sauti.calendar.BookingService;
 import com.sauti.agent.OperatingHoursSchedule;
 import com.sauti.call.Call;
@@ -10,6 +11,7 @@ import com.sauti.llm.LlmToolResult;
 import com.sauti.session.BookingDraft;
 import com.sauti.session.CallSessionStore;
 import com.sauti.session.ConversationState;
+import com.sauti.session.VerifiedBookingIdentity;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -25,6 +27,7 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Component
 public class SautiCalendarFulfillment implements ToolFulfillment {
@@ -33,6 +36,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             new com.fasterxml.jackson.databind.ObjectMapper();
     private final CalendarProviderFactory calendarProviderFactory;
     private final BookingService bookingService;
+    private final BookingIdentityService bookingIdentityService;
     private final CallSessionStore callSessionStore;
     private final CallIntakeNoteService intakeNotes;
     private static final Pattern SPOKEN_DIGIT_SEQUENCE = Pattern.compile(
@@ -45,10 +49,23 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             CallSessionStore callSessionStore,
             CallIntakeNoteService intakeNotes
     ) {
+        this(calendarProviderFactory, bookingService, callSessionStore, intakeNotes,
+                new BookingIdentityService(bookingService));
+    }
+
+    @Autowired
+    public SautiCalendarFulfillment(
+            CalendarProviderFactory calendarProviderFactory,
+            BookingService bookingService,
+            CallSessionStore callSessionStore,
+            CallIntakeNoteService intakeNotes,
+            BookingIdentityService bookingIdentityService
+    ) {
         this.calendarProviderFactory = calendarProviderFactory;
         this.bookingService = bookingService;
         this.callSessionStore = callSessionStore;
         this.intakeNotes = intakeNotes;
+        this.bookingIdentityService = bookingIdentityService;
     }
 
     @Override
@@ -69,6 +86,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             return LlmToolResult.success(toolCall, bookingIdentityMismatch(toolCall));
         } catch (BookingIdentityAmbiguousException exception) {
             return LlmToolResult.success(toolCall, bookingIdentityAmbiguous(toolCall));
+        } catch (BookingIdentityReferenceRequiredException exception) {
+            return LlmToolResult.success(toolCall, bookingIdentityReferenceRequired(toolCall));
         } catch (RuntimeException exception) {
             return LlmToolResult.error(toolCall, exception.getMessage());
         }
@@ -642,7 +661,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     }
 
     private Map<String, Object> lookupBooking(Call call, LlmToolCall toolCall) {
-        var booking = verifiedBooking(call, toolCall.arguments());
+        var booking = lookupVerifiedBooking(call, toolCall.arguments());
         rememberVerifiedBookingIdentity(call, booking);
         return Map.of(
                 "status", "booking_found",
@@ -700,68 +719,51 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             Call call,
             Map<String, Object> arguments
     ) {
-        var suppliedPhone = requiredStringArg(arguments, "caller_phone");
-        var bookingNumber = stringArg(arguments, "booking_number", "");
-        if (bookingNumber.isBlank()) {
-            return verifiedBookingByDetails(call, arguments, suppliedPhone);
+        var retained = callSessionStore.verifiedBookingIdentity(call.getTwilioCallSid());
+        if (retained.isPresent()) {
+            var identity = retained.orElseThrow();
+            if (!call.getTenant().getId().equals(identity.tenantId())) {
+                throw new BookingIdentityMismatchException();
+            }
+            try {
+                return bookingService.get(identity.tenantId(), identity.bookingId());
+            } catch (RuntimeException exception) {
+                callSessionStore.updateVerifiedBookingIdentity(call.getTwilioCallSid(), null);
+                throw new BookingIdentityMismatchException();
+            }
         }
-        final com.sauti.calendar.Booking booking;
-        try {
-            booking = bookingService.resolve(call.getTenant().getId(), bookingNumber);
-        } catch (RuntimeException exception) {
-            throw new BookingIdentityMismatchException();
-        }
-        if (!phoneMatches(booking.getCallerPhone(), suppliedPhone)) {
-            throw new BookingIdentityMismatchException();
-        }
-        return booking;
+        // Compatibility for calls that began before private identity retention
+        // was introduced. New tool schemas never ask the model for these fields.
+        return lookupVerifiedBooking(call, arguments);
     }
 
-    private com.sauti.calendar.Booking verifiedBookingByDetails(
+    private com.sauti.calendar.Booking lookupVerifiedBooking(
             Call call,
-            Map<String, Object> arguments,
-            String suppliedPhone
+            Map<String, Object> arguments
     ) {
-        var suppliedDate = stringArg(arguments, "booking_date", "");
-        var suppliedName = stringArg(arguments, "booking_lookup_name", "");
-        if (suppliedDate.isBlank() || suppliedName.isBlank()) {
-            throw new BookingIdentityMismatchException();
-        }
+        var suppliedPhone = requiredStringArg(arguments, "caller_phone");
+        var bookingNumber = stringArg(arguments, "booking_number", "");
         final LocalDate date;
+        final LocalTime time;
         final ZoneId timezone;
         try {
-            date = LocalDate.parse(suppliedDate);
+            date = bookingNumber.isBlank()
+                    ? LocalDate.parse(requiredStringArg(arguments, "booking_date")) : null;
+            var suppliedTime = stringArg(arguments, "booking_time", "");
+            time = suppliedTime.isBlank() ? null : LocalTime.parse(suppliedTime);
             timezone = ZoneId.of(call.getAgent().getTimezone());
         } catch (RuntimeException exception) {
             throw new BookingIdentityMismatchException();
         }
-        var candidates = bookingService.findOnAppointmentDate(
-                        call.getTenant().getId(),
-                        date,
-                        timezone
-                ).stream()
-                .filter(booking -> phoneMatches(booking.getCallerPhone(), suppliedPhone))
-                .filter(booking -> nameMatches(booking.getCallerName(), suppliedName))
-                .toList();
-        var suppliedTime = stringArg(arguments, "booking_time", "");
-        if (!suppliedTime.isBlank()) {
-            final LocalTime time;
-            try {
-                time = LocalTime.parse(suppliedTime);
-            } catch (RuntimeException exception) {
-                throw new BookingIdentityMismatchException();
-            }
-            candidates = candidates.stream()
-                    .filter(booking -> booking.getAppointmentAt()
-                            .atZoneSameInstant(timezone)
-                            .toLocalTime()
-                            .truncatedTo(ChronoUnit.MINUTES)
-                            .equals(time.truncatedTo(ChronoUnit.MINUTES)))
-                    .toList();
-        }
-        if (candidates.isEmpty()) throw new BookingIdentityMismatchException();
-        if (candidates.size() > 1) throw new BookingIdentityAmbiguousException();
-        return candidates.get(0);
+        var result = bookingIdentityService.verify(new BookingIdentityService.Request(
+                call.getTenant().getId(), suppliedPhone, bookingNumber, date, time, timezone
+        ));
+        return switch (result.status()) {
+            case VERIFIED -> result.booking();
+            case TIME_REQUIRED -> throw new BookingIdentityAmbiguousException();
+            case REFERENCE_REQUIRED -> throw new BookingIdentityReferenceRequiredException();
+            case MISMATCH -> throw new BookingIdentityMismatchException();
+        };
     }
 
     private Map<String, Object> bookingIdentityMismatch(LlmToolCall toolCall) {
@@ -780,10 +782,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             result.put(
                     "instruction",
                     "No booking details were disclosed and no booking was changed. Tell the caller in their current "
-                            + "language only that the phone number, appointment date, and saved-under name could not "
-                            + "be verified together. Do not say which value was wrong and never reveal a stored name. "
-                            + "Restart by asking for the booking phone, then the appointment date, then the name the "
-                            + "caller says the booking was saved under."
+                            + "language only that the phone number, appointment date, and exact appointment time "
+                            + "could not be verified together. Do not say which value was wrong or reveal stored data. "
+                            + "Restart by asking for the booking phone, then date, then exact time."
             );
             return Map.copyOf(result);
         }
@@ -807,8 +808,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                         + "language that the booking number and phone number could not be matched together. "
                         + "Read bookingNumberReadback back one character at a time, including the dash, and ask "
                         + "the caller to repeat or correct the booking number only. Do not say whether that booking "
-                        + "number exists. After the corrected booking number, collect the phone number again and "
-                        + "run lookup_booking before proposing any update, reschedule, or cancellation."
+                        + "number exists. Keep the caller-provided phone already held in private call state and run "
+                        + "lookup_booking after the caller provides the corrected complete booking number."
         );
         return Map.copyOf(result);
     }
@@ -829,8 +830,24 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 "instruction",
                 "No booking details were disclosed and no booking was changed. To finish verification, ask only for "
                         + "the exact appointment time in the caller's current language, then retry lookup_booking with "
-                        + "the same phone, date, saved-under name, and the supplied booking_time. Do not say how many "
+                        + "the same phone and date plus the supplied booking_time. Do not say how many "
                         + "possible bookings exist and do not reveal candidate times or names."
+        );
+        return Map.copyOf(result);
+    }
+
+    private Map<String, Object> bookingIdentityReferenceRequired(LlmToolCall toolCall) {
+        var result = new LinkedHashMap<String, Object>();
+        result.put("status", "booking_identity_reference_required");
+        result.put("bookingFound", false);
+        result.put("actionPerformed", false);
+        result.put("retryField", "booking_number");
+        result.put(
+                "instruction",
+                "No booking details were disclosed and no booking was changed. More than one booking has the same "
+                        + "verified phone, date, and time. Ask for the complete Sauti booking reference shown in the "
+                        + "customer's email, then retry lookup_booking with that reference and the same phone. "
+                        + "Do not reveal how many bookings matched or any stored booking details."
         );
         return Map.copyOf(result);
     }
@@ -849,7 +866,6 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     .orElse(ConversationState.empty());
             var values = new LinkedHashMap<>(existing.values());
             values.remove("booking_number");
-            values.remove("caller_phone");
             values.remove("booking_date");
             values.remove("booking_lookup_name");
             values.remove("booking_time");
@@ -864,6 +880,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     )
             );
             callSessionStore.updatePendingAction(call.getTwilioCallSid(), null);
+            callSessionStore.updateVerifiedBookingIdentity(call.getTwilioCallSid(), null);
         } catch (RuntimeException exception) {
             LOGGER.warn(
                     "Could not reset booking identity after a mismatch sautiCallId={} exception={}",
@@ -871,27 +888,6 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     exception.getClass().getSimpleName()
             );
         }
-    }
-
-    private boolean phoneMatches(String expected, String supplied) {
-        var normalizedExpected = normalizedPhone(expected);
-        var normalizedSupplied = normalizedPhone(supplied);
-        return !normalizedExpected.isBlank()
-                && secureEquals(normalizedExpected, normalizedSupplied);
-    }
-
-    private boolean nameMatches(String expected, String supplied) {
-        var normalizedExpected = normalizedName(expected);
-        var normalizedSupplied = normalizedName(supplied);
-        return !normalizedExpected.isBlank()
-                && secureEquals(normalizedExpected, normalizedSupplied);
-    }
-
-    private String normalizedName(String value) {
-        if (value == null || value.isBlank()) return "";
-        return java.text.Normalizer.normalize(value, java.text.Normalizer.Form.NFKC)
-                .toLowerCase(java.util.Locale.ROOT)
-                .replaceAll("[^\\p{L}\\p{N}]", "");
     }
 
     private void rememberVerifiedBookingIdentity(
@@ -902,7 +898,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             var existing = callSessionStore.conversationState(call.getTwilioCallSid())
                     .orElse(ConversationState.empty());
             var values = new LinkedHashMap<>(existing.values());
-            values.put("booking_number", booking.getBookingReference());
+            values.remove("booking_number");
             values.remove("review_decision");
             callSessionStore.updateConversationState(
                     call.getTwilioCallSid(),
@@ -911,6 +907,16 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                             existing.bookingSubject(),
                             existing.bookingIntent(),
                             existing.revision() + 1
+                    )
+            );
+            callSessionStore.updateVerifiedBookingIdentity(
+                    call.getTwilioCallSid(),
+                    new VerifiedBookingIdentity(
+                            call.getTenant().getId(),
+                            booking.getId(),
+                            booking.getBookingReference(),
+                            BookingIdentityService.normalizePhone(booking.getCallerPhone()),
+                            OffsetDateTime.now()
                     )
             );
         } catch (RuntimeException exception) {
@@ -922,15 +928,13 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         }
     }
 
-    private String normalizedPhone(String value) {
-        var digits = value == null ? "" : value.replaceAll("\\D", "");
-        return digits.startsWith("00") ? digits.substring(2) : digits;
-    }
-
     private static final class BookingIdentityMismatchException extends RuntimeException {
     }
 
     private static final class BookingIdentityAmbiguousException extends RuntimeException {
+    }
+
+    private static final class BookingIdentityReferenceRequiredException extends RuntimeException {
     }
 
     @SuppressWarnings("unchecked")

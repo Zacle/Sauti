@@ -143,34 +143,38 @@ public class AgentToolLoader {
                 (List<String>) schema.getOrDefault("required", List.of())
         );
         if ("lookup_booking".equals(definition.name())) {
-            properties.remove("booking_number");
             required.remove("booking_number");
+            properties.put("booking_number", Map.of(
+                    "type", "string",
+                    "description", "Optional complete Sauti reference voluntarily supplied by the caller: SAT- followed by twelve letters or digits. Use with caller_phone instead of date and time."
+            ));
             properties.put("booking_date", Map.of(
                     "type", "string",
                     "format", "date",
-                    "description", "Date of the existing appointment in yyyy-MM-dd format in the business timezone."
+                    "description", "Existing appointment date in yyyy-MM-dd in the business timezone. Required unless a complete booking_number was volunteered."
             ));
-            properties.put("booking_lookup_name", Map.of(
-                    "type", "string",
-                    "description", "Name the caller says the booking was saved under. Ask the caller; never reveal or infer the stored name."
-            ));
+            properties.remove("booking_lookup_name");
+            required.remove("booking_lookup_name");
+            required.remove("booking_date");
             properties.put("booking_time", Map.of(
                     "type", "string",
-                    "description", "Exact existing appointment time in HH:mm, only when a prior lookup reports multiple matching bookings."
+                    "description", "Exact existing appointment time in HH:mm. Required with booking_date as a private verification challenge."
             ));
         } else {
-            properties.put("booking_number", Map.of(
+            properties.remove("booking_number");
+            properties.remove("caller_phone");
+            required.remove("booking_number");
+            required.remove("caller_phone");
+        }
+        if ("lookup_booking".equals(definition.name())) {
+            properties.put("caller_phone", Map.of(
                     "type", "string",
-                    "description", "Server-verified Sauti booking number returned by lookup_booking. Never ask the caller to provide it."
+                    "description", "Exact phone number the caller says was used for the existing booking."
             ));
         }
-        properties.put("caller_phone", Map.of(
-                "type", "string",
-                "description", "Exact phone number the caller says was used for the existing booking."
-        ));
         var identityFields = "lookup_booking".equals(definition.name())
-                ? List.of("caller_phone", "booking_date", "booking_lookup_name")
-                : List.of("booking_number", "caller_phone");
+                ? List.of("caller_phone")
+                : List.<String>of();
         for (var field : identityFields) {
             if (!required.contains(field)) required.add(field);
         }
@@ -179,11 +183,11 @@ public class AgentToolLoader {
         return new LlmToolDefinition(
                 definition.name(),
                 definition.description() + ("lookup_booking".equals(definition.name())
-                        ? " Identify the booking from the caller-supplied phone, appointment date, and saved-under name. "
-                                + "If multiple bookings match, ask for the appointment time. Never reveal a stored name "
-                                + "or booking facts until the server verifies the supplied values together."
-                        : " Use only the booking number established by a successful lookup_booking plus the verified "
-                                + "booking phone. Never ask the caller for a booking number or mutate data before lookup."),
+                        ? " Identify the booking from caller-supplied phone, existing appointment date, and exact time, "
+                                + "or phone plus a complete reference the caller volunteers. Names are not identity "
+                                + "factors. Never reveal booking facts until the server verifies the supplied values."
+                        : " This action uses the server-owned identity established by lookup_booking. Do not supply, ask "
+                                + "for, or infer a booking number or phone for this mutation."),
                 Map.copyOf(schema),
                 definition.callerWaitExpected()
         );

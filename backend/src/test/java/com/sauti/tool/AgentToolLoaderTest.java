@@ -161,7 +161,7 @@ class AgentToolLoaderTest {
 
     @Test
     @SuppressWarnings("unchecked")
-    void lookupUsesPhoneDateAndCallerSuppliedNameInsteadOfARequiredReference() {
+    void lookupUsesLanguageNeutralIdentityWithoutTrustingNames() {
         var agent = new Agent(new Tenant("Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");
         agent.update("Amina", "Hello", "Prompt", "en", List.of("en"), null, List.of(), true, "UTC", "");
         var lookup = new AgentTool(agent, "lookup_booking", "Find booking", Map.of(
@@ -179,14 +179,14 @@ class AgentToolLoaderTest {
         var required = (List<String>) definition.inputSchema().get("required");
 
         assertThat(properties)
-                .containsKeys("caller_phone", "booking_date", "booking_lookup_name", "booking_time")
-                .doesNotContainKey("booking_number");
+                .containsKeys("caller_phone", "booking_date", "booking_time", "booking_number")
+                .doesNotContainKey("booking_lookup_name");
         assertThat(required)
-                .contains("caller_phone", "booking_date", "booking_lookup_name")
-                .doesNotContain("booking_number", "booking_time");
+                .contains("caller_phone")
+                .doesNotContain("booking_number", "booking_date", "booking_time", "booking_lookup_name");
         assertThat(definition.description())
-                .contains("caller-supplied phone, appointment date, and saved-under name")
-                .contains("Never reveal a stored name");
+                .contains("phone, existing appointment date, and exact time")
+                .contains("Names are not identity factors");
     }
 
     private AgentToolLoader loader(AgentToolRepository repository) {

@@ -7,11 +7,33 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
+import java.time.OffsetDateTime;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
 class RedisCallSessionStoreTest {
+    @Test
+    void retainsVerifiedBookingIdentityOutsideModelVisibleConversationState() {
+        var redis = mock(StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        var values = (ValueOperations<String, String>) mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(values);
+        when(values.get(anyString())).thenReturn(null);
+        var store = new RedisCallSessionStore(redis, new ObjectMapper().findAndRegisterModules(), 7200);
+        store.create("private-identity", new CallSession());
+        var identity = new VerifiedBookingIdentity(
+                UUID.randomUUID(), UUID.randomUUID(), "SAT-AB12CD34EF56", "0115752441", OffsetDateTime.now()
+        );
+
+        store.updateVerifiedBookingIdentity("private-identity", identity);
+
+        assertThat(store.verifiedBookingIdentity("private-identity")).contains(identity);
+        assertThat(store.conversationState("private-identity").orElseThrow().values())
+                .doesNotContainKeys("booking_number", "caller_phone");
+    }
+
     @Test
     void recordsAManagedConfirmationOnlyForTheExactRetainedAction() {
         var redis = mock(StringRedisTemplate.class);

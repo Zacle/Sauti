@@ -29,6 +29,10 @@ public interface CallSessionStore {
 
     void updateConversationState(String callSid, ConversationState state);
 
+    Optional<VerifiedBookingIdentity> verifiedBookingIdentity(String callSid);
+
+    void updateVerifiedBookingIdentity(String callSid, VerifiedBookingIdentity identity);
+
     Optional<BookingDraft> pendingBooking(String callSid);
 
     void updatePendingBooking(String callSid, BookingDraft draft);

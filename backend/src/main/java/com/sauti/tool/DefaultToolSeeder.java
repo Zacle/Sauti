@@ -23,13 +23,13 @@ public class DefaultToolSeeder {
                         "time_preference", property("string", "Exact preferred time in HH:mm when provided, otherwise a period such as morning", ""),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("date")), "sauti_calendar", "noop_calendar", 10);
-        seed(agent, "lookup_booking", "Look up an existing booking only after collecting the booking phone, appointment date, and the name the caller says it was saved under. Never reveal the stored name or booking details before the server confirms all supplied values together.",
+        seed(agent, "lookup_booking", "Look up an existing booking after collecting its phone, appointment date, and exact time, or a complete reference the caller volunteers. Never reveal booking details before server verification.",
                 schema(Map.of(
                         "caller_phone", property("string", "Exact phone number used when the booking was created", "phone"),
                         "booking_date", property("string", "Existing appointment date in yyyy-MM-dd format", "date"),
-                        "booking_lookup_name", property("string", "Name the caller says the booking was saved under", ""),
-                        "booking_time", property("string", "Exact existing appointment time in HH:mm, only when needed to disambiguate multiple matches", "")
-                ), List.of("caller_phone", "booking_date", "booking_lookup_name")), "sauti_calendar", "noop_calendar", 19);
+                        "booking_time", property("string", "Exact existing appointment time in HH:mm", ""),
+                        "booking_number", property("string", "Optional complete SAT-XXXXXXXXXXXX reference volunteered by the caller", "")
+                ), List.of("caller_phone")), "sauti_calendar", "noop_calendar", 20);
         seed(agent, "book_slot", "Two-step booking: appointment_name is the service recipient. Set review_action semantically to prepare_review, correct_review, or unconditional approve_review from the caller's meaning in their language. If that turn also contains a question, condition, hesitation, correction, or information request, set question_handling to answer_before_action so nothing is saved until it is answered and freshly confirmed. The server retains the private review token. Never ask the caller to spell or expose the token.",
                 schema(Map.ofEntries(
                         Map.entry("appointment_at", property("string", "Confirmed ISO-8601 appointment datetime", "date-time")),

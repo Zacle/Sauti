@@ -16,6 +16,7 @@ public class CallSession {
     private String callerPhone;
     private List<ConversationMessage> conversationHistory = new ArrayList<>();
     private ConversationState conversationState = ConversationState.empty();
+    private VerifiedBookingIdentity verifiedBookingIdentity;
     private BookingDraft pendingBookingDraft;
     private PendingAction pendingAction;
     private String agentSpeakingMarkName;
@@ -119,6 +120,14 @@ public class CallSession {
 
     public void setConversationState(ConversationState conversationState) {
         this.conversationState = conversationState == null ? ConversationState.empty() : conversationState;
+    }
+
+    public VerifiedBookingIdentity getVerifiedBookingIdentity() {
+        return verifiedBookingIdentity;
+    }
+
+    public void setVerifiedBookingIdentity(VerifiedBookingIdentity verifiedBookingIdentity) {
+        this.verifiedBookingIdentity = verifiedBookingIdentity;
     }
 
     public BookingDraft getPendingBookingDraft() {

@@ -1028,6 +1028,40 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
+    void cancellationUsesPrivateTenantBoundIdentityInsteadOfModelArguments() {
+        var fixture = fixture(HOURS, List.of());
+        var bookingId = java.util.UUID.randomUUID();
+        var tenantId = fixture.call.getTenant().getId();
+        var existing = mock(com.sauti.calendar.Booking.class);
+        var cancelled = mock(com.sauti.calendar.Booking.class);
+        when(existing.getId()).thenReturn(bookingId);
+        when(existing.getBookingReference()).thenReturn("SAT-PRIVATE12345");
+        when(cancelled.getId()).thenReturn(bookingId);
+        when(cancelled.getBookingReference()).thenReturn("SAT-PRIVATE12345");
+        when(fixture.callSessionStore.verifiedBookingIdentity("call-sid")).thenReturn(Optional.of(
+                new com.sauti.session.VerifiedBookingIdentity(
+                        tenantId, bookingId, "SAT-PRIVATE12345", "0115752441", OffsetDateTime.now()
+                )
+        ));
+        when(fixture.bookingService.get(tenantId, bookingId)).thenReturn(existing);
+        when(fixture.bookingService.cancel(tenantId, bookingId)).thenReturn(cancelled);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "cancel-private", "cancel_booking", Map.of(
+                        "booking_number", "SAT-ATTACKER000",
+                        "caller_phone", "0000000000"
+                )
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_cancelled")
+                .containsEntry("bookingNumber", "SAT-PRIVATE12345");
+        verify(fixture.bookingService).get(tenantId, bookingId);
+        verify(fixture.bookingService).cancel(tenantId, bookingId);
+        verify(fixture.bookingService, never()).resolve(any(), any());
+    }
+
+    @Test
     void cancellationRejectsAMismatchedPhoneBeforeChangingTheBooking() {
         var fixture = fixture(HOURS, List.of());
         var existing = mock(com.sauti.calendar.Booking.class);
@@ -1066,7 +1100,8 @@ class SautiCalendarFulfillmentTest {
                 .isEqualTo(List.of("S", "A", "T", "-", "A", "B", "1", "2", "C", "D", "3", "4"));
         assertThat(result.result().get("instruction").toString())
                 .contains("could not be matched together")
-                .contains("Do not say whether");
+                .contains("Do not say whether")
+                .contains("phone already held in private call state");
         verify(fixture.bookingService, never()).cancel(any(), any());
         verify(fixture.callSessionStore).updatePendingAction("call-sid", null);
         var resetState = org.mockito.ArgumentCaptor.forClass(ConversationState.class);
@@ -1074,7 +1109,8 @@ class SautiCalendarFulfillmentTest {
         assertThat(resetState.getValue().revision()).isEqualTo(8);
         assertThat(resetState.getValue().values())
                 .containsEntry("caller_name", "Zachary")
-                .doesNotContainKeys("booking_number", "caller_phone", "review_decision");
+                .containsEntry("caller_phone", "0115759999")
+                .doesNotContainKeys("booking_number", "review_decision");
     }
 
     @Test
@@ -1132,10 +1168,11 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
-    void lookupFindsABookingByPhoneAppointmentDateAndCallerSuppliedName() {
+    void lookupFindsABookingByPhoneAppointmentDateAndExactTime() {
         var fixture = fixture(HOURS, List.of());
         var booking = mock(com.sauti.calendar.Booking.class);
         when(booking.getBookingReference()).thenReturn("SAT-AB12CD34");
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
         when(booking.getCallerPhone()).thenReturn("011-575-2441");
         when(booking.getCallerName()).thenReturn("Zachary Cole");
         when(booking.getServiceType()).thenReturn("women hairstyle");
@@ -1145,12 +1182,24 @@ class SautiCalendarFulfillmentTest {
         when(fixture.bookingService.findOnAppointmentDate(
                 any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
         )).thenReturn(List.of(booking));
+        when(fixture.callSessionStore.conversationState("call-sid")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_phone", "0115752441",
+                                "booking_date", "2026-07-31",
+                                "booking_lookup_name", "Zachary Cole"
+                        ),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        5
+                )
+        ));
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "lookup-by-details", "lookup_booking", Map.of(
                         "caller_phone", "0115752441",
                         "booking_date", "2026-07-31",
-                        "booking_lookup_name", "Zachary Cole"
+                        "booking_time", "11:00"
                 )
         ));
 
@@ -1163,37 +1212,52 @@ class SautiCalendarFulfillmentTest {
         var remembered = org.mockito.ArgumentCaptor.forClass(ConversationState.class);
         verify(fixture.callSessionStore).updateConversationState(eq("call-sid"), remembered.capture());
         assertThat(remembered.getValue().values())
-                .containsEntry("booking_number", "SAT-AB12CD34");
+                .doesNotContainKey("booking_number");
+        verify(fixture.callSessionStore).updateVerifiedBookingIdentity(eq("call-sid"), any());
     }
 
     @Test
-    void lookupRejectsAWrongSavedUnderNameWithoutRevealingTheStoredName() {
+    void lookupDoesNotUseARecognizedNameAsAnIdentityFactor() {
         var fixture = fixture(HOURS, List.of());
         var booking = mock(com.sauti.calendar.Booking.class);
         when(booking.getCallerPhone()).thenReturn("011-575-2441");
         when(booking.getCallerName()).thenReturn("Alexandra Secret");
+        when(booking.getBookingReference()).thenReturn("SAT-AB12CD34");
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(booking.getStatus()).thenReturn("confirmed");
+        when(booking.getServiceType()).thenReturn("consultation");
+        when(booking.getDurationMinutes()).thenReturn(60);
         when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
         when(fixture.bookingService.findOnAppointmentDate(
                 any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
         )).thenReturn(List.of(booking));
+        when(fixture.callSessionStore.conversationState("call-sid")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_phone", "0115752441",
+                                "booking_date", "2026-07-31",
+                                "booking_lookup_name", "Zachary Cole"
+                        ),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        5
+                )
+        ));
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "lookup-wrong-name", "lookup_booking", Map.of(
                         "caller_phone", "0115752441",
                         "booking_date", "2026-07-31",
+                        "booking_time", "11:00",
                         "booking_lookup_name", "Zachary Cole"
                 )
         ));
 
         assertThat(result.result())
-                .containsEntry("status", "booking_identity_mismatch")
-                .containsEntry("bookingFound", false)
-                .containsEntry("actionPerformed", false)
-                .containsEntry("retryField", "caller_phone")
-                .doesNotContainKeys("appointmentName", "serviceType", "bookingNumber");
-        assertThat(result.result().toString())
-                .doesNotContain("Alexandra Secret")
-                .contains("never reveal a stored name");
+                .containsEntry("status", "booking_found")
+                .containsEntry("bookingFound", true)
+                .containsEntry("bookingNumber", "SAT-AB12CD34");
+        verify(fixture.callSessionStore).updateVerifiedBookingIdentity(eq("call-sid"), any());
     }
 
     @Test

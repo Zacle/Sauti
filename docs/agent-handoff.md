@@ -225,6 +225,72 @@ Expected:
 
 ## Change log
 
+### 2026-07-27 - Centralize multilingual existing-booking identity
+
+- Replaced the speech-sensitive phone/date/saved-name lookup contract with a reusable, language-neutral identity service under the calendar feature.
+- `BookingIdentityService` is tenant-scoped and supports two verification routes:
+  - normal route: caller-supplied booking phone + existing appointment date + exact existing appointment time;
+  - fallback route: booking phone + a complete `SAT-` reference voluntarily supplied by the caller or requested only when otherwise-identical records remain.
+- Names are no longer identity factors. This avoids failures caused by speech recognition, transliteration, accents, or different writing systems while keeping names available as ordinary conversational context.
+- Phone + date alone never discloses a booking, even when only one candidate exists. The exact appointment time is always a caller-supplied challenge. Wrong phone/time combinations return the same non-disclosing mismatch outcome.
+- A successful lookup now stores a tenant ID, booking ID, reference, normalized phone, and verification timestamp in `CallSession` as `VerifiedBookingIdentity`. This server-owned state is serialized through the existing Redis/fallback session store and is not copied into model-visible `ConversationState`.
+- Update, reschedule, and cancellation tools consume only that private tenant-bound identity. Their runtime schemas no longer ask the model for a booking number or phone, and later model-supplied/stale identity arguments cannot redirect the mutation.
+- Changing or clearing the caller phone, existing date/time, or reference invalidates any prior verified identity so a second booking cannot accidentally reuse the first booking's authorization.
+- The lookup remains workspace/tenant-wide rather than agent-specific. An authorized agent in the same workspace can therefore operate on bookings created through another workspace agent, regardless of either agent's configured language or business template.
+- Advanced the default lookup tool schema version from `19` to `20` so existing database-backed tool definitions receive the new contract through normal synchronization. No database migration or new customer identifier was added.
+- This supersedes the phone/date/name live-verification guidance in the immediately following cancellation-recovery entry.
+- Files added:
+  - `backend/src/main/java/com/sauti/calendar/BookingIdentityService.java`
+  - `backend/src/main/java/com/sauti/session/VerifiedBookingIdentity.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingIdentityServiceTest.java`
+- Files updated:
+  - `backend/src/main/java/com/sauti/session/CallSession.java`
+  - `backend/src/main/java/com/sauti/session/CallSessionStore.java`
+  - `backend/src/main/java/com/sauti/session/RedisCallSessionStore.java`
+  - `backend/src/main/java/com/sauti/tool/AgentToolLoader.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - `backend/src/main/java/com/sauti/tool/DefaultToolSeeder.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - corresponding calendar, session, tool, and orchestrator tests
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused identity, calendar fulfillment, semantic state, runtime schema, and Redis session tests passed (`80` tests);
+  - `.\gradlew.bat :backend:test` passed (`279` tests);
+  - `git diff --check` passed with only the repository's LF-to-CRLF working-tree warnings.
+- Deployment status: uncommitted and not deployed. It is ready for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: on at least two agents (preferably using different configured languages), look up the same workspace booking using phone/date/time, confirm it once, and cancel or reschedule it. Verify exactly one intended booking changes and the status email is sent.
+
+### 2026-07-27 - Recover existing-booking cancellation from name transcription and partial references
+
+- Investigated browser diagnostic `sauti-telnyx-diagnostics-1785104916266.json` and correlated its 2026-07-26 22:24-22:28 UTC window read-only with Telnyx conversation `d0de4428-8d57-4c78-98fe-f57014b5b1b7`.
+- The call never reached `cancel_booking`; no booking was changed. The evidence showed:
+  - the caller supplied the correct booking phone and 2 August appointment date;
+  - the booking card is saved under `Harry`, while the first lookup used `Zachary`;
+  - when the caller later said and spelled Harry, speech-to-text/model state stored `Aerie`/`Airy`, so the privacy-preserving phone/date/name verification correctly rejected it;
+  - the caller then volunteered partial references `SAT-3PP4XVB` and `SAT-GIQ35XVB` rather than the complete card reference `SAT-3PP4JIQ35XVB`;
+  - Sauti accepted those partial values into state, said it would look them up, and then retried the stale phone/date/name lookup instead of asking for the missing reference characters.
+- Hardened semantic state collection:
+  - explicitly spelled saved-under names must be reconstructed from the caller's letters and take precedence over a nearby speech-to-text word;
+  - a booking reference is complete only when `SAT-` is followed by exactly 12 letters or digits;
+  - a partial reference cannot authorize `lookup_booking` or produce a false “looking it up” acknowledgement;
+  - the provider receives an explicit instruction to ask once for the complete reference in the caller's language.
+- Booking identity mismatches now retain the caller-provided phone in private call state while clearing the unverified booking number/date/name/time. This lets a corrected complete voluntarily supplied reference retry immediately with the same exact phone; lookup still requires the full 12-character reference plus the phone, remains tenant-scoped, and discloses no booking facts on mismatch.
+- Updated the mismatch recovery instruction to stop recollecting an unchanged phone after every corrected reference.
+- Files touched:
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/tool/ConversationStateToolTest.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.tool.ConversationStateToolTest" --tests "com.sauti.tool.SautiCalendarFulfillmentTest" --tests "com.sauti.llm.ConversationOrchestratorTest" --console=plain` passed;
+  - `.\gradlew.bat :backend:test --console=plain` passed;
+  - `git diff --check` passed with only the repository's LF-to-CRLF working-tree warnings.
+- Deployment status: this cancellation-recovery change is uncommitted and not deployed. The preceding booking-status email and Telnyx farewell baseline was externally committed as `8f33ab7cb97e26fb4861e2c0a08dc5b8d005e8cb`; CI run `30216842709` and deploy run `30216909540` both passed.
+- Required live verification after deployment: retry cancelling `SAT-3PP4JIQ35XVB`. The standard path should succeed with phone `0115753441`, date 2 August, and the caller spelling `H-A-R-R-Y`; alternatively, after the phone is collected, reading the complete reference must perform lookup, request one cancellation confirmation, and cancel exactly once.
+
 ### 2026-07-26 - Let the final Telnyx farewell finish before ending the call
 
 - Fixed the reported terminal-audio race where Telnyx ended a call before the assistant finished its last sentence.

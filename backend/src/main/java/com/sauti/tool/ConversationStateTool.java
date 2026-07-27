@@ -92,9 +92,9 @@ public class ConversationStateTool {
                     case "caller_phone" -> "Complete caller-provided phone number.";
                     case "new_caller_phone" -> "Replacement contact phone explicitly requested for an existing booking. Never overwrite caller_phone, which verifies the current booking.";
                     case "caller_email" -> "Complete caller-provided email address.";
-                    case "booking_number" -> "Accumulated customer-facing booking number supplied for a lookup, update, reschedule, or cancellation. Normalize spelled characters, number words, and dash/hyphen into the SAT-XXXXXXXXXXXX form. Consecutive partial fragments are valid updates.";
+                    case "booking_number" -> "Accumulated customer-facing booking number supplied for a lookup, update, reschedule, or cancellation. Normalize spelled characters, number words, and dash/hyphen into the SAT-XXXXXXXXXXXX form, where exactly twelve characters follow SAT-. Consecutive partial fragments are valid updates, but never claim to look up a partial reference.";
                     case "booking_date" -> "Date of an existing appointment, normalized to yyyy-MM-dd in the business timezone. This identifies an existing booking and is distinct from preferred_day for a new or replacement date.";
-                    case "booking_lookup_name" -> "Name the caller says the existing booking was saved under. Never fill this from a name disclosed by a tool result.";
+                    case "booking_lookup_name" -> "Name the caller says the existing booking was saved under. If the caller spells the name letter by letter, reconstruct the name from those letters and prefer that explicit spelling over a nearby speech-to-text word. Never fill this from a name disclosed by a tool result.";
                     case "booking_time" -> "Exact time of an existing appointment normalized to HH:mm, only when the server reports that phone, date, and saved name match more than one booking.";
                     case "preferred_day" -> "Clearly understood appointment date normalized to yyyy-MM-dd using TODAY IN THE BUSINESS TIMEZONE. Omit when the date is unclear.";
                     case "preferred_time" -> "Clearly understood exact appointment time normalized to HH:mm, or a clear broad period such as morning or afternoon. Omit when the time is unclear.";
@@ -256,6 +256,12 @@ public class ConversationStateTool {
                             ? Set.of()
                             : Set.copyOf(call.getAgent().getBookingRequiredFields())
             );
+            var changesExistingBookingIdentity = Set.of(
+                    "caller_phone", "booking_date", "booking_time", "booking_number"
+            ).stream().anyMatch(field -> turnUpdates.containsKey(field) || clearedFields.contains(field));
+            if (changesExistingBookingIdentity) {
+                sessions.updateVerifiedBookingIdentity(call.getTwilioCallSid(), null);
+            }
             var invalidatesVerifiedSlot = turnUpdates.containsKey("preferred_day")
                     || turnUpdates.containsKey("preferred_time")
                     || clearedFields.contains("preferred_day")
@@ -284,11 +290,13 @@ public class ConversationStateTool {
                     && ConversationState.INTENT_ACTIVE.equals(next.bookingIntent())
                     && (turnUpdates.containsKey("preferred_day") || turnUpdates.containsKey("preferred_time"))
                     && configuredFor(call, "check_availability");
+            var incompleteBookingReference = incompleteBookingReference(next, turnUpdates);
             var bookingIdentityBecameReady = (turnUpdates.containsKey("booking_number")
                     || turnUpdates.containsKey("caller_phone")
                     || turnUpdates.containsKey("booking_date")
                     || turnUpdates.containsKey("booking_lookup_name")
                     || turnUpdates.containsKey("booking_time"))
+                    && !incompleteBookingReference
                     && lookupBookingArguments(next).isPresent()
                     && configuredFor(call, "lookup_booking");
             var callDisposition = choice(
@@ -331,7 +339,7 @@ public class ConversationStateTool {
                         : reviewMustContinue || bookingBecameReady
                             ? "book_slot"
                             : requestedBusinessTool;
-            var spoken = "reply".equals(nextAction)
+            var spoken = "reply".equals(nextAction) && !incompleteBookingReference
                     ? VoiceOutputGuard.speechText(stringArgument(toolCall.arguments(), "spoken_response"))
                     : "";
             if (!spoken.isBlank()) result.put("spokenResponse", spoken);
@@ -389,7 +397,7 @@ public class ConversationStateTool {
                             result.put("nextToolArguments", arguments)
                     );
                 } else if ("cancel_booking".equals(businessTool)) {
-                    bookingIdentityArguments(next).ifPresent(identity -> {
+                    bookingIdentityArguments(call, next).ifPresent(identity -> {
                         var arguments = new LinkedHashMap<String, Object>(identity);
                         arguments.put("question_handling", "ready_for_action");
                         arguments.put("confirmation_state", "confirmed");
@@ -397,7 +405,12 @@ public class ConversationStateTool {
                     });
                 }
             }
-            result.put("instruction", spoken.isBlank()
+            result.put("instruction", incompleteBookingReference
+                    ? "The caller supplied only part of a Sauti booking number. Do not call lookup_booking and do "
+                        + "not say that a lookup is running. Ask in the caller's current language for the complete "
+                        + "reference: SAT, the dash, and all twelve following letters or digits. Preserve the phone "
+                        + "already collected. Wait for the caller to repeat the full reference."
+                    : spoken.isBlank()
                     ? questionBlocksMutation
                         ? "No side effect is authorized on this turn. Answer the caller's explicit question or condition first, using a read-only business tool when authorized, then stop and wait for a fresh action decision."
                         : "State is updated. Continue with the appropriate configured business tool before speaking, or answer naturally if no business tool is needed."
@@ -442,17 +455,29 @@ public class ConversationStateTool {
         }
         if (pending == null || pending.isEmpty()) return Optional.empty();
         return BookingToolArgumentResolver.resolveReschedule(call, state.asNotes(), pending.get())
-                .flatMap(arguments -> bookingIdentityArguments(state).map(identity -> {
+                .flatMap(arguments -> bookingIdentityArguments(call, state).map(identity -> {
                     var secured = new LinkedHashMap<String, Object>(arguments);
                     secured.putAll(identity);
                     return Map.copyOf(secured);
                 }));
     }
 
-    private Optional<Map<String, Object>> bookingIdentityArguments(ConversationState state) {
+    private Optional<Map<String, Object>> bookingIdentityArguments(Call call, ConversationState state) {
+        try {
+            var retained = sessions.verifiedBookingIdentity(call.getTwilioCallSid());
+            if (retained != null
+                    && retained.isPresent()
+                    && call.getTenant().getId().equals(retained.orElseThrow().tenantId())) {
+                // Identity is server-owned. Mutation arguments intentionally
+                // contain no booking identifier or phone for the model to alter.
+                return Optional.of(Map.of());
+            }
+        } catch (RuntimeException ignored) {
+            // Fall through for an in-flight session created by an older release.
+        }
         var bookingNumber = state.values().getOrDefault("booking_number", "").trim();
         var callerPhone = state.values().getOrDefault("caller_phone", "").trim();
-        if (bookingNumber.isBlank() || callerPhone.isBlank()) return Optional.empty();
+        if (!completeBookingNumber(bookingNumber) || callerPhone.isBlank()) return Optional.empty();
         return Optional.of(Map.of(
                 "booking_number", bookingNumber,
                 "caller_phone", callerPhone
@@ -460,24 +485,46 @@ public class ConversationStateTool {
     }
 
     private Optional<Map<String, Object>> lookupBookingArguments(ConversationState state) {
-        var verified = bookingIdentityArguments(state);
-        if (verified.isPresent()) return verified;
+        var bookingNumber = state.values().getOrDefault("booking_number", "").trim();
         var callerPhone = state.values().getOrDefault("caller_phone", "").trim();
+        if (completeBookingNumber(bookingNumber) && !callerPhone.isBlank()) {
+            return Optional.of(Map.of(
+                    "booking_number", bookingNumber,
+                    "caller_phone", callerPhone
+            ));
+        }
         var bookingDate = state.values().getOrDefault("booking_date", "").trim();
-        var bookingName = state.values().getOrDefault("booking_lookup_name", "").trim();
         try {
             java.time.LocalDate.parse(bookingDate);
         } catch (java.time.format.DateTimeParseException exception) {
             return Optional.empty();
         }
-        if (callerPhone.isBlank() || bookingName.isBlank()) return Optional.empty();
+        if (callerPhone.isBlank()) return Optional.empty();
         var arguments = new LinkedHashMap<String, Object>();
         arguments.put("caller_phone", callerPhone);
         arguments.put("booking_date", bookingDate);
-        arguments.put("booking_lookup_name", bookingName);
         var bookingTime = state.values().getOrDefault("booking_time", "").trim();
-        if (!bookingTime.isBlank()) arguments.put("booking_time", bookingTime);
+        if (bookingTime.isBlank()) return Optional.empty();
+        try {
+            java.time.LocalTime.parse(bookingTime);
+        } catch (java.time.format.DateTimeParseException exception) {
+            return Optional.empty();
+        }
+        arguments.put("booking_time", bookingTime);
         return Optional.of(Map.copyOf(arguments));
+    }
+
+    private boolean incompleteBookingReference(
+            ConversationState state,
+            Map<String, String> turnUpdates
+    ) {
+        if (!turnUpdates.containsKey("booking_number")) return false;
+        var bookingNumber = state.values().getOrDefault("booking_number", "").trim();
+        return !bookingNumber.isBlank() && !completeBookingNumber(bookingNumber);
+    }
+
+    private boolean completeBookingNumber(String value) {
+        return value != null && value.trim().matches("SAT-[A-Z0-9]{12}");
     }
 
     private Optional<PendingAction> pendingAction(Call call) {

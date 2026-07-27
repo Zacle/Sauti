@@ -52,6 +52,79 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void refusesToLookUpAnIncompleteVoluntaryBookingReference() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("partial-reference-call");
+        when(sessions.conversationState("partial-reference-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of("caller_phone", "0115753441"),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        4
+                )
+        ));
+        var repository = lookupRepository(call);
+        var tool = new ConversationStateTool(sessions, repository);
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("booking_number", "SAT-3PP4XVB"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Thank you. Let me look that up."
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "reply")
+                .doesNotContainKeys("nextTool", "nextToolArguments", "spokenResponse")
+                .hasEntrySatisfying("instruction", instruction -> assertThat(instruction.toString())
+                        .contains("only part", "all twelve")
+                        .containsIgnoringCase("do not call lookup_booking"));
+        assertThat(captureState(sessions, "partial-reference-call").values())
+                .containsEntry("caller_phone", "0115753441")
+                .containsEntry("booking_number", "SAT-3PP4XVB");
+    }
+
+    @Test
+    void completeVoluntaryReferenceUsesTheRetainedPhoneForLookup() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("complete-reference-call");
+        when(sessions.conversationState("complete-reference-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of("caller_phone", "0115753441"),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        4
+                )
+        ));
+        var tool = new ConversationStateTool(sessions, lookupRepository(call));
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("booking_number", "SAT-3PP4JIQ35XVB"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Thank you. Let me look that up."
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "lookup_booking")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "booking_number", "SAT-3PP4JIQ35XVB",
+                        "caller_phone", "0115753441"
+                ))
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
     void correctedSpeakerNameUpdatesASelfBookingWithoutDependingOnCallerWording() {
         var sessions = mock(CallSessionStore.class);
         var call = call("semantic-call");
@@ -491,7 +564,7 @@ class ConversationStateToolTest {
         when(sessions.conversationState("lookup-booking-call")).thenReturn(Optional.of(
                 new ConversationState(
                         Map.of(
-                                "booking_number", "SAT-AB12CD34",
+                                "booking_number", "SAT-AB12CD34EF56",
                                 "caller_phone", "0115752441"
                         ),
                         ConversationState.SUBJECT_UNKNOWN,
@@ -524,7 +597,7 @@ class ConversationStateToolTest {
                 .containsEntry("nextTool", "lookup_booking")
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
-                        "booking_number", "SAT-AB12CD34",
+                        "booking_number", "SAT-AB12CD34EF56",
                         "caller_phone", "0115752441"
                 ))
                 .doesNotContainKey("spokenResponse");
@@ -577,7 +650,7 @@ class ConversationStateToolTest {
     }
 
     @Test
-    void completingPhoneDateAndNameForcesAReferenceFreeLookup() {
+    void completingPhoneDateAndTimeForcesAReferenceFreeLookup() {
         var sessions = mock(CallSessionStore.class);
         var call = call("details-identity-call");
         when(sessions.conversationState("details-identity-call")).thenReturn(Optional.of(
@@ -600,7 +673,7 @@ class ConversationStateToolTest {
         var tool = new ConversationStateTool(sessions, repository);
 
         var result = tool.execute(call, toolCall(arguments(
-                "updates", Map.of("booking_lookup_name", "Zachary Cole"),
+                "updates", Map.of("booking_time", "11:00"),
                 "additional_details", Map.of(),
                 "clear_fields", List.of(),
                 "booking_subject", "unchanged",
@@ -621,7 +694,7 @@ class ConversationStateToolTest {
                 .containsEntry("nextToolArguments", Map.of(
                         "caller_phone", "0115752441",
                         "booking_date", "2026-07-31",
-                        "booking_lookup_name", "Zachary Cole"
+                        "booking_time", "11:00"
                 ))
                 .doesNotContainKey("spokenResponse");
     }
@@ -668,7 +741,6 @@ class ConversationStateToolTest {
         assertThat(result.result()).containsEntry("nextToolArguments", Map.of(
                 "caller_phone", "0115752441",
                 "booking_date", "2026-07-31",
-                "booking_lookup_name", "Zachary Cole",
                 "booking_time", "14:30"
         ));
     }
@@ -716,7 +788,7 @@ class ConversationStateToolTest {
         when(sessions.conversationState("cancel-booking-call")).thenReturn(Optional.of(
                 new ConversationState(
                         Map.of(
-                                "booking_number", "SAT-AB12CD34",
+                                "booking_number", "SAT-AB12CD34EF56",
                                 "caller_phone", "0115752441"
                         ),
                         ConversationState.SUBJECT_UNKNOWN,
@@ -742,7 +814,7 @@ class ConversationStateToolTest {
                 .containsEntry("nextTool", "cancel_booking")
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
-                        "booking_number", "SAT-AB12CD34",
+                        "booking_number", "SAT-AB12CD34EF56",
                         "caller_phone", "0115752441",
                         "question_handling", "ready_for_action",
                         "confirmation_state", "confirmed"
@@ -757,7 +829,7 @@ class ConversationStateToolTest {
         when(sessions.conversationState("verified-action-call")).thenReturn(Optional.of(
                 new ConversationState(
                         Map.of(
-                                "booking_number", "SAT-AB12CD34",
+                                "booking_number", "SAT-AB12CD34EF56",
                                 "caller_phone", "0115752441"
                         ),
                         ConversationState.SUBJECT_UNKNOWN,
@@ -768,7 +840,7 @@ class ConversationStateToolTest {
         when(sessions.pendingAction("verified-action-call")).thenReturn(Optional.of(
                 new PendingAction(
                         "cancel_booking", Map.of(
-                                "booking_number", "SAT-AB12CD34",
+                                "booking_number", "SAT-AB12CD34EF56",
                                 "caller_phone", "0115752441"
                         ), 11
                 )
@@ -794,7 +866,7 @@ class ConversationStateToolTest {
                 .containsEntry("nextTool", "cancel_booking")
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
-                        "booking_number", "SAT-AB12CD34",
+                        "booking_number", "SAT-AB12CD34EF56",
                         "caller_phone", "0115752441",
                         "question_handling", "ready_for_action",
                         "confirmation_state", "confirmed"
@@ -809,7 +881,7 @@ class ConversationStateToolTest {
         when(sessions.conversationState("reschedule-booking-call")).thenReturn(Optional.of(
                 new ConversationState(
                         Map.of(
-                                "booking_number", "SAT-AB12CD34",
+                                "booking_number", "SAT-AB12CD34EF56",
                                 "caller_phone", "0115752441",
                                 "preferred_day", "2026-07-23",
                                 "preferred_time", "14:00"
@@ -840,7 +912,7 @@ class ConversationStateToolTest {
                 .containsEntry("nextTool", "reschedule_booking")
                 .containsEntry("nextToolAuthorized", true)
                 .containsEntry("nextToolArguments", Map.of(
-                        "booking_number", "SAT-AB12CD34",
+                        "booking_number", "SAT-AB12CD34EF56",
                         "caller_phone", "0115752441",
                         "appointment_at", "2026-07-23T14:00Z",
                         "duration_minutes", 45,
@@ -1105,6 +1177,16 @@ class ConversationStateToolTest {
         when(agent.getTimezone()).thenReturn("UTC");
         when(agent.getBookingRequiredFields()).thenReturn(List.of());
         return call;
+    }
+
+    private AgentToolRepository lookupRepository(Call call) {
+        var repository = mock(AgentToolRepository.class);
+        var lookup = mock(AgentTool.class);
+        when(lookup.actionEffect()).thenReturn(ToolActionEffect.READ_ONLY);
+        when(repository.findByAgent_IdAndToolNameAndIsActiveTrue(
+                call.getAgent().getId(), "lookup_booking"
+        )).thenReturn(Optional.of(lookup));
+        return repository;
     }
 
     private LlmToolCall toolCall(Map<String, Object> arguments) {
