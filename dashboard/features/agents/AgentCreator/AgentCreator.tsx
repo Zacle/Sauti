@@ -1537,12 +1537,18 @@ function MainSettings(props: {
   return (
     <div className="main-settings-page">
       <section className="main-settings-card main-identity-card">
-        <StudioHeading eyebrow="Main settings" title="Identity and call setup" description="Configure the essentials callers experience on every conversation." />
+      <StudioHeading eyebrow="Main settings" title="Identity and call setup" description="Configure the essentials callers experience on every conversation." />
       {!channelConfigured && (
-        <div className="studio-warning identity-channel-notice">
-          <span className="identity-channel-notice-icon"><RadioTower size={15} /></span>
-          <div><strong>Connect a customer channel</strong><span>Add Web Voice, WhatsApp, or a phone number.</span></div>
-          <button type="button" onClick={focusChannels}>Choose channel <ArrowRight size={13} /></button>
+        <div className="identity-channel-notice">
+          <span className="identity-channel-notice-icon" aria-hidden="true"><RadioTower size={16} /></span>
+          <div className="identity-channel-notice-content">
+            <div className="identity-channel-notice-heading">
+              <strong>Customer channel</strong>
+              <span>Not connected</span>
+            </div>
+            <p>Add Web Voice, WhatsApp, or a phone number to receive calls.</p>
+          </div>
+          <button type="button" onClick={focusChannels}><Plus size={14} /> Add channel</button>
         </div>
       )}
       <div className="identity-settings-section">

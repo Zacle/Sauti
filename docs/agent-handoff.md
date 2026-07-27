@@ -227,16 +227,16 @@ Expected:
 
 ### 2026-07-27 - Compact the customer-channel setup notice
 
-- Replaced the tall amber warning treatment in Main Settings with a compact, neutral setup row so the missing optional channel does not read like an error.
-- Shortened the heading and supporting copy, reduced the icon footprint, and retained a slim amber status accent for discoverability.
-- Changed the large outlined action to a compact teal `Choose channel` button that matches the dashboard's interactive color system.
+- Replaced the alert-style customer-channel warning in Main Settings with a quiet, neutral status row so the missing optional channel does not read like an error.
+- Removed the amber rail and warning tile, introduced a restrained circular channel icon, and made the disconnected state explicit with a muted status badge.
+- Replaced the competing teal call-to-action treatment with a compact neutral `Add channel` action that reveals the dashboard accent only on interaction.
 - Preserved the existing channel-navigation behavior and responsive stacking on narrow screens.
 - Files touched:
   - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
   - `dashboard/features/agents/AgentCreator/AgentCreator.css`
   - `docs/agent-handoff.md`
 - Verification:
-  - `Push-Location dashboard; npm.cmd run typecheck; npm.cmd run build; Pop-Location` passed;
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location` passed, including Next.js lint and TypeScript validation;
   - `git diff --check` passed.
 - Deployment status: uncommitted and not deployed. Ready for maintainer review and the normal GitHub Actions CI/CD workflow.
 

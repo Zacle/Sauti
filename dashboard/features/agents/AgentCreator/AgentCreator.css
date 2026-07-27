@@ -5530,59 +5530,86 @@
 }
 
 .main-settings-page .identity-channel-notice {
+  display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 10px;
-  min-height: 58px;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
   margin: 0 0 20px;
-  padding: 9px 10px 9px 12px;
-  border-color: rgba(91, 151, 199, 0.15);
-  border-radius: 12px;
-  background: rgba(5, 22, 39, 0.5);
-  box-shadow: inset 2px 0 rgba(226, 161, 65, 0.72);
+  padding: 11px 12px;
+  border: 1px solid rgba(91, 151, 199, 0.13);
+  border-radius: 13px;
+  background: rgba(3, 18, 32, 0.42);
 }
 
 .identity-channel-notice-icon {
   display: grid;
-  width: 27px;
-  height: 27px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  border-radius: 8px;
-  color: #dca24c;
-  background: rgba(184, 119, 30, 0.1);
+  border: 1px solid rgba(76, 202, 194, 0.18);
+  border-radius: 50%;
+  color: #62c7c1;
+  background: rgba(27, 135, 132, 0.08);
 }
 
-.main-settings-page .identity-channel-notice strong {
-  color: #cbd9e4;
-  font-size: 0.73rem;
-  font-weight: 480;
+.identity-channel-notice-content {
+  min-width: 0;
 }
 
-.main-settings-page .identity-channel-notice span:not(.identity-channel-notice-icon) {
-  margin-top: 2px;
-  color: #71889c;
-  font-size: 0.64rem;
-  line-height: 1.35;
+.identity-channel-notice-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.main-settings-page .identity-channel-notice-heading strong {
+  color: #c8d7e2;
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+.main-settings-page .identity-channel-notice-heading span {
+  display: inline-flex;
+  min-height: 19px;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid rgba(112, 143, 166, 0.14);
+  border-radius: 999px;
+  color: #778fa2;
+  background: rgba(89, 118, 141, 0.07);
+  font-size: 0.57rem;
+  line-height: 1;
+}
+
+.main-settings-page .identity-channel-notice p {
+  margin: 3px 0 0;
+  color: #71879a;
+  font-size: 0.65rem;
+  line-height: 1.4;
 }
 
 .main-settings-page .identity-channel-notice button {
   display: inline-flex;
-  min-height: 32px;
+  min-height: 34px;
   align-items: center;
   gap: 6px;
-  padding: 0 10px;
-  border-color: rgba(40, 220, 208, 0.26);
-  border-radius: 8px;
-  color: #55d8cf;
-  background: rgba(7, 93, 97, 0.15);
+  padding: 0 11px;
+  border: 1px solid rgba(91, 151, 199, 0.2);
+  border-radius: 9px;
+  color: #a9bfce;
+  background: rgba(9, 34, 53, 0.72);
+  font: inherit;
   font-size: 0.65rem;
-  font-weight: 460;
+  font-weight: 480;
+  cursor: pointer;
   transition: border-color 160ms ease, color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
 .main-settings-page .identity-channel-notice button:hover {
-  border-color: rgba(42, 225, 212, 0.5);
-  color: #80eee6;
-  background: rgba(8, 116, 116, 0.22);
+  border-color: rgba(50, 210, 199, 0.4);
+  color: #65d8d0;
+  background: rgba(12, 52, 69, 0.78);
   transform: translateY(-1px);
 }
 
