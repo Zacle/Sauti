@@ -113,6 +113,49 @@ final result: blocked
 
 ---
 
+# Transactional email design QA
+
+## Comparison target
+
+- Target surfaces: account verification, password reset, booking confirmed/rescheduled/cancelled, and post-call summary emails.
+- Design source: the established Sauti midnight console and outcome-led marketing system.
+- Intended rendering checks: desktop webmail at 620 CSS pixels, narrow mobile mail at 360 CSS pixels, and a light-mode client that does not honor dark color-scheme metadata.
+- Rendered email screenshots: unavailable because no browser or email-client preview surface is available.
+
+## Evidence available
+
+- Every active email sender and template reference was inventoried.
+- Verification and password reset now render from one shared security-code template.
+- Booking states continue to render from one status-driven template.
+- The post-call email integration now renders HTML instead of plain text.
+- Thymeleaf rendering tests cover security, booking, and post-call content; the full backend test suite passes.
+
+## Required fidelity surfaces
+
+- Hierarchy: status, primary time or code, supporting details, and next action are ordered consistently.
+- Time clarity: booking emails separate appointment time, full date, duration, business timezone with UTC offset, previous slot, and exact status-change time.
+- Email compatibility: layouts use presentation tables, inline styles, no JavaScript, no external fonts, and text-first branding.
+- Accessibility: preview text is present, copy remains meaningful without color, links use explicit labels, and body copy maintains strong contrast on the intended dark surface.
+- Responsive behavior: fixed tables use `width:100%` with a maximum width, but actual mobile-client wrapping remains unverified.
+
+## Findings
+
+- [P1] Real email-client visual evidence is unavailable.
+  - Location: all active transactional templates.
+  - Evidence: no browser or inbox rendering surface is available in the current session.
+  - Impact: Outlook-specific fallbacks, forced light-mode behavior, and narrow-client wrapping cannot receive visual sign-off.
+  - Fix: send all status variants to a cross-client preview inbox, capture desktop and mobile renders, then correct any P0-P2 issue without changing the message hierarchy.
+
+## Comparison history
+
+- Initial source review: auth templates duplicated separate light layouts, booking used the newer dark system, and post-call delivery was unformatted plain text.
+- Implemented correction: consolidated auth states, rebuilt booking hierarchy, and added a complete HTML call-summary template using one coherent Sauti email system.
+- Post-fix visual evidence: blocked because no email-client preview surface is available.
+
+final result: blocked
+
+---
+
 # Marketing integrations redesign QA
 
 ## Comparison target

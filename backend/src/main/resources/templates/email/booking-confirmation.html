@@ -3,138 +3,192 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="supported-color-schemes" content="dark">
     <title th:text="${notification.heading}">Sauti booking status</title>
 </head>
-<body style="margin:0;padding:0;background:#061421;color:#eaf4ff;font-family:Arial,Helvetica,sans-serif;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;"
-     th:text="|${notification.heading}: ${booking.service} on ${booking.appointmentDate} at ${booking.appointmentTime} ${booking.timezone}|">
-    Booking details
+<body style="margin:0;padding:0;background:#020a14;color:#edf7fc;font-family:Arial,Helvetica,sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;"
+     th:text="|${notification.statusLabel}: ${booking.service}, ${booking.appointmentDate} at ${booking.appointmentTime} ${booking.timezone}|">
+    Booking status and appointment time
 </div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-       style="width:100%;background:#061421;">
+       style="width:100%;background:#020a14;">
     <tr>
-        <td align="center" style="padding:32px 14px;">
+        <td align="center" style="padding:34px 14px;">
             <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0"
-                   style="width:100%;max-width:620px;background:#0a1d2d;border:1px solid #1e4055;border-radius:22px;overflow:hidden;">
+                   style="width:100%;max-width:620px;border-collapse:separate;background:#071827;border:1px solid #17384d;border-radius:22px;overflow:hidden;">
                 <tr>
-                    <td style="padding:30px 34px 26px;background:linear-gradient(135deg,#0c263b,#0a1d2d);border-bottom:1px solid #1e4055;">
+                    <td style="padding:25px 30px;border-bottom:1px solid #17384d;">
                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                             <tr>
-                                <td>
-                                    <div style="font-size:22px;font-weight:800;letter-spacing:-0.4px;color:#ffffff;">Sauti</div>
-                                    <div style="margin-top:7px;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#55e4db;"
-                                         th:text="${notification.heading}">
-                                        Booking status updated
-                                    </div>
+                                <td valign="middle">
+                                    <span style="font-size:21px;font-weight:800;letter-spacing:-.5px;color:#ffffff;">Sauti</span>
+                                    <span style="display:block;margin-top:4px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#6f899a;">
+                                        Booking operations
+                                    </span>
                                 </td>
-                                <td align="right" valign="top">
+                                <td align="right" valign="middle">
                                     <span th:if="${!notification.cancelled}"
-                                          style="display:inline-block;margin-bottom:7px;padding:6px 10px;background:#0d3b3b;border:1px solid #247b76;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.8px;color:#63ece3;"
+                                          style="display:inline-block;padding:7px 10px;border:1px solid #246c69;border-radius:999px;background:#0c3032;font-size:10px;font-weight:800;letter-spacing:1px;color:#5ee6dc;"
                                           th:text="${notification.statusLabel}">CONFIRMED</span>
                                     <span th:if="${notification.cancelled}"
-                                          style="display:inline-block;margin-bottom:7px;padding:6px 10px;background:#3a2023;border:1px solid #8f464d;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.8px;color:#ffaaa2;"
+                                          style="display:inline-block;padding:7px 10px;border:1px solid #7c4248;border-radius:999px;background:#321e22;font-size:10px;font-weight:800;letter-spacing:1px;color:#ffaaa1;"
                                           th:text="${notification.statusLabel}">CANCELLED</span>
-                                    <br>
-                                    <span style="display:inline-block;padding:7px 11px;border:1px solid #2c6272;border-radius:999px;font-size:11px;font-weight:700;color:#b8cedc;"
-                                          th:text="${booking.bookingNumber}">SAT-XXXXXXXXXXXX</span>
                                 </td>
                             </tr>
                         </table>
                     </td>
                 </tr>
+
+                <tr>
+                    <td style="padding:34px 34px 16px;">
+                        <div th:style="${notification.cancelled} ? 'display:inline-block;width:34px;height:34px;line-height:34px;border-radius:50%;text-align:center;background:#321e22;color:#ffaaa1;font-size:18px;font-weight:800;' : 'display:inline-block;width:34px;height:34px;line-height:34px;border-radius:50%;text-align:center;background:#10383a;color:#5ee6dc;font-size:18px;font-weight:800;'"
+                             th:text="${notification.cancelled} ? '×' : '✓'">✓</div>
+                        <h1 style="margin:15px 0 0;font-size:29px;line-height:1.18;font-weight:700;letter-spacing:-.65px;color:#ffffff;"
+                            th:text="${notification.heading}">New booking confirmed</h1>
+                        <p style="margin:10px 0 0;font-size:13px;line-height:1.55;color:#8ca3b3;">
+                            Reference
+                            <strong style="margin-left:5px;color:#dbe9f1;font-weight:700;"
+                                    th:text="${booking.bookingNumber}">SAT-XXXXXXXXXXXX</strong>
+                        </p>
+                    </td>
+                </tr>
+
                 <tr th:if="${!#strings.isEmpty(notification.previousAppointment)}">
-                    <td style="padding:0 34px 24px;">
-                        <div style="padding:14px 16px;background:#101f2b;border:1px solid #294455;border-radius:12px;font-size:13px;line-height:1.55;color:#9eb6c6;">
-                            <strong style="color:#dceaf3;">Previous appointment:</strong>
-                            <span th:text="${notification.previousAppointment}">Friday, 31 July 2026 at 1:00 PM</span>
-                        </div>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="padding:30px 34px 10px;">
-                        <div style="font-size:14px;color:#8fa9bb;">Appointment date</div>
-                        <div style="margin-top:7px;font-size:25px;line-height:1.25;font-weight:800;color:#ffffff;"
-                             th:text="${booking.appointmentDate}">Monday, 3 August 2026</div>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="padding:12px 34px 28px;">
+                    <td style="padding:8px 34px 12px;">
                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-                               style="background:#071824;border:1px solid #245067;border-radius:16px;">
+                               style="width:100%;border:1px solid #354452;border-radius:13px;background:#101a24;">
                             <tr>
-                                <td style="padding:22px 24px;">
-                                    <div style="font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#55e4db;">
-                                        Appointment time
-                                    </div>
-                                    <div style="margin-top:7px;font-size:38px;line-height:1;font-weight:800;color:#ffffff;"
-                                         th:text="${booking.appointmentTime}">9:00 AM</div>
-                                    <div style="margin-top:11px;font-size:13px;line-height:1.5;color:#9eb6c6;"
-                                         th:text="${'Business local time | ' + booking.timezone}">
-                                        Business local time | Africa/Cairo (UTC+03:00)
-                                    </div>
+                                <td width="118" valign="top" style="padding:15px 0 15px 16px;color:#758c9d;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;">
+                                    Previous appointment
                                 </td>
-                                <td align="right" valign="middle" style="padding:22px 24px;">
-                                    <div style="font-size:12px;color:#8fa9bb;">Duration</div>
-                                    <div style="margin-top:5px;font-size:16px;font-weight:700;color:#eaf4ff;"
-                                         th:text="${booking.duration}">1 hour</div>
+                                <td align="right" style="padding:15px 16px;color:#b9c9d3;font-size:12px;line-height:1.5;"
+                                    th:text="${notification.previousAppointment}">
+                                    Friday, 31 July 2026 at 1:00 PM in Africa/Cairo (UTC+03:00)
                                 </td>
                             </tr>
                         </table>
                     </td>
                 </tr>
+
                 <tr>
-                    <td style="padding:0 34px 28px;">
+                    <td style="padding:16px 34px 25px;">
                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-                               style="border-collapse:collapse;">
+                               th:style="${notification.cancelled} ? 'width:100%;border:1px solid #5d3a40;border-radius:17px;background:#13171e;' : 'width:100%;border:1px solid #246476;border-radius:17px;background:#06131f;'">
                             <tr>
-                                <td style="padding:15px 0;border-bottom:1px solid #1a394c;color:#89a3b5;font-size:13px;">Customer</td>
-                                <td align="right" style="padding:15px 0;border-bottom:1px solid #1a394c;color:#ffffff;font-size:14px;font-weight:700;"
+                                <td style="padding:22px 23px 10px;">
+                                    <div th:style="${notification.cancelled} ? 'font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#d78782;' : 'font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#55e4db;'">
+                                        <span th:text="${notification.cancelled} ? 'Cancelled appointment' : 'Appointment time'">Appointment time</span>
+                                    </div>
+                                    <div style="margin-top:10px;font-size:29px;line-height:1.16;font-weight:750;letter-spacing:-.5px;color:#ffffff;"
+                                         th:text="${booking.appointmentTime}">9:00 AM</div>
+                                    <div style="margin-top:7px;font-size:16px;line-height:1.45;font-weight:650;color:#d9e8f0;"
+                                         th:text="${booking.appointmentDate}">Monday, 3 August 2026</div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding:12px 23px 21px;">
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                                           style="width:100%;border-top:1px solid #1d3d4e;">
+                                        <tr>
+                                            <td style="padding-top:14px;">
+                                                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#6f899a;">Timezone</span>
+                                                <strong style="display:block;margin-top:4px;font-size:12px;color:#a9bfcc;font-weight:650;"
+                                                        th:text="${'Business local time | ' + booking.timezone}">
+                                                    Business local time | Africa/Cairo (UTC+03:00)
+                                                </strong>
+                                            </td>
+                                            <td align="right" style="padding-top:14px;">
+                                                <span style="display:block;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#6f899a;">Duration</span>
+                                                <strong style="display:block;margin-top:4px;font-size:12px;color:#dbe8ef;font-weight:650;"
+                                                        th:text="${booking.duration}">1 hour</strong>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:0 34px 25px;">
+                        <div style="margin-bottom:8px;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#637f91;">
+                            Booking details
+                        </div>
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="width:100%;border-collapse:collapse;">
+                            <tr>
+                                <td style="padding:13px 0;border-bottom:1px solid #17384d;color:#7e97a9;font-size:12px;">Customer</td>
+                                <td align="right" style="padding:13px 0;border-bottom:1px solid #17384d;color:#eef7fb;font-size:13px;font-weight:650;"
                                     th:text="${booking.customerName}">Customer name</td>
                             </tr>
                             <tr>
-                                <td style="padding:15px 0;border-bottom:1px solid #1a394c;color:#89a3b5;font-size:13px;">Service</td>
-                                <td align="right" style="padding:15px 0;border-bottom:1px solid #1a394c;color:#ffffff;font-size:14px;font-weight:700;"
+                                <td style="padding:13px 0;border-bottom:1px solid #17384d;color:#7e97a9;font-size:12px;">Service</td>
+                                <td align="right" style="padding:13px 0;border-bottom:1px solid #17384d;color:#eef7fb;font-size:13px;font-weight:650;"
                                     th:text="${booking.service}">Service</td>
                             </tr>
                             <tr>
-                                <td style="padding:15px 0;border-bottom:1px solid #1a394c;color:#89a3b5;font-size:13px;">Phone</td>
-                                <td align="right" style="padding:15px 0;border-bottom:1px solid #1a394c;color:#ffffff;font-size:14px;"
+                                <td style="padding:13px 0;border-bottom:1px solid #17384d;color:#7e97a9;font-size:12px;">Phone</td>
+                                <td align="right" style="padding:13px 0;border-bottom:1px solid #17384d;color:#c8d8e2;font-size:13px;"
                                     th:text="${booking.customerPhone}">Phone</td>
                             </tr>
                             <tr>
-                                <td style="padding:15px 0;color:#89a3b5;font-size:13px;">Captured by</td>
-                                <td align="right" style="padding:15px 0;color:#ffffff;font-size:14px;"
+                                <td style="padding:13px 0;color:#7e97a9;font-size:12px;">Captured by</td>
+                                <td align="right" style="padding:13px 0;color:#c8d8e2;font-size:13px;"
                                     th:text="${booking.agentName}">Agent</td>
                             </tr>
                         </table>
                     </td>
                 </tr>
+
                 <tr th:if="${calendarSyncFailed}">
-                    <td style="padding:0 34px 26px;">
-                        <div style="padding:15px 17px;background:#2a1b1d;border:1px solid #743a3f;border-radius:12px;color:#ffb7ad;font-size:13px;line-height:1.5;">
-                            <strong>Calendar follow-up required.</strong>
-                            <span th:text="${booking.calendarError}">The external calendar could not be updated.</span>
-                        </div>
+                    <td style="padding:0 34px 24px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="width:100%;border:1px solid #75464b;border-radius:13px;background:#2b1c20;">
+                            <tr>
+                                <td style="padding:14px 16px;font-size:12px;line-height:1.55;color:#ffb3aa;">
+                                    <strong style="display:block;margin-bottom:3px;color:#ffd0ca;">Calendar follow-up required</strong>
+                                    <span th:text="${booking.calendarError}">The external calendar could not be updated.</span>
+                                </td>
+                            </tr>
+                        </table>
                     </td>
                 </tr>
+
                 <tr>
-                    <td style="padding:0 34px 32px;">
+                    <td style="padding:0 34px 34px;">
                         <a th:href="${bookingsUrl}" href="https://sauti.uk/bookings"
-                           style="display:block;padding:15px 20px;background:#45d8d0;border-radius:12px;color:#03151c;text-align:center;text-decoration:none;font-size:15px;font-weight:800;">
+                           style="display:block;padding:15px 20px;border-radius:12px;background:#45d8d0;color:#03151c;text-align:center;text-decoration:none;font-size:14px;font-weight:800;">
                             View booking in Sauti
                         </a>
-                        <div style="margin-top:16px;text-align:center;font-size:12px;line-height:1.5;color:#718b9d;">
-                            <span th:text="${notification.actionTimeLabel}">Status updated</span>
-                            &nbsp;
-                            <span th:text="${notification.actionTime}">3 Aug 2026 at 8:42 AM</span>
-                            in the business timezone.
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="width:100%;margin-top:18px;">
+                            <tr>
+                                <td width="26" valign="top">
+                                    <span style="display:inline-block;width:20px;height:20px;line-height:20px;border-radius:50%;text-align:center;background:#12323d;color:#55e4db;font-size:10px;">●</span>
+                                </td>
+                                <td style="font-size:11px;line-height:1.55;color:#6f899b;">
+                                    <strong style="display:block;color:#a9bfcb;font-weight:650;"
+                                            th:text="${notification.actionTimeLabel}">Confirmation captured at</strong>
+                                    <span th:text="${notification.actionTime}">3 Aug 2026 at 8:42 AM</span>
+                                    <span th:text="${' in ' + booking.timezone}"> in Africa/Cairo (UTC+03:00)</span>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td align="center" style="padding:20px 30px;border-top:1px solid #17384d;background:#061421;">
+                        <div style="font-size:11px;line-height:1.55;color:#637f91;">
+                            Sent by Sauti for your workspace booking notifications.<br>
+                            Reply to this email if your team needs help.
                         </div>
                     </td>
                 </tr>
             </table>
-            <div style="padding:18px 12px 0;font-size:12px;color:#607b8d;">
-                Sent by Sauti for your workspace booking notifications.
-            </div>
         </td>
     </tr>
 </table>

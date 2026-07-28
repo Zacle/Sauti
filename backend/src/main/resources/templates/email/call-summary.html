@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="supported-color-schemes" content="dark">
+    <title th:text="|Call completed · ${agentName}|">Sauti call summary</title>
+</head>
+<body style="margin:0;padding:0;background:#020a14;color:#edf7fc;font-family:Arial,Helvetica,sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;"
+     th:text="|${agentName} handled a call with outcome ${outcome}. ${summary}|">
+    A Sauti call has completed.
+</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="width:100%;background:#020a14;">
+    <tr>
+        <td align="center" style="padding:34px 14px;">
+            <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0"
+                   style="width:100%;max-width:620px;border-collapse:separate;background:#071827;border:1px solid #17384d;border-radius:22px;overflow:hidden;">
+                <tr>
+                    <td style="padding:25px 30px;border-bottom:1px solid #17384d;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                            <tr>
+                                <td>
+                                    <span style="font-size:21px;font-weight:800;letter-spacing:-.5px;color:#ffffff;">Sauti</span>
+                                    <span style="display:block;margin-top:4px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#6f899a;">
+                                        Call operations
+                                    </span>
+                                </td>
+                                <td align="right">
+                                    <span th:if="${testCall}"
+                                          style="display:inline-block;margin-right:6px;padding:7px 9px;border:1px solid #6c5435;border-radius:999px;background:#251d13;font-size:9px;font-weight:800;letter-spacing:1px;color:#ffc477;">
+                                        TEST CALL
+                                    </span>
+                                    <span style="display:inline-block;padding:7px 10px;border:1px solid #246c69;border-radius:999px;background:#0c3032;font-size:10px;font-weight:800;letter-spacing:1px;color:#5ee6dc;"
+                                          th:text="${outcome}">COMPLETED</span>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:34px 34px 14px;">
+                        <div style="display:inline-block;width:34px;height:34px;line-height:34px;border-radius:50%;text-align:center;background:#10383a;color:#5ee6dc;font-size:18px;font-weight:800;">✓</div>
+                        <h1 style="margin:15px 0 0;font-size:29px;line-height:1.18;font-weight:700;letter-spacing:-.65px;color:#ffffff;">
+                            Call completed
+                        </h1>
+                        <p style="margin:10px 0 0;font-size:13px;line-height:1.55;color:#8ca3b3;">
+                            <strong style="color:#dceaf2;font-weight:650;" th:text="${agentName}">Agent</strong>
+                            handled a call for <span th:text="${businessName}">your workspace</span>.
+                        </p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:16px 34px 24px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="width:100%;border:1px solid #246476;border-radius:17px;background:#06131f;">
+                            <tr>
+                                <td style="padding:21px 22px;">
+                                    <div style="font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#55e4db;">
+                                        Call summary
+                                    </div>
+                                    <p style="margin:11px 0 0;font-size:15px;line-height:1.65;color:#dce9f0;"
+                                       th:text="${summary}">The caller's request and outcome will appear here.</p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:0 34px 24px;">
+                        <div style="margin-bottom:8px;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#637f91;">
+                            Call details
+                        </div>
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="width:100%;border-collapse:collapse;">
+                            <tr>
+                                <td style="padding:13px 0;border-bottom:1px solid #17384d;color:#7e97a9;font-size:12px;">Caller</td>
+                                <td align="right" style="padding:13px 0;border-bottom:1px solid #17384d;color:#eef7fb;font-size:13px;font-weight:650;"
+                                    th:text="${callerPhone}">Caller phone</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:13px 0;border-bottom:1px solid #17384d;color:#7e97a9;font-size:12px;">Intent</td>
+                                <td align="right" style="padding:13px 0;border-bottom:1px solid #17384d;color:#d3e1e9;font-size:13px;"
+                                    th:text="${intent}">Intent</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:13px 0;border-bottom:1px solid #17384d;color:#7e97a9;font-size:12px;">Sentiment</td>
+                                <td align="right" style="padding:13px 0;border-bottom:1px solid #17384d;color:#d3e1e9;font-size:13px;"
+                                    th:text="${sentiment}">Sentiment</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:13px 0;border-bottom:1px solid #17384d;color:#7e97a9;font-size:12px;">Started</td>
+                                <td align="right" style="padding:13px 0;border-bottom:1px solid #17384d;color:#d3e1e9;font-size:13px;"
+                                    th:text="${startedAt}">29 Jul 2026 at 10:42 AM</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:13px 0;color:#7e97a9;font-size:12px;">Duration</td>
+                                <td align="right" style="padding:13px 0;color:#d3e1e9;font-size:13px;"
+                                    th:text="${duration}">2 min 14 sec</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:0 34px 34px;">
+                        <a th:href="${callUrl}" href="https://sauti.uk/calls"
+                           style="display:block;padding:15px 20px;border-radius:12px;background:#45d8d0;color:#03151c;text-align:center;text-decoration:none;font-size:14px;font-weight:800;">
+                            Review call in Sauti
+                        </a>
+                        <a th:if="${hasRecording}" th:href="${recordingUrl}" href="#"
+                           style="display:block;margin-top:10px;padding:13px 20px;border:1px solid #275064;border-radius:12px;color:#bcd1dc;text-align:center;text-decoration:none;font-size:13px;font-weight:650;">
+                            Listen to recording
+                        </a>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td align="center" style="padding:20px 30px;border-top:1px solid #17384d;background:#061421;">
+                        <div style="font-size:11px;line-height:1.55;color:#637f91;">
+                            Sent by Sauti because email delivery is enabled for this agent.<br>
+                            Manage delivery from the integration marketplace.
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

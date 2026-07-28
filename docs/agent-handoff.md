@@ -225,6 +225,39 @@ Expected:
 
 ## Change log
 
+### 2026-07-29 - Unify every active email under the Sauti status-first design
+
+- Redesigned all active transactional email families around one email-safe Sauti visual language:
+  - replaced the duplicated verification and password-reset layouts with one shared `auth-code.html` template driven by explicit security-state content;
+  - rebuilt booking confirmed, rescheduled, and cancelled states around a status-first hierarchy;
+  - made appointment time, full date, duration, business timezone with UTC offset, previous appointment, and exact status-change time visually distinct;
+  - preserved calendar synchronization warnings and the direct booking-management action;
+  - upgraded the post-call email integration from plain text to a complete HTML summary with outcome, caller, intent, sentiment, local start time, duration, call review, and conditional recording action.
+- Kept existing recipients, subjects, notification triggers, booking transaction boundaries, and integration delivery behavior unchanged.
+- Email implementation decisions:
+  - use presentation tables and inline styles for broad email-client compatibility;
+  - use text-first Sauti branding with no external fonts, remote decorative assets, JavaScript, or handcrafted SVGs;
+  - include inbox preview text and ensure status meaning is present in copy rather than color alone;
+  - resolve post-call timestamps in the agent's configured timezone and include the explicit UTC offset.
+- Removed the obsolete `verification.html` and `reset-password.html` templates after migrating both send paths to `auth-code.html`.
+- Files touched:
+  - `backend/src/main/java/com/sauti/auth/AuthEmailService.java`
+  - `backend/src/main/java/com/sauti/integration/PostCallIntegrationService.java`
+  - `backend/src/main/resources/templates/email/auth-code.html`
+  - `backend/src/main/resources/templates/email/booking-confirmation.html`
+  - `backend/src/main/resources/templates/email/call-summary.html`
+  - removed `backend/src/main/resources/templates/email/{verification,reset-password}.html`
+  - `backend/src/test/java/com/sauti/email/EmailTemplateRenderingTest.java`
+  - `dashboard/design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused security, booking, and post-call template tests - passed.
+  - `.\gradlew.bat :backend:test` - passed; Gradle reported `BUILD SUCCESSFUL` in 2 minutes 41 seconds.
+  - `git diff --check` - passed with line-ending notices only.
+  - Cross-client visual QA remains blocked because no browser or inbox rendering surface is available; the required preview matrix is recorded in `dashboard/design-qa.md`.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Follow-up: send verification, reset, all three booking states, and call summaries with/without recordings to desktop and mobile preview inboxes, then correct any Outlook or forced-light-mode issue.
+
 ### 2026-07-29 - Give every marketing integration layer a distinct operating story
 
 - Replaced the generic marketing Integrations category and detail routes with a dedicated Product Design feature:

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="supported-color-schemes" content="dark">
+    <title th:text="${heading}">Sauti security code</title>
+</head>
+<body style="margin:0;padding:0;background:#020a14;color:#edf7fc;font-family:Arial,Helvetica,sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;"
+     th:text="${previewText}">Your Sauti security code is ready.</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="width:100%;background:#020a14;">
+    <tr>
+        <td align="center" style="padding:38px 14px;">
+            <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0"
+                   style="width:100%;max-width:600px;border-collapse:separate;background:#071827;border:1px solid #17384d;border-radius:22px;overflow:hidden;">
+                <tr>
+                    <td style="padding:25px 30px;border-bottom:1px solid #17384d;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                            <tr>
+                                <td valign="middle">
+                                    <span style="font-size:21px;font-weight:800;letter-spacing:-.5px;color:#ffffff;">Sauti</span>
+                                </td>
+                                <td align="right" valign="middle">
+                                    <span style="display:inline-block;padding:7px 10px;border:1px solid #23546a;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:#62e6dd;"
+                                          th:text="${eyebrow}">Account security</span>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:38px 34px 14px;">
+                        <div style="font-size:13px;color:#87a1b3;">
+                            Hi <span th:text="${businessName}">there</span>,
+                        </div>
+                        <h1 style="margin:14px 0 0;font-size:30px;line-height:1.16;font-weight:700;letter-spacing:-.7px;color:#ffffff;"
+                            th:text="${heading}">Confirm your email address</h1>
+                        <p style="margin:15px 0 0;font-size:15px;line-height:1.65;color:#9db1bf;"
+                           th:text="${intro}">Use the code below to continue.</p>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:20px 34px 18px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="width:100%;border:1px solid #246476;border-radius:16px;background:#06131f;">
+                            <tr>
+                                <td align="center" style="padding:22px 18px 23px;">
+                                    <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#6f8b9d;"
+                                         th:text="${codeLabel}">Verification code</div>
+                                    <div style="margin-top:11px;font-size:38px;line-height:1;font-weight:800;letter-spacing:10px;color:#55e4db;"
+                                         th:text="${code}">000000</div>
+                                    <div style="margin-top:12px;font-size:12px;color:#758d9e;">Expires in 15 minutes</div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:8px 34px 36px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               th:style="${resetRequest} ? 'width:100%;border:1px solid #674834;border-radius:13px;background:#1d1714;' : 'width:100%;border:1px solid #1d4153;border-radius:13px;background:#081c2a;'">
+                            <tr>
+                                <td width="42" valign="top" style="padding:15px 0 15px 16px;">
+                                    <span th:style="${resetRequest} ? 'display:inline-block;width:24px;height:24px;line-height:24px;border-radius:50%;text-align:center;background:#4a2f20;color:#ffbd79;font-size:12px;font-weight:800;' : 'display:inline-block;width:24px;height:24px;line-height:24px;border-radius:50%;text-align:center;background:#123d47;color:#68e6dd;font-size:12px;font-weight:800;'">i</span>
+                                </td>
+                                <td style="padding:14px 16px 14px 8px;">
+                                    <strong style="display:block;font-size:12px;font-weight:700;color:#e9f4f9;"
+                                            th:text="${noticeTitle}">Keep your account secure</strong>
+                                    <span style="display:block;margin-top:5px;font-size:12px;line-height:1.55;color:#8da4b4;"
+                                          th:text="${notice}">Do not share this code.</span>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+                <tr>
+                    <td align="center" style="padding:20px 30px;border-top:1px solid #17384d;background:#061421;">
+                        <div style="font-size:11px;line-height:1.55;color:#637f91;">
+                            This automated message was sent by Sauti.<br>
+                            Need help? Reply to this email to contact support.
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

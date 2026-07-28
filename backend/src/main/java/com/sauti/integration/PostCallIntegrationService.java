@@ -13,24 +13,34 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.time.OffsetDateTime;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import jakarta.mail.MessagingException;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
 
 @Service
 public class PostCallIntegrationService {
     private static final List<String> POST_CALL_PROVIDERS = List.of(
             "custom_webhook", "whatsapp", "email", "slack", "google_sheets", "hubspot", "salesforce");
+    private static final DateTimeFormatter EMAIL_TIME = DateTimeFormatter.ofPattern(
+            "d MMM uuuu 'at' h:mm a '·' VV '(UTC'xxx')'",
+            Locale.ENGLISH
+    );
     private final PostCallJobRepository jobs;
     private final IntegrationDeliveryRepository deliveries;
     private final AgentIntegrationRepository bindings;
@@ -42,6 +52,7 @@ public class PostCallIntegrationService {
     private final ProviderOAuthService oauth;
     private final ObjectMapper objectMapper;
     private final JavaMailSender mailSender;
+    private final TemplateEngine templateEngine;
     private final WebhookDestinationValidator destinationValidator;
     private final WebhookDeliveryService tenantWebhooks;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -60,6 +71,7 @@ public class PostCallIntegrationService {
                                       ProviderOAuthService oauth,
                                       ObjectMapper objectMapper,
                                       JavaMailSender mailSender,
+                                      TemplateEngine templateEngine,
                                       WebhookDestinationValidator destinationValidator,
                                       WebhookDeliveryService tenantWebhooks,
                                       @Value("${sauti.email.from}") String emailFrom,
@@ -76,6 +88,7 @@ public class PostCallIntegrationService {
         this.oauth = oauth;
         this.objectMapper = objectMapper;
         this.mailSender = mailSender;
+        this.templateEngine = templateEngine;
         this.destinationValidator = destinationValidator;
         this.tenantWebhooks = tenantWebhooks;
         this.emailFrom = emailFrom;
@@ -162,14 +175,30 @@ public class PostCallIntegrationService {
         }
     }
 
-    private int sendEmail(Call call, Map<String, Object> configuration) {
+    private int sendEmail(Call call, Map<String, Object> configuration) throws MessagingException {
         var recipients = stringList(configuration.get("recipients"));
         if (recipients.isEmpty()) recipients = List.of(call.getTenant().getEmail());
-        var message = new SimpleMailMessage();
-        message.setFrom(emailFrom);
-        message.setTo(recipients.toArray(String[]::new));
-        message.setSubject((isTest(call) ? "[TEST] " : "") + "Call completed: " + call.getAgent().getName());
-        message.setText(slackText(call));
+        var context = new Context();
+        context.setVariable("businessName", call.getTenant().getBusinessName());
+        context.setVariable("agentName", call.getAgent().getName());
+        context.setVariable("testCall", isTest(call));
+        context.setVariable("outcome", displayValue(call.getOutcome(), "Completed"));
+        context.setVariable("summary", displayValue(call.getCallSummary(), "The call completed without an AI-generated summary."));
+        context.setVariable("callerPhone", displayValue(callerPhone(call), "Not captured"));
+        context.setVariable("intent", displayValue(call.getIntent(), "Not classified"));
+        context.setVariable("sentiment", displayValue(call.getSentiment(), "Not classified"));
+        context.setVariable("startedAt", callTime(call));
+        context.setVariable("duration", duration(call.getDurationSeconds()));
+        context.setVariable("callUrl", dashboardBaseUrl + "/calls?callId=" + call.getId());
+        context.setVariable("hasRecording", call.getRecordingUrl() != null && !call.getRecordingUrl().isBlank());
+        context.setVariable("recordingUrl", value(call.getRecordingUrl()));
+        var html = templateEngine.process("email/call-summary", context);
+        var message = mailSender.createMimeMessage();
+        var helper = new MimeMessageHelper(message, true, "UTF-8");
+        helper.setFrom(emailFrom);
+        helper.setTo(recipients.toArray(String[]::new));
+        helper.setSubject((isTest(call) ? "[TEST] " : "") + "Call completed: " + call.getAgent().getName());
+        helper.setText(html, true);
         mailSender.send(message);
         return 202;
     }
@@ -456,6 +485,30 @@ public class PostCallIntegrationService {
         return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
     }
     private static boolean isTest(Call call) { return "test".equals(call.getDirection()); }
+    private String callTime(Call call) {
+        if (call.getStartedAt() == null) return "Start time unavailable";
+        var timezone = safeTimezone(call.getAgent().getTimezone());
+        return call.getStartedAt().atZoneSameInstant(timezone).format(EMAIL_TIME);
+    }
+    private String duration(Integer seconds) {
+        if (seconds == null || seconds <= 0) return "Under 1 minute";
+        var minutes = seconds / 60;
+        var remainder = seconds % 60;
+        if (minutes == 0) return remainder + " seconds";
+        if (remainder == 0) return minutes + (minutes == 1 ? " minute" : " minutes");
+        return minutes + (minutes == 1 ? " minute " : " minutes ") + remainder + " seconds";
+    }
+    private ZoneId safeTimezone(String timezone) {
+        try {
+            return ZoneId.of(timezone == null || timezone.isBlank() ? "UTC" : timezone);
+        } catch (RuntimeException ignored) {
+            return ZoneId.of("UTC");
+        }
+    }
+    private String displayValue(String value, String fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        return value.replace('_', ' ');
+    }
     private static String value(Object value) { return value == null ? "—" : String.valueOf(value); }
     private static String safeMessage(Exception exception) {
         return exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
