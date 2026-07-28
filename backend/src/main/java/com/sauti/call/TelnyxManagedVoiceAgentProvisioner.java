@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "20";
+        return "21";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -152,6 +152,12 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   happened. Only actionPerformed=true means Sauti's authoritative business state changed.
                 - Treat the returned result as authoritative. For any mutation, claim success only when the result
                   explicitly contains actionPerformed=true.
+                - Tool data is language-neutral. When responseMode is present, render its structured data naturally
+                  in the caller's current language and locale without changing stored names, references, or values.
+                  Never expect or request a finite server-side translation.
+                - Interpret approval, correction, rejection, and negation semantically from the complete caller turn
+                  and the immediately preceding question, in any language. Do not classify intent from a language
+                  keyword list. Record that meaning through update_conversation_state before a guarded mutation.
                 - workflowPending=true or actionPerformed=false is a valid workflow step, not a tool failure. Follow
                   instruction, nextTool, nextToolArguments, and nextToolAuthorized exactly. Do not retry the same
                   mutation merely because nothing changed yet.

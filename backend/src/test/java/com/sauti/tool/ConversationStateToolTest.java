@@ -1013,7 +1013,7 @@ class ConversationStateToolTest {
                 "action_authorization", "unconditional",
                 "next_action", "reply",
                 "business_tool", "",
-                "spoken_response", "Oui, tout est correct ?"
+                "spoken_response", "Non, tout est correct."
         )));
 
         assertThat(result.result())

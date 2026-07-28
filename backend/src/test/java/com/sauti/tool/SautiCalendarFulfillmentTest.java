@@ -80,8 +80,8 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("businessOpenOnRequestedDate", false)
                 .containsEntry("requestedTime", "15:00")
                 .containsEntry("requestedTimeAvailable", false)
-                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
-                        .contains("closed that day", "next opening"));
+                .containsEntry("responseMode", "render_availability_result")
+                .doesNotContainKey("spokenResponse");
         @SuppressWarnings("unchecked")
         var nextWindows = (List<Map<String, String>>) result.result().get("nextOpenBusinessWindows");
         assertThat(nextWindows).first().satisfies(window -> assertThat(window)
@@ -116,8 +116,8 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("requestedTime", "15:00")
                 .containsEntry("requestedTimeWithinOperatingHours", true)
                 .containsEntry("requestedTimeAvailable", true)
-                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
-                        .startsWith("That time is available."));
+                .containsEntry("responseMode", "render_availability_result")
+                .doesNotContainKey("spokenResponse");
         @SuppressWarnings("unchecked")
         var matching = (Map<String, String>) result.result().get("matchingSlot");
         assertThat(matching.get("start")).startsWith("2026-07-22T15:00");
@@ -200,8 +200,8 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.result())
                 .containsEntry("status", "requested_time_available")
                 .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments")
-                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
-                        .startsWith("That time is available."));
+                .containsEntry("responseMode", "render_availability_result")
+                .doesNotContainKey("spokenResponse");
         verify(fixture.callSessionStore).updatePendingBooking(
                 eq("call-sid"),
                 argThat(draft -> "2026-07-22T16:00Z".equals(draft.confirmedSlot())
@@ -309,8 +309,8 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.result())
                 .containsEntry("status", "requested_time_available")
                 .doesNotContainKey("nextTool")
-                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
-                        .startsWith("That time is available."));
+                .containsEntry("responseMode", "render_availability_result")
+                .doesNotContainKey("spokenResponse");
     }
 
     @Test
@@ -342,8 +342,8 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "requested_time_unavailable")
                 .containsEntry("requestedTimeAvailable", false)
                 .containsEntry("totalAvailableSlots", 1)
-                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
-                        .contains("not available", "closest available times"));
+                .containsEntry("responseMode", "render_availability_result")
+                .doesNotContainKey("spokenResponse");
         @SuppressWarnings("unchecked")
         var slots = (List<Map<String, String>>) result.result().get("slots");
         assertThat(slots).singleElement().satisfies(slot ->
@@ -452,13 +452,20 @@ class SautiCalendarFulfillmentTest {
         assertThat(review.result())
                 .containsEntry("status", "booking_review_required")
                 .containsEntry("bookingCreated", false)
+                .containsEntry("responseMode", "render_booking_full_review")
+                .doesNotContainKey("spokenResponse")
                 .doesNotContainKey("callerGuidanceInstruction");
-        assertThat(review.result().get("spokenResponse").toString())
-                .contains("name Zachary")
-                .contains("0, 1, 1, 1, 5, 7, 5, 3, 4, 4, 1")
-                .contains("zachary.123@gmail.com")
-                .contains("75 minutes", "Preferred Staff: any available staff")
-                .doesNotContain(review.result().get("reviewToken").toString());
+        @SuppressWarnings("unchecked")
+        var reviewFields = (Map<String, Object>) review.result().get("bookingReview");
+        assertThat(reviewFields)
+                .containsEntry("callerName", "Zachary")
+                .containsEntry(
+                        "callerPhoneDigits",
+                        List.of("0", "1", "1", "1", "5", "7", "5", "3", "4", "4", "1")
+                )
+                .containsEntry("callerEmail", "zachary.123@gmail.com")
+                .containsEntry("durationMinutes", 75)
+                .containsEntry("customerDetails", Map.of("preferred_staff", "any available staff"));
         verify(fixture.callSessionStore).updatePendingBooking(
                 eq("call-sid"),
                 argThat(draft -> review.result().get("reviewToken").equals(draft.reviewToken()))
@@ -485,18 +492,48 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "booking_saved_pending_calendar")
                 .containsEntry("bookingNumber", "SAT-AB12CD34")
                 .containsEntry("calendarSynced", false)
-                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
-                        .contains(
-                                "saved in our system",
-                                "external calendar confirmation is still pending",
-                                "SAT-AB12CD34"
-                        )
-                        .containsIgnoringCase("keep this booking number")
-                        .containsIgnoringCase("call back")
-                        .containsIgnoringCase("change")
-                        .containsIgnoringCase("reschedule")
-                        .containsIgnoringCase("cancel"))
+                .containsEntry("responseMode", "render_booking_success")
+                .doesNotContainKey("spokenResponse")
                 .doesNotContainKey("callerGuidanceInstruction");
+    }
+
+    @Test
+    void bookingReviewContractIsIndependentOfCallerLanguage() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.call.getLanguageDetected()).thenReturn("ja-JP");
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", "予約をお願いします。")));
+
+        var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "language-neutral-review", "book_slot", Map.of(
+                        "appointment_at", "2026-08-03T14:00:00Z",
+                        "appointment_name", "Zachary",
+                        "caller_phone", "0115752441",
+                        "service_type", "初心者クラス",
+                        "duration_minutes", 60,
+                        "customer_details", Map.of("Fitness Goal", "perte de poids"),
+                        "review_action", "prepare_review"
+                )
+        ));
+
+        assertThat(review.success()).isTrue();
+        assertThat(review.result())
+                .containsEntry("status", "booking_review_required")
+                .containsEntry("bookingCreated", false)
+                .containsEntry("responseMode", "render_booking_full_review")
+                .doesNotContainKey("spokenResponse");
+        @SuppressWarnings("unchecked")
+        var fields = (Map<String, Object>) review.result().get("bookingReview");
+        assertThat(fields)
+                .containsEntry("service", "初心者クラス")
+                .containsEntry("appointmentLocalDate", "2026-08-03")
+                .containsEntry("appointmentLocalTime", "14:00")
+                .containsEntry(
+                        "callerPhoneDigits",
+                        List.of("0", "1", "1", "5", "7", "5", "2", "4", "4", "1")
+                );
+        assertThat(review.result().get("instruction").toString())
+                .contains("caller's current language", "caller approves");
     }
 
     @Test
@@ -522,9 +559,11 @@ class SautiCalendarFulfillmentTest {
 
         assertThat(result.success()).isTrue();
         assertThat(result.result()).containsEntry("status", "booking_review_required");
-        assertThat(result.result().get("spokenResponse").toString())
-                .contains("name Alexandra")
-                .doesNotContain("name Zachary");
+        @SuppressWarnings("unchecked")
+        var fields = (Map<String, Object>) result.result().get("bookingReview");
+        assertThat(fields)
+                .containsEntry("callerName", "Alexandra")
+                .doesNotContainValue("Zachary");
     }
 
     @Test
@@ -850,10 +889,13 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("bookingCreated", false);
         assertThat(corrected.result().get("reviewToken"))
                 .isNotEqualTo(first.result().get("reviewToken"));
-        assertThat(corrected.result().get("spokenResponse").toString())
-                .contains("Thanks for the correction")
-                .contains("email zachary.123@gmail.com")
-                .doesNotContain("the name", "phone number", "Men hairstyle");
+        assertThat(corrected.result())
+                .containsEntry("responseMode", "render_booking_correction_review")
+                .containsEntry("changedFields", List.of("caller_email"))
+                .doesNotContainKey("spokenResponse");
+        @SuppressWarnings("unchecked")
+        var correctedFields = (Map<String, Object>) corrected.result().get("bookingReview");
+        assertThat(correctedFields).containsEntry("callerEmail", "zachary.123@gmail.com");
         verifyNoInteractions(fixture.bookingService);
     }
 
@@ -878,11 +920,15 @@ class SautiCalendarFulfillmentTest {
                 "exact-phone-review", "book_slot", Map.copyOf(arguments)
         ));
 
-        assertThat(first.result().get("spokenResponse").toString())
-                .contains("name Akari")
-                .doesNotContain("Zachary")
-                .contains("0, 1, 1, 1, 5, 7, 5, 3, 4, 4, 1")
-                .doesNotContain("0, 1, 1, 1, 7, 5, 7, 5");
+        @SuppressWarnings("unchecked")
+        var firstFields = (Map<String, Object>) first.result().get("bookingReview");
+        assertThat(firstFields)
+                .containsEntry("callerName", "Akari")
+                .containsEntry(
+                        "callerPhoneDigits",
+                        List.of("0", "1", "1", "1", "5", "7", "5", "3", "4", "4", "1")
+                )
+                .doesNotContainValue("Zachary");
 
         when(fixture.callSessionStore.conversationHistory("call-sid"))
                 .thenReturn(List.of(new ConversationMessage(
@@ -899,10 +945,16 @@ class SautiCalendarFulfillmentTest {
 
         assertThat(correction.result())
                 .containsEntry("correctionReview", true)
-                .containsEntry("changedFields", List.of("caller_phone"));
-        assertThat(correction.result().get("spokenResponse").toString())
-                .contains("phone number 0, 1, 1, 5, 7, 5, 3, 4, 4, 1")
-                .doesNotContain("Men hairstyle", "A for Alfa");
+                .containsEntry("changedFields", List.of("caller_phone"))
+                .containsEntry("responseMode", "render_booking_correction_review")
+                .doesNotContainKey("spokenResponse");
+        @SuppressWarnings("unchecked")
+        var correctionFields = (Map<String, Object>) correction.result().get("bookingReview");
+        assertThat(correctionFields)
+                .containsEntry(
+                        "callerPhoneDigits",
+                        List.of("0", "1", "1", "5", "7", "5", "3", "4", "4", "1")
+                );
 
         var booking = mock(com.sauti.calendar.Booking.class);
         when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
@@ -972,8 +1024,8 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "calendar_temporarily_unavailable")
                 .containsEntry("calendarLive", false)
                 .containsEntry("requestedTime", "12:00")
-                .hasEntrySatisfying("spokenResponse", response -> assertThat(response.toString())
-                        .contains("cannot confirm live availability", "has not been booked"));
+                .containsEntry("responseMode", "render_availability_result")
+                .doesNotContainKey("spokenResponse");
     }
 
     @Test
@@ -988,7 +1040,8 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.success()).isTrue();
         assertThat(result.result())
                 .containsEntry("status", "needs_date")
-                .containsEntry("spokenResponse", "Which day would you like me to check?");
+                .containsEntry("responseMode", "request_booking_date")
+                .doesNotContainKey("spokenResponse");
         verifyNoInteractions(fixture.provider);
     }
 

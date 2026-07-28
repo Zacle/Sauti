@@ -61,7 +61,11 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                     bookingReview.result().get("reviewToken").toString(),
                     integerField(fields, "durationMinutes", context.agent().defaultBookingDurationMinutes())
             ));
-            return new LlmToolTurnResponse(bookingReview.result().get("spokenResponse").toString(), List.of());
+            // This provider is an explicit local/test fallback and production
+            // rejects it. Keep its English-only simulation output here, outside
+            // the authoritative booking contract; real agents use a semantic
+            // provider to render the same structured fields in any language.
+            return new LlmToolTurnResponse(heuristicBookingReview(fields), List.of());
         }
         if (hasSuccessfulTool(context, "end_call")) {
             return new LlmToolTurnResponse(localized(
@@ -213,6 +217,21 @@ public class LocalToolCallingLlmProvider implements LlmToolCallingProvider {
                 .filter(result -> "booking_review_required".equals(result.result().get("status")))
                 .reduce((first, second) -> second)
                 .orElse(null);
+    }
+
+    private String heuristicBookingReview(Map<?, ?> fields) {
+        var name = field(fields, "callerName", "Caller");
+        var phone = fields.get("callerPhoneDigits") instanceof List<?> digits
+                ? String.join(", ", digits.stream().map(Object::toString).toList())
+                : field(fields, "callerPhone", "");
+        var service = field(fields, "service", "appointment");
+        var date = field(fields, "appointmentLocalDate", "");
+        var time = field(fields, "appointmentLocalTime", "");
+        var duration = integerField(fields, "durationMinutes", 60);
+        return "Before I save the booking, I have the name " + name
+                + (phone.isBlank() ? "" : " and phone number " + phone)
+                + ", for " + service + " on " + date + " at " + time
+                + ", for " + duration + " minutes. Are all these details correct?";
     }
 
     private Map<String, Object> bookingArguments(BookingDraft booking, int defaultDurationMinutes) {

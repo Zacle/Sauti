@@ -289,6 +289,7 @@ public class ManagedVoiceToolService {
         response.put("data", facts);
         List.of(
                 "status", "actionPerformed", "effect", "action", "instruction", "reason",
+                "responseMode",
                 "nextAction", "nextTool", "nextToolAuthorized", "nextToolArguments",
                 "spokenResponse", "bookingCreated", "bookingFound", "updated", "cancelled",
                 "bookingNumber", "bookingStatus", "appointmentAt", "retryField",

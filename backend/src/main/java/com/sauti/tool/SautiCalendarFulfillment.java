@@ -191,10 +191,11 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     + "Call book_slot immediately without speaking, asking permission, or asking the caller to wait. "
                     + "The booking tool will validate missing fields and produce the exact review.");
         } else {
-            // Availability is already an authoritative calendar decision. Return
-            // caller-ready speech with the tool result so Realtime does not need
-            // a second model response merely to paraphrase that decision.
-            result.put("spokenResponse", AvailabilitySpeechRenderer.render(call, result));
+            result.put("responseMode", "render_availability_result");
+            result.put("instruction", "Explain the authoritative availability result concisely in the caller's "
+                    + "current language. Interpret status and the structured date, time, slot, timezone, and business "
+                    + "hours fields using the caller's natural locale conventions. Never translate, infer, or alter "
+                    + "stored customer values. Ask at most one necessary follow-up question.");
         }
         return Map.copyOf(result);
     }
@@ -265,8 +266,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("status", "needs_date");
         result.put("timezone", timezone.toString());
         result.put("calendarLive", true);
+        result.put("responseMode", "request_booking_date");
         result.put("instruction", "Ask the caller for a specific preferred date in their current language.");
-        result.put("spokenResponse", AvailabilitySpeechRenderer.render(call, result));
         return Map.copyOf(result);
     }
 
@@ -397,7 +398,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             );
         }
         arguments.put("appointment_at", appointmentAt.get().toString());
-        var review = BookingReviewRenderer.render(call, arguments, customerDetails, suppliedReviewToken);
+        var review = BookingReviewBuilder.build(call, arguments, customerDetails, suppliedReviewToken);
         if (!secureEquals(review.token(), suppliedReviewToken)) {
             rememberBookingReview(call, arguments, review.token());
             var result = new LinkedHashMap<String, Object>();
@@ -405,13 +406,17 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             result.put("bookingCreated", false);
             result.put("reviewToken", review.token());
             result.put("bookingReview", review.fields());
-            result.put("spokenResponse", review.spokenResponse());
             result.put("correctionReview", review.correction());
             result.put("changedFields", review.changedFields());
-            result.put("instruction", "Present bookingReview exactly once in the caller's current language, then stop and wait. "
-                    + "Preserve every customer value exactly: read the stored name naturally without a phonetic alphabet, "
-                    + "read phone digits individually in the current language, and include service, local date/time, duration, "
-                    + "and custom details. spokenResponse is fallback wording, not a language constraint. Never expose reviewToken. "
+            result.put("responseMode", review.correction()
+                    ? "render_booking_correction_review"
+                    : "render_booking_full_review");
+            result.put("instruction", "Render bookingReview exactly once as concise natural speech in the caller's "
+                    + "current language, then stop and wait. Use the caller's language and locale conventions to express "
+                    + "labels, date, time, duration, phone digits, email punctuation, and the confirmation question. "
+                    + "Preserve every structured value exactly, read the stored name naturally without a phonetic alphabet, "
+                    + "and never expose reviewToken. For a full review, ask whether all details are correct or what must change. "
+                    + "For a correction review, mention only changedFields and ask whether the corrected values are now right. "
                     + "On a correction, keep the preceding reviewToken, change only the corrected value, "
                     + "and call book_slot with that preceding token so the server confirms only the changed field. "
                     + "After the caller approves the latest review, call book_slot with unchanged values and the latest exact reviewToken.");
@@ -458,12 +463,15 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         result.put("calendarSynced", calendarSynced);
         result.put("externalCalendarConfigured", !localOnly);
         result.put("ownerNotified", true);
-        result.put("spokenResponse", BookingSpeechRenderer.renderWithReferenceGuidance(
-                call, booking, booking.getBookingReference()
-        ));
+        result.put("responseMode", "render_booking_success");
         result.put("instruction", localOnly
-                ? "In the caller's current language, say the booking was saved in Sauti and provide the booking number. Do not claim an external calendar was updated."
-                : "In the caller's current language, say the booking was saved in Sauti and provide the booking number. External calendar synchronization happens afterward; never make it a condition of the booking. Mention its status only when useful and never describe the Sauti booking as failed.");
+                ? "In the caller's current language, confirm that the booking was saved in Sauti. State the structured "
+                    + "appointment date and time using the caller's locale conventions, provide bookingNumber exactly, "
+                    + "and explain briefly that it should be kept for later changes. Do not claim an external calendar was updated."
+                : "In the caller's current language, confirm that the booking was saved in Sauti. State the structured "
+                    + "appointment date and time using the caller's locale conventions, provide bookingNumber exactly, "
+                    + "and explain briefly that it should be kept for later changes. External calendar synchronization "
+                    + "happens afterward; never make it a condition of the booking or describe the Sauti booking as failed.");
         if (call.getTwilioCallSid() != null && !call.getTwilioCallSid().isBlank()) {
             callSessionStore.updatePendingBooking(call.getTwilioCallSid(), null);
         }
@@ -517,7 +525,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         if (suppliedAppointmentName != null && !suppliedAppointmentName.toString().isBlank()) {
             normalized.put("caller_name", suppliedAppointmentName.toString());
         }
-        BookingReviewRenderer.reviewedValue(call, suppliedReviewToken, "caller_phone")
+        BookingReviewBuilder.reviewedValue(call, suppliedReviewToken, "caller_phone")
                 .ifPresent(value -> normalized.put("caller_phone", value));
         try {
             var notes = intakeNotes.notes(call, latest);
@@ -578,7 +586,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         for (var key : List.of(
                 "caller_name", "caller_phone", "caller_email", "service_type", "appointment_at", "duration_minutes"
         )) {
-            BookingReviewRenderer.reviewedValue(call, reviewToken, key)
+            BookingReviewBuilder.reviewedValue(call, reviewToken, key)
                     .ifPresent(value -> arguments.put(key, value));
         }
         var details = new LinkedHashMap<>(customerDetails(arguments));
@@ -587,7 +595,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         );
         call.getAgent().getBookingRequiredFields().stream()
                 .filter(field -> !topLevel.contains(field))
-                .forEach(field -> BookingReviewRenderer.reviewedValue(call, reviewToken, "detail." + field)
+                .forEach(field -> BookingReviewBuilder.reviewedValue(call, reviewToken, "detail." + field)
                         .ifPresent(value -> details.put(field, value)));
         if (!details.isEmpty()) arguments.put("customer_details", Map.copyOf(details));
     }

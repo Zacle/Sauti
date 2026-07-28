@@ -225,6 +225,39 @@ Expected:
 
 ## Change log
 
+### 2026-07-28 - Make the authoritative booking workflow language-agnostic
+
+- Investigated `sauti-telnyx-diagnostics-1785191432228.json` for Telnyx call `838c3e60-d22f-43c6-bc5c-23d6081194f2`.
+  - The export contains 147 browser lifecycle entries and no managed-tool request/result/error entries, so it cannot expose the server-side booking result or exception.
+  - The call ran after production successfully deployed commit `a76ed1afcb469b1d12e0cdd2281e27d1b760374f`.
+  - Exact commit inspection confirmed that deployed revision already provisions Telnyx configuration version `20` and includes the contextual rule that an answer meaning `no, everything is correct` is approval. This was not a stale-deployment/configuration-version failure.
+- Removed the finite translation architecture from the authoritative booking workflow:
+  - replaced `BookingReviewRenderer` with `BookingReviewBuilder`, which returns only signed structured facts;
+  - review data now includes exact values, an ISO instant, local date/time, timezone, UTC offset, duration, custom details, and phone digits as an ordered array;
+  - removed `AvailabilitySpeechRenderer`, `BookingSpeechRenderer`, and `SpokenDateTimeFormatter`;
+  - availability, review, correction-review, and booking-success tool results now expose a stable `responseMode` plus structured data and an AI rendering instruction, never a server-localized `spokenResponse`;
+  - the active semantic AI owns wording, locale conventions, and the meaning of approval, correction, rejection, and negation in any language. The signed review token remains the mutation guard.
+- Updated the Telnyx execution contract to require semantic, context-aware confirmation interpretation and rendering of language-neutral tool data in the caller's current language. Bumped the managed-agent configuration version from `20` to `21` so existing agents are reprovisioned.
+- Kept the exact French contextual approval regression (`Non, tout est correct.`) and replaced the finite French renderer regression with a Japanese structured-contract test, demonstrating that the server does not need the language in a translation table.
+- The explicit `heuristic` LLM provider remains a non-production local/test fallback and cannot generate arbitrary-language speech; production already rejects it through `ProductionSafetyValidator`. Its English simulation formatter lives in the LLM adapter rather than the authoritative booking domain and contains no finite language switch.
+- Files touched:
+  - `backend/src/main/java/com/sauti/tool/{BookingReviewBuilder,SautiCalendarFulfillment}.java`
+  - removed `backend/src/main/java/com/sauti/tool/{BookingReviewRenderer,AvailabilitySpeechRenderer,BookingSpeechRenderer,SpokenDateTimeFormatter}.java`
+  - `backend/src/main/java/com/sauti/call/{ManagedVoiceToolService,TelnyxManagedVoiceAgentProvisioner}.java`
+  - `backend/src/main/java/com/sauti/llm/LocalToolCallingLlmProvider.java`
+  - `backend/src/test/java/com/sauti/tool/{ConversationStateToolTest,SautiCalendarFulfillmentTest}.java`
+  - removed obsolete speech-renderer tests
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `AuthAgentFlowTest`, `SautiCalendarFulfillmentTest`, and `ConversationStateToolTest` passed; Gradle reported `BUILD SUCCESSFUL` in 38 seconds.
+  - `.\gradlew.bat :backend:test --no-daemon` passed all 289 backend tests; Gradle reported `BUILD SUCCESSFUL` in 1 minute 10 seconds.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after reviewed deployment:
+  - confirm Agent Studio reprovisions Gerard with Telnyx configuration version `21`;
+  - create bookings in French and one language not represented anywhere in server code, then approve each naturally;
+  - require the factual tool result to provide a Sauti booking number, then verify the row appears immediately in `/bookings`;
+  - if a save still fails, collect the corresponding backend `Managed voice tool completed` log for the Sauti call ID because browser lifecycle diagnostics do not include webhook execution results.
+
 ### 2026-07-27 - Make Sauti bookings authoritative and external calendar sync asynchronous
 
 - Investigated `sauti-telnyx-diagnostics-1785173179541.json` from the French X-Fit call. The browser diagnostic contains 91 Telnyx lifecycle entries but no managed-tool request/result entries, so the transcript's spoken “confirmed” claim cannot prove that Sauti persisted a booking.
