@@ -67,6 +67,9 @@ public class ConversationStateTool {
     private static final Set<String> NAME_CAPTURE_STATUS = Set.of(
             "not_applicable", "incomplete", "complete"
     );
+    private static final Set<String> PHONE_CAPTURE_STATUS = Set.of(
+            "not_applicable", "incomplete", "complete"
+    );
     private static final Set<String> CALLER_QUESTION = Set.of(
             "none", "answered_in_spoken_response", "requires_business_tool"
     );
@@ -97,8 +100,8 @@ public class ConversationStateTool {
                     case "appointment_name" -> "The exact, complete semantic name entity for the person receiving the service. Return only the name in its original script and with its original diacritics; exclude all surrounding sentence text in any language. Omit an incomplete introduction with no actual name entity, and emit a later completed or corrected name so it replaces stale state.";
                     case "recipient_relation" -> "Relationship of an explicitly different recipient to the caller, expressed compactly.";
                     case "service_type" -> "Requested configured service, only when the meaning is clear.";
-                    case "caller_phone" -> "Complete caller-provided phone number.";
-                    case "new_caller_phone" -> "Replacement contact phone explicitly requested for an existing booking. Never overwrite caller_phone, which verifies the current booking.";
+                    case "caller_phone" -> "Complete caller-provided phone number normalized to an optional leading plus followed only by digits. Emit it only when every spoken digit was understood unambiguously and the caller finished the sequence.";
+                    case "new_caller_phone" -> "Complete replacement contact phone explicitly requested for an existing booking, normalized to an optional leading plus followed only by digits. Never overwrite caller_phone, which verifies the current booking.";
                     case "caller_email" -> "Complete caller-provided email address.";
                     case "booking_number" -> "Accumulated customer-facing booking number supplied for a lookup, update, reschedule, or cancellation. Normalize spelled characters, number words, and dash/hyphen into the SAT-XXXXXXXXXXXX form, where exactly twelve characters follow SAT-. Consecutive partial fragments are valid updates, but never claim to look up a partial reference.";
                     case "booking_date" -> "Date of an existing appointment, normalized to yyyy-MM-dd in the business timezone. This identifies an existing booking and is distinct from preferred_day for a new or replacement date.";
@@ -150,6 +153,11 @@ public class ConversationStateTool {
                 "enum", List.of("not_applicable", "incomplete", "complete"),
                 "description", "Language-neutral completeness judgment for person-name information in the latest caller turn. Use incomplete when the caller starts introducing a name but no actual complete name entity follows; emit no person-name updates. Use complete only when updates contains the extracted complete name entity. Use not_applicable when this turn supplies no name."
         ));
+        properties.put("phone_capture_status", Map.of(
+                "type", "string",
+                "enum", List.of("not_applicable", "incomplete", "complete"),
+                "description", "Language-neutral completeness judgment for phone information in the latest caller turn. Use incomplete when any spoken digit is ambiguous, missing, interrupted, replaced by an unrecognized sound, or the caller has not clearly finished the sequence; emit no phone update and ask for one slow natural repetition. Use complete only when every digit is unambiguous and updates contains the complete normalized phone. Length alone never proves completeness. Use not_applicable when this turn supplies no phone."
+        ));
         properties.put("spoken_response", Map.of(
                 "type", "string",
                 "description", "A concise, polite, natural reply in the caller's current language. Answer direct questions first. When call_disposition is end, this must be the complete brief respectful farewell and must not be empty. Otherwise leave empty only when a separate business tool must run before any reply. Never include tool syntax, JSON, headings, or private reasoning."
@@ -187,7 +195,7 @@ public class ConversationStateTool {
                         "required", List.of(
                                 "updates", "additional_details", "clear_fields",
                                 "booking_subject", "booking_intent", "turn_understanding",
-                                "name_capture_status",
+                                "name_capture_status", "phone_capture_status",
                                 "spoken_response", "caller_question", "action_authorization",
                                 "call_disposition", "next_action", "business_tool"
                         ),
@@ -579,6 +587,9 @@ public class ConversationStateTool {
         var nameCaptureStatus = choice(
                 arguments.get("name_capture_status"), NAME_CAPTURE_STATUS, "incomplete"
         );
+        var phoneCaptureStatus = choice(
+                arguments.get("phone_capture_status"), PHONE_CAPTURE_STATUS, "incomplete"
+        );
         // Review decisions authorize at most the current caller turn. They must
         // never leak into a later turn as stale approval.
         values.remove("review_decision");
@@ -611,6 +622,12 @@ public class ConversationStateTool {
                 if (!normalizedName.isBlank()) values.put(key, normalizedName);
                 return;
             }
+            if ("caller_phone".equals(key) || "new_caller_phone".equals(key)) {
+                if (!"complete".equals(phoneCaptureStatus)) return;
+                var normalizedPhone = normalizePhone(value);
+                if (!normalizedPhone.isBlank()) values.put(key, normalizedPhone);
+                return;
+            }
             values.put(key, value);
         });
         detailUpdates.forEach((key, value) -> {
@@ -636,6 +653,29 @@ public class ConversationStateTool {
             values.remove("recipient_relation");
         }
         return new ConversationState(values, subject, intent, current.revision() + 1);
+    }
+
+    private String normalizePhone(String value) {
+        if (value == null || value.isBlank()) return "";
+        var trimmed = value.trim();
+        var international = trimmed.startsWith("+");
+        var digits = new StringBuilder();
+        for (var index = 0; index < trimmed.length(); index++) {
+            var character = trimmed.charAt(index);
+            var digit = Character.digit(character, 10);
+            if (digit >= 0) {
+                digits.append(digit);
+                continue;
+            }
+            if (Character.isWhitespace(character)
+                    || character == '-' || character == '(' || character == ')'
+                    || (character == '+' && index == 0)) {
+                continue;
+            }
+            return "";
+        }
+        if (digits.length() < 7 || digits.length() > 15) return "";
+        return international ? "+" + digits : digits.toString();
     }
 
     private String normalizeBookingNumber(String value) {

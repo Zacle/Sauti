@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "23";
+        return "24";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -162,6 +162,12 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   partial value when the caller supplies the complete name. The only exception is a clean,
                   unconditional answer to the latest signed booking review, which may use the direct review transition
                   described below.
+                - A phone number is complete only when every digit in the caller's finished sequence is unambiguous.
+                  If transcription contains an unclear sound, missing digit, interruption, or unfinished sequence,
+                  store no phone update and ask for one slow natural repetition. Never reconstruct uncertain sounds
+                  into plausible digits. During the signed booking review, read every stored digit individually in
+                  the caller's language. A caller correction is correct_review, never approval of the old review;
+                  produce and obtain approval of the focused correction review before saving.
                 - Interpret approval, correction, rejection, and negation semantically from the complete caller turn
                   and the immediately preceding question, in any language. Do not classify intent from a language
                   keyword list. For a signed booking review, you may record a clean correction or unconditional

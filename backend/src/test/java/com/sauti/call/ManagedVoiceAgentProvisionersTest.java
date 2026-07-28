@@ -97,7 +97,10 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains(
                         "required semantic boundary for each new caller turn",
                         "never acknowledge a value only in conversational memory",
-                        "name introduction without an actual"
+                        "name introduction without an actual",
+                        "every digit in the caller's finished sequence is unambiguous",
+                        "Never reconstruct uncertain sounds",
+                        "A caller correction is correct_review"
                 )
                 .doesNotContain("{{telnyx_conversation_channel}}")
                 .contains("native", "hangup")

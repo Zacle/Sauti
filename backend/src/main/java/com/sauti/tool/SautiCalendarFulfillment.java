@@ -398,6 +398,21 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         ));
         if (!suppliedReviewToken.isBlank() && callerApprovedReview) {
             restoreReviewedValues(call, suppliedReviewToken, arguments);
+            // Approval normally restores the signed review rather than trusting
+            // model-authored arguments. Phone values accepted by the semantic
+            // state tool are caller-authoritative, however: that tool only
+            // stores a phone after an unambiguous complete capture. Prefer that
+            // language-neutral state so a spoken correction cannot be replaced
+            // by the preceding reviewed value. Digit transcripts remain a
+            // compatibility fallback for calls created before semantic capture.
+            var authoritativePhone = currentState.getOrDefault("caller_phone", "");
+            if (!authoritativePhone.isBlank()) {
+                arguments.put("caller_phone", authoritativePhone);
+            } else {
+                phoneCandidate(latestCaller, 7).ifPresent(value ->
+                        arguments.put("caller_phone", value)
+                );
+            }
         }
         var customerDetails = customerDetails(arguments);
         var missingFields = missingRequiredBookingFields(call, arguments, customerDetails);
@@ -573,18 +588,22 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             LOGGER.debug("Authoritative intake notes unavailable for callId={}", call.getId());
         }
         if (latest.isBlank()) return Map.copyOf(normalized);
-        var matcher = SPOKEN_DIGIT_SEQUENCE.matcher(latest);
+        phoneCandidate(latest, suppliedReviewToken.isBlank() ? 9 : 4)
+                .ifPresent(value -> normalized.put("caller_phone", value));
+        return Map.copyOf(normalized);
+    }
+
+    private Optional<String> phoneCandidate(String transcript, int minimumLength) {
+        if (transcript == null || transcript.isBlank()) return Optional.empty();
+        var matcher = SPOKEN_DIGIT_SEQUENCE.matcher(transcript);
         String candidate = null;
         while (matcher.find()) {
             var digits = matcher.group(1).replaceAll("\\D", "");
-            var minimumLength = suppliedReviewToken.isBlank() ? 9 : 4;
             if (digits.length() >= minimumLength && digits.length() <= 15) {
                 candidate = matcher.group(1).trim().startsWith("+") ? "+" + digits : digits;
             }
         }
-        if (candidate == null) return Map.copyOf(normalized);
-        normalized.put("caller_phone", candidate);
-        return Map.copyOf(normalized);
+        return Optional.ofNullable(candidate);
     }
 
     private Optional<OffsetDateTime> normalizedAppointmentAt(Call call, String raw) {

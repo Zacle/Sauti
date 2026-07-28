@@ -144,6 +144,56 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void ambiguousPhoneCaptureCannotEnterAuthoritativeState() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("ambiguous-phone-call");
+        when(sessions.conversationState("ambiguous-phone-call")).thenReturn(Optional.of(
+                ConversationState.empty()
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_phone", "07552331"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "active",
+                "phone_capture_status", "incomplete",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Please repeat the complete number slowly."
+        )));
+
+        assertThat(captureState(sessions, "ambiguous-phone-call").values())
+                .doesNotContainKey("caller_phone");
+    }
+
+    @Test
+    void completePhoneCaptureNormalizesDigitsWithoutLanguageRules() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("complete-phone-call");
+        when(sessions.conversationState("complete-phone-call")).thenReturn(Optional.of(
+                ConversationState.empty()
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_phone", "\u0660\u0661\u0661 \u0665\u0667\u0665-\u0662\u0663\u0663\u0661"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "active",
+                "phone_capture_status", "complete",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Thank you."
+        )));
+
+        assertThat(captureState(sessions, "complete-phone-call").values())
+                .containsEntry("caller_phone", "0115752331");
+    }
+
+    @Test
     void normalizesAndAccumulatesSpelledBookingNumberFragments() {
         var sessions = mock(CallSessionStore.class);
         var call = call("spelled-booking-call");
@@ -1293,7 +1343,8 @@ class ConversationStateToolTest {
                         "turn_understanding", "gibberish", "booking_number", "yyyy-MM-dd", "HH:mm",
                         "caller_question", "answered_in_spoken_response", "requires_business_tool",
                         "action_authorization", "unconditional", "blocked",
-                        "call_disposition", "continue", "end"
+                        "call_disposition", "continue", "end",
+                        "phone_capture_status", "Length alone never proves completeness"
                 )
                 .doesNotContain("my name is Zachary", "don't book", "call back later");
     }
@@ -1327,6 +1378,14 @@ class ConversationStateToolTest {
                             "caller_name", "appointment_name", "booking_lookup_name"
                     ).contains(key == null ? "" : key.toString()));
             complete.put("name_capture_status", containsName ? "complete" : "not_applicable");
+        }
+        if (!complete.containsKey("phone_capture_status")) {
+            var updates = complete.get("updates");
+            var containsPhone = updates instanceof Map<?, ?> values
+                    && values.keySet().stream().anyMatch(key -> Set.of(
+                            "caller_phone", "new_caller_phone"
+                    ).contains(key == null ? "" : key.toString()));
+            complete.put("phone_capture_status", containsPhone ? "complete" : "not_applicable");
         }
         return new LlmToolCall(
                 "semantic-tool-call",

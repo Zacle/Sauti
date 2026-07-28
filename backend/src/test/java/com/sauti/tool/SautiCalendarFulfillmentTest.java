@@ -1031,6 +1031,53 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
+    void phoneCorrectionCannotApproveAndSaveThePreviouslyReviewedNumber() {
+        var fixture = fixture(HOURS, List.of());
+        var arguments = new java.util.LinkedHashMap<String, Object>();
+        arguments.put("appointment_at", "2026-08-05T13:00:00Z");
+        arguments.put("caller_name", "Zachary");
+        arguments.put("caller_phone", "07552331");
+        arguments.put("service_type", "Beginner");
+        arguments.put("review_action", "prepare_review");
+
+        var first = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "incorrect-phone-review", "book_slot", Map.copyOf(arguments)
+        ));
+
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage(
+                        "user", "The corrected complete number is 0115752331."
+                )));
+        arguments.put("review_token", first.result().get("reviewToken"));
+        arguments.put("caller_phone", "0115752331");
+        // Reproduce the unsafe provider classification from the supplied call:
+        // a correction must never be allowed to approve the preceding review.
+        arguments.put("review_action", "approve_review");
+        when(fixture.intakeNotes.notes(eq(fixture.call), any())).thenReturn(Map.of(
+                "conversation_state_revision", "9",
+                "review_decision", "approved",
+                "caller_phone", "0115752331"
+        ));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "misclassified-phone-correction", "book_slot", Map.copyOf(arguments)
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_review_required")
+                .containsEntry("bookingCreated", false)
+                .containsEntry("correctionReview", true)
+                .containsEntry("changedFields", List.of("caller_phone"));
+        @SuppressWarnings("unchecked")
+        var fields = (Map<String, Object>) result.result().get("bookingReview");
+        assertThat(fields).containsEntry(
+                "callerPhoneDigits",
+                List.of("0", "1", "1", "5", "7", "5", "2", "3", "3", "1")
+        );
+        verifyNoInteractions(fixture.bookingService);
+    }
+
+    @Test
     void answersBusinessHoursDeterministicallyWithoutQueryingCalendarSlots() {
         var fixture = fixture("always", List.of());
         when(fixture.call.getLanguageDetected()).thenReturn("fr");

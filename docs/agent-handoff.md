@@ -225,6 +225,48 @@ Expected:
 
 ## Change log
 
+### 2026-07-28 - Require unambiguous phone capture and sign phone corrections
+
+- Investigated `sauti-telnyx-diagnostics-1785229538723.json` for browser call `6f0e7d9d-31f7-4ac9-a2f2-f510a69c1bef`.
+  - The preceding browser-startup fix worked in production: remote audio and an active Telnyx conversation arrived at 6.5 seconds, and first agent audio arrived at 8.6 seconds.
+  - Telnyx/Deepgram transcribed the first phone turn as `zéro a a cinq sept cinq deux trois trois un`. The assistant nevertheless advanced with the invented/truncated eight-digit value `07552331` instead of requesting a clear repetition.
+  - The caller detected the error during the signed review and supplied `0115752331`.
+  - Read-only production diagnostics run `30345531709` showed the booking workflow statuses: two availability results, `booking_review_required`, `booking_confirmation_required`, then `booking_saved_locally` for `SAT-D8KOP8Y1OMCQ`.
+  - The logs intentionally omit phone arguments, so they cannot directly prove the stored row's contact value. Code-path inspection found a serious risk: on an approval-classified turn, `book_slot` restored the phone from the preceding signed review after reading the latest correction. That could save the old eight-digit number while the assistant claimed the corrected number was noted.
+- Added a language-neutral phone semantic boundary:
+  - `update_conversation_state` now requires `phone_capture_status` with `not_applicable`, `incomplete`, or `complete`;
+  - any ambiguous sound, missing digit, interruption, unfinished sequence, or unclear self-correction must be classified `incomplete`, emits no phone update, and requests one slow natural repetition;
+  - length alone cannot classify a phone as complete;
+  - runtime accepts phone state only when the semantic status is `complete`, the normalized value contains only an optional leading plus and Unicode decimal digits, and the digit count is between 7 and the E.164 maximum of 15;
+  - Unicode decimal digits are normalized structurally without any language word list.
+- Fixed signed phone corrections:
+  - ordinary approval still restores the exact preceding signed review so model-authored argument changes cannot alter a booking;
+  - a complete phone accepted by the semantic state tool is retained as caller-authoritative state rather than overwritten by the preceding reviewed phone, so this works independently of whether the transcript spells digits as French words, Arabic words, or numeric characters;
+  - numeric transcript extraction remains only as a compatibility fallback for calls created before semantic phone capture;
+  - if Telnyx misclassifies that correction as `approve_review`, the changed review token now forces `booking_review_required` with a focused `caller_phone` correction review and performs no database write;
+  - only approval of the newly signed correction review can save the corrected number.
+- Updated the Telnyx execution contract to forbid reconstructing unclear phone sounds, require digit-by-digit review in the caller's language, and classify a supplied correction as `correct_review`. Bumped the managed configuration version from `23` to `24`.
+- Added regressions proving:
+  - an ambiguous eight-digit capture cannot enter authoritative state;
+  - Arabic-Indic phone digits normalize without language-specific rules;
+  - a misclassified correction cannot approve or save the preceding reviewed phone;
+  - the focused correction review contains the exact corrected digits.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/tool/{ConversationStateTool,SautiCalendarFulfillment}.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `backend/src/test/java/com/sauti/tool/{ConversationStateToolTest,SautiCalendarFulfillmentTest}.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused semantic-state, calendar-fulfillment, and Telnyx provisioning tests passed.
+  - `.\gradlew.bat :backend:test --no-daemon` passed; Gradle reported `BUILD SUCCESSFUL` in 3 minutes 23 seconds.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after reviewed deployment:
+  - confirm Gerard is reprovisioned with configuration version `24`;
+  - repeat a phone number with one deliberately unclear digit and require a repetition request rather than a review;
+  - supply a complete phone, correct one digit during review, require a focused correction review, then approve it;
+  - verify the saved booking row and confirmation email contain the corrected phone and never the preceding value.
+
 ### 2026-07-28 - Recover Telnyx browser calls that connect without media
 
 - Investigated `sauti-telnyx-diagnostics-1785226608285.json` for browser call `83981eb2-97c0-4532-a743-8b98855be0bb`.
