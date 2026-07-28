@@ -1,23 +1,22 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { DestinationScreen } from "@/features/marketing/DestinationScreen/DestinationScreen";
-import { pageFor, paramsFor } from "@/features/marketing/site-map";
+import { industryFor, industries } from "@/features/marketing/Industries/domain/industry-content";
+import { IndustryDetailPage } from "@/features/marketing/Industries/presentation/IndustriesPage";
 
 export function generateStaticParams() {
-  return paramsFor("industries");
+  return industries.map(({ slug }) => ({ slug }));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const destination = pageFor("industries", slug);
-  return destination ? { title: `${destination.title} | Sauti`, description: destination.description } : {};
+  const industry = industryFor(slug);
+  return industry ? { title: `${industry.label} AI Phone Agent | Sauti`, description: industry.description } : {};
 }
 
 export default async function IndustriesPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const destination = pageFor("industries", slug);
-  if (!destination) {
+  if (!industryFor(slug)) {
     notFound();
   }
-  return <DestinationScreen slug={slug} section="industries" />;
+  return <IndustryDetailPage slug={slug} />;
 }

@@ -1,23 +1,25 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { DestinationScreen } from "@/features/marketing/DestinationScreen/DestinationScreen";
-import { pageFor, paramsFor } from "@/features/marketing/site-map";
+import {
+  marketingIntegrationFor,
+  marketingIntegrations,
+} from "@/features/marketing/Integrations/domain/integration-content";
+import { MarketingIntegrationDetailPage } from "@/features/marketing/Integrations/presentation/MarketingIntegrationsPage";
 
 export function generateStaticParams() {
-  return paramsFor("integrations");
+  return marketingIntegrations.map(({ slug }) => ({ slug }));
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const destination = pageFor("integrations", slug);
-  return destination ? { title: `${destination.title} | Sauti`, description: destination.description } : {};
+  const integration = marketingIntegrationFor(slug);
+  return integration ? { title: `${integration.label} | Sauti`, description: integration.description } : {};
 }
 
 export default async function IntegrationsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const destination = pageFor("integrations", slug);
-  if (!destination) {
+  if (!marketingIntegrationFor(slug)) {
     notFound();
   }
-  return <DestinationScreen slug={slug} section="integrations" />;
+  return <MarketingIntegrationDetailPage slug={slug} />;
 }

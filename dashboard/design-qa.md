@@ -1,13 +1,198 @@
 # Homepage design QA
 
-- Reference: the approved refined third Product Design full-page direction (`Living Voice System`), with customer stories removed.
-- Target viewport: desktop marketing homepage, 1440px wide.
-- Implementation state: production build, TypeScript, and lint checks pass.
-- Source assets:
-  - `public/images/marketing/sauti-phone-hero.png`;
-  - `public/images/marketing/industries/{healthcare,professional-services,home-services,retail,education}.png`.
-- Automated browser capture: blocked. The in-app browser runtime fails during connection setup with `Cannot redefine property: process`.
-- Visual comparison: blocked until a browser screenshot can be captured.
-- Final result: blocked.
+## Comparison target
 
-The implementation must be captured at the target desktop viewport and a representative mobile viewport, then compared against the selected reference before changing this result to `passed`.
+- Source visual truth: `C:\Users\Zacle\.codex\generated_images\019fa96f-e134-7960-93a1-92227d4912b0\call_QKoHMOfu2hXhCdZvErFYJwWy.png`.
+- Rendered implementation: `D:\Documents\Sauti\dashboard\.next\qa\homepage-final-1440.png`.
+- Side-by-side comparison: `D:\Documents\Sauti\dashboard\.next\qa\homepage-final-comparison.png`.
+- Route and state: `/` at `http://localhost:8091/`; English language tab, 30-day analytics period, FAQs collapsed.
+- Viewport: 1440 x 1000 CSS pixels at device scale factor 1.
+- Source pixels: 793 x 1983.
+- Implementation pixels: 1440 x 4338.
+- Density normalization: both full-page images were scaled to 720 pixels wide in the side-by-side comparison (source 720 x 1800; implementation 720 x 2169).
+
+## Evidence reviewed
+
+- Full-view comparison: the final stitched production capture was reviewed beside the approved `Living Voice System` reference.
+- Focused hero comparison: `D:\Documents\Sauti\dashboard\.next\qa\homepage-final-hero.png`.
+- Focused mid-page comparison: the process, capabilities, industries, languages, integrations, analytics, trust, pricing, and closing sections were captured in five overlapping browser-rendered slices before stitching.
+- Image quality: the hero browser element reports a 1672 x 941 natural source rendered into a 1443 x 841 `object-fit: cover` slot. It is served directly rather than enlarged from a smaller optimized derivative.
+- Motion: the page observer applies `.in-view` with 820ms reveal transitions; scroll testing activated 15 reveal targets and advanced hero parallax to 48px. Continuous hero, ribbon, process-node, capability-core, message, integration, progress, and CTA animations were also active.
+- Interactions tested: Kiswahili language tab, 7-day analytics period, and security FAQ expansion.
+- Browser console: no warnings or errors.
+
+## Comparison history
+
+1. Initial comparison
+   - P1: the full page was materially taller and less editorial than the selected reference.
+   - P1: the hero was served from a 1254px optimized derivative into a roughly 1440px slot, producing visible softness.
+   - P2: the fifth live-action ribbon step and part of the outcomes promise were clipped.
+   - P2: scroll reveals were too subtle to read as intentional motion.
+2. Fixes
+   - Reduced desktop vertical spacing and component heights across every section while preserving readable copy and working controls.
+   - Regenerated the hero as a 1672 x 941 crop-safe source, used `quality={100}`, and bypassed optimization only for that full-bleed image.
+   - Added border-box sizing to the ribbon and verified all five steps at 1440px.
+   - Reworked the motion hook to remove obsolete story-progress behavior and added stronger directional reveals, parallax, sequential live states, process pulses, animated progress, and reduced-motion fallbacks.
+3. Post-fix evidence
+   - The final comparison preserves the reference's section order, dark/mint rhythm, hero hierarchy, five-step conversation flow, split capability grid, industry strip, language panel, integrations, insights, trust, pricing, and closing CTA.
+   - No actionable P0, P1, or P2 visual difference remains at the target desktop viewport.
+
+## Required fidelity surfaces
+
+- Fonts and typography: display scale, line wrapping, weight hierarchy, and compact label styles match the visual direction.
+- Spacing and layout rhythm: the final page is substantially tighter and all full-width regions align without clipping or horizontal overflow at 1440px.
+- Colors and visual tokens: midnight navy, mint, teal, violet, and warm editorial photography remain consistent with the reference.
+- Image quality and asset fidelity: the hero is full-resolution and proportional; industry imagery remains sharp, crop-safe, and unstretched.
+- Copy and content: all approved sections are present; customer stories remain removed.
+
+## Follow-up polish
+
+- P3: the analytics preview uses interactive metrics and animated progress rows instead of reproducing the reference's decorative line chart, preserving the repository decision not to import Recharts globally.
+- P3: the available in-app browser clamps its attempted narrow viewport override to a desktop-sized viewport, so the 760px CSS breakpoint was not visually captured in this pass. The production build validates the responsive stylesheet, but a true mobile screenshot remains useful future coverage.
+
+Final result: passed
+
+---
+
+# Industries design QA
+
+## Comparison target
+
+- Source visual truth: `C:\Users\Zacle\.codex\generated_images\019f9d19-f59c-77d3-b0d5-a8dd93f6b416\call_gTHxmEWQRvgnAvzCrHJ9reuD.png`.
+- Intended representative implementation route: `/industries/clinics-healthcare`.
+- Intended comparison viewport: 1536 x 1024 CSS pixels at device scale factor 1.
+- Source pixels: 1536 x 1024.
+- Implementation screenshot: unavailable because the in-app browser reported no available browser surfaces.
+- Implementation pixels and density normalization: unavailable without a browser-rendered capture.
+- State: desktop, initial page load, healthcare live-call example visible.
+
+## Evidence available
+
+- The selected source mock was opened and inspected at its original resolution.
+- All six final project photographs were opened during generation and inspected for subject, composition, crop safety, and art-direction consistency.
+- Each final hero source is 1672 x 941 pixels and is rendered through proportional `object-fit: cover` behavior.
+- The Next.js production build generated the Industries index and all six static detail routes successfully.
+- TypeScript and ESLint validation passed.
+
+## Blocked visual evidence
+
+- Full-view comparison: blocked because no browser-rendered implementation screenshot can be captured.
+- Focused hero comparison: blocked for the same reason.
+- Responsive captures: blocked for desktop, tablet, and mobile.
+- Primary interactions tested in a browser: none; navigation and CTA contracts compile but cannot be visually exercised.
+- Browser console errors checked: no; a browser surface is unavailable.
+
+## Required fidelity surfaces
+
+- Fonts and typography: implemented from the selected hierarchy, but browser-rendered wrapping and optical weight remain unverified.
+- Spacing and layout rhythm: desktop, tablet, and mobile rules are present, but visible alignment, overflow, and density remain unverified.
+- Colors and visual tokens: the selected midnight navy and cyan system is implemented with an industry-specific accent per page, but browser output remains unverified.
+- Image quality and asset fidelity: six original ImageGen hero assets were inspected, saved locally, and wired with proportional responsive cropping.
+- Copy and content: every page has industry-specific hero, call example, before/after workflow, operating model, integrations, and CTA copy.
+- Icons: the existing Lucide system is reused consistently, but final optical alignment remains unverified.
+
+## Findings
+
+- [P1] Browser-rendered implementation evidence is missing.
+  - Location: Industries overview and all six detail routes.
+  - Evidence: the selected source is available, but the in-app browser discovery returned an empty browser list.
+  - Impact: the implementation cannot be compared against the selected design or cleared for visual handoff.
+  - Fix: open an in-app browser surface, capture `/industries/clinics-healthcare` at 1536 x 1024, compare it with the source in one combined image, fix P0-P2 findings, then repeat for the hub and responsive breakpoints.
+
+## Comparison history
+
+- Initial pass: blocked before the first implementation comparison because a browser-rendered screenshot could not be produced.
+- Fixes made from visual evidence: none; source-to-implementation visual evidence is unavailable.
+- Post-fix evidence: none.
+
+## Follow-up polish
+
+- Run the visual comparison as soon as the in-app browser is available, then verify one alternate visual variant and the mobile hero overlay before handoff.
+
+final result: blocked
+
+---
+
+# Marketing integrations redesign QA
+
+## Comparison target
+
+- Target surface: `/integrations` and all six `/integrations/[slug]` marketing routes.
+- Design source: the existing Sauti marketing system and the previously selected dark, outcome-led Industries direction.
+- Browser-rendered implementation screenshot: unavailable because browser discovery returned no available browser surfaces.
+- Intended captures: 1440 x 1024 desktop and 390 x 844 mobile for the overview, Calendars, and Business Tools routes.
+
+## Evidence available
+
+- The former generic `CategoryScreen` and `DestinationScreen` implementation was inspected before replacement.
+- The dedicated integration content model, overview, detail presentation, provider-logo assets, and responsive CSS were inspected in source.
+- TypeScript, ESLint, the optimized production build, and static generation of all seven integration routes pass.
+
+## Required fidelity surfaces
+
+- Hierarchy: each page has one outcome-led hero, a visible system flow, provider context, operational value, safeguards, related layers, and one closing action.
+- Differentiation: all six detail routes have distinct accents, provider sets, workflow steps, business value, and rollout guidance.
+- Brand: the established Sauti midnight surface, restrained cyan-led accents, Lucide icon system, and lightweight typography are preserved.
+- Assets: existing official project-local provider logos are reused; no placeholder imagery or handcrafted SVGs were added.
+- Responsive behavior: desktop, tablet, and mobile rules are present, including stacked flows and simplified integration maps, but rendered wrapping and overflow remain unverified.
+
+## Findings
+
+- [P1] Browser-rendered visual evidence is unavailable.
+  - Location: marketing Integrations overview and all six detail routes.
+  - Evidence: browser discovery returned an empty browser list.
+  - Impact: exact spacing, provider-chip wrapping, integration-map placement, and mobile flow stacking cannot receive visual sign-off.
+  - Fix: capture `/integrations`, `/integrations/calendars`, and `/integrations/business-tools` at the intended desktop and mobile sizes, then fix all visible P0-P2 differences.
+
+## Comparison history
+
+- Initial source review: every integration page inherited the same generic destination layout and changed primarily through copy and one simulated visual mode.
+- Implemented correction: introduced a dedicated integration architecture with a connected-stack overview and six outcome-specific detail experiences.
+- Post-fix visual evidence: blocked because no browser surface is available.
+
+final result: blocked
+
+---
+
+# Homepage conversation-flow delta QA
+
+## Comparison target
+
+- Source visual truth: `C:\Users\Zacle\OneDrive\Images\Screenshots\Screenshot 2026-07-29 000352.png`.
+- Source pixels: 896 x 239.
+- Target implementation: the `From conversation to outcome` section on `/`.
+- Intended comparison: an 896 CSS pixel-wide focused section capture at device scale factor 1, with reveal animation settled.
+- Implementation screenshot: unavailable because browser discovery returned no available browser surfaces.
+- Implementation pixels and density normalization: unavailable without a browser-rendered capture.
+
+## Evidence available
+
+- The source screenshot was opened and inspected directly.
+- The new waveform asset was generated from the supplied screenshot as visual grounding, then inspected before integration.
+- The final project waveform source is 1942 x 809 pixels and is rendered proportionally with `object-fit: cover` inside the narrow signal strip.
+- TypeScript, ESLint, the production build, and static generation of `/` all pass.
+
+## Required fidelity surfaces
+
+- Fonts and typography: heading, stage labels, descriptions, and dialogue hierarchy were tightened to match the compact reference, but rendered wrapping remains unverified.
+- Spacing and layout rhythm: the section now uses a five-stage horizontal sequence above a single waveform dialogue band; browser-rendered spacing remains unverified.
+- Colors and visual tokens: teal, violet, blue, and mint states follow the supplied reference on the existing Sauti navy surface.
+- Image quality and asset fidelity: the waveform is a real generated raster asset rather than CSS art; its crop and visible sharpness require browser confirmation.
+- Copy and content: all five stages and four dialogue moments from the reference are represented.
+- Icons: existing Lucide workflow icons are reused consistently with color-coded circular states; final optical alignment remains unverified.
+
+## Findings
+
+- [P1] Focused browser comparison is unavailable.
+  - Location: homepage `From conversation to outcome` section.
+  - Evidence: the 896 x 239 source crop is available, but no implementation capture can be produced because the in-app browser list is empty.
+  - Impact: spacing, waveform crop, dialogue-card placement, and responsive behavior cannot receive final visual sign-off.
+  - Fix: capture the focused section at 896 CSS pixels wide, place it beside the source in one comparison image, fix any P0-P2 mismatch, and repeat until the delta passes.
+
+## Comparison history
+
+- Initial source review: the previous implementation had the correct five stages but lacked directional dotted connectors and a continuous waveform behind the dialogue.
+- Implemented correction: added color-coded stage nodes, directional dotted links, a generated signal asset, compact dialogue bubbles, and a responsive stacked fallback.
+- Post-fix visual evidence: blocked because no browser-rendered capture is available.
+
+final result: blocked

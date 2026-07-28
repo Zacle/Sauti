@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { CategoryScreen } from "@/features/marketing/DestinationScreen/DestinationScreen";
+import { MarketingIntegrationsOverviewPage } from "@/features/marketing/Integrations/presentation/MarketingIntegrationsPage";
 
 export const metadata: Metadata = {
   title: "Integrations | Sauti",
-  description: "Explore Sauti integrations for voice, speech, AI models, calendars, business tools, and developer APIs.",
+  description: "See how Sauti connects live voice, AI models, calendars, business tools, and developer systems.",
 };
 
 export default function IntegrationsIndexPage() {
-  return <CategoryScreen section="integrations" />;
+  return <MarketingIntegrationsOverviewPage />;
 }

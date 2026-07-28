@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { CategoryScreen } from "@/features/marketing/DestinationScreen/DestinationScreen";
+import { IndustriesOverviewPage } from "@/features/marketing/Industries/presentation/IndustriesPage";
 
 export const metadata: Metadata = {
   title: "Industries | Sauti",
-  description: "Explore Sauti AI phone agent use cases by industry.",
+  description: "Explore AI phone workflows shaped for healthcare, beauty, real estate, professional services, education, and local businesses.",
 };
 
 export default function IndustriesIndexPage() {
-  return <CategoryScreen section="industries" />;
+  return <IndustriesOverviewPage />;
 }

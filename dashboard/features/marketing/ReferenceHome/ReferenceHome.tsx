@@ -27,9 +27,9 @@ import {
 import styles from "./ReferenceHome.module.css";
 
 const outcomes = [
-  { value: "42%", label: "more calls covered", detail: "Day and night, without busy signals." },
-  { value: "31%", label: "less manual admin", detail: "Automate routine customer conversations." },
-  { value: "4.8/5", label: "average call rating", detail: "Natural interactions that build loyalty." },
+  { value: "42%", label: "more calls answered", detail: "Day and night, without busy signals." },
+  { value: "31%", label: "lower operating costs", detail: "Automate routine customer conversations." },
+  { value: "4.8★", label: "average customer rating", detail: "Natural interactions that build loyalty." },
 ];
 
 const conversationSteps: Array<[LucideIcon, string, string]> = [
@@ -118,7 +118,7 @@ export default function ReferenceHome() {
   const [period, setPeriod] = useState<"week" | "month">("month");
 
   return (
-    <main className={styles.page}>
+    <main className={styles.page} data-motion-page>
       <section className={styles.hero} data-hero-parallax>
         <div className={styles.heroMedia} aria-hidden="true">
           <Image
@@ -126,6 +126,8 @@ export default function ReferenceHome() {
             alt=""
             fill
             priority
+            quality={100}
+            unoptimized
             sizes="100vw"
           />
         </div>
@@ -140,8 +142,8 @@ export default function ReferenceHome() {
           </div>
           <div className={styles.heroSignals}>
             <span><i /> Voice online</span>
-            <span><Check size={13} /> Intent understood</span>
-            <span><Clock3 size={13} /> Fast response</span>
+            <span><Check size={13} /> 98.7% intent understood</span>
+            <span><Clock3 size={13} /> &lt; 1.2s response time</span>
           </div>
         </div>
 
@@ -154,7 +156,7 @@ export default function ReferenceHome() {
         </div>
       </section>
 
-      <section className={styles.outcomes} data-reveal>
+      <section className={styles.outcomes} data-reveal-scale>
         <div className={styles.sectionIntro}>
           <span>Outcomes that matter</span>
           <h2>Real impact. Measurable growth.</h2>
@@ -178,7 +180,7 @@ export default function ReferenceHome() {
         <SectionHeading
           kicker="See Sauti think and act"
           title="From conversation to outcome."
-          text="One connected flow turns a caller’s need into a completed action."
+          text=""
           dark
         />
         <div className={styles.flow} data-reveal>
@@ -187,14 +189,22 @@ export default function ReferenceHome() {
               <div><Icon size={21} /></div>
               <span>{index + 1}. {title}</span>
               <p>{text}</p>
+              {index < conversationSteps.length - 1 ? <ArrowRight className={styles.flowArrow} size={15} /> : null}
             </article>
           ))}
         </div>
         <div className={styles.flowDialogue} data-reveal>
+          <Image
+            className={styles.dialogueWaveform}
+            src="/images/marketing/conversation-waveform.png"
+            alt=""
+            fill
+            sizes="100vw"
+          />
           <p>I need to reschedule my cleaning.</p>
-          <p>Sure. What date works for you?</p>
+          <p>Sure! I can help with that. What date works for you?</p>
           <p>How about Friday morning?</p>
-          <p>You’re all set for Friday at 10:00.</p>
+          <p>You’re all set for Friday at 10:00 AM. See you then!</p>
         </div>
       </section>
 
@@ -219,7 +229,13 @@ export default function ReferenceHome() {
         <div className={styles.industryGrid}>
           {industries.map((industry, index) => (
             <Link href={industry.href} key={industry.title} data-reveal style={{ transitionDelay: `${index * 55}ms` }}>
-              <Image src={industry.image} alt="" fill sizes="(max-width: 760px) 100vw, 20vw" />
+              <Image
+                src={industry.image}
+                alt=""
+                fill
+                quality={94}
+                sizes="(max-width: 760px) 100vw, 20vw"
+              />
               <div><span>0{index + 1}</span><h3>{industry.title}</h3><p>{industry.text}</p><small>Learn more <ArrowRight size={13} /></small></div>
             </Link>
           ))}
@@ -227,7 +243,7 @@ export default function ReferenceHome() {
       </section>
 
       <section className={styles.languagesSection}>
-        <div className={styles.languageCopy} data-reveal>
+        <div className={styles.languageCopy} data-reveal-left>
           <span>Speak every customer’s language</span>
           <h2>One experience.<br />Many languages.</h2>
           <p>Configure the languages each agent supports and keep every interaction natural and on brand.</p>
@@ -236,7 +252,7 @@ export default function ReferenceHome() {
             <strong>Português</strong><strong>Türkçe</strong><strong>العربية</strong>
           </div>
         </div>
-        <div className={styles.languageDemo} data-reveal>
+        <div className={styles.languageDemo} data-reveal-right>
           <div className={styles.languageTabs} role="tablist" aria-label="Conversation language">
             {(Object.keys(languageSamples) as Language[]).map((item) => (
               <button
@@ -261,13 +277,13 @@ export default function ReferenceHome() {
       </section>
 
       <section className={styles.integrations}>
-        <div data-reveal>
+        <div data-reveal-left>
           <span>Connect what you use</span>
           <h2>Works where your business runs.</h2>
           <p>Sauti connects calls to the calendars, CRMs, messaging, and automation tools your team already relies on.</p>
           <Link href="/integrations">View all integrations <ArrowRight size={14} /></Link>
         </div>
-        <div className={styles.integrationFlow} data-reveal aria-label="Connected integrations">
+        <div className={styles.integrationFlow} data-reveal-right aria-label="Connected integrations">
           {integrations.map(([name, logo], index) => (
             <div key={name} className={name === "WhatsApp" ? styles.integrationWide : ""}>
               <Image src={logo} alt="" width={34} height={34} />
@@ -279,13 +295,13 @@ export default function ReferenceHome() {
       </section>
 
       <section className={styles.analytics}>
-        <div data-reveal>
+        <div data-reveal-left>
           <span>Insights that drive growth</span>
           <h2>See every conversation. Drive every decision.</h2>
           <p>Review volume, outcomes, responsiveness, and agent actions without losing the context behind the numbers.</p>
           <Link href="/analytics">Explore analytics <ArrowRight size={14} /></Link>
         </div>
-        <div className={styles.analyticsPanel} data-reveal>
+        <div className={styles.analyticsPanel} data-reveal-right>
           <header>
             <div><strong>Conversation performance</strong><small>{period === "month" ? "Last 30 days" : "Last 7 days"}</small></div>
             <div><button className={period === "week" ? styles.active : ""} onClick={() => setPeriod("week")}>7 days</button><button className={period === "month" ? styles.active : ""} onClick={() => setPeriod("month")}>30 days</button></div>
@@ -361,13 +377,13 @@ function SectionHeading({
 }: {
   kicker: string;
   title: string;
-  text: string;
+  text?: string;
   dark?: boolean;
   action?: { label: string; href: string };
 }) {
   return (
     <div className={`${styles.sectionHeading} ${dark ? styles.dark : ""}`} data-reveal>
-      <div><span>{kicker}</span><h2>{title}</h2><p>{text}</p></div>
+      <div><span>{kicker}</span><h2>{title}</h2>{text ? <p>{text}</p> : null}</div>
       {action ? <Link href={action.href}>{action.label} <ArrowRight size={14} /></Link> : null}
     </div>
   );

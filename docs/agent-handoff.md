@@ -225,6 +225,95 @@ Expected:
 
 ## Change log
 
+### 2026-07-29 - Give every marketing integration layer a distinct operating story
+
+- Replaced the generic marketing Integrations category and detail routes with a dedicated Product Design feature:
+  - rebuilt `/integrations` as a connected-stack overview that explains how voice, speech, models, calendars, business tools, and developer contracts work together;
+  - rebuilt all six static integration detail routes with unique outcome-led copy, provider sets, workflow diagrams, business value, safeguards, and rollout guidance;
+  - distinguished provider responsibility from Sauti responsibility so the pages explain ownership and operational value rather than presenting a logo directory;
+  - reused the existing project-local provider logos and Lucide icon system;
+  - added responsive desktop, tablet, and mobile layouts for the stack map, workflow panels, provider band, capability sections, and related routes.
+- Kept the authenticated `/dashboard/integrations` marketplace and all existing integration APIs and setup behavior unchanged.
+- Added a clean marketing feature boundary:
+  - `domain/integration-content.ts` owns the six provider-neutral page models;
+  - `presentation/MarketingIntegrationsPage.tsx` owns the overview and detail experiences;
+  - `presentation/MarketingIntegrationsPage.module.css` owns the integration-specific visual system.
+- Files touched:
+  - `dashboard/app/(marketing)/integrations/page.tsx`
+  - `dashboard/app/(marketing)/integrations/[slug]/page.tsx`
+  - `dashboard/features/marketing/Integrations/domain/integration-content.ts`
+  - `dashboard/features/marketing/Integrations/presentation/MarketingIntegrationsPage.tsx`
+  - `dashboard/features/marketing/Integrations/presentation/MarketingIntegrationsPage.module.css`
+  - `dashboard/design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js generated all 50 pages, including the overview and all six integration detail routes.
+  - Browser visual QA is blocked because browser discovery returns no available surfaces; the required desktop and mobile capture matrix is recorded in `dashboard/design-qa.md`.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Follow-up: capture `/integrations`, `/integrations/calendars`, and `/integrations/business-tools` at 1440 x 1024 and 390 x 844, then fix any visible P0-P2 spacing, wrapping, or overflow issue.
+
+### 2026-07-29 - Match the homepage conversation flow to the supplied signal reference
+
+- Reworked only the homepage `From conversation to outcome` section against the supplied 896 x 239 reference crop:
+  - tightened the heading and removed the extra explanatory line;
+  - changed the five workflow stages into compact teal, violet, blue, and mint nodes;
+  - added dotted directional connectors and explicit arrows between stages;
+  - placed four caller/agent dialogue cards over one continuous signal strip;
+  - expanded the dialogue to show the complete rescheduling exchange and confirmation;
+  - added a mobile fallback that stacks the workflow and dialogue without the decorative waveform.
+- Generated one project-local 1942 x 809 waveform asset with the built-in ImageGen path, grounded by the supplied screenshot:
+  - flat Sauti navy surface;
+  - four cyan, violet, and blue conversational energy clusters;
+  - no text, icons, boxes, logos, or watermark.
+- Preserved the existing homepage redesign, Industries work, and all other uncommitted files.
+- Files touched:
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/public/images/marketing/conversation-waveform.png`
+  - `dashboard/design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js generated all 50 pages and the optimized `/` route.
+  - `git diff --check` - passed with line-ending notices only.
+  - Focused visual QA is blocked because browser discovery returns no available browser surfaces. The current delta gate is recorded in `dashboard/design-qa.md`.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Follow-up: capture the revised section at 896 CSS pixels wide, compare it directly with the supplied crop, fix any remaining P0-P2 differences, and verify the stacked mobile state.
+
+### 2026-07-28 - Give every industry its own outcome-led marketing experience
+
+- Replaced the generic shared Industries destination template with a dedicated Product Design system based on the selected live-operations direction:
+  - rebuilt `/industries` as a photographic industry directory with an explicit explanation of why workflows differ by operating environment;
+  - rebuilt all six static detail routes for clinics and healthcare, salons and beauty, real estate, professional services, education, and local businesses;
+  - gave every vertical its own hero promise, caller example, completed outcome, before/after operating flow, workflow boundaries, connected systems, and pilot CTA;
+  - kept a shared presentation architecture for maintainability while using per-industry content, accent, imagery, and layout variants to avoid cloned pages.
+- Generated and integrated six original 1672 x 941 hero photographs:
+  - clinic reception and patient access;
+  - salon consultation and service delivery;
+  - property viewing and buyer qualification;
+  - professional-services intake;
+  - admissions guidance;
+  - local service-business work and follow-up.
+- Kept the existing homepage redesign changes untouched. The new industry work is isolated under a dedicated feature boundary.
+- Files touched:
+  - `dashboard/app/(marketing)/industries/{page.tsx,[slug]/page.tsx}`
+  - `dashboard/features/marketing/Industries/domain/industry-content.ts`
+  - `dashboard/features/marketing/Industries/presentation/{IndustriesPage.tsx,IndustriesPage.module.css}`
+  - `dashboard/public/images/marketing/industries/*-hero.png`
+  - `dashboard/design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js generated the Industries index and all six detail pages as static routes.
+  - `git diff --check` - passed with line-ending notices only.
+  - Visual QA is blocked because the in-app browser reports no available browser surfaces. `dashboard/design-qa.md` records the missing source-to-implementation comparison and remains blocked for this route family.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Follow-up: open the in-app browser, capture the healthcare route at the 1536 x 1024 source viewport, complete source-to-implementation comparison, fix any P0-P2 findings, then verify the Industries hub and representative mobile states.
+
 ### 2026-07-28 - Redesign the public homepage around human AI conversations
 
 - Reworked only the public marketing home screen to follow the selected cinematic Product Design direction:
@@ -236,6 +325,12 @@ Expected:
   - generated five coordinated, high-resolution industry photographs for healthcare, professional services, home services, retail, and education;
   - kept every photograph proportional with `object-fit: cover`, crop-safe focal positioning, and no image stretching.
 - Extended the existing reveal-motion hook with reduced-motion-safe hero image parallax.
+- Follow-up fidelity correction after browser comparison:
+  - replaced the soft hero with a new 1672 x 941 high-detail editorial source and bypassed Next image optimization only for that full-bleed asset, preventing a 1254px derivative from being enlarged into the desktop slot;
+  - tightened spacing and component heights across the complete homepage to match the selected reference's compact editorial rhythm;
+  - fixed the full-width live ribbon so all five steps render without clipping;
+  - replaced the obsolete story-progress motion path with page-scoped scroll progress and stronger reveal, parallax, sequential process, live-state, analytics, and CTA animations;
+  - retained reduced-motion fallbacks and kept industry images proportional and optimized.
 - Files touched:
   - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
   - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
@@ -249,9 +344,12 @@ Expected:
   - `npm.cmd run lint` - passed with zero warnings.
   - `npm.cmd run build` - passed cleanly after correcting the initial `align-items: end` compatibility warning to `flex-end`; Next.js generated the optimized production build.
   - `git diff --check` - passed with line-ending notices only.
-  - Visual browser QA is blocked because the in-app browser connection fails during setup with `Cannot redefine property: process`; `dashboard/design-qa.md` records the blocked gate.
+  - In-app browser QA at 1440 x 1000 passed after side-by-side comparison with the selected reference; the production render is 4338px tall and the full-resolution hero reports a 1672 x 941 natural source in a proportional `object-fit: cover` slot.
+  - Scroll QA confirmed 820ms reveal transitions, 15 activated reveal targets, and 48px hero parallax.
+  - Interaction QA passed for the Kiswahili language tab, 7-day analytics period, and FAQ expansion; the browser console had no warnings or errors.
+  - The in-app browser clamps narrow viewport overrides to desktop dimensions, so a true mobile visual capture remains follow-up coverage rather than part of the desktop comparison target.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
-- Follow-up: capture the homepage at 1440px and a representative mobile width, compare it with the selected reference, fix any P0-P2 visual differences, and mark `dashboard/design-qa.md` passed.
+- Follow-up: capture the 760px responsive breakpoint in a browser that supports a true mobile viewport; the desktop Product Design gate is recorded as passed in `dashboard/design-qa.md`.
 
 ### 2026-07-28 - Repair Telnyx startup retry and reduce measured response latency
 
