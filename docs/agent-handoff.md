@@ -225,6 +225,40 @@ Expected:
 
 ## Change log
 
+### 2026-07-28 - Preserve multilingual caller turns and reject incomplete name captures
+
+- Investigated `sauti-telnyx-diagnostics-1785220805645.json` for browser call `58875490-8e3b-4a4b-80dd-0416a91b9e24`.
+  - The export has 120 lifecycle events, including 112 Telnyx speaking/listening/thinking transitions, but contains no raw audio, word-level ASR event, or managed-tool payload. It therefore cannot prove whether an omitted word was lost by the browser microphone, Telnyx voice activity detection, or Deepgram transcription.
+  - There are 28 consecutive state transitions less than 500 ms apart, with many listening-to-speaking transitions at the configured 100-120 ms boundary. This is consistent with the assistant beginning a response too aggressively around natural caller pauses.
+  - Read-only production diagnostics run `30335726653` found no backend exception. It recorded `closed_by_business_hours` from `check_availability`, followed by `booking_review_required` from the later authorized `book_slot`.
+  - The transcript and review show the exact state failure: the incomplete turn `mon nom c'est` entered authoritative name state; the later complete `Zacari` was acknowledged in speech but was not persisted before availability chained into the review. The review correctly rendered the authoritative data it received, but that data was stale.
+- Improved multilingual turn capture without adding language-specific phrase lists:
+  - `update_conversation_state` now has a required semantic `name_capture_status` enum (`not_applicable`, `incomplete`, `complete`);
+  - runtime state accepts a person-name update only with `complete`, so an introduction that stops before the actual entity cannot enter authoritative booking state;
+  - schema guidance explicitly requires a later completed or corrected name to replace a partial value even if the assistant already acknowledged it conversationally;
+  - the Telnyx execution contract now requires `update_conversation_state` at the start of every new caller turn before replying or using a business tool, except for a clean direct answer to the latest signed booking review. It forbids retaining collected facts only in model conversation memory.
+- Made Telnyx Nova-3 endpointing less aggressive:
+  - increased `wait_seconds` from `0.1` to `0.4`;
+  - increased the no-punctuation endpoint floor from `0.3` to `1.5` seconds while retaining the configured upper bound of 2 seconds;
+  - retained multilingual `deepgram/nova-3`, automatic language selection for multilingual agents, keyterm boosting, and interruption support.
+- Bumped the pending managed Telnyx configuration version from `22` to `23`; version `23` supersedes the not-yet-deployed version `22`.
+- Added regressions proving the provisioned endpointing values and per-turn semantic contract, that a completed name replaces stale partial state, and that an incomplete name capture cannot enter caller or appointment identity.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `backend/src/test/java/com/sauti/tool/ConversationStateToolTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed Telnyx provisioning, semantic state, and calendar fulfillment tests passed; Gradle reported `BUILD SUCCESSFUL` in 8 seconds.
+  - `.\gradlew.bat :backend:test --no-daemon` passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 3 seconds.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after reviewed deployment:
+  - confirm Agent Studio reprovisions Gerard with configuration version `23`;
+  - pause naturally between a name introduction and the name, then verify the assistant waits and the review contains only the completed name;
+  - test French negation and short fitness-goal phrases while speaking both continuously and with a brief pause;
+  - compare the Telnyx transcript with the recording. If words are absent from both, inspect browser microphone/acoustic capture; if present in audio but absent only from the transcript, evaluate the STT provider/model using the same recording.
+
 ### 2026-07-28 - Accept language-neutral managed booking-review decisions
 
 - Investigated `sauti-telnyx-diagnostics-1785216412057.json` and the production backend logs for browser test call `21ab9299-076d-4145-9a5c-322fafe77f98`.
@@ -266,7 +300,7 @@ Expected:
   - `.\gradlew.bat :backend:test --no-daemon` passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 31 seconds.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Required live verification after reviewed deployment:
-  - confirm Agent Studio reprovisions Gerard with Telnyx configuration version `22`;
+  - confirm Agent Studio reprovisions Gerard with the latest Telnyx configuration version (`23` after the subsequent endpointing/name-capture change);
   - repeat the French booking and require a returned Sauti booking number;
   - verify the booking row appears immediately in `/bookings`;
   - inspect the archived call `conversationJson` if the tool still fails, because managed tool results are now retained there.

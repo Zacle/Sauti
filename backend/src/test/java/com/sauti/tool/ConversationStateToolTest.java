@@ -16,6 +16,7 @@ import com.sauti.session.PendingAction;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -71,6 +72,74 @@ class ConversationStateToolTest {
         )));
 
         assertThat(captureState(sessions, "invalid-name-call").values())
+                .doesNotContainKeys("caller_name", "appointment_name");
+    }
+
+    @Test
+    void completedNameReplacesAStalePartialIntroductionWithoutLanguageRules() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("completed-name-call");
+        when(sessions.conversationState("completed-name-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_name", "partial introduction",
+                                "appointment_name", "partial introduction"
+                        ),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        2
+                )
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        var definition = ConversationStateTool.definition();
+        @SuppressWarnings("unchecked")
+        var properties = (Map<String, Object>) definition.inputSchema().get("properties");
+        @SuppressWarnings("unchecked")
+        var updates = (Map<String, Object>) properties.get("updates");
+        assertThat(updates.get("description").toString())
+                .contains("name introduction with no following name entity is incomplete")
+                .contains("later completed or corrected value must be emitted");
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_name", "Zacari"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "self",
+                "booking_intent", "active",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Thank you, Zacari."
+        )));
+
+        assertThat(captureState(sessions, "completed-name-call").values())
+                .containsEntry("caller_name", "Zacari")
+                .containsEntry("appointment_name", "Zacari")
+                .doesNotContainValue("partial introduction");
+    }
+
+    @Test
+    void incompleteNameIntroductionCannotEnterAuthoritativeState() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("incomplete-name-call");
+        when(sessions.conversationState("incomplete-name-call")).thenReturn(Optional.of(
+                ConversationState.empty()
+        ));
+        var tool = new ConversationStateTool(sessions);
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_name", "introduction without entity"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "self",
+                "booking_intent", "active",
+                "name_capture_status", "incomplete",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Please continue with your name."
+        )));
+
+        assertThat(captureState(sessions, "incomplete-name-call").values())
                 .doesNotContainKeys("caller_name", "appointment_name");
     }
 
@@ -1250,7 +1319,20 @@ class ConversationStateToolTest {
     }
 
     private LlmToolCall toolCall(Map<String, Object> arguments) {
-        return new LlmToolCall("semantic-tool-call", ConversationStateTool.NAME, arguments);
+        var complete = new java.util.LinkedHashMap<>(arguments);
+        if (!complete.containsKey("name_capture_status")) {
+            var updates = complete.get("updates");
+            var containsName = updates instanceof Map<?, ?> values
+                    && values.keySet().stream().anyMatch(key -> Set.of(
+                            "caller_name", "appointment_name", "booking_lookup_name"
+                    ).contains(key == null ? "" : key.toString()));
+            complete.put("name_capture_status", containsName ? "complete" : "not_applicable");
+        }
+        return new LlmToolCall(
+                "semantic-tool-call",
+                ConversationStateTool.NAME,
+                Map.copyOf(complete)
+        );
     }
 
     private Map<String, Object> arguments(Object... entries) {

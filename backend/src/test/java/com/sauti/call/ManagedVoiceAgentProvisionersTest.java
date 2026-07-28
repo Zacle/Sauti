@@ -94,6 +94,11 @@ class ManagedVoiceAgentProvisionersTest {
         assertThat(body.getValue().get("instructions").toString())
                 .contains("do not call the portable end_call webhook")
                 .contains("{{sauti_conversation_channel}}", "web_call", "end_browser_call", "phone_call")
+                .contains(
+                        "required semantic boundary for each new caller turn",
+                        "never acknowledge a value only in conversational memory",
+                        "name introduction without an actual"
+                )
                 .doesNotContain("{{telnyx_conversation_channel}}")
                 .contains("native", "hangup")
                 .contains(
@@ -115,6 +120,18 @@ class ManagedVoiceAgentProvisionersTest {
         ));
         assertThat(body.getValue().get("privacy_settings"))
                 .isEqualTo(Map.of("data_retention", true));
+        assertThat(body.getValue().get("interruption_settings")).isEqualTo(Map.of(
+                "enable", true,
+                "disable_greeting_interruption", false,
+                "start_speaking_plan", Map.of(
+                        "wait_seconds", 0.4,
+                        "transcription_endpointing_plan", Map.of(
+                                "on_punctuation_seconds", 0.1,
+                                "on_no_punctuation_seconds", 1.5,
+                                "on_number_seconds", 0.6
+                        )
+                )
+        ));
     }
 
     @Test

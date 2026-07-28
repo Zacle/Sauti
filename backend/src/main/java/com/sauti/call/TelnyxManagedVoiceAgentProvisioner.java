@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "22";
+        return "23";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -155,6 +155,13 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 - Tool data is language-neutral. When responseMode is present, render its structured data naturally
                   in the caller's current language and locale without changing stored names, references, or values.
                   Never expect or request a finite server-side translation.
+                - Treat update_conversation_state as the required semantic boundary for each new caller turn before
+                  replying or invoking another business tool. Persist every newly completed or corrected fact there;
+                  never acknowledge a value only in conversational memory. A name introduction without an actual
+                  person-name entity is incomplete: store no name, ask the caller to continue, and replace any earlier
+                  partial value when the caller supplies the complete name. The only exception is a clean,
+                  unconditional answer to the latest signed booking review, which may use the direct review transition
+                  described below.
                 - Interpret approval, correction, rejection, and negation semantically from the complete caller turn
                   and the immediately preceding question, in any language. Do not classify intent from a language
                   keyword list. For a signed booking review, you may record a clean correction or unconditional
@@ -229,11 +236,15 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 "enable", true,
                 "disable_greeting_interruption", false,
                 "start_speaking_plan", Map.of(
-                        "wait_seconds", 0.1,
+                        // Nova-3 does not provide Flux's semantic end-of-turn
+                        // detection. Give multilingual callers enough time for
+                        // a natural pause so introductions such as "my name is
+                        // ... Zacari" are not split before the actual entity.
+                        "wait_seconds", 0.4,
                         "transcription_endpointing_plan", Map.of(
                                 "on_punctuation_seconds", 0.1,
                                 "on_no_punctuation_seconds", Math.max(
-                                        0.3,
+                                        1.5,
                                         Math.min(2.0, blueprint.endpointingMilliseconds() / 1000.0)
                                 ),
                                 "on_number_seconds", 0.6

@@ -64,6 +64,9 @@ public class ConversationStateTool {
     );
     private static final Set<String> NEXT_ACTIONS = Set.of("reply", "use_business_tool");
     private static final Set<String> TURN_UNDERSTANDING = Set.of("clear", "unclear");
+    private static final Set<String> NAME_CAPTURE_STATUS = Set.of(
+            "not_applicable", "incomplete", "complete"
+    );
     private static final Set<String> CALLER_QUESTION = Set.of(
             "none", "answered_in_spoken_response", "requires_business_tool"
     );
@@ -90,8 +93,8 @@ public class ConversationStateTool {
         COMMON_FIELDS.forEach(field -> valueProperties.put(field, Map.of(
                 "type", "string",
                 "description", switch (field) {
-                    case "caller_name" -> "The exact semantic name entity for the person speaking. Return only the name in its original script and with its original diacritics. Exclude every introduction, carrier phrase, title that was not stated as part of the name, and other sentence text in whatever language the caller used. Never return the raw utterance.";
-                    case "appointment_name" -> "The exact semantic name entity for the person receiving the service. Return only the name in its original script and with its original diacritics; exclude all surrounding sentence text in any language.";
+                    case "caller_name" -> "The exact, complete semantic name entity for the person speaking. Return only the name in its original script and with its original diacritics. Exclude every introduction, carrier phrase, title that was not stated as part of the name, and other sentence text in whatever language the caller used. An introduction that ends before an actual name entity is incomplete and must be omitted. When a later turn completes or corrects the name, emit that complete name so it replaces any earlier partial value. Never return the raw utterance.";
+                    case "appointment_name" -> "The exact, complete semantic name entity for the person receiving the service. Return only the name in its original script and with its original diacritics; exclude all surrounding sentence text in any language. Omit an incomplete introduction with no actual name entity, and emit a later completed or corrected name so it replaces stale state.";
                     case "recipient_relation" -> "Relationship of an explicitly different recipient to the caller, expressed compactly.";
                     case "service_type" -> "Requested configured service, only when the meaning is clear.";
                     case "caller_phone" -> "Complete caller-provided phone number.";
@@ -110,7 +113,7 @@ public class ConversationStateTool {
         )));
         var updates = new LinkedHashMap<String, Object>();
         updates.put("type", "object");
-        updates.put("description", "Only semantic field values explicitly and clearly stated or corrected in the latest caller turn. These are extracted entities, never copied utterances. For every person-name field, preserve the exact name and original script but remove all surrounding words based on meaning in the caller's language. Omit unchanged or doubtful values. Never infer a person, service, date, time, or selection from a similar-sounding or incoherent fragment.");
+        updates.put("description", "Only semantic field values explicitly and clearly stated or corrected in the latest caller turn. These are extracted entities, never copied utterances. For every person-name field, preserve the exact complete name and original script but remove all surrounding words based on meaning in the caller's language. A name introduction with no following name entity is incomplete, not a name. A later completed or corrected value must be emitted even when the assistant already acknowledged it verbally, so authoritative state replaces the stale value. Omit unchanged or doubtful values. Never infer a person, service, date, time, or selection from a similar-sounding or incoherent fragment.");
         updates.put("properties", Map.copyOf(valueProperties));
         updates.put("additionalProperties", false);
 
@@ -141,6 +144,11 @@ public class ConversationStateTool {
                 "type", "string",
                 "enum", List.of("clear", "unclear"),
                 "description", "Whether the latest accepted transcript is semantically coherent enough in context to support the proposed updates and action. Use unclear for gibberish, a noisy or unrelated fragment, or a reply that cannot distinguish one offered choice. Accents, imperfect grammar, and short answers remain clear when their meaning is evident. When unclear, provide one short repetition request in spoken_response and emit no updates, clears, subject/intent changes, or business tool."
+        ));
+        properties.put("name_capture_status", Map.of(
+                "type", "string",
+                "enum", List.of("not_applicable", "incomplete", "complete"),
+                "description", "Language-neutral completeness judgment for person-name information in the latest caller turn. Use incomplete when the caller starts introducing a name but no actual complete name entity follows; emit no person-name updates. Use complete only when updates contains the extracted complete name entity. Use not_applicable when this turn supplies no name."
         ));
         properties.put("spoken_response", Map.of(
                 "type", "string",
@@ -179,6 +187,7 @@ public class ConversationStateTool {
                         "required", List.of(
                                 "updates", "additional_details", "clear_fields",
                                 "booking_subject", "booking_intent", "turn_understanding",
+                                "name_capture_status",
                                 "spoken_response", "caller_question", "action_authorization",
                                 "call_disposition", "next_action", "business_tool"
                         ),
@@ -567,6 +576,9 @@ public class ConversationStateTool {
                 : Set.copyOf(call.getAgent().getBookingRequiredFields());
         var turnUpdates = updates(arguments.get("updates"));
         var detailUpdates = updates(arguments.get("additional_details"));
+        var nameCaptureStatus = choice(
+                arguments.get("name_capture_status"), NAME_CAPTURE_STATUS, "incomplete"
+        );
         // Review decisions authorize at most the current caller turn. They must
         // never leak into a later turn as stale approval.
         values.remove("review_decision");
@@ -594,6 +606,7 @@ public class ConversationStateTool {
                 return;
             }
             if (PERSON_NAME_FIELDS.contains(key)) {
+                if (!"complete".equals(nameCaptureStatus)) return;
                 var normalizedName = PersonNameNormalizer.normalize(value);
                 if (!normalizedName.isBlank()) values.put(key, normalizedName);
                 return;
