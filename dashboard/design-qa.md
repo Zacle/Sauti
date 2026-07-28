@@ -1,9 +1,11 @@
 # Homepage design QA
 
-- Reference: the selected second Product Design homepage direction.
+- Reference: the approved refined third Product Design full-page direction (`Living Voice System`), with customer stories removed.
 - Target viewport: desktop marketing homepage, 1440px wide.
 - Implementation state: production build, TypeScript, and lint checks pass.
-- Source asset: `public/images/marketing/sauti-phone-hero.png`.
+- Source assets:
+  - `public/images/marketing/sauti-phone-hero.png`;
+  - `public/images/marketing/industries/{healthcare,professional-services,home-services,retail,education}.png`.
 - Automated browser capture: blocked. The in-app browser runtime fails during connection setup with `Cannot redefine property: process`.
 - Visual comparison: blocked until a browser screenshot can be captured.
 - Final result: blocked.

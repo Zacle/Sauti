@@ -230,22 +230,24 @@ Expected:
 - Reworked only the public marketing home screen to follow the selected cinematic Product Design direction:
   - replaced the abstract dashboard-led hero with a full-bleed editorial phone-conversation scene;
   - generated and integrated a project-local female hero photograph with safe negative space for responsive copy, then adopted the selected creative-entrepreneur direction: a warm, photogenic woman in her late 20s with a braided updo and contemporary editorial tailoring;
-  - sharpened the value proposition and conversion actions around answering calls, booking appointments, qualifying leads, and updating tools;
-  - added a live waveform/transcript rail that makes the voice-agent behavior tangible above the fold;
-  - restyled the proof area as a lighter editorial band while preserving the existing long-form product story and routes.
+  - rebuilt the entire homepage—not just the opening viewport—around the approved `Living Voice System` direction;
+  - added the connected voice ribbon, outcome proof, caller-to-action flow, four capability chapters, multilingual interaction demo, integration workflow, interactive analytics period, security/handoff proof, pricing, FAQ, and closing CTA;
+  - removed all customer stories and testimonials as requested;
+  - generated five coordinated, high-resolution industry photographs for healthcare, professional services, home services, retail, and education;
+  - kept every photograph proportional with `object-fit: cover`, crop-safe focal positioning, and no image stretching.
 - Extended the existing reveal-motion hook with reduced-motion-safe hero image parallax.
-- Declared the feature story's `--story-progress` default in CSS so static inspection can resolve the runtime-updated custom property.
 - Files touched:
   - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
   - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
   - `dashboard/hooks/useRevealMotion.ts`
   - `dashboard/public/images/marketing/sauti-phone-hero.png`
+  - `dashboard/public/images/marketing/industries/{healthcare,professional-services,home-services,retail,education}.png`
   - `dashboard/design-qa.md`
   - `docs/agent-handoff.md`
 - Verification:
   - `npm.cmd run typecheck` - passed.
   - `npm.cmd run lint` - passed with zero warnings.
-  - `npm.cmd run build` - passed; Next.js generated the optimized production build.
+  - `npm.cmd run build` - passed cleanly after correcting the initial `align-items: end` compatibility warning to `flex-end`; Next.js generated the optimized production build.
   - `git diff --check` - passed with line-ending notices only.
   - Visual browser QA is blocked because the in-app browser connection fails during setup with `Cannot redefine property: process`; `dashboard/design-qa.md` records the blocked gate.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
