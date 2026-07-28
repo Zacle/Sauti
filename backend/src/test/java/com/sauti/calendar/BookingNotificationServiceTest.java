@@ -1,7 +1,10 @@
 package com.sauti.calendar;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.sauti.agent.Agent;
 import com.sauti.dashboard.DashboardEventPublisher;
@@ -17,6 +20,44 @@ import org.thymeleaf.context.Context;
 import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 
 class BookingNotificationServiceTest {
+    @Test
+    void postCommitDashboardFailureCannotEscapeTheNotificationBoundary() {
+        var tenant = new Tenant("Hairy", "owner@example.com", "KE");
+        var agent = new Agent(tenant, "Ailsa", "Hello", "Prompt");
+        var booking = new Booking(
+                tenant,
+                agent,
+                null,
+                "Zachary",
+                "0115752441",
+                null,
+                "Men hairstyle",
+                OffsetDateTime.parse("2026-08-03T09:00:00+03:00"),
+                60,
+                "{}"
+        );
+        var repository = mock(BookingRepository.class);
+        var dashboard = mock(DashboardEventPublisher.class);
+        when(repository.findById(booking.getId())).thenReturn(java.util.Optional.of(booking));
+        doThrow(new IllegalStateException("websocket unavailable"))
+                .when(dashboard).bookingCreated(booking);
+        var service = new BookingNotificationService(
+                repository,
+                mock(WorkspaceNotificationService.class),
+                dashboard,
+                mock(JavaMailSender.class),
+                templateEngine(),
+                "no-reply@sauti.uk",
+                "Sauti",
+                "support@sauti.uk",
+                "https://sauti.uk/"
+        );
+
+        assertThatCode(() -> service.bookingCreated(
+                new BookingNotificationService.BookingCreatedEvent(booking.getId())
+        )).doesNotThrowAnyException();
+    }
+
     @Test
     void presentsAppointmentTimeInTheBusinessTimezoneWithoutRawIsoFormatting() {
         var tenant = new Tenant("Hairy", "owner@example.com", "KE");

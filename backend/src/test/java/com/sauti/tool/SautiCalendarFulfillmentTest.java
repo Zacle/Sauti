@@ -498,6 +498,40 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
+    void reportsACommitTimeSlotConflictAsAvailabilityInsteadOfATechnicalFailure() {
+        var fixture = fixture(HOURS, List.of());
+        var arguments = new java.util.LinkedHashMap<String, Object>();
+        arguments.put("appointment_at", "2026-08-03T17:00:00Z");
+        arguments.put("appointment_name", "Zachary");
+        arguments.put("caller_phone", "0115652441");
+        arguments.put("service_type", "Beginner");
+        arguments.put("duration_minutes", 60);
+        arguments.put("customer_details", Map.of("fitness_goal", "Build muscle"));
+        arguments.put("review_action", "prepare_review");
+        var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "slot-conflict-review", "book_slot", Map.copyOf(arguments)
+        ));
+        arguments.put("review_token", review.result().get("reviewToken"));
+        arguments.put("review_action", "approve_review");
+        approveLatestReview(fixture);
+        when(fixture.bookingService.create(any(), any()))
+                .thenThrow(new com.sauti.calendar.BookingSlotUnavailableException());
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "slot-conflict-save", "book_slot", Map.copyOf(arguments)
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "slot_no_longer_available")
+                .containsEntry("bookingCreated", false)
+                .containsEntry("responseMode", "render_slot_no_longer_available");
+        assertThat(result.result().get("instruction").toString())
+                .contains("caller's current language", "check live availability")
+                .doesNotContain("technical failure");
+    }
+
+    @Test
     void bookingReviewContractIsIndependentOfCallerLanguage() {
         var fixture = fixture(HOURS, List.of());
         when(fixture.call.getLanguageDetected()).thenReturn("ja-JP");
@@ -794,9 +828,9 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
-    void refusesAModelApprovalThatDidNotPassThroughLatestSemanticState() {
+    void acceptsASchemaConstrainedManagedApprovalOfTheSignedReview() {
         var fixture = fixture(HOURS, List.of());
-        var latest = "Everything is right.";
+        var latest = "Tout est correct.";
         when(fixture.callSessionStore.conversationHistory("call-sid"))
                 .thenReturn(List.of(new ConversationMessage("user", latest)));
         when(fixture.intakeNotes.notes(fixture.call, latest)).thenReturn(Map.of(
@@ -822,16 +856,28 @@ class SautiCalendarFulfillmentTest {
                         "0105752443", true, reviewToken, 60
                 )
         ));
-        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
-                "approved-without-token", "book_slot", Map.of("review_action", "approve_review")
-        ));
+        when(fixture.tool.confirmationPolicy()).thenReturn(ToolConfirmationPolicy.VERIFIED_REVIEW);
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(booking.getBookingReference()).thenReturn("SAT-DIRECTOK");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T10:00:00Z"));
+        when(booking.getCalendarSyncStatus()).thenReturn("not_configured");
+        when(fixture.bookingService.create(any(), any())).thenReturn(booking);
+        var providerCall = new LlmToolCall(
+                "managed-approved-review", "book_slot", Map.of(
+                        "review_action", "approve_review",
+                        "question_handling", "ready_for_action"
+                )
+        );
+        var verifiedCall = new ToolActionPolicy().businessCall(fixture.tool, providerCall);
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, verifiedCall);
 
         assertThat(result.result())
-                .containsEntry("status", "booking_review_decision_required")
-                .containsEntry("bookingCreated", false)
-                .containsEntry("nextTool", ConversationStateTool.NAME)
-                .containsEntry("nextToolAuthorized", true);
-        verifyNoInteractions(fixture.bookingService);
+                .containsEntry("status", "booking_saved_locally")
+                .containsEntry("bookingCreated", true)
+                .containsEntry("bookingNumber", "SAT-DIRECTOK");
+        verify(fixture.bookingService).create(any(), any());
     }
 
     @Test

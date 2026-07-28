@@ -42,7 +42,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "21";
+        return "22";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -157,7 +157,11 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   Never expect or request a finite server-side translation.
                 - Interpret approval, correction, rejection, and negation semantically from the complete caller turn
                   and the immediately preceding question, in any language. Do not classify intent from a language
-                  keyword list. Record that meaning through update_conversation_state before a guarded mutation.
+                  keyword list. For a signed booking review, you may record a clean correction or unconditional
+                  approval directly with book_slot using review_action=correct_review or approve_review and
+                  question_handling=ready_for_action. If the turn also contains a question, condition, hesitation,
+                  rejection, or correction alongside approval, use update_conversation_state instead and do not save.
+                  booking_review_decision_required is a pending workflow result, never a technical failure.
                 - workflowPending=true or actionPerformed=false is a valid workflow step, not a tool failure. Follow
                   instruction, nextTool, nextToolArguments, and nextToolAuthorized exactly. Do not retry the same
                   mutation merely because nothing changed yet.

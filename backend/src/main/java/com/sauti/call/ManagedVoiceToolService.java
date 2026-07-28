@@ -147,6 +147,25 @@ public class ManagedVoiceToolService {
                     new LlmToolCall(invocationId, name, arguments)
             );
             LlmToolResult routed = routeAuthorizedChain(call, toolCall);
+            try {
+                sessions.appendToolResult(call.getTwilioCallSid(), routed);
+            } catch (RuntimeException exception) {
+                LOGGER.warn(
+                        "Could not retain managed voice tool result sautiCallId={} tool={} exception={}",
+                        call.getId(),
+                        name,
+                        exception.getClass().getSimpleName()
+                );
+            }
+            if (!routed.success()) {
+                LOGGER.warn(
+                        "Managed voice business tool returned an error provider={} sautiCallId={} tool={} error={}",
+                        provider,
+                        call.getId(),
+                        name,
+                        routed.error()
+                );
+            }
             response = response(routed);
             success = Boolean.TRUE.equals(response.get("success"));
         } catch (RuntimeException exception) {

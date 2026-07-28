@@ -71,32 +71,46 @@ public class BookingNotificationService {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void bookingCreated(BookingCreatedEvent event) {
-        var booking = bookingRepository.findById(event.bookingId()).orElse(null);
-        if (booking == null) return;
-        var calendarSyncFailed = "pending_owner_action".equals(booking.getCalendarSyncStatus());
-        if (calendarSyncFailed || booking.getAgent().getBookingNotificationChannels().contains("dashboard")) {
-            try {
+        try {
+            var booking = bookingRepository.findById(event.bookingId()).orElse(null);
+            if (booking == null) return;
+            var calendarSyncFailed = "pending_owner_action".equals(booking.getCalendarSyncStatus());
+            if (calendarSyncFailed || booking.getAgent().getBookingNotificationChannels().contains("dashboard")) {
                 workspaceNotificationService.bookingCreated(booking.getId());
-            } catch (RuntimeException exception) {
-                LOGGER.warn("Dashboard booking notification failed bookingId={}: {}",
-                        booking.getId(), exception.getMessage());
             }
+            dashboardEventPublisher.bookingCreated(booking);
+            sendBookingEmail(booking, BookingEmailStatus.CONFIRMED, null, booking.getBookedAt());
+        } catch (RuntimeException exception) {
+            LOGGER.warn(
+                    "Post-commit booking notification failed bookingId={} exception={}",
+                    event.bookingId(),
+                    exception.getClass().getSimpleName(),
+                    exception
+            );
         }
-        dashboardEventPublisher.bookingCreated(booking);
-        sendBookingEmail(booking, BookingEmailStatus.CONFIRMED, null, booking.getBookedAt());
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void bookingStatusChanged(BookingStatusChangedEvent event) {
-        var booking = bookingRepository.findById(event.bookingId()).orElse(null);
-        if (booking == null) return;
-        sendBookingEmail(
-                booking,
-                event.status(),
-                event.previousAppointmentAt(),
-                event.statusChangedAt()
-        );
+        try {
+            var booking = bookingRepository.findById(event.bookingId()).orElse(null);
+            if (booking == null) return;
+            sendBookingEmail(
+                    booking,
+                    event.status(),
+                    event.previousAppointmentAt(),
+                    event.statusChangedAt()
+            );
+        } catch (RuntimeException exception) {
+            LOGGER.warn(
+                    "Post-commit booking status notification failed bookingId={} status={} exception={}",
+                    event.bookingId(),
+                    event.status(),
+                    exception.getClass().getSimpleName(),
+                    exception
+            );
+        }
     }
 
     private void sendBookingEmail(

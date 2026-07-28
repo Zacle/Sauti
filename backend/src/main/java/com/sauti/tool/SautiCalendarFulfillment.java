@@ -3,6 +3,7 @@ package com.sauti.tool;
 import com.sauti.calendar.BookingDtos.CreateBookingRequest;
 import com.sauti.calendar.BookingIdentityService;
 import com.sauti.calendar.BookingService;
+import com.sauti.calendar.BookingSlotUnavailableException;
 import com.sauti.agent.OperatingHoursSchedule;
 import com.sauti.call.Call;
 import com.sauti.call.CallIntakeNoteService;
@@ -88,7 +89,24 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             return LlmToolResult.success(toolCall, bookingIdentityAmbiguous(toolCall));
         } catch (BookingIdentityReferenceRequiredException exception) {
             return LlmToolResult.success(toolCall, bookingIdentityReferenceRequired(toolCall));
+        } catch (BookingSlotUnavailableException exception) {
+            return LlmToolResult.success(toolCall, Map.of(
+                    "status", "slot_no_longer_available",
+                    "bookingCreated", false,
+                    "responseMode", "render_slot_no_longer_available",
+                    "instruction", "Explain briefly in the caller's current language that the reviewed slot became "
+                            + "unavailable before it could be saved. Treat this as an availability change and "
+                            + "do not claim a booking exists. Ask for one alternative date or time, then check live "
+                            + "availability again before preparing a new review."
+            ));
         } catch (RuntimeException exception) {
+            LOGGER.warn(
+                    "Calendar tool failed callId={} tool={} exception={}",
+                    call == null ? "unknown" : call.getId(),
+                    toolCall.name(),
+                    exception.getClass().getSimpleName(),
+                    exception
+            );
             return LlmToolResult.error(toolCall, exception.getMessage());
         }
     }
@@ -357,7 +375,11 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             case "prepare_review" -> false;
             default -> semanticState && !reviewDecision.isBlank();
         };
+        var providerReviewTransition = ToolActionPolicy.verifiedReviewTransition(toolCall);
+        callerApprovedReview = callerApprovedReview
+                || (providerReviewTransition && "approve_review".equals(reviewAction));
         if (!suppliedReviewToken.isBlank()
+                && !providerReviewTransition
                 && (!semanticState || reviewDecision.isBlank()
                     || (explicitReviewAction && !explicitActionMatchesState))) {
             return Map.of(
@@ -521,6 +543,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         normalized.remove("review_action");
         normalized.remove("question_handling");
         normalized.remove("confirmation_state");
+        normalized.remove(ToolActionPolicy.VERIFIED_REVIEW_TRANSITION);
         var suppliedAppointmentName = normalized.remove("appointment_name");
         if (suppliedAppointmentName != null && !suppliedAppointmentName.toString().isBlank()) {
             normalized.put("caller_name", suppliedAppointmentName.toString());

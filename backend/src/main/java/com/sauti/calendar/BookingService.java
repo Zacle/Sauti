@@ -122,9 +122,40 @@ public class BookingService {
     public Booking create(UUID tenantId, CreateBookingRequest request) {
         var existing = matchingBookingForCall(tenantId, request);
         if (existing.isPresent()) return existing.get();
-        var booking = persistLocalBooking(tenantId, request);
+        Booking booking;
+        try {
+            booking = persistLocalBooking(tenantId, request);
+        } catch (RuntimeException exception) {
+            var committed = committedBookingAfterFailure(tenantId, request, exception);
+            if (committed.isEmpty()) throw exception;
+            booking = committed.orElseThrow();
+        }
         runPostSaveActions(booking);
         return booking;
+    }
+
+    /**
+     * Transaction synchronizations run after the database commit and may still
+     * throw back to the caller. Reconcile by the call-scoped idempotency key so
+     * a committed booking is never reported as failed or inserted twice.
+     */
+    private java.util.Optional<Booking> committedBookingAfterFailure(
+            UUID tenantId,
+            CreateBookingRequest request,
+            RuntimeException original
+    ) {
+        try {
+            var committed = matchingBookingForCall(tenantId, request);
+            committed.ifPresent(booking -> LOGGER.warn(
+                    "Recovered committed booking after create completion failure bookingId={} exception={}",
+                    booking.getId(),
+                    original.getClass().getSimpleName()
+            ));
+            return committed;
+        } catch (RuntimeException reconciliationFailure) {
+            original.addSuppressed(reconciliationFailure);
+            return java.util.Optional.empty();
+        }
     }
 
     /**
@@ -182,7 +213,7 @@ public class BookingService {
         if (conflicts.stream().anyMatch(existing -> overlaps(
                 request.appointmentAt(), requestedEnd, existing.getAppointmentAt(), bookingEnd(existing)
         ))) {
-            throw new IllegalArgumentException("The requested appointment time is no longer available");
+            throw new BookingSlotUnavailableException();
         }
         Call call = null;
         if (request.callId() != null) {

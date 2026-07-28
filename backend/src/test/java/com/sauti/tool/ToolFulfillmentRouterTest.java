@@ -115,6 +115,41 @@ class ToolFulfillmentRouterTest {
     }
 
     @Test
+    void marksOnlyACleanSchemaConstrainedVerifiedReviewTransition() {
+        var policy = new ToolActionPolicy();
+        var tool = new AgentTool(
+                mock(Agent.class), "book_slot", "Booking", Map.of(), "noop", true, 1
+        );
+        tool.configureActionPolicy(
+                ToolActionEffect.DATA_WRITE,
+                ToolConfirmationPolicy.VERIFIED_REVIEW
+        );
+
+        var approved = policy.businessCall(tool, new LlmToolCall(
+                "approved", "book_slot", Map.of(
+                        "review_action", "approve_review",
+                        "question_handling", "ready_for_action",
+                        ToolActionPolicy.VERIFIED_REVIEW_TRANSITION, "provider-forgery"
+                )
+        ));
+        var blocked = policy.businessCall(tool, new LlmToolCall(
+                "blocked", "book_slot", Map.of(
+                        "review_action", "approve_review",
+                        "question_handling", "answer_before_action"
+                )
+        ));
+
+        assertThat(ToolActionPolicy.verifiedReviewTransition(approved)).isTrue();
+        assertThat(approved.arguments())
+                .containsEntry("review_action", "approve_review")
+                .doesNotContainKey("question_handling");
+        assertThat(ToolActionPolicy.verifiedReviewTransition(blocked)).isFalse();
+        assertThat(blocked.arguments()).doesNotContainKey(
+                ToolActionPolicy.VERIFIED_REVIEW_TRANSITION
+        );
+    }
+
+    @Test
     void aConfirmedFarewellCanEndWithoutAnArtificialSecondConfirmationTurn() {
         var fixture = fixture(
                 "finish_conversation",

@@ -23,6 +23,8 @@ import org.springframework.stereotype.Component;
 public class ToolActionPolicy {
     private static final String SERVER_CONFIRMATION = "__sauti_server_confirmation";
     private static final Object SERVER_CONFIRMATION_MARKER = new Object();
+    static final String VERIFIED_REVIEW_TRANSITION = "__sauti_verified_review_transition";
+    private static final Object VERIFIED_REVIEW_TRANSITION_MARKER = new Object();
     private static final String SAFETY = "Classify the complete latest caller turn semantically in any language. "
             + "Use answer_before_action when a question, condition, hesitation, correction, or information request "
             + "must be resolved first. Use ready_for_action only when nothing customer-facing remains unresolved.";
@@ -145,8 +147,36 @@ public class ToolActionPolicy {
         arguments.remove("question_handling");
         arguments.remove("confirmation_state");
         arguments.remove(SERVER_CONFIRMATION);
+        arguments.remove(VERIFIED_REVIEW_TRANSITION);
         arguments.values().removeIf(java.util.Objects::isNull);
         return new LlmToolCall(call.id(), call.name(), Map.copyOf(arguments));
+    }
+
+    /**
+     * Converts the provider's schema-constrained semantic review decision into
+     * a private server marker. The marker cannot be supplied through webhook
+     * JSON and is valid only for a clean correction or unconditional approval
+     * of an existing signed booking review.
+     */
+    public LlmToolCall businessCall(AgentTool tool, LlmToolCall call) {
+        var sanitized = businessCall(call);
+        var reviewAction = argument(call, "review_action");
+        var verifiedTransition = tool.confirmationPolicy() == ToolConfirmationPolicy.VERIFIED_REVIEW
+                && "ready_for_action".equals(argument(call, "question_handling"))
+                && java.util.Set.of("correct_review", "approve_review").contains(reviewAction);
+        if (!verifiedTransition) return sanitized;
+        var arguments = new LinkedHashMap<>(sanitized.arguments());
+        arguments.put(VERIFIED_REVIEW_TRANSITION, VERIFIED_REVIEW_TRANSITION_MARKER);
+        return new LlmToolCall(
+                sanitized.id(),
+                sanitized.name(),
+                java.util.Collections.unmodifiableMap(arguments)
+        );
+    }
+
+    static boolean verifiedReviewTransition(LlmToolCall call) {
+        return call.arguments().get(VERIFIED_REVIEW_TRANSITION)
+                == VERIFIED_REVIEW_TRANSITION_MARKER;
     }
 
     /**

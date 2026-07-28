@@ -3,6 +3,7 @@ package com.sauti.calendar;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -116,6 +117,54 @@ class BookingServiceTest {
         assertThat(booking.getCalendarSyncStatus()).isEqualTo("not_configured");
         assertThat(booking.getStatus()).isEqualTo("confirmed");
         verify(fixture.provider, never()).createEvent(any());
+    }
+
+    @Test
+    void returnsTheCommittedBookingWhenAnAfterCommitSynchronizationThrows() {
+        var fixture = fixture("Set up later");
+        var call = new Call(
+                fixture.tenant,
+                fixture.requestAgent,
+                "managed-call-id",
+                fixture.request.callerPhone(),
+                "inbound"
+        );
+        var request = new CreateBookingRequest(
+                fixture.request.agentId(),
+                call.getId(),
+                fixture.request.callerName(),
+                fixture.request.callerPhone(),
+                fixture.request.callerEmail(),
+                fixture.request.serviceType(),
+                fixture.request.appointmentAt(),
+                fixture.request.durationMinutes(),
+                fixture.request.capturedData()
+        );
+        var saved = new AtomicReference<Booking>();
+        when(fixture.bookingRepository.saveAndFlush(any(Booking.class))).thenAnswer(invocation -> {
+            saved.set(invocation.getArgument(0));
+            return saved.get();
+        });
+        when(fixture.callRepository.findByIdAndTenantId(call.getId(), fixture.tenant.getId()))
+                .thenReturn(Optional.of(call));
+        when(fixture.bookingRepository
+                .findFirstByTenantIdAndCall_IdAndAgent_IdAndStatusNotAndAppointmentAt(
+                        fixture.tenant.getId(),
+                        call.getId(),
+                        fixture.requestAgent.getId(),
+                        "cancelled",
+                        request.appointmentAt()
+                ))
+                .thenReturn(Optional.empty())
+                .thenAnswer(invocation -> Optional.ofNullable(saved.get()));
+        doThrow(new IllegalStateException("after-commit listener failed"))
+                .when(fixture.transactionManager).commit(any());
+
+        var booking = fixture.service.create(fixture.tenant.getId(), request);
+
+        assertThat(booking).isSameAs(saved.get());
+        assertThat(booking.getStatus()).isEqualTo("confirmed");
+        verify(fixture.bookingRepository).saveAndFlush(any(Booking.class));
     }
 
     @Test

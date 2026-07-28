@@ -56,7 +56,7 @@ public class ToolFulfillmentRouter {
         if (deferred.isPresent()) return deferred.get();
         return actionPolicy.factualOutcome(
                 toolConfig,
-                fulfillment.execute(call, toolConfig, actionPolicy.businessCall(toolCall))
+                fulfillment.execute(call, toolConfig, actionPolicy.businessCall(toolConfig, toolCall))
         );
     }
 }

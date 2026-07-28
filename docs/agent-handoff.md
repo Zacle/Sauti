@@ -225,6 +225,52 @@ Expected:
 
 ## Change log
 
+### 2026-07-28 - Accept language-neutral managed booking-review decisions
+
+- Investigated `sauti-telnyx-diagnostics-1785216412057.json` and the production backend logs for browser test call `21ab9299-076d-4145-9a5c-322fafe77f98`.
+  - The browser export contains 75 browser/Telnyx lifecycle entries and no managed webhook request/result/error entries.
+  - Read-only GitHub Actions production diagnostics run `30333027673` found the authoritative server outcomes: availability returned `outside_business_hours` for 09:00 and `requested_time_available` for 17:00; the first `book_slot` returned `booking_review_required`; after the caller said `tout est correct`, the second `book_slot` returned `booking_review_decision_required`.
+  - Telnyx called `book_slot` directly with the schema-constrained semantic approval instead of first persisting it through `update_conversation_state`. The fulfillment layer rejected that otherwise valid transition because it required both the tool schema decision and a separately persisted semantic state decision.
+  - No booking insert was attempted and PostgreSQL was not the source of this failure. Telnyx then incorrectly rendered the pending workflow result as a technical error.
+  - GitHub Actions confirms deployed commit `d7472a951ebf696e4379a25752d74c5493767fc4` completed production deployment at `2026-07-28T05:09:19Z`; the call began at `2026-07-28T05:24:04Z`, so this was not stale code.
+- Fixed the authoritative review transition without adding language dictionaries:
+  - `ToolActionPolicy` now recognizes a clean schema-constrained `approve_review` or `correct_review` transition for a `VERIFIED_REVIEW` tool when `question_handling=ready_for_action`;
+  - it attaches a private in-process identity marker after sanitizing provider arguments, so callers cannot forge the trusted transition through webhook JSON;
+  - `SautiCalendarFulfillment` accepts that marked approval of the signed review while retaining the existing `ConversationStateTool` route for questions, hesitation, rejection, and corrections;
+  - the marker is removed before booking normalization and signature verification;
+  - the Telnyx contract now explicitly permits a direct clean review decision, requires semantic-state handling for ambiguous responses, and identifies `booking_review_decision_required` as a pending workflow result rather than a technical failure;
+  - bumped managed Telnyx configuration version from `21` to `22`.
+- Retained persistence safeguards as defense in depth:
+  - `BookingService.create` now reconciles an exact call/agent/appointment/customer match after a transaction completion exception. This covers an `AFTER_COMMIT` synchronization throwing after PostgreSQL already committed, returns the real booking number, and prevents a duplicate retry.
+  - post-commit dashboard/email notification listeners now contain all runtime failures so optional notification delivery cannot turn a durable booking into a failed live tool response.
+  - a commit-time slot race now raises `BookingSlotUnavailableException`; the calendar tool returns `slot_no_longer_available` with a language-neutral response contract and asks for one alternative rather than calling it a technical failure.
+- Improved server diagnostics:
+  - calendar-tool failures now retain exception class and stack context in backend logs without logging tool arguments;
+  - managed voice business-tool errors now log the routed error;
+  - every managed Telnyx tool result is appended to the call session so the completed call archive retains the decisive business outcome.
+- Added regressions proving:
+  - French `Tout est correct.` can authorize the signed booking review through the managed tool schema and persist the booking;
+  - provider-supplied internal marker values are ignored, and only a clean server-validated review transition receives the private marker;
+  - a booking already saved before an after-commit exception is returned as confirmed;
+  - a dashboard notification failure cannot escape the post-commit boundary;
+  - a commit-time slot conflict returns a controlled availability result.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/{BookingService,BookingNotificationService,BookingSlotUnavailableException}.java`
+  - `backend/src/main/java/com/sauti/call/{ManagedVoiceToolService,TelnyxManagedVoiceAgentProvisioner}.java`
+  - `backend/src/main/java/com/sauti/tool/{SautiCalendarFulfillment,ToolActionPolicy,ToolFulfillmentRouter}.java`
+  - `backend/src/test/java/com/sauti/calendar/{BookingServiceTest,BookingNotificationServiceTest}.java`
+  - `backend/src/test/java/com/sauti/tool/{SautiCalendarFulfillmentTest,ToolFulfillmentRouterTest}.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused booking service, notification, calendar fulfillment, tool routing, Telnyx provisioning, and managed voice tool tests passed; Gradle reported `BUILD SUCCESSFUL` in 13 seconds.
+  - `.\gradlew.bat :backend:test --no-daemon` passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 31 seconds.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after reviewed deployment:
+  - confirm Agent Studio reprovisions Gerard with Telnyx configuration version `22`;
+  - repeat the French booking and require a returned Sauti booking number;
+  - verify the booking row appears immediately in `/bookings`;
+  - inspect the archived call `conversationJson` if the tool still fails, because managed tool results are now retained there.
+
 ### 2026-07-28 - Make the authoritative booking workflow language-agnostic
 
 - Investigated `sauti-telnyx-diagnostics-1785191432228.json` for Telnyx call `838c3e60-d22f-43c6-bc5c-23d6081194f2`.
