@@ -22,6 +22,7 @@ import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +37,7 @@ public class AuthService {
     private final VerificationCodeService verificationCodeService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final ApplicationEventPublisher eventPublisher;
     private final long refreshTokenDays;
     private final Duration refreshTokenRotationGrace;
     private final boolean exposeDevTokens;
@@ -49,6 +51,7 @@ public class AuthService {
             VerificationCodeService verificationCodeService,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
+            ApplicationEventPublisher eventPublisher,
             @Value("${sauti.jwt.refresh-token-days}") long refreshTokenDays,
             @Value("${sauti.jwt.refresh-token-rotation-grace-seconds:30}") long refreshTokenRotationGraceSeconds,
             @Value("${sauti.auth.expose-dev-tokens:true}") boolean exposeDevTokens
@@ -61,6 +64,7 @@ public class AuthService {
         this.verificationCodeService = verificationCodeService;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.eventPublisher = eventPublisher;
         this.refreshTokenDays = refreshTokenDays;
         this.refreshTokenRotationGrace = Duration.ofSeconds(Math.max(0, refreshTokenRotationGraceSeconds));
         this.exposeDevTokens = exposeDevTokens;
@@ -134,6 +138,7 @@ public class AuthService {
         }
         user.verifyEmail();
         verificationCodeService.deleteEmailVerificationCode(user);
+        publishWelcome(user);
         return issueTokens(user);
     }
 
@@ -215,6 +220,7 @@ public class AuthService {
                     if (!user.isEmailVerified()) {
                         user.verifyEmail();
                         verificationCodeService.deleteEmailVerificationCode(user);
+                        publishWelcome(user);
                     }
                     return user;
                 })
@@ -226,8 +232,17 @@ public class AuthService {
                     ));
                     User user = new User(tenant, email, passwordEncoder.encode(UUID.randomUUID().toString()));
                     user.verifyEmail();
-                    return userRepository.save(user);
+                    var saved = userRepository.save(user);
+                    publishWelcome(saved);
+                    return saved;
                 });
+    }
+
+    private void publishWelcome(User user) {
+        eventPublisher.publishEvent(new WelcomeEmailRequested(
+                user.getEmail(),
+                user.getTenant().getBusinessName()
+        ));
     }
 
     private String businessName(String requestedBusinessName, GoogleOAuthService.GoogleProfile profile) {

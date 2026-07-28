@@ -117,7 +117,7 @@ final result: blocked
 
 ## Comparison target
 
-- Target surfaces: account verification, password reset, booking confirmed/rescheduled/cancelled, and post-call summary emails.
+- Target surfaces: account verification, password reset, welcome/onboarding, booking confirmed/rescheduled/cancelled, and post-call summary emails.
 - Design source: the established Sauti midnight console and outcome-led marketing system.
 - Intended rendering checks: desktop webmail at 620 CSS pixels, narrow mobile mail at 360 CSS pixels, and a light-mode client that does not honor dark color-scheme metadata.
 - Rendered email screenshots: unavailable because no browser or email-client preview surface is available.
@@ -126,9 +126,10 @@ final result: blocked
 
 - Every active email sender and template reference was inventoried.
 - Verification and password reset now render from one shared security-code template.
+- Account activation sends one dedicated welcome email with a three-step onboarding path.
 - Booking states continue to render from one status-driven template.
 - The post-call email integration now renders HTML instead of plain text.
-- Thymeleaf rendering tests cover security, booking, and post-call content; the full backend test suite passes.
+- Thymeleaf rendering tests cover security, welcome, booking, and post-call content; the full backend test suite passes.
 
 ## Required fidelity surfaces
 
@@ -149,7 +150,7 @@ final result: blocked
 ## Comparison history
 
 - Initial source review: auth templates duplicated separate light layouts, booking used the newer dark system, and post-call delivery was unformatted plain text.
-- Implemented correction: consolidated auth states, rebuilt booking hierarchy, and added a complete HTML call-summary template using one coherent Sauti email system.
+- Implemented correction: consolidated auth states, added a professional welcome/onboarding message, rebuilt booking hierarchy, and added a complete HTML call-summary template using one coherent Sauti email system.
 - Post-fix visual evidence: blocked because no email-client preview surface is available.
 
 final result: blocked

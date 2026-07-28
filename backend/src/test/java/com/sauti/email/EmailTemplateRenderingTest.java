@@ -78,6 +78,26 @@ class EmailTemplateRenderingTest {
                 .contains("https://sauti.uk/calls?callId=test-call");
     }
 
+    @Test
+    void rendersProfessionalWelcomeEmailWithAFocusedOnboardingPath() {
+        var context = new Context();
+        context.setVariable("businessName", "Hairy");
+        context.setVariable("onboardingUrl", "https://sauti.uk/onboarding");
+        context.setVariable("helpUrl", "https://sauti.uk/help");
+
+        var html = templateEngine().process("email/welcome", context);
+
+        assertThat(html)
+                .contains("Your Sauti workspace is ready")
+                .contains("Welcome, <span>Hairy</span>")
+                .contains("Create your agent")
+                .contains("Connect a customer channel")
+                .contains("Make a test call")
+                .contains("Set up your first agent")
+                .contains("https://sauti.uk/onboarding")
+                .contains("https://sauti.uk/help");
+    }
+
     private Context securityContext(boolean resetRequest) {
         var context = new Context();
         context.setVariable("businessName", "Hairy");

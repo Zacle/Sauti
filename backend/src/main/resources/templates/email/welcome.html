@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="supported-color-schemes" content="dark">
+    <title>Welcome to Sauti</title>
+</head>
+<body style="margin:0;padding:0;background:#020a14;color:#edf7fc;font-family:Arial,Helvetica,sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+    Your Sauti workspace is ready. Set up your first AI voice agent.
+</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+       style="width:100%;background:#020a14;">
+    <tr>
+        <td align="center" style="padding:38px 14px;">
+            <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0"
+                   style="width:100%;max-width:620px;border-collapse:separate;background:#071827;border:1px solid #17384d;border-radius:22px;overflow:hidden;">
+                <tr>
+                    <td style="padding:25px 30px;border-bottom:1px solid #17384d;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                            <tr>
+                                <td valign="middle">
+                                    <span style="font-size:21px;font-weight:800;letter-spacing:-.5px;color:#ffffff;">Sauti</span>
+                                </td>
+                                <td align="right" valign="middle">
+                                    <span style="display:inline-block;padding:7px 10px;border:1px solid #246c69;border-radius:999px;background:#0c3032;font-size:10px;font-weight:800;letter-spacing:1px;color:#5ee6dc;">
+                                        WORKSPACE READY
+                                    </span>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:40px 36px 18px;">
+                        <div style="display:inline-block;width:38px;height:38px;line-height:38px;border-radius:50%;text-align:center;background:#10383a;color:#5ee6dc;font-size:19px;font-weight:800;">✓</div>
+                        <div style="margin-top:19px;font-size:12px;color:#85a0b1;">
+                            Welcome, <span th:text="${businessName}">your team</span>
+                        </div>
+                        <h1 style="margin:10px 0 0;font-size:32px;line-height:1.15;font-weight:700;letter-spacing:-.8px;color:#ffffff;">
+                            Your Sauti workspace is ready.
+                        </h1>
+                        <p style="margin:16px 0 0;font-size:15px;line-height:1.7;color:#9db1bf;">
+                            You can now build an AI voice agent that answers calls, follows your business rules, and completes approved actions on behalf of your team.
+                        </p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:20px 36px 28px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="width:100%;border:1px solid #1b4052;border-radius:16px;background:#06131f;">
+                            <tr>
+                                <td width="54" valign="top" style="padding:20px 0 16px 19px;">
+                                    <span style="display:inline-block;width:31px;height:31px;line-height:31px;border-radius:9px;text-align:center;background:#10383a;color:#5ee6dc;font-size:12px;font-weight:800;">01</span>
+                                </td>
+                                <td style="padding:18px 19px 16px 8px;">
+                                    <strong style="display:block;font-size:13px;color:#edf7fb;font-weight:700;">Create your agent</strong>
+                                    <span style="display:block;margin-top:6px;font-size:12px;line-height:1.55;color:#8399aa;">
+                                        Define its role, greeting, language, voice, operating hours, and the information it should collect.
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td width="54" valign="top" style="padding:16px 0 16px 19px;border-top:1px solid #17384d;">
+                                    <span style="display:inline-block;width:31px;height:31px;line-height:31px;border-radius:9px;text-align:center;background:#10273a;color:#66c7ff;font-size:12px;font-weight:800;">02</span>
+                                </td>
+                                <td style="padding:16px 19px 16px 8px;border-top:1px solid #17384d;">
+                                    <strong style="display:block;font-size:13px;color:#edf7fb;font-weight:700;">Connect a customer channel</strong>
+                                    <span style="display:block;margin-top:6px;font-size:12px;line-height:1.55;color:#8399aa;">
+                                        Use Web Voice for testing, assign a phone number, or connect the business tools required by your workflow.
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td width="54" valign="top" style="padding:16px 0 20px 19px;border-top:1px solid #17384d;">
+                                    <span style="display:inline-block;width:31px;height:31px;line-height:31px;border-radius:9px;text-align:center;background:#231f3e;color:#b6a4ff;font-size:12px;font-weight:800;">03</span>
+                                </td>
+                                <td style="padding:16px 19px 20px 8px;border-top:1px solid #17384d;">
+                                    <strong style="display:block;font-size:13px;color:#edf7fb;font-weight:700;">Make a test call</strong>
+                                    <span style="display:block;margin-top:6px;font-size:12px;line-height:1.55;color:#8399aa;">
+                                        Listen to the complete experience, inspect the transcript, and refine the agent before sharing it with callers.
+                                    </span>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:0 36px 38px;">
+                        <a th:href="${onboardingUrl}" href="https://sauti.uk/onboarding"
+                           style="display:block;padding:15px 20px;border-radius:12px;background:#45d8d0;color:#03151c;text-align:center;text-decoration:none;font-size:14px;font-weight:800;">
+                            Set up your first agent
+                        </a>
+                        <p style="margin:16px 0 0;text-align:center;font-size:11px;line-height:1.55;color:#6f899a;">
+                            Need guidance?
+                            <a th:href="${helpUrl}" href="https://sauti.uk/help"
+                               style="color:#8edfd9;text-decoration:none;font-weight:650;">Visit the help center</a>
+                            or reply to this email.
+                        </p>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:20px 30px;border-top:1px solid #17384d;background:#061421;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                            <tr>
+                                <td style="font-size:11px;line-height:1.55;color:#637f91;">
+                                    Sauti · AI voice operations for your business
+                                </td>
+                                <td align="right" style="font-size:11px;color:#637f91;">
+                                    sauti.uk
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

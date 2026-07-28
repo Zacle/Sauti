@@ -225,6 +225,41 @@ Expected:
 
 ## Change log
 
+### 2026-07-29 - Send one professional welcome email after account activation
+
+- Added a dedicated `welcome.html` email using the same email-safe Sauti design as verification, booking, and post-call messages.
+- The welcome message:
+  - confirms that the workspace is ready;
+  - addresses the workspace by business name;
+  - gives owners a concise three-step path: create the agent, connect a customer channel, and make a test call;
+  - links directly to `/onboarding`, with `/help` as a secondary support path;
+  - uses inbox preview text, table layout, inline styling, and text-first branding for broad email-client compatibility.
+- Welcome delivery occurs only when an account first transitions to verified:
+  - standard email/password signup sends it after successful email verification;
+  - new Google signups and previously unverified Google accounts receive it after activation;
+  - repeated verification requests and logins do not resend it.
+- Added an after-commit event boundary:
+  - `AuthService` publishes `WelcomeEmailRequested` inside the successful activation transaction;
+  - `WelcomeEmailListener` sends only after commit;
+  - delivery failure is safely logged without changing a successfully activated account into an HTTP error;
+  - logs contain only the exception type, not the recipient address or other customer data.
+- Files touched:
+  - `backend/src/main/java/com/sauti/auth/AuthService.java`
+  - `backend/src/main/java/com/sauti/auth/AuthEmailService.java`
+  - `backend/src/main/java/com/sauti/auth/WelcomeEmailRequested.java`
+  - `backend/src/main/java/com/sauti/auth/WelcomeEmailListener.java`
+  - `backend/src/main/resources/templates/email/welcome.html`
+  - `backend/src/test/java/com/sauti/email/EmailTemplateRenderingTest.java`
+  - `backend/src/test/java/com/sauti/AuthAgentFlowTest.java`
+  - `dashboard/design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused welcome-template and registration/verification flow tests - passed.
+  - `.\gradlew.bat :backend:test` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 46 seconds.
+  - repeated verification is asserted to produce exactly one welcome delivery.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Follow-up: send the welcome email to desktop and mobile preview inboxes alongside the other transactional variants before production visual sign-off.
+
 ### 2026-07-29 - Unify every active email under the Sauti status-first design
 
 - Redesigned all active transactional email families around one email-safe Sauti visual language:

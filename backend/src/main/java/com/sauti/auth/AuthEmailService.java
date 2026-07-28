@@ -16,19 +16,22 @@ public class AuthEmailService {
     private final String fromEmail;
     private final String fromName;
     private final String replyToEmail;
+    private final String dashboardBaseUrl;
 
     public AuthEmailService(
             JavaMailSender mailSender,
             TemplateEngine templateEngine,
             @Value("${sauti.email.from:noreply@sauti.local}") String fromEmail,
             @Value("${sauti.email.from-name:Sauti}") String fromName,
-            @Value("${sauti.email.reply-to:support@sauti.local}") String replyToEmail
+            @Value("${sauti.email.reply-to:support@sauti.local}") String replyToEmail,
+            @Value("${sauti.dashboard.base-url:https://sauti.uk}") String dashboardBaseUrl
     ) {
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
         this.fromEmail = fromEmail;
         this.fromName = fromName;
         this.replyToEmail = replyToEmail;
+        this.dashboardBaseUrl = stripTrailingSlash(dashboardBaseUrl);
     }
 
     public void sendVerificationEmail(String toEmail, String businessName, String code) {
@@ -63,6 +66,15 @@ public class AuthEmailService {
         sendEmail(toEmail, "Reset your Sauti password", html);
     }
 
+    public void sendWelcomeEmail(String toEmail, String businessName) {
+        var context = new Context();
+        context.setVariable("businessName", businessName);
+        context.setVariable("onboardingUrl", dashboardBaseUrl + "/onboarding");
+        context.setVariable("helpUrl", dashboardBaseUrl + "/help");
+        var html = templateEngine.process("email/welcome", context);
+        sendEmail(toEmail, "Welcome to Sauti", html);
+    }
+
     private void sendEmail(String to, String subject, String htmlContent) {
         try {
             var message = mailSender.createMimeMessage();
@@ -76,5 +88,10 @@ public class AuthEmailService {
         } catch (MessagingException | MailException exception) {
             throw new IllegalStateException("Failed to send auth email to " + to, exception);
         }
+    }
+
+    private String stripTrailingSlash(String value) {
+        if (value == null || value.isBlank()) return "https://sauti.uk";
+        return value.trim().replaceAll("/+$", "");
     }
 }
