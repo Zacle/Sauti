@@ -153,8 +153,8 @@ export async function startTelnyxConversationWithAuthenticationRetry({
         );
       }
       conversationAttempt += 1;
-      await resetConversation?.();
       clearReconnectToken();
+      await resetConversation?.();
       onConversationRetry?.(conversationAttempt);
       await wait(retryDelay);
     }

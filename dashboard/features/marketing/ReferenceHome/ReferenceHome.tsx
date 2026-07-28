@@ -7,7 +7,7 @@ import {
   Activity, ArrowRight, BarChart3, Bot, CalendarCheck, Check,
   ChevronDown, Clock3, Globe2, Headphones, Layers3,
   LockKeyhole, MessageSquareText, Mic2, PhoneCall, PlugZap, Radio, Route,
-  ShieldCheck, Sparkles, UserRoundCheck, Workflow, Zap,
+  ShieldCheck, Sparkles, UserRoundCheck, Workflow, Zap, Play,
 } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import styles from "./ReferenceHome.module.css";
@@ -64,26 +64,37 @@ const faq = [
 ];
 
 export default function ReferenceHome(){return <main className={styles.page}>
-  <section className={styles.hero}>
-    <div className={styles.aurora}/>
-    <div className={styles.heroGrid} aria-hidden="true"/>
-    <div className={styles.heroCopy} data-reveal>
-      <span className={styles.eyebrow}><Sparkles size={13}/> AI VOICE AGENTS THAT WORK 24/7</span>
-      <h1><span>AI voice agents that</span><em>answer, book, and automate.</em></h1>
-      <p>Sauti handles calls, schedules appointments, qualifies leads, and follows up—so your team can focus on what matters.</p>
-      <div className={styles.actions}><Link className={styles.primary} href="/register">Start free trial <ArrowRight size={16}/></Link><a className={styles.secondary} href="https://cal.com/sauti/demo" target="_blank" rel="noreferrer">Book a demo</a></div>
-      <div className={styles.assurances}><span><Check size={13}/> No credit card required</span><span><Check size={13}/> Setup in minutes</span><span><Check size={13}/> Cancel anytime</span></div>
+  <section className={styles.hero} data-hero-parallax>
+    <div className={styles.heroMedia} aria-hidden="true">
+      <Image src="/images/marketing/sauti-phone-hero.png" alt="" fill priority sizes="100vw"/>
     </div>
-    <div className={styles.heroScreen} data-reveal>
-      <div className={styles.voiceSignal} aria-hidden="true">
-        <span/><span/><span/><span/><span/><span/><span/><span/><span/>
+    <div className={styles.heroShade} aria-hidden="true"/>
+    <div className={styles.heroCopy} data-reveal>
+      <span className={styles.eyebrow}><Sparkles size={13}/> ALWAYS-ON AI PHONE AGENTS</span>
+      <h1><span>Every call answered.</span><em>Every opportunity moved forward.</em></h1>
+      <p>Sauti&apos;s AI voice agents handle calls, book appointments, qualify leads, and update your tools—24/7. So you never miss what moves your business forward.</p>
+      <div className={styles.actions}>
+        <Link className={styles.primary} href="/register">Start building <ArrowRight size={16}/></Link>
+        <a className={styles.secondary} href="https://cal.com/sauti/demo" target="_blank" rel="noreferrer"><Play size={15}/> Hear a real conversation</a>
       </div>
-      <DashboardView/>
-      <div className={styles.liveBadge}><span/><Radio size={12}/> Voice agent online</div>
+      <div className={styles.assurances}><span><Check size={13}/> No credit card required</span><span><Check size={13}/> Setup in minutes</span></div>
+    </div>
+    <div className={styles.liveConversation} data-reveal-right>
+      <div className={styles.liveSignal}>
+        <span><i/> Live</span>
+        <div className={styles.liveWave} aria-hidden="true">
+          {Array.from({length:28}).map((_,index)=><i key={index} style={{animationDelay:`-${index*43}ms`}}/>)}
+        </div>
+      </div>
+      <div className={styles.liveTranscript}>
+        <p><strong>Caller</strong><span>Do you have a consultation this week?</span></p>
+        <p><strong>Sauti</strong><span>Yes. Which day works best for you?</span></p>
+      </div>
+      <div className={styles.liveMeta}><span>Live conversation</span><strong>02:14</strong></div>
     </div>
   </section>
 
-  <section className={styles.trustStrip} aria-label="Platform trust indicators" data-reveal><span><ShieldCheck size={17}/> Designed for customer-facing operations</span><span><Mic2 size={17}/> Browser test calls included</span><span><LockKeyhole size={17}/> Tenant-scoped workspace data</span></section>
+  <section className={styles.trustStrip} aria-label="Platform trust indicators" data-reveal><span><ShieldCheck size={17}/> Built for customer-facing teams</span><span><Mic2 size={17}/> Natural multilingual conversations</span><span><LockKeyhole size={17}/> Safe actions with clear guardrails</span></section>
 
   <section className={styles.metricsBand}>
     {proofPoints.map(({icon:Icon,...m}, i)=><div key={m.label} className={`${styles.metricCard} ${m.featured?styles.metricFeatured:styles.metricSecondary}`} data-reveal style={{transitionDelay:`${i*70}ms`}}>
@@ -132,9 +143,7 @@ function Team({icon:Icon,title,text}:{icon:typeof CalendarCheck;title:string;tex
 function Security({icon:Icon,top,bottom}:{icon:typeof ShieldCheck;top:string;bottom:string}){return <div><span><Icon size={19}/></span><strong>{top}</strong><small>{bottom}</small></div>}
 function Outcome({icon:Icon,title,text}:{icon:typeof PhoneCall;title:string;text:string}){return <article className={styles.outcomeCard} data-reveal><span><Icon size={21}/></span><div><strong>{title}</strong><p>{text}</p></div><ArrowRight size={17}/></article>}
 function Frame({title,children,action}:{title:string;children:React.ReactNode;action?:string}){return <div className={styles.frame}><div className={styles.frameTop}><div><BrandLogo size={19}/><strong>{title}</strong></div><span>{action??"Live preview"}</span></div>{children}</div>}
-function DashboardView(){return <Frame title="Sauti" action="Workspace overview"><div className={styles.dashboard}><aside><b>Tranquil AI</b>{[[Activity,"Overview"],[Bot,"Agents"],[PhoneCall,"Calls"],[CalendarCheck,"Bookings"],[BarChart3,"Analytics"],[PlugZap,"Integrations"]].map(([Icon,label],i)=><span className={i===0?styles.active:""} key={String(label)}><Icon size={13}/>{String(label)}</span>)}</aside><section><div className={styles.dashTitle}><div><small>Good evening, Tranquil AI</small><strong>Monitor your voice operation</strong></div><button>+ Create agent</button></div><div className={styles.launchPanel}><div className={styles.readiness}><strong>75%</strong><span>Setup progress</span></div><div className={styles.launchCopy}><small>Complete your setup</small><strong>You&apos;re almost ready to launch</strong><p>Finish the remaining steps and start answering calls.</p><button>Continue setup <ArrowRight size={11}/></button></div><div className={styles.launchChecks}>{["Business details completed","Calendar connected","Live channel enabled","Agent activated"].map((item)=><span key={item}><Check size={10}/>{item}</span>)}</div></div><div className={styles.dashStats}><Stat label="Total calls" value="1,248"/><Stat label="Bookings" value="324"/><Stat label="Avg call duration" value="1m 42s"/><Stat label="Answer rate" value="68%"/></div><div className={styles.dashPanels}><div className={styles.lineChart}><b>Call activity</b><svg viewBox="0 0 420 125" preserveAspectRatio="none"><path d="M0 105 C35 97 39 48 78 68 S125 111 158 59 S209 103 243 70 S289 29 321 60 S367 81 395 37 S425 49 440 20"/><path className={styles.area} d="M0 105 C35 97 39 48 78 68 S125 111 158 59 S209 103 243 70 S289 29 321 60 S367 81 395 37 S425 49 440 20 L440 125 L0 125Z"/></svg></div><div className={styles.ops}><b>Operations summary</b><Event icon={PhoneCall} title="Incoming call" value="Completed"/><Event icon={CalendarCheck} title="Booking created" value="Confirmed"/><Event icon={MessageSquareText} title="Call ended" value="Completed"/></div></div></section></div></Frame>}
 function Stat({label,value}:{label:string;value:string}){return <div><span>{label}</span><strong>{value}</strong><small>↑ active</small></div>}
-function Event({icon:Icon,title,value}:{icon:typeof PhoneCall;title:string;value:string}){return <div><Icon size={13}/><span>{title}</span><em>{value}</em></div>}
 
 function AgentView(){return <Frame title="Agent configuration · Sarah"><div className={styles.agentView}><div className={styles.agentForm}><span>Identity and call setup</span><div className={styles.formBanner}><PhoneCall size={14}/><div><strong>Enable a customer channel</strong><small>Connect a number when this agent is ready for live callers.</small></div><button>Choose channel</button></div><div className={styles.formGrid}><label>Agent name<div>Sarah</div></label><label>Primary role<div>Appointment booking agent</div></label></div><label>Business description<div>Front desk for Tranquil AI. Answer questions, collect required details, and book consultations.</div></label></div><div className={styles.voicePreview}><span><Radio size={11}/> Live preview</span><div><Mic2 size={25}/></div><strong>Warm & conversational</strong><small>French · English</small></div></div></Frame>}
 function CallsView(){return <Frame title="Calls"><div className={styles.callsView}><div className={styles.callTable}><div className={styles.tableToolbar}><span>All</span><span>Calls</span><span>Tests</span><em>Latest activity</em></div><div><b>Appointment Booking<small>Jul 13 · 09:42</small></b><span>Browser test</span><em>Booking made</em></div><div><b>Check Business Hours<small>Jul 13 · 09:21</small></b><span>Phone call</span><em>Answered</em></div><div><b>General Inquiry<small>Jul 12 · 17:08</small></b><span>Browser test</span><em>Answered</em></div></div><div className={styles.transcript}><div className={styles.transcriptTitle}><b>Call transcript</b><span>2m 14s</span></div><p><span>A</span><strong>Agent</strong><small>Bonjour, comment puis-je vous aider ?</small></p><p><span>C</span><strong>Caller</strong><small>Je voudrais prendre une consultation.</small></p><p><span>A</span><strong>Agent</strong><small>Bien sûr. Quel jour vous conviendrait ?</small></p></div></div></Frame>}

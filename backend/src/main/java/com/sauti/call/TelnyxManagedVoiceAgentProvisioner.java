@@ -16,6 +16,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     private final String publicBaseUrl;
     private final String toolWebhookSecret;
     private final String defaultVoiceId;
+    private final String aiModel;
 
     public TelnyxManagedVoiceAgentProvisioner(
             ManagedVoiceProviderHttpClient httpClient,
@@ -23,7 +24,8 @@ public class TelnyxManagedVoiceAgentProvisioner {
             @Value("${sauti.telnyx.api-base-url:https://api.telnyx.com/v2}") String apiBaseUrl,
             @Value("${sauti.telnyx.public-base-url:http://localhost:8080}") String publicBaseUrl,
             @Value("${sauti.telnyx.tool-webhook-secret:}") String toolWebhookSecret,
-            @Value("${sauti.telnyx.default-voice-id:Telnyx.NaturalHD.astra}") String defaultVoiceId
+            @Value("${sauti.telnyx.default-voice-id:Telnyx.NaturalHD.astra}") String defaultVoiceId,
+            @Value("${sauti.telnyx.ai-model:anthropic/claude-haiku-4-5}") String aiModel
     ) {
         this.httpClient = httpClient;
         this.apiKey = trim(apiKey);
@@ -31,6 +33,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
         this.publicBaseUrl = stripTrailingSlash(publicBaseUrl);
         this.toolWebhookSecret = trim(toolWebhookSecret);
         this.defaultVoiceId = trim(defaultVoiceId);
+        this.aiModel = trim(aiModel).isBlank() ? "anthropic/claude-haiku-4-5" : trim(aiModel);
     }
 
     public String provider() {
@@ -42,7 +45,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "24";
+        return "25";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -155,11 +158,13 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 - Tool data is language-neutral. When responseMode is present, render its structured data naturally
                   in the caller's current language and locale without changing stored names, references, or values.
                   Never expect or request a finite server-side translation.
-                - Treat update_conversation_state as the required semantic boundary for each new caller turn before
-                  replying or invoking another business tool. Persist every newly completed or corrected fact there;
-                  never acknowledge a value only in conversational memory. A name introduction without an actual
-                  person-name entity is incomplete: store no name, ask the caller to continue, and replace any earlier
-                  partial value when the caller supplies the complete name. The only exception is a clean,
+                - Treat update_conversation_state as the required semantic boundary whenever a caller turn supplies
+                  or corrects customer facts, changes booking intent, authorizes a business action, or decides a signed
+                  review. Persist every newly completed or corrected fact there; never acknowledge a value only in
+                  conversational memory. Do not invoke it for a greeting, a request to repeat, or a static question
+                  that neither changes authoritative state nor authorizes an action. A name introduction without an
+                  actual person-name entity is incomplete: store no name, ask the caller to continue, and replace any
+                  earlier partial value when the caller supplies the complete name. The only exception is a clean,
                   unconditional answer to the latest signed booking review, which may use the direct review transition
                   described below.
                 - A phone number is complete only when every digit in the caller's finished sequence is unambiguous.
@@ -195,6 +200,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   the selected terminal tool immediately after farewell playback completes.
                 """);
         body.put("greeting", blueprint.greeting());
+        body.put("model", aiModel);
         // Telnyx currently reports AI Agent SDK WebRTC sessions as phone_call.
         // Keep phone calls as the safe default and let the browser override this
         // variable through X-Sauti-Conversation-Channel at conversation start.
@@ -246,14 +252,16 @@ public class TelnyxManagedVoiceAgentProvisioner {
                         // detection. Give multilingual callers enough time for
                         // a natural pause so introductions such as "my name is
                         // ... Zacari" are not split before the actual entity.
-                        "wait_seconds", 0.4,
+                        "wait_seconds", 0.15,
                         "transcription_endpointing_plan", Map.of(
                                 "on_punctuation_seconds", 0.1,
                                 "on_no_punctuation_seconds", Math.max(
-                                        1.5,
-                                        Math.min(2.0, blueprint.endpointingMilliseconds() / 1000.0)
+                                        0.9,
+                                        Math.min(1.2, blueprint.endpointingMilliseconds() / 1000.0)
                                 ),
-                                "on_number_seconds", 0.6
+                                // Numbers retain a longer pause budget so a
+                                // natural phone-number grouping is not cut off.
+                                "on_number_seconds", 1.0
                         )
                 )
         ));

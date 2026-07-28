@@ -21,6 +21,7 @@ export function useRevealMotion() {
     elements.forEach((element) => observer.observe(element));
 
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const heroParallax = document.querySelector<HTMLElement>("[data-hero-parallax]");
     const featureStory = document.querySelector<HTMLElement>("[data-feature-story]");
     const storyPanels = featureStory
       ? Array.from(featureStory.querySelectorAll<HTMLElement>("[data-story-panel]"))
@@ -46,6 +47,15 @@ export function useRevealMotion() {
 
     const updateFeatureStory = () => {
       animationFrame = 0;
+
+      if (heroParallax) {
+        const heroRect = heroParallax.getBoundingClientRect();
+        const heroProgress = Math.max(0, Math.min(1, -heroRect.top / Math.max(heroRect.height, 1)));
+        heroParallax.style.setProperty(
+          "--hero-shift",
+          motionQuery.matches ? "0px" : `${heroProgress * 48}px`,
+        );
+      }
 
       if (!featureStory || storyPanels.length === 0) return;
 

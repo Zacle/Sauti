@@ -225,6 +225,80 @@ Expected:
 
 ## Change log
 
+### 2026-07-28 - Redesign the public homepage around human AI conversations
+
+- Reworked only the public marketing home screen to follow the selected cinematic Product Design direction:
+  - replaced the abstract dashboard-led hero with a full-bleed editorial phone-conversation scene;
+  - generated and integrated a project-local female hero photograph with safe negative space for responsive copy, then adopted the selected creative-entrepreneur direction: a warm, photogenic woman in her late 20s with a braided updo and contemporary editorial tailoring;
+  - sharpened the value proposition and conversion actions around answering calls, booking appointments, qualifying leads, and updating tools;
+  - added a live waveform/transcript rail that makes the voice-agent behavior tangible above the fold;
+  - restyled the proof area as a lighter editorial band while preserving the existing long-form product story and routes.
+- Extended the existing reveal-motion hook with reduced-motion-safe hero image parallax.
+- Declared the feature story's `--story-progress` default in CSS so static inspection can resolve the runtime-updated custom property.
+- Files touched:
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/hooks/useRevealMotion.ts`
+  - `dashboard/public/images/marketing/sauti-phone-hero.png`
+  - `dashboard/design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js generated the optimized production build.
+  - `git diff --check` - passed with line-ending notices only.
+  - Visual browser QA is blocked because the in-app browser connection fails during setup with `Cannot redefine property: process`; `dashboard/design-qa.md` records the blocked gate.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Follow-up: capture the homepage at 1440px and a representative mobile width, compare it with the selected reference, fix any P0-P2 visual differences, and mark `dashboard/design-qa.md` passed.
+
+### 2026-07-28 - Repair Telnyx startup retry and reduce measured response latency
+
+- Investigated `sauti-telnyx-diagnostics-1785251345935.json` for browser test call `cad3cf91-c6b4-4a4a-887c-87d719e06f57`.
+  - Sauti returned the test-call configuration at 6.1 seconds, Telnyx signaling connected to `fr5-prod` at 9.9 seconds, no active conversation/media arrived before the five-second deadline, and Sauti attempted one retry at 14.9 seconds.
+  - The retry then consumed the full 15-second signaling deadline and failed at 30.4 seconds.
+  - `@telnyx/ai-agent-lib` 0.5.1 documents `disconnect()` as terminal cleanup and removes its internal and consumer listeners. Sauti had disconnected and then reused that cleaned instance, so the second attempt could not emit a usable `agent.connected`.
+  - A nearby successful diagnostic reached signaling in 2.8 seconds, active media in 6.0 seconds, and greeting audio in 6.9 seconds. Ordinary measured provider thinking gaps varied from roughly 0.7 to 3.5 seconds, with a tool-heavy turn taking materially longer.
+- Fixed browser startup recovery:
+  - a failed active-conversation attempt now clears the old edge token, ends and disconnects the failed SDK object, creates a new `TelnyxAIAgent`, and re-registers every client tool and lifecycle listener before retrying;
+  - retries no longer depend on an SDK object whose disconnect cleanup removed its listeners;
+  - the existing single retry limit and active-conversation requirement remain in place.
+- Added privacy-safe Telnyx latency evidence:
+  - Agent Studio now records the SDK's `greetingLatencyMs` as `greeting_latency`;
+  - each SDK `userPerceivedLatencyMs` measurement is recorded as `turn_latency`;
+  - diagnostics contain only the latency kind and milliseconds, never transcript or audio content.
+- Reduced avoidable multilingual response delay:
+  - explicitly configured the fast native Telnyx model `anthropic/claude-haiku-4-5`, with `TELNYX_AI_MODEL` as an environment override;
+  - reduced post-endpoint `wait_seconds` from 0.4 to 0.15;
+  - reduced no-punctuation endpointing from 1.5-2.0 seconds to 0.9-1.2 seconds;
+  - retained a one-second number endpoint so natural phone-number grouping is not cut off;
+  - aligned the Telnyx execution contract with the shared Sauti prompt: `update_conversation_state` remains mandatory for facts, corrections, workflow intent, authorization, and review decisions, but greetings, repetition requests, and static questions no longer incur a needless synchronous webhook/model-resume cycle.
+- Bumped the managed Telnyx configuration version from `24` to `25`.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `dashboard/features/voice-runtime/{browserVoiceRuntime,telnyxReadiness,telnyxRuntime}.ts`
+  - `dashboard/features/voice-runtime/telnyxReadiness.test.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run test:voice` passed all 18 tests;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed and generated all 50 pages;
+  - focused managed-provider, semantic-state, and calendar-fulfillment backend tests passed;
+  - `.\gradlew.bat :backend:test --no-daemon` passed; Gradle reported `BUILD SUCCESSFUL` in 2 minutes 43 seconds;
+  - `git diff --check` passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known boundary and required live verification:
+  - the first call after a managed assistant configuration change can still spend several seconds synchronizing and promoting that provider version; unchanged bindings remain cached, and correctness is intentionally not traded for using a stale assistant;
+  - after deployment, Gerard must synchronize to configuration version `25`;
+  - make at least two browser calls and require either a direct `startup_conversation_active` or a successful fresh-client `startup_conversation_retry`, followed by `first_agent_audio`;
+  - export diagnostics and compare `greeting_latency` plus several `turn_latency` values, separating ordinary questions from booking/tool turns;
+  - verify a natural pause in a French name is not cut off and a grouped phone number is still captured completely.
+
 ### 2026-07-28 - Require unambiguous phone capture and sign phone corrections
 
 - Investigated `sauti-telnyx-diagnostics-1785229538723.json` for browser call `6f0e7d9d-31f7-4ac9-a2f2-f510a69c1bef`.

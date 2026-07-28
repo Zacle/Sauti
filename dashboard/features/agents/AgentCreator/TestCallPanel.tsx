@@ -208,6 +208,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           }
           updateStatus(speaking ? "speaking" : "listening");
         },
+        onLatencyMeasured(kind, latencyMs) {
+          recordDiagnostic(`${kind}_latency`, { latencyMs });
+        },
         onInterrupted() {
           agentCaptionIdRef.current = "";
           recordDiagnostic("agent_interrupted");

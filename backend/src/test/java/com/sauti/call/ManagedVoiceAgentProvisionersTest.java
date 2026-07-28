@@ -95,9 +95,10 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("do not call the portable end_call webhook")
                 .contains("{{sauti_conversation_channel}}", "web_call", "end_browser_call", "phone_call")
                 .contains(
-                        "required semantic boundary for each new caller turn",
-                        "never acknowledge a value only in conversational memory",
-                        "name introduction without an actual",
+                        "required semantic boundary whenever a caller turn supplies",
+                        "Do not invoke it for a greeting",
+                        "never acknowledge a value only in",
+                        "name introduction without an",
                         "every digit in the caller's finished sequence is unambiguous",
                         "Never reconstruct uncertain sounds",
                         "A caller correction is correct_review"
@@ -113,6 +114,7 @@ class ManagedVoiceAgentProvisionersTest {
                 );
         assertThat(body.getValue().get("dynamic_variables"))
                 .isEqualTo(Map.of("sauti_conversation_channel", "phone_call"));
+        assertThat(body.getValue()).containsEntry("model", "anthropic/claude-haiku-4-5");
         @SuppressWarnings("unchecked")
         var telephony = (Map<String, Object>) body.getValue().get("telephony_settings");
         assertThat(telephony.get("recording_settings")).isEqualTo(Map.of(
@@ -127,11 +129,11 @@ class ManagedVoiceAgentProvisionersTest {
                 "enable", true,
                 "disable_greeting_interruption", false,
                 "start_speaking_plan", Map.of(
-                        "wait_seconds", 0.4,
+                        "wait_seconds", 0.15,
                         "transcription_endpointing_plan", Map.of(
                                 "on_punctuation_seconds", 0.1,
-                                "on_no_punctuation_seconds", 1.5,
-                                "on_number_seconds", 0.6
+                                "on_no_punctuation_seconds", 0.9,
+                                "on_number_seconds", 1.0
                         )
                 )
         ));
@@ -173,7 +175,8 @@ class ManagedVoiceAgentProvisionersTest {
                 "https://api.telnyx.com/v2/",
                 "https://sauti.example",
                 "tool-secret",
-                "Telnyx.NaturalHD.astra"
+                "Telnyx.NaturalHD.astra",
+                "anthropic/claude-haiku-4-5"
         );
     }
 

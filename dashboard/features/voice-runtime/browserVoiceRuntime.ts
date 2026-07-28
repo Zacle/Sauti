@@ -19,6 +19,7 @@ export type BrowserVoiceRuntimeCallbacks = {
   onAgentCaption(text: string, turn?: number): void;
   onAgentTranscript(text: string, interrupted: boolean): void;
   onAgentSpeaking(value: boolean): void;
+  onLatencyMeasured?(kind: "greeting" | "turn", latencyMs: number): void;
   onInterrupted(): void;
   onToolInvoked?(toolName: string): void;
   onToolCompleted?(toolName: string, isError: boolean): void;

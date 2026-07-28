@@ -26,7 +26,7 @@ export async function connectTelnyxRuntime(
     ? "development"
     : "production";
   const region = configString(session.configuration, "region");
-  const client = new TelnyxAIAgent({
+  const createClient = () => new TelnyxAIAgent({
     agentId,
     versionId: configString(session.configuration, "versionId") || "main",
     environment,
@@ -38,6 +38,7 @@ export async function connectTelnyxRuntime(
       maxLatencyMs: 15_000,
     },
   });
+  let client = createClient();
   const audio = document.createElement("audio");
   audio.autoplay = true;
   audio.setAttribute("playsinline", "");
@@ -107,74 +108,88 @@ export async function connectTelnyxRuntime(
     terminalEndTimer = window.setTimeout(endBrowserConversation, delayMs);
   };
 
-  client.registerClientTool("end_browser_call", () => {
-    // The model can emit the terminal tool before remote TTS has drained.
-    // Keep WebRTC open until Telnyx reports that the farewell stopped playing;
-    // the longer timer is only a fallback for a missing speaking-state event.
-    terminalIntentPending = true;
-    if (agentSpeaking) {
-      terminalFarewellStarted = true;
-      scheduleTerminalEnd(12_000);
-    } else {
-      scheduleTerminalEnd(650);
-    }
-    return { success: true, ending: true };
-  });
-  client.on("client.tool.invoked", ({ toolName }) => callbacks.onToolInvoked?.(toolName));
-  client.on("client.tool.completed", ({ toolName, isError }) =>
-    callbacks.onToolCompleted?.(toolName, isError)
-  );
-  client.on("client.tool.error", ({ toolName, reason }) =>
-    callbacks.onToolError?.(toolName, reason)
-  );
-  client.on("agent.error", (error) => {
-    if (conversationStarted) callbacks.onError(providerError("Telnyx", error));
-  });
-  client.on("agent.disconnected", finish);
-  client.on("conversation.update", (notification) => {
-    retainProviderCallControlId(notification.call?.telnyxIDs.telnyxCallControlId);
-    retainProviderCallLegId(notification.call?.telnyxIDs.telnyxLegId);
-    const stream = notification.call?.remoteStream;
-    if (stream && audio.srcObject !== stream) {
-      audio.srcObject = stream;
-      callbacks.onStartupStage?.("remote_audio_ready");
-      void audio.play().catch((error) => callbacks.onError(
-        `The browser could not play Telnyx audio: ${providerError("Browser", error)}`,
-      ));
-    }
-  });
-  client.on("conversation.agent.state", ({ state }) => {
-    if (state === "speaking") {
-      agentSpeaking = true;
-      if (terminalIntentPending) terminalFarewellStarted = true;
-      callbacks.onAgentSpeaking(true);
-      if (latestAgentText) callbacks.onAgentCaption(latestAgentText);
-      return;
-    }
-    if (state === "thinking") {
-      if (agentSpeaking) callbacks.onInterrupted();
-      callbacks.onCallerSpeechEnded();
-    }
-    const completedTerminalFarewell = agentSpeaking && terminalIntentPending && terminalFarewellStarted;
-    agentSpeaking = false;
-    callbacks.onAgentSpeaking(false);
-    if (completedTerminalFarewell) scheduleTerminalEnd(450);
-  });
-  client.on("transcript.item", (item) => {
-    const text = item.content.trim();
-    if (!text) return;
-    if (item.role === "user") {
-      terminalIntentPending = callerClearlyRequestedBrowserEnd(text);
-      terminalFarewellStarted = false;
-      clearTerminalEndTimer();
-      if (terminalIntentPending) scheduleTerminalEnd(12_000);
-      callbacks.onCallerTranscript(text);
-      return;
-    }
-    latestAgentText = text;
-    callbacks.onAgentTranscript(text, false);
-    if (agentSpeaking) callbacks.onAgentCaption(text);
-  });
+  const configureClient = (target: InstanceType<typeof TelnyxAIAgent>) => {
+    target.registerClientTool("end_browser_call", () => {
+      // The model can emit the terminal tool before remote TTS has drained.
+      // Keep WebRTC open until Telnyx reports that the farewell stopped playing;
+      // the longer timer is only a fallback for a missing speaking-state event.
+      terminalIntentPending = true;
+      if (agentSpeaking) {
+        terminalFarewellStarted = true;
+        scheduleTerminalEnd(12_000);
+      } else {
+        scheduleTerminalEnd(650);
+      }
+      return { success: true, ending: true };
+    });
+    target.on("client.tool.invoked", ({ toolName }) => callbacks.onToolInvoked?.(toolName));
+    target.on("client.tool.completed", ({ toolName, isError }) =>
+      callbacks.onToolCompleted?.(toolName, isError)
+    );
+    target.on("client.tool.error", ({ toolName, reason }) =>
+      callbacks.onToolError?.(toolName, reason)
+    );
+    target.on("agent.error", (error) => {
+      if (conversationStarted) callbacks.onError(providerError("Telnyx", error));
+    });
+    target.on("agent.disconnected", finish);
+    target.on("conversation.update", (notification) => {
+      retainProviderCallControlId(notification.call?.telnyxIDs.telnyxCallControlId);
+      retainProviderCallLegId(notification.call?.telnyxIDs.telnyxLegId);
+      const stream = notification.call?.remoteStream;
+      if (stream && audio.srcObject !== stream) {
+        audio.srcObject = stream;
+        callbacks.onStartupStage?.("remote_audio_ready");
+        void audio.play().catch((error) => callbacks.onError(
+          `The browser could not play Telnyx audio: ${providerError("Browser", error)}`,
+        ));
+      }
+    });
+    target.on("conversation.agent.state", ({
+      state,
+      greetingLatencyMs,
+      userPerceivedLatencyMs,
+    }) => {
+      if (typeof greetingLatencyMs === "number" && greetingLatencyMs >= 0) {
+        callbacks.onLatencyMeasured?.("greeting", Math.round(greetingLatencyMs));
+      }
+      if (typeof userPerceivedLatencyMs === "number" && userPerceivedLatencyMs >= 0) {
+        callbacks.onLatencyMeasured?.("turn", Math.round(userPerceivedLatencyMs));
+      }
+      if (state === "speaking") {
+        agentSpeaking = true;
+        if (terminalIntentPending) terminalFarewellStarted = true;
+        callbacks.onAgentSpeaking(true);
+        if (latestAgentText) callbacks.onAgentCaption(latestAgentText);
+        return;
+      }
+      if (state === "thinking") {
+        if (agentSpeaking) callbacks.onInterrupted();
+        callbacks.onCallerSpeechEnded();
+      }
+      const completedTerminalFarewell =
+        agentSpeaking && terminalIntentPending && terminalFarewellStarted;
+      agentSpeaking = false;
+      callbacks.onAgentSpeaking(false);
+      if (completedTerminalFarewell) scheduleTerminalEnd(450);
+    });
+    target.on("transcript.item", (item) => {
+      const text = item.content.trim();
+      if (!text) return;
+      if (item.role === "user") {
+        terminalIntentPending = callerClearlyRequestedBrowserEnd(text);
+        terminalFarewellStarted = false;
+        clearTerminalEndTimer();
+        if (terminalIntentPending) scheduleTerminalEnd(12_000);
+        callbacks.onCallerTranscript(text);
+        return;
+      }
+      latestAgentText = text;
+      callbacks.onAgentTranscript(text, false);
+      if (agentSpeaking) callbacks.onAgentCaption(text);
+    });
+  };
+  configureClient(client);
 
   try {
     await startTelnyxConversationWithAuthenticationRetry({
@@ -233,9 +248,12 @@ export async function connectTelnyxRuntime(
       clearReconnectToken: () => client.clearReconnectToken(),
       onRetry: (attempt) => callbacks.onStartupStage?.("authentication_retry", { attempt }),
       resetConversation: async () => {
-        const ending = client.endConversation();
+        const previousClient = client;
+        const ending = previousClient.endConversation();
         if (ending) await ending.catch(() => undefined);
-        await client.disconnect().catch(() => undefined);
+        await previousClient.disconnect().catch(() => undefined);
+        client = createClient();
+        configureClient(client);
       },
       onConversationRetry: (attempt) =>
         callbacks.onStartupStage?.("conversation_retry", { attempt }),

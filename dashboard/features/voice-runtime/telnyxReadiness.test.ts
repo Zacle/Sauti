@@ -211,8 +211,8 @@ test("resets and retries once when signaling never creates an active conversatio
 
   assert.deepEqual(order, [
     "start:1",
-    "reset",
     "clear",
+    "reset",
     "conversation-retry:1",
     "wait:500",
     "start:2",
