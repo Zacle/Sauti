@@ -225,6 +225,35 @@ Expected:
 
 ## Change log
 
+### 2026-07-28 - Recover Telnyx browser calls that connect without media
+
+- Investigated `sauti-telnyx-diagnostics-1785226608285.json` for browser call `83981eb2-97c0-4532-a743-8b98855be0bb`.
+  - The test call and microphone were ready within 0.7 seconds, Telnyx signaling was ready at 3.0 seconds, and the dashboard immediately recorded `runtime_connected`.
+  - The session then remained in `listening` for 40.7 seconds until the user ended it. There was no `first_agent_audio`, agent state, transcript, tool event, `provider_call_correlated`, or remote-stream milestone.
+  - This was not slow greeting synthesis. Telnyx signaling authenticated, but no active provider call/media object was delivered. The dashboard had incorrectly treated the resolved `startConversation()` request as proof that the conversation itself was active.
+  - Read-only production diagnostics run `30341872441` found no matching backend voice/tool failure. Its existing filter does not include browser RTC lifecycle events, which remain client/provider-side.
+- Strengthened the Telnyx browser runtime lifecycle:
+  - `startTelnyxConversationWhenReady` now subscribes before the start request and waits for a `conversation.update` whose call state is `active`;
+  - an authenticated signaling connection that produces no active call within five seconds is a startup failure, not a connected/listening call;
+  - the runtime resets the incomplete call, disconnects, clears the sticky Telnyx reconnect token, waits 500 ms, and retries once;
+  - if the retry also fails, the UI receives a specific conversation-audio startup error instead of remaining silently connected;
+  - `runtime_connected` is now emitted only after the active-call milestone;
+  - diagnostics now record `startup_conversation_active`, `startup_conversation_retry`, and `startup_remote_audio_ready`;
+  - browser audio playback rejection is surfaced instead of being silently discarded.
+- Files touched:
+  - `dashboard/features/voice-runtime/{browserVoiceRuntime,telnyxReadiness,telnyxRuntime}.ts`
+  - `dashboard/features/voice-runtime/telnyxReadiness.test.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` passed.
+  - `node --test --experimental-strip-types features/voice-runtime/telnyxReadiness.test.ts` passed all 9 tests.
+  - `npm.cmd run build` passed; Next.js generated all 50 static pages.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after reviewed deployment:
+  - repeat a browser test call and require `startup_conversation_active`, `startup_remote_audio_ready`, then `first_agent_audio`;
+  - if the first attempt stalls, require exactly one `startup_conversation_retry` followed by those milestones;
+  - if both attempts fail, confirm the UI reports the Telnyx conversation-audio error within roughly 11 seconds instead of showing an indefinitely silent listening state.
+
 ### 2026-07-28 - Preserve multilingual caller turns and reject incomplete name captures
 
 - Investigated `sauti-telnyx-diagnostics-1785220805645.json` for browser call `58875490-8e3b-4a4b-80dd-0416a91b9e24`.

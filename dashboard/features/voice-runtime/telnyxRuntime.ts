@@ -137,7 +137,10 @@ export async function connectTelnyxRuntime(
     const stream = notification.call?.remoteStream;
     if (stream && audio.srcObject !== stream) {
       audio.srcObject = stream;
-      void audio.play().catch(() => undefined);
+      callbacks.onStartupStage?.("remote_audio_ready");
+      void audio.play().catch((error) => callbacks.onError(
+        `The browser could not play Telnyx audio: ${providerError("Browser", error)}`,
+      ));
     }
   });
   client.on("conversation.agent.state", ({ state }) => {
@@ -188,6 +191,23 @@ export async function connectTelnyxRuntime(
             autoGainControl: true,
           },
         }),
+        subscribeConversation: ({ active, failed, disconnected }) => {
+          const conversationActive = (notification: {
+            call?: { state?: string } | null;
+          }) => {
+            if (notification.call?.state !== "active") return;
+            callbacks.onStartupStage?.("conversation_active");
+            active();
+          };
+          client.on("conversation.update", conversationActive);
+          client.on("agent.error", failed);
+          client.on("agent.disconnected", disconnected);
+          return () => {
+            client.off("conversation.update", conversationActive);
+            client.off("agent.error", failed);
+            client.off("agent.disconnected", disconnected);
+          };
+        },
         subscribe: ({ ready, failed, disconnected }) => {
           const signalingReady = (info: {
             dc: string | null;
@@ -212,6 +232,13 @@ export async function connectTelnyxRuntime(
       }),
       clearReconnectToken: () => client.clearReconnectToken(),
       onRetry: (attempt) => callbacks.onStartupStage?.("authentication_retry", { attempt }),
+      resetConversation: async () => {
+        const ending = client.endConversation();
+        if (ending) await ending.catch(() => undefined);
+        await client.disconnect().catch(() => undefined);
+      },
+      onConversationRetry: (attempt) =>
+        callbacks.onStartupStage?.("conversation_retry", { attempt }),
     });
     conversationStarted = true;
     callbacks.onStartupStage?.("conversation_started");
