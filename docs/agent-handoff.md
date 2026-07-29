@@ -225,6 +225,50 @@ Expected:
 
 ## Change log
 
+### 2026-07-30 - Preserve exact multilingual phone digits from caller evidence
+
+- Diagnosed a French call where the caller clearly supplied the ten digits
+  `0 1 1 5 7 5 2 4 4 1`, but the managed assistant regenerated the value as
+  the eleven-digit `01157524441` by duplicating a `4`. Existing server
+  validation correctly checked shape and length but could not detect that a
+  structurally valid model-authored value disagreed with what the caller said.
+- Extended `update_conversation_state` with required `source_utterance`
+  evidence: the managed assistant must copy the latest caller transcript
+  verbatim without translating, correcting, normalizing, or removing repeated
+  correction fragments. Local orchestration falls back to its latest retained
+  user transcript when the explicit argument is unavailable.
+- Added `AiPhoneNumberEntityExtractor`, a narrow server-side structured
+  semantic checkpoint. It understands number words in any model-supported
+  language or script, but can return only an ordered array whose elements are
+  individual digits `0` through `9`. The source utterance is authoritative;
+  the model-authored phone candidate is supplied only to reveal disagreement
+  and is never a fallback.
+- Phone state now accepts the extractor's digit sequence only when capture was
+  marked complete and the final normalized value remains structurally valid.
+  Missing source evidence, ambiguity, provider failure, or a malformed forced
+  tool result fails closed and does not overwrite the retained phone.
+- Bumped the Telnyx managed configuration version from `29` to `30` so active
+  managed assistants receive the new source-evidence contract on their next
+  synchronization.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/session/PhoneNumberEntityExtractor.java`
+  - `backend/src/main/java/com/sauti/session/AiPhoneNumberEntityExtractor.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - `backend/src/test/java/com/sauti/session/AiPhoneNumberEntityExtractorTest.java`
+  - `backend/src/test/java/com/sauti/tool/ConversationStateToolTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused phone extractor, conversation state, and managed provisioning
+    tests - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: repeat the exact French
+  sequence above in one uninterrupted turn. The assistant must review
+  `0 1 1 5 7 5 2 4 4 1` exactly once per digit, and the booking must store
+  `0115752441`, never `01157524441`.
+
 ### 2026-07-30 - Stop successful permanent deletion from showing a JSON error
 
 - Diagnosed the Bookings dialog error

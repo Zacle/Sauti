@@ -14,6 +14,7 @@ import com.sauti.session.BookingDraft;
 import com.sauti.session.ConversationState;
 import com.sauti.session.PendingAction;
 import com.sauti.session.PersonNameEntityExtractor;
+import com.sauti.session.PhoneNumberEntityExtractor;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -220,6 +221,75 @@ class ConversationStateToolTest {
 
         assertThat(captureState(sessions, "complete-phone-call").values())
                 .containsEntry("caller_phone", "0115752331");
+    }
+
+    @Test
+    void storesPhoneDigitsExtractedFromTheSourceInsteadOfTheModelsRegeneratedNumber() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("source-phone-call");
+        when(sessions.conversationState("source-phone-call")).thenReturn(Optional.of(
+                ConversationState.empty()
+        ));
+        PersonNameEntityExtractor names = (ignored, candidate) -> candidate;
+        PhoneNumberEntityExtractor phones = (ignored, source, candidate) ->
+                "zéro un un cinq sept cinq deux quatre quatre un".equals(source)
+                        ? "0115752441"
+                        : "";
+        var tool = new ConversationStateTool(sessions, null, names, phones);
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_phone", "01157524441"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "active",
+                "phone_capture_status", "complete",
+                "source_utterance", "zéro un un cinq sept cinq deux quatre quatre un",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Merci."
+        )));
+
+        assertThat(captureState(sessions, "source-phone-call").values())
+                .containsEntry("caller_phone", "0115752441")
+                .doesNotContainValue("01157524441");
+    }
+
+    @Test
+    void usesTheLatestLocalCallerTranscriptWhenSourceArgumentIsMissing() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("history-phone-call");
+        when(sessions.conversationState("history-phone-call")).thenReturn(Optional.of(
+                ConversationState.empty()
+        ));
+        when(sessions.conversationHistory("history-phone-call")).thenReturn(List.of(
+                new com.sauti.llm.ConversationMessage("assistant", "Quel est votre numéro ?"),
+                new com.sauti.llm.ConversationMessage(
+                        "user",
+                        "zéro un un cinq sept cinq deux quatre quatre un"
+                )
+        ));
+        PersonNameEntityExtractor names = (ignored, candidate) -> candidate;
+        PhoneNumberEntityExtractor phones = (ignored, source, candidate) ->
+                "zéro un un cinq sept cinq deux quatre quatre un".equals(source)
+                        ? "0115752441"
+                        : "";
+        var tool = new ConversationStateTool(sessions, null, names, phones);
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_phone", "01157524441"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "active",
+                "phone_capture_status", "complete",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Merci."
+        )));
+
+        assertThat(captureState(sessions, "history-phone-call").values())
+                .containsEntry("caller_phone", "0115752441");
     }
 
     @Test

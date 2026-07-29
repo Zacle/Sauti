@@ -11,6 +11,7 @@ import com.sauti.session.ConversationState;
 import com.sauti.session.PendingAction;
 import com.sauti.session.PersonNameEntityExtractor;
 import com.sauti.session.PersonNameNormalizer;
+import com.sauti.session.PhoneNumberEntityExtractor;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -83,20 +84,36 @@ public class ConversationStateTool {
     private final CallSessionStore sessions;
     private final AgentToolRepository agentTools;
     private final PersonNameEntityExtractor personNames;
+    private final PhoneNumberEntityExtractor phoneNumbers;
 
     @Autowired
     public ConversationStateTool(
             CallSessionStore sessions,
             AgentToolRepository agentTools,
-            PersonNameEntityExtractor personNames
+            PersonNameEntityExtractor personNames,
+            PhoneNumberEntityExtractor phoneNumbers
     ) {
         this.sessions = sessions;
         this.agentTools = agentTools;
         this.personNames = personNames;
+        this.phoneNumbers = phoneNumbers;
+    }
+
+    public ConversationStateTool(
+            CallSessionStore sessions,
+            AgentToolRepository agentTools,
+            PersonNameEntityExtractor personNames
+    ) {
+        this(sessions, agentTools, personNames, (call, source, candidate) -> normalizePhone(candidate));
     }
 
     public ConversationStateTool(CallSessionStore sessions, AgentToolRepository agentTools) {
-        this(sessions, agentTools, (call, candidate) -> PersonNameNormalizer.normalize(candidate));
+        this(
+                sessions,
+                agentTools,
+                (call, candidate) -> PersonNameNormalizer.normalize(candidate),
+                (call, source, candidate) -> normalizePhone(candidate)
+        );
     }
 
     public ConversationStateTool(CallSessionStore sessions) {
@@ -198,6 +215,10 @@ public class ConversationStateTool {
                 "type", "string",
                 "description", "When next_action is use_business_tool, the exact name of the one available configured tool that must run next. Otherwise an empty string. Never use update_conversation_state here."
         ));
+        properties.put("source_utterance", Map.of(
+                "type", "string",
+                "description", "Exact verbatim text of the latest caller utterance that these updates interpret. Copy it without translation, normalization, correction, summarization, added punctuation, or omitted repetitions. This is evidence for server-side entity verification, not a state field."
+        ));
         return new LlmToolDefinition(
                 NAME,
                 "Required internal turn interpreter. Understand the latest caller turn semantically in any language or phrasing, compare it with authoritative state, emit only explicit state changes, and provide the natural caller-facing reply. Do not map by keywords. Corrections replace the affected value. Keep the speaker separate from a genuinely explicit third-party recipient. This tool records state only and never books, changes, or cancels anything.",
@@ -209,7 +230,7 @@ public class ConversationStateTool {
                                 "booking_subject", "booking_intent", "turn_understanding",
                                 "name_capture_status", "phone_capture_status",
                                 "spoken_response", "caller_question", "action_authorization",
-                                "call_disposition", "next_action", "business_tool"
+                                "call_disposition", "next_action", "business_tool", "source_utterance"
                         ),
                         "additionalProperties", false
                 )
@@ -602,6 +623,7 @@ public class ConversationStateTool {
         var phoneCaptureStatus = choice(
                 arguments.get("phone_capture_status"), PHONE_CAPTURE_STATUS, "incomplete"
         );
+        var sourceUtterance = sourceUtterance(call, arguments);
         var extractedNames = new HashMap<String, String>();
         // Review decisions authorize at most the current caller turn. They must
         // never leak into a later turn as stale approval.
@@ -640,7 +662,7 @@ public class ConversationStateTool {
             }
             if ("caller_phone".equals(key) || "new_caller_phone".equals(key)) {
                 if (!"complete".equals(phoneCaptureStatus)) return;
-                var normalizedPhone = normalizePhone(value);
+                var normalizedPhone = normalizePhone(phoneNumbers.extract(call, sourceUtterance, value));
                 if (!normalizedPhone.isBlank()) values.put(key, normalizedPhone);
                 return;
             }
@@ -671,7 +693,30 @@ public class ConversationStateTool {
         return new ConversationState(values, subject, intent, current.revision() + 1);
     }
 
-    private String normalizePhone(String value) {
+    private String sourceUtterance(Call call, Map<String, Object> arguments) {
+        var supplied = arguments.get("source_utterance") == null
+                ? ""
+                : arguments.get("source_utterance").toString().trim();
+        if (!supplied.isBlank()) return supplied;
+        try {
+            var history = sessions.conversationHistory(call.getTwilioCallSid());
+            if (history == null) return "";
+            for (var index = history.size() - 1; index >= 0; index--) {
+                var message = history.get(index);
+                if (message != null
+                        && "user".equals(message.role())
+                        && message.content() != null
+                        && !message.content().isBlank()) {
+                    return message.content().trim();
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Managed-provider tool callbacks do not always have local transcript history.
+        }
+        return "";
+    }
+
+    private static String normalizePhone(String value) {
         if (value == null || value.isBlank()) return "";
         var trimmed = value.trim();
         var international = trimmed.startsWith("+");

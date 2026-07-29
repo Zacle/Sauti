@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "29";
+        return "30";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -171,6 +171,9 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 - Every person-name tool field is structured data, not a transcript field. Semantically extract only
                   the complete person-name entity in whatever language the caller used. Never copy an introduction,
                   carrier phrase, complete answer, or surrounding sentence into caller_name or appointment_name.
+                - On every update_conversation_state call, copy the exact latest caller transcript verbatim into
+                  source_utterance. Never translate, normalize, summarize, correct, repunctuate, or omit repeated
+                  fragments from source_utterance. Sauti uses it as server-side evidence for exact entity extraction.
                 - A phone number is complete only when every digit in the caller's finished sequence is unambiguous.
                   If transcription contains an unclear sound, missing digit, interruption, or unfinished sequence,
                   store no phone update and ask for one slow natural repetition. Never reconstruct uncertain sounds
