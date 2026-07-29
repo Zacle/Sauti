@@ -6881,3 +6881,27 @@ Expected:
   - select and preview voices in at least two supported languages;
   - exercise create/read/update/reschedule/cancel booking tools, one deliberately slow lookup, interruption, farewell/hang-up, inbound calling, and one outbound call;
   - confirm `TELNYX_TOOL_WEBHOOK_SECRET` is present in the production process before starting a browser or telephone call.
+
+### 2026-07-29 - Replace the Sauti brand mark with the circular voice-loop logo
+
+- Replaced the previous speech-bubble logo asset with the selected circular S-shaped conversation-loop mark and five-bar waveform.
+- Removed all written content from the logo and preserved transparency outside the circular navy/cobalt background.
+- Removed the legacy white backing and aggressive image zoom from the shared `BrandLogo` treatment so the circular edge renders without cropping in the console, authentication surfaces, and favicon metadata.
+- Switched the shared component and favicon metadata to the cache-safe `/sauti-logo-circular.png` path and explicitly disabled the legacy square gradient backing, ensuring the new mark appears in the marketing header/footer, authentication screens, console sidebar, dashboard hero, and browser icons.
+- Files touched:
+  - `dashboard/public/sauti-logo.png`
+  - `dashboard/public/sauti-logo-circular.png`
+  - `dashboard/app/layout.tsx`
+  - `dashboard/components/BrandLogo/BrandLogo.tsx`
+  - `dashboard/app/globals.css`
+  - `design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; Next.js generated the optimized production build.
+  - source and compiled-bundle scan - passed; all shared `BrandLogo` renders and favicon metadata reference `/sauti-logo-circular.png`.
+  - direct raster QA at 16, 24, 32, 48, 64, and 128 px - passed; the circle, conversation loop, and waveform remain distinguishable.
+  - `git diff --check` - passed (line-ending notices only).
+  - browser-rendered QA - blocked because the in-app browser connection failed in this session; recorded in `design-qa.md`.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: capture `/login` and one console route in the in-app browser when available to confirm final placement and browser console state.

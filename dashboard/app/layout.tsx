@@ -6,9 +6,9 @@ export const metadata: Metadata = {
   title: "Sauti | AI voice agents for bookings",
   description: "Multilingual AI phone agents that answer calls, qualify callers, and book appointments into your calendar.",
   icons: {
-    icon: [{ url: "/sauti-logo.png", type: "image/png" }],
-    shortcut: "/sauti-logo.png",
-    apple: "/sauti-logo.png",
+    icon: [{ url: "/sauti-logo-circular.png", type: "image/png" }],
+    shortcut: "/sauti-logo-circular.png",
+    apple: "/sauti-logo-circular.png",
   },
 };
 
