@@ -19,12 +19,17 @@ class TelnyxTelephonyProviderTest {
     @Test
     void preparesInboundAssistantBeforeAnsweringTheCaller() throws Exception {
         var order = new ArrayList<String>();
+        var requestBodies = new ArrayList<String>();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
+            var requestBody = new String(
+                    exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8
+            );
             synchronized (order) {
                 order.add(exchange.getRequestURI().getRawPath());
+                requestBodies.add(requestBody);
             }
-            exchange.getRequestBody().readAllBytes();
             var response = "{}".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
@@ -64,6 +69,8 @@ class TelnyxTelephonyProviderTest {
                     "/calls/v3%3Atest-control/actions/answer",
                     "/calls/v3%3Atest-control/actions/ai_assistant_start"
             );
+            assertThat(requestBodies.get(1))
+                    .contains("\"voice\":\"Telnyx.NaturalHD.amarante\"");
         } finally {
             server.stop(0);
         }

@@ -144,6 +144,34 @@ class ManagedVoiceAgentProvisionersTest {
     }
 
     @Test
+    void telnyxReplacesAnEnglishDefaultVoiceForFrenchSpeech() throws Exception {
+        var http = mock(ManagedVoiceProviderHttpClient.class);
+        when(http.post(any(), any(), any(), any()))
+                .thenReturn(objectMapper.readTree("{\"id\":\"assistant-1\",\"version_id\":\"main\"}"));
+        var french = new ManagedVoiceAgentBlueprint(
+                "Sauti Test",
+                "Bonjour",
+                "Répondez en français.",
+                "Telnyx.NaturalHD.astra",
+                "fr",
+                List.of("fr"),
+                List.of(),
+                300,
+                0.7,
+                300,
+                List.of("Sauti")
+        );
+
+        provisioner(http).synchronize(french, null);
+
+        @SuppressWarnings("unchecked")
+        var body = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
+        verify(http).post(any(), any(), any(), body.capture());
+        assertThat(body.getValue())
+                .containsEntry("voice_settings", Map.of("voice", "Telnyx.NaturalHD.amarante"));
+    }
+
+    @Test
     void telnyxPromotesAnUpdatedAssistantVersionToMain() throws Exception {
         var http = mock(ManagedVoiceProviderHttpClient.class);
         when(http.post(

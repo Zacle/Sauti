@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.call.Call;
 import com.sauti.call.ManagedVoiceAgentProvisioningService;
+import com.sauti.voice.TelnyxVoiceCompatibility;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -218,9 +219,11 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         var configuredVoice = blank(call.getAgent().getTtsVoiceId());
         body.put(
                 "voice",
-                configuredVoice.toLowerCase(java.util.Locale.ROOT).startsWith("telnyx.")
-                        ? configuredVoice
-                        : defaultVoiceId
+                TelnyxVoiceCompatibility.select(
+                        configuredVoice,
+                        call.getAgent().getDefaultLanguage(),
+                        defaultVoiceId
+                )
         );
         body.put("transcription", Map.of(
                 "model", "deepgram/nova-3",

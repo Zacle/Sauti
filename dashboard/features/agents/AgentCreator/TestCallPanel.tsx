@@ -157,6 +157,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       const callPromise = startTestCall(agentId, voiceId).then((started) => {
         recordDiagnostic("call_created", {
           provider: started.runtime?.provider ?? "unknown",
+          voiceId: voiceId ?? "",
         });
         return started;
       });

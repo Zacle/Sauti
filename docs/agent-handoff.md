@@ -238,6 +238,16 @@ Expected:
   - the final caller turn entered `thinking` at 309.9 seconds and produced no
     later transcript, audio, client-side tool, or provider error before the
     user manually ended the test 82 seconds later.
+- Diagnosed the follow-up `sauti-telnyx-diagnostics-1785353699439.json`.
+  The 0.6.0 SDK no longer emitted a listening state for every text delta, but
+  the trace still showed:
+  - first browser audio at 15.3 seconds: call creation 4.8 seconds, deferred SDK
+    chunk completion 1.7 seconds later, signaling/conversation activation at
+    13.1 seconds, then 2.2 seconds of greeting generation;
+  - short remote-audio pauses during one number readback at 117.4-124.1 seconds,
+    including gaps of 117 ms and 640 ms that split `D'accord, je note le` from
+    the digits into separate durable turns;
+  - no provider error or client-tool failure explaining the media pauses.
 - Upgraded `@telnyx/ai-agent-lib` from 0.5.1 to 0.6.0. The stable 0.6.0 release
   removes the SDK's synthetic listening-state emission from every assistant
   text delta and includes a newer Telnyx WebRTC dependency.
@@ -253,8 +263,23 @@ Expected:
   ten digits (`0115752441`) while the agent repeatedly inserted an extra `4`.
   When Sauti returns `callerPhoneDigits`, Telnyx must now reproduce each array
   element exactly once and in order, without regenerating the number from
-  conversational memory. Telnyx managed configuration version is now `26`, so
+  conversational memory. Telnyx managed configuration version is now `27`, so
   existing assistants receive this contract on their next synchronization.
+- Corrected French voice compatibility. Telnyx documents the prior fallback
+  `Telnyx.NaturalHD.astra` as an `en-US` voice and
+  `Telnyx.NaturalHD.amarante` as its French NaturalHD voice. Browser assistant
+  provisioning and telephone Call Control now replace known English NaturalHD
+  fallback voices with Amarante when the agent's primary language is French.
+  The dashboard voice picker also replaces a saved voice that the live Telnyx
+  catalog says does not support the primary language.
+- A short remote-audio dip is no longer a completed transcript boundary.
+  Sauti now waits 1.2 seconds and cancels that flush if speech resumes, keeping
+  chunked number readbacks in one durable utterance. The same debounce prevents
+  a sub-second farewell pause from prematurely closing a browser call.
+- New diagnostics record the configured non-secret voice ID and Telnyx
+  `callReportId`, when supplied by the SDK, so a remaining audible dropout can
+  be correlated with Telnyx media-quality reports rather than inferred from
+  transcript state alone.
 - Removed cold managed-assistant synchronization from the answered portion of
   real inbound calls. Previously `answerInboundCall` sent Telnyx's answer
   command and only then called `ManagedVoiceAgentProvisioningService.resolve`;
@@ -282,12 +307,14 @@ Expected:
 - Files touched:
   - `dashboard/features/voice-runtime/{telnyxRuntime,telnyxTranscript,telnyxTranscript.test}.ts`
   - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`
   - `dashboard/features/calls/CallsPage/CallsPage.tsx`
   - `dashboard/{package.json,package-lock.json}`
   - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
   - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
   - `backend/src/main/java/com/sauti/agent/TelnyxTelephonyProvider.java`
   - `backend/src/test/java/com/sauti/agent/TelnyxTelephonyProviderTest.java`
+  - `backend/src/main/java/com/sauti/voice/TelnyxVoiceCompatibility.java`
   - `docs/agent-handoff.md`
 - Verification:
   - `npm.cmd run test:voice` - passed all 21 tests.
@@ -295,7 +322,8 @@ Expected:
   - `npm.cmd run build` - passed; Next.js produced the optimized production build.
   - focused Telnyx managed-provisioner test - passed.
   - focused Telnyx inbound command-order test - passed; verifies assistant
-    resolution occurs before `answer`, followed by `ai_assistant_start`.
+    resolution occurs before `answer`, followed by `ai_assistant_start`, and
+    the French-compatible voice is used by Call Control.
   - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported
     `BUILD SUCCESSFUL` in 1 minute 53 seconds.
   - `git diff --check` - passed (line-ending notices only).
@@ -307,7 +335,9 @@ Expected:
   review and the normal GitHub Actions CI/CD workflow.
 - Required live verification after reviewed deployment:
   - repeat a French browser booking call and confirm agent replies remain one
-    continuous transcript turn without rapid speaking/listening flicker;
+    continuous transcript turn without rapid speaking/listening flicker, and
+    confirm diagnostics report a French-compatible configured voice rather than
+    Astra, Albion, or Luna;
   - compare startup stages across the first and second calls. A first-call-only
     slow `call_created` stage indicates managed-assistant synchronization,
     while the signaling/audio interval remains provider/network startup;
@@ -320,6 +350,9 @@ Expected:
     seconds, the panel should show the recovery message and allow another turn;
     provide the new diagnostic plus server-side managed-tool logs to determine
     whether the provider stalled before or during a webhook tool.
+  - if audio still audibly drops out, provide the new diagnostic with its
+    `callReportId` to Telnyx support; Sauti's local speaking-state transitions
+    observe the remote stream but do not pause, cut, or rewrite its audio.
 
 ### 2026-07-29 - Send one professional welcome email after account activation
 

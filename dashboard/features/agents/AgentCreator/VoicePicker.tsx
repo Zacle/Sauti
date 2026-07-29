@@ -40,7 +40,9 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
         setVoices(catalog.voices);
         setEnabledProviders(catalog.enabledProviders);
         setProviderEnabled(catalog.enabledProviders.length > 0);
-        if (!initialSelection.value || !initialSelection.value.toLowerCase().startsWith("telnyx.")) {
+        const configuredVoice = catalog.voices.find((voice) => voice.id === initialSelection.value);
+        if (!configuredVoice
+          || !configuredVoice.languages.includes(initialSelection.primaryLanguage)) {
           const telnyxDefault = catalog.voices.find((voice) => voice.languages.includes(initialSelection.primaryLanguage))
             ?? catalog.voices[0];
           if (telnyxDefault) initialSelection.onChange(telnyxDefault.id);

@@ -1,5 +1,6 @@
 package com.sauti.call;
 
+import com.sauti.voice.TelnyxVoiceCompatibility;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -45,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "26";
+        return "27";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -208,7 +209,14 @@ public class TelnyxManagedVoiceAgentProvisioner {
         // Keep phone calls as the safe default and let the browser override this
         // variable through X-Sauti-Conversation-Channel at conversation start.
         body.put("dynamic_variables", Map.of("sauti_conversation_channel", "phone_call"));
-        body.put("voice_settings", Map.of("voice", selectedVoice(blueprint.voiceId())));
+        body.put("voice_settings", Map.of(
+                "voice",
+                TelnyxVoiceCompatibility.select(
+                        blueprint.voiceId(),
+                        blueprint.language(),
+                        defaultVoiceId
+                )
+        ));
         var transcription = new LinkedHashMap<String, Object>();
         transcription.put("model", "deepgram/nova-3");
         transcription.put(
@@ -275,13 +283,6 @@ public class TelnyxManagedVoiceAgentProvisioner {
 
     private static String path(String value) {
         return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
-    }
-
-    private String selectedVoice(String configuredVoice) {
-        var normalized = trim(configuredVoice);
-        return normalized.toLowerCase(java.util.Locale.ROOT).startsWith("telnyx.")
-                ? normalized
-                : defaultVoiceId;
     }
 
     private static String shorten(String value, int maximum) {
