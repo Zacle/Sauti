@@ -571,6 +571,38 @@ class SautiCalendarFulfillmentTest {
     }
 
     @Test
+    void semanticNameStateOverridesARawModelBookingArgumentInAnyLanguage() {
+        var fixture = fixture(HOURS, List.of());
+        var latest = "lundi trois août";
+        when(fixture.callSessionStore.conversationHistory("call-sid"))
+                .thenReturn(List.of(new ConversationMessage("user", latest)));
+        when(fixture.intakeNotes.notes(fixture.call, latest)).thenReturn(Map.of(
+                "conversation_state_revision", "7",
+                "booking_subject", "self",
+                "booking_intent", "active",
+                "caller_name", "Zachary",
+                "appointment_name", "Zachary"
+        ));
+
+        var review = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "structured-name-review", "book_slot", Map.of(
+                        "appointment_at", "2026-08-03T13:00:00Z",
+                        "appointment_name", "mon nom c'est zachary",
+                        "caller_phone", "0115752441",
+                        "service_type", "standard",
+                        "duration_minutes", 60,
+                        "review_action", "prepare_review"
+                )
+        ));
+
+        @SuppressWarnings("unchecked")
+        var fields = (Map<String, Object>) review.result().get("bookingReview");
+        assertThat(fields)
+                .containsEntry("callerName", "Zachary")
+                .doesNotContainValue("mon nom c'est zachary");
+    }
+
+    @Test
     void usesTheAppointmentRecipientsNameInsteadOfThePersonSpeaking() {
         var fixture = fixture(HOURS, List.of());
         when(fixture.callSessionStore.conversationHistory("call-sid"))

@@ -225,6 +225,44 @@ Expected:
 
 ## Change log
 
+### 2026-07-30 - Enforce language-neutral structured booking names
+
+- Diagnosed the booking shown with customer name `mon nom c'est zachary`.
+  The managed model copied a complete spoken introduction into a booking name
+  argument instead of returning only the structured person-name entity.
+- Rejected a finite language-prefix normalizer as the long-term fix. Sauti does
+  not maintain phrases such as `my name is` or `je m'appelle` by language;
+  semantic extraction remains the AI's responsibility through
+  `update_conversation_state`.
+- Strengthened the managed assistant and `book_slot` JSON-schema contracts:
+  every name field is explicitly a semantic entity in the caller's original
+  script, never a transcript, introduction, carrier phrase, or complete answer
+  in any language. Managed Telnyx configuration version is now `29`.
+- Once server-owned semantic state exists, `SautiCalendarFulfillment` discards
+  a model-authored booking name and builds the signed review from the
+  authoritative `appointment_name`/`caller_name` state instead. This prevents
+  a later `book_slot` call from replacing `Zachary` with
+  `mon nom c'est zachary`, regardless of the caller's language.
+- `PersonNameNormalizer` remains intentionally language-independent: it only
+  performs Unicode/safety normalization after the AI has extracted the entity.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/tool/AgentToolLoader.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/test/java/com/sauti/tool/AgentToolLoaderTest.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed-provider, tool-schema, and calendar-fulfillment tests -
+    passed.
+  - `.\gradlew.bat :backend:test` - passed.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Known limitation: this prevents future bad writes but does not guess how to
+  rewrite existing arbitrary names. The reported booking and its external
+  calendar event must be edited once from `mon nom c'est zachary` to `Zachary`.
+
 ### 2026-07-29 - Remove the Telnyx demo's forced restart and protect its greeting
 
 - Diagnosed `sauti-telnyx-diagnostics-1785358245965.json`. This call used

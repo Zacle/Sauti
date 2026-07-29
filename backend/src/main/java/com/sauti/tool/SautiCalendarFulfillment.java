@@ -567,10 +567,20 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 .ifPresent(value -> normalized.put("caller_phone", value));
         try {
             var notes = intakeNotes.notes(call, latest);
+            var semanticState = notes.containsKey("conversation_state_revision");
             var appointmentName = notes.get("appointment_name");
+            var callerName = notes.get("caller_name");
             var otherPerson = "other".equals(notes.get("booking_subject"))
                     ? notes.getOrDefault("recipient_relation", "other person")
                     : notes.get("booking_for_relation");
+            if (semanticState && ((appointmentName != null && !appointmentName.isBlank())
+                    || (callerName != null && !callerName.isBlank())
+                    || (otherPerson != null && !otherPerson.isBlank()))) {
+                // Once multilingual semantic state exists, it is the only
+                // authority for identity. Never let a later book_slot argument
+                // replace the structured entity with the caller's raw utterance.
+                normalized.remove("caller_name");
+            }
             if (appointmentName != null && !appointmentName.isBlank()) {
                 normalized.put("caller_name", appointmentName);
             } else if (otherPerson != null && !otherPerson.isBlank()) {

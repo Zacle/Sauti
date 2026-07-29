@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "28";
+        return "29";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -168,6 +168,9 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   earlier partial value when the caller supplies the complete name. The only exception is a clean,
                   unconditional answer to the latest signed booking review, which may use the direct review transition
                   described below.
+                - Every person-name tool field is structured data, not a transcript field. Semantically extract only
+                  the complete person-name entity in whatever language the caller used. Never copy an introduction,
+                  carrier phrase, complete answer, or surrounding sentence into caller_name or appointment_name.
                 - A phone number is complete only when every digit in the caller's finished sequence is unambiguous.
                   If transcription contains an unclear sound, missing digit, interruption, or unfinished sequence,
                   store no phone update and ask for one slow natural repetition. Never reconstruct uncertain sounds

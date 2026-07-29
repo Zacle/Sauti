@@ -95,7 +95,7 @@ public class AgentToolLoader {
         properties.remove("caller_name");
         properties.put("appointment_name", Map.of(
                 "type", "string",
-                "description", "Full name to place on the appointment. This is the person receiving the service and may differ from the person speaking when they book for a wife, husband, child, patient, guest, or other person."
+                "description", "The exact semantic full-name entity for the person receiving the service, in its original script and with its original diacritics. Return only the person's name, never the caller's full utterance, an introduction, a title that was not stated as part of the name, or surrounding words in any language. If no complete name entity was supplied, do not call book_slot; collect it through update_conversation_state. The recipient may differ from the person speaking when booking for someone else."
         ));
         if (required.remove("caller_name") && !required.contains("appointment_name")) {
             required.add("appointment_name");
@@ -127,7 +127,7 @@ public class AgentToolLoader {
         schema.put("required", List.copyOf(required));
         return actionPolicy.decorate(tool, new LlmToolDefinition(
                 definition.name(),
-                "Two-step booking. appointment_name is the person receiving the service, not necessarily the person speaking. Set review_action from the caller's meaning in their language: prepare_review for the first review, correct_review for a correction, and approve_review only for unconditional approval of the latest review. The server retains the private review token. The caller states details naturally and is never required to spell anything. Never expose the token.",
+                "Two-step booking. appointment_name is a structured semantic name entity containing only the person receiving the service, never their complete spoken introduction or surrounding words in any language. It may differ from the person speaking. Set review_action from the caller's meaning in their language: prepare_review for the first review, correct_review for a correction, and approve_review only for unconditional approval of the latest review. The server retains the private review token. The caller states details naturally and is never required to spell anything. Never expose the token.",
                 Map.copyOf(schema),
                 definition.callerWaitExpected()
         ));

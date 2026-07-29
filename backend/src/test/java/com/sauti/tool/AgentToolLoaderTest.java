@@ -90,7 +90,9 @@ class AgentToolLoaderTest {
         assertThat((List<String>) ((Map<String, Object>) properties.get("review_action")).get("enum"))
                 .containsExactly("prepare_review", "correct_review", "approve_review");
         assertThat(((Map<String, Object>) properties.get("appointment_name")).get("description").toString())
-                .contains("may differ from the person speaking");
+                .contains("semantic full-name entity")
+                .contains("never the caller's full utterance")
+                .contains("any language");
         assertThat((List<String>) details.get("required"))
                 .containsExactly("patient_date_of_birth", "insurance_member_number");
         assertThat(detailProperties).containsKeys("patient_date_of_birth", "insurance_member_number");
