@@ -225,6 +225,36 @@ Expected:
 
 ## Change log
 
+### 2026-07-30 - Stop successful permanent deletion from showing a JSON error
+
+- Diagnosed the Bookings dialog error
+  `Failed to execute 'json' on 'Response': Unexpected end of JSON input`.
+  The permanent deletion had succeeded, but Spring returned `200 OK` with an
+  empty body for the controller's `void` method. The shared dashboard API
+  client treated every successful non-204 response as JSON and raised an error
+  after the destructive operation was already complete.
+- Made `DELETE /api/v1/bookings/{id}/permanent` explicitly return
+  `204 No Content`.
+- Hardened the shared dashboard response parser to accept successful empty
+  `200`, `204`, and `205` responses while continuing to parse non-empty JSON
+  normally. This protects other successful empty endpoints and intermediary
+  response variations from producing the same false failure.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/BookingController.java`
+  - `backend/src/test/java/com/sauti/AuthAgentFlowTest.java`
+  - `dashboard/lib/api/client.ts`
+  - `dashboard/lib/api/response.ts`
+  - `dashboard/lib/api/response.test.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `AuthAgentFlowTest` - passed and asserts `204` plus an empty body.
+  - response parser tests - passed all 3 cases.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+
 ### 2026-07-30 - Enforce language-neutral structured booking names
 
 - Diagnosed the booking shown with customer name `mon nom c'est zachary`.
@@ -245,10 +275,34 @@ Expected:
   `mon nom c'est zachary`, regardless of the caller's language.
 - `PersonNameNormalizer` remains intentionally language-independent: it only
   performs Unicode/safety normalization after the AI has extracted the entity.
+- Follow-up production evidence invalidated the assumption that the first
+  structured model call was sufficient. GitHub Actions successfully deployed
+  commit `d83df6b91cb4eea8888540fc3e06cf5343738b6c` at approximately 00:52
+  Africa/Cairo, but a new booking created around 00:56 still stored
+  `mon nom c'est zachary`; the managed model had put the complete introduction
+  into authoritative semantic state itself.
+- Added `AiPersonNameEntityExtractor` as a second, narrow server-side semantic
+  checkpoint. Whenever a newly completed person name enters conversation
+  state, Sauti makes a forced structured AI extraction that:
+  - understands any language or script supported by the configured model;
+  - returns only the complete person-name entity in its original script and
+    with its original diacritics;
+  - returns incomplete/empty when there is no actual complete name;
+  - fails closed if the provider fails or does not make the required structured
+    tool call.
+- Repeated identical name values within one state update share the same
+  extraction result, avoiding duplicate model calls for self-bookings where
+  caller and appointment names are identical. This adds one narrow model call
+  when a new person name is captured, not on every conversational turn.
 - Files touched:
   - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/session/PersonNameEntityExtractor.java`
+  - `backend/src/main/java/com/sauti/session/AiPersonNameEntityExtractor.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
   - `backend/src/main/java/com/sauti/tool/AgentToolLoader.java`
   - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/test/java/com/sauti/session/AiPersonNameEntityExtractorTest.java`
+  - `backend/src/test/java/com/sauti/tool/ConversationStateToolTest.java`
   - `backend/src/test/java/com/sauti/tool/AgentToolLoaderTest.java`
   - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
   - `docs/agent-handoff.md`
@@ -258,7 +312,9 @@ Expected:
   - `.\gradlew.bat :backend:test` - passed.
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
-  review and the normal GitHub Actions CI/CD workflow.
+  review and the normal GitHub Actions CI/CD workflow. The earlier schema/state
+  safeguard is deployed as `d83df6b`; the new server-side semantic checkpoint
+  is not yet deployed.
 - Known limitation: this prevents future bad writes but does not guess how to
   rewrite existing arbitrary names. The reported booking and its external
   calendar event must be edited once from `mon nom c'est zachary` to `Zachary`.

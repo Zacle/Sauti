@@ -9,8 +9,10 @@ import com.sauti.session.CallSessionStore;
 import com.sauti.session.BookingDraft;
 import com.sauti.session.ConversationState;
 import com.sauti.session.PendingAction;
+import com.sauti.session.PersonNameEntityExtractor;
 import com.sauti.session.PersonNameNormalizer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -80,11 +82,21 @@ public class ConversationStateTool {
 
     private final CallSessionStore sessions;
     private final AgentToolRepository agentTools;
+    private final PersonNameEntityExtractor personNames;
 
     @Autowired
-    public ConversationStateTool(CallSessionStore sessions, AgentToolRepository agentTools) {
+    public ConversationStateTool(
+            CallSessionStore sessions,
+            AgentToolRepository agentTools,
+            PersonNameEntityExtractor personNames
+    ) {
         this.sessions = sessions;
         this.agentTools = agentTools;
+        this.personNames = personNames;
+    }
+
+    public ConversationStateTool(CallSessionStore sessions, AgentToolRepository agentTools) {
+        this(sessions, agentTools, (call, candidate) -> PersonNameNormalizer.normalize(candidate));
     }
 
     public ConversationStateTool(CallSessionStore sessions) {
@@ -590,6 +602,7 @@ public class ConversationStateTool {
         var phoneCaptureStatus = choice(
                 arguments.get("phone_capture_status"), PHONE_CAPTURE_STATUS, "incomplete"
         );
+        var extractedNames = new HashMap<String, String>();
         // Review decisions authorize at most the current caller turn. They must
         // never leak into a later turn as stale approval.
         values.remove("review_decision");
@@ -618,7 +631,10 @@ public class ConversationStateTool {
             }
             if (PERSON_NAME_FIELDS.contains(key)) {
                 if (!"complete".equals(nameCaptureStatus)) return;
-                var normalizedName = PersonNameNormalizer.normalize(value);
+                var normalizedName = extractedNames.computeIfAbsent(
+                        value,
+                        candidate -> PersonNameNormalizer.normalize(personNames.extract(call, candidate))
+                );
                 if (!normalizedName.isBlank()) values.put(key, normalizedName);
                 return;
             }

@@ -1,5 +1,6 @@
 import type { AuthSession } from "@/types/api";
 import { clearSession, readSession, writeSession } from "@/lib/session";
+import { parseSuccessfulJsonResponse } from "./response";
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -84,8 +85,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, retry 
     return apiRequest<T>(path, init, false);
   }
   if (!response.ok) throw new ApiError(await parseError(response), response.status);
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  return parseSuccessfulJsonResponse<T>(response);
 }
 
 export async function apiBlobRequest(path: string, init: RequestInit = {}, retry = true): Promise<Blob> {

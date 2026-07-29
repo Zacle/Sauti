@@ -13,6 +13,7 @@ import com.sauti.session.CallSessionStore;
 import com.sauti.session.BookingDraft;
 import com.sauti.session.ConversationState;
 import com.sauti.session.PendingAction;
+import com.sauti.session.PersonNameEntityExtractor;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -116,6 +117,34 @@ class ConversationStateToolTest {
                 .containsEntry("caller_name", "Zacari")
                 .containsEntry("appointment_name", "Zacari")
                 .doesNotContainValue("partial introduction");
+    }
+
+    @Test
+    void storesTheServerExtractedNameInsteadOfTheModelsRawIntroduction() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("server-name-extraction-call");
+        when(sessions.conversationState("server-name-extraction-call")).thenReturn(Optional.of(
+                ConversationState.empty()
+        ));
+        PersonNameEntityExtractor extractor = (ignored, candidate) ->
+                "mon nom c'est zachary".equals(candidate) ? "Zachary" : "";
+        var tool = new ConversationStateTool(sessions, null, extractor);
+
+        tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("caller_name", "mon nom c'est zachary"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "self",
+                "booking_intent", "active",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Merci, Zachary."
+        )));
+
+        assertThat(captureState(sessions, "server-name-extraction-call").values())
+                .containsEntry("caller_name", "Zachary")
+                .containsEntry("appointment_name", "Zachary")
+                .doesNotContainValue("mon nom c'est zachary");
     }
 
     @Test
