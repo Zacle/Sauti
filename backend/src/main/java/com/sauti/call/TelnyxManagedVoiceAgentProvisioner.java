@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "27";
+        return "28";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -257,7 +257,10 @@ public class TelnyxManagedVoiceAgentProvisioner {
         body.put("privacy_settings", Map.of("data_retention", true));
         body.put("interruption_settings", Map.of(
                 "enable", true,
-                "disable_greeting_interruption", false,
+                // Protect the complete opening sentence. Browser microphone
+                // activation and background noise can otherwise trigger VAD
+                // while Telnyx is beginning the greeting and clip its first words.
+                "disable_greeting_interruption", true,
                 "start_speaking_plan", Map.of(
                         // Nova-3 does not provide Flux's semantic end-of-turn
                         // detection. Give multilingual callers enough time for

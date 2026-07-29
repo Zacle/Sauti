@@ -225,6 +225,66 @@ Expected:
 
 ## Change log
 
+### 2026-07-29 - Remove the Telnyx demo's forced restart and protect its greeting
+
+- Diagnosed `sauti-telnyx-diagnostics-1785358245965.json`. This call used
+  `Telnyx.Ultra.5deeaea9-c3cf-4288-82ec-22d8f04eb158` and showed:
+  - backend test-call preparation at 5.012 seconds;
+  - Telnyx SDK completion at 6.800 seconds and first signaling readiness at
+    9.713 seconds;
+  - a Sauti-generated conversation retry at 14.724 seconds, exactly 5.011
+    seconds after signaling became ready;
+  - the replacement conversation becoming active at 20.850 seconds and first
+    agent audio only at 24.629 seconds.
+- The five-second retry was a Sauti timeout, not a provider error. Increased
+  the active-conversation allowance to 12 seconds so normal Telnyx WebRTC
+  startup is not torn down and recreated just before it becomes active. The
+  existing single recovery attempt remains available for a genuinely stalled
+  conversation.
+- Corrected browser preloading. Agent Studio previously preloaded only Sauti's
+  local Telnyx wrapper while the comparatively expensive
+  `@telnyx/ai-agent-lib` import still began during the call. Preloading now
+  resolves the provider SDK itself as soon as the test panel mounts and reuses
+  the same cached module when the user starts the call.
+- Protected the opening sentence from interruption. Managed Telnyx assistants
+  now set `disable_greeting_interruption=true`, preventing microphone
+  activation noise or an early VAD event from clipping the first greeting
+  words. Managed configuration version `28` applies this to existing assistants
+  on their next synchronization.
+- Reviewed current first-party fallback capabilities. ElevenLabs is the first
+  recommended bake-off candidate if the corrected live Telnyx run still has
+  broken output because it provides browser WebRTC, multilingual voice agents,
+  client/server tools, and telephony. Retell is the second candidate with a
+  dedicated web-call SDK, multilingual agents, custom functions, and phone
+  operations. Vapi remains viable but adds another orchestration layer. No
+  provider migration was made without a post-fix Telnyx comparison call.
+- Files touched:
+  - `dashboard/features/voice-runtime/browserVoiceRuntime.ts`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `dashboard/features/voice-runtime/telnyxReadiness.ts`
+  - `dashboard/features/voice-runtime/telnyxReadiness.test.ts`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `ManagedVoiceAgentProvisionersTest` - passed.
+  - `npm.cmd run test:voice` - passed all 22 tests.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; Next.js generated the optimized production
+    build.
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Required live acceptance test after reviewed deployment:
+  - run two consecutive French browser tests without changing the agent;
+  - neither trace may contain `startup_conversation_retry`;
+  - the greeting must begin with its first word and play continuously;
+  - compare first-audio time and normal-turn audio on a known catalog
+    NaturalHD French voice as a control against the selected custom Ultra
+    voice;
+  - if output still clips or breaks on the control voice, begin the ElevenLabs
+    provider bake-off rather than continuing indefinite Telnyx prompt tuning.
+
 ### 2026-07-29 - Stabilize Telnyx browser speech, transcripts, and stalled turns
 
 - Diagnosed `sauti-telnyx-diagnostics-1785349753398.json` from call

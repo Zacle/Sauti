@@ -50,7 +50,7 @@ function loadTelnyxRuntime() {
 }
 
 export function preloadBrowserVoiceRuntime() {
-  return loadTelnyxRuntime().then(() => undefined);
+  return loadTelnyxRuntime().then(({ preloadTelnyxRuntime }) => preloadTelnyxRuntime());
 }
 
 export async function warmBrowserMicrophone() {

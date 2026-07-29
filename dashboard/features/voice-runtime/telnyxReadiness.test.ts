@@ -5,7 +5,12 @@ import {
   isTelnyxConversationStartupFailure,
   startTelnyxConversationWhenReady,
   startTelnyxConversationWithAuthenticationRetry,
+  TELNYX_CONVERSATION_START_TIMEOUT_MS,
 } from "./telnyxReadiness.ts";
+
+test("allows a normal WebRTC conversation more than five seconds to become active", () => {
+  assert.equal(TELNYX_CONVERSATION_START_TIMEOUT_MS, 12_000);
+});
 
 test("does not start a Telnyx conversation until the full client-ready event", async () => {
   const order: string[] = [];

@@ -30,13 +30,15 @@ type TelnyxAuthenticationRetryOptions = {
   wait?(delayMs: number): Promise<void>;
 };
 
+export const TELNYX_CONVERSATION_START_TIMEOUT_MS = 12_000;
+
 export async function startTelnyxConversationWhenReady({
   connect,
   startConversation,
   subscribe,
   subscribeConversation,
   timeoutMs = 15_000,
-  conversationTimeoutMs = 5_000,
+  conversationTimeoutMs = TELNYX_CONVERSATION_START_TIMEOUT_MS,
 }: StartTelnyxConversationOptions): Promise<void> {
   const timeout = { id: undefined as ReturnType<typeof setTimeout> | undefined };
   let settled = false;

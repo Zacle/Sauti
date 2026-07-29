@@ -20,12 +20,24 @@ import {
 
 const RESPONSE_TIMEOUT_MS = 25_000;
 const AGENT_TRANSCRIPT_SETTLE_MS = 1_200;
+type TelnyxAgentModule = typeof import("@telnyx/ai-agent-lib");
+
+let telnyxAgentModule: Promise<TelnyxAgentModule> | undefined;
+
+export function preloadTelnyxRuntime() {
+  telnyxAgentModule ??= import("@telnyx/ai-agent-lib").catch((error) => {
+    telnyxAgentModule = undefined;
+    throw error;
+  });
+  return telnyxAgentModule.then(() => undefined);
+}
 
 export async function connectTelnyxRuntime(
   session: BrowserVoiceRuntimeSession,
   callbacks: BrowserVoiceRuntimeCallbacks,
 ): Promise<BrowserVoiceRuntimeConnection> {
-  const { TelnyxAIAgent } = await import("@telnyx/ai-agent-lib");
+  await preloadTelnyxRuntime();
+  const { TelnyxAIAgent } = await telnyxAgentModule!;
   callbacks.onStartupStage?.("sdk_loaded");
   const agentId = configString(session.configuration, "agentId");
   if (!agentId) throw new Error("Telnyx did not return an AI assistant id.");

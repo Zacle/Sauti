@@ -131,7 +131,7 @@ class ManagedVoiceAgentProvisionersTest {
                 .isEqualTo(Map.of("data_retention", true));
         assertThat(body.getValue().get("interruption_settings")).isEqualTo(Map.of(
                 "enable", true,
-                "disable_greeting_interruption", false,
+                "disable_greeting_interruption", true,
                 "start_speaking_plan", Map.of(
                         "wait_seconds", 0.15,
                         "transcription_endpointing_plan", Map.of(
