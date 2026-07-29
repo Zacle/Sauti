@@ -531,8 +531,7 @@ function formatDate(value: string) {
 }
 
 function formatTurnTime(turnIndex: number) {
-  const seconds = Math.max(0, turnIndex * 8);
-  return `00:${String(seconds).padStart(2, "0")}`;
+  return `Turn ${Math.max(1, turnIndex)}`;
 }
 
 function humanize(value: string) {

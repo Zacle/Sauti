@@ -35,3 +35,35 @@ Direct raster checks at favicon and sidebar sizes show the circle, conversation 
 The in-app browser connection failed before the local dashboard could be captured, so browser-rendered placement and console checks could not be completed in this session.
 
 final result: blocked
+
+---
+
+# Authentication Experience Design QA
+
+- Selected visual truth: `C:\Users\Zacle\.codex\generated_images\019fab01-cdf5-74e3-84be-78463e67622f\call_OlpXUx8btmIhczLc1uy0DLRu.png`
+- Implemented surface: `dashboard/features/auth/AuthForm/AuthForm.tsx`
+- Styling: `dashboard/features/auth/AuthForm/AuthForm.css`
+- States covered: register, login, email verification, Google availability, missing workspace name, submitting, and OAuth redirecting
+- Responsive targets: desktop split view, tablet/small-laptop single-column form, and stacked phone fields below 560 px
+
+## Fidelity notes
+
+- Recreated the selected navy split-screen composition with a focused registration panel and a real Sauti waveform image.
+- Preserved the selected headline, compact benefit rows, bright Google action, blue primary action, restrained borders, and dense professional spacing.
+- Adapted the concept to the existing Sauti component and token system rather than replacing the application shell.
+- On narrow screens the supporting visual panel is removed and the form becomes the primary content, avoiding horizontal overflow and keeping controls at usable touch sizes.
+
+## Functional checks
+
+- Workspace name and country now precede Google registration because both values are required to create the workspace.
+- Google configuration and validation feedback render immediately beneath the Google control.
+- Missing workspace names receive focus and a specific error.
+- The OAuth transition uses `window.location.assign` and sends new registrations through `/onboarding`.
+- Type checking and linting passed.
+- The production build remained CPU-bound without producing further output and was stopped after a bounded wait; no build error was emitted before termination.
+
+## Blocker
+
+The in-app browser connection was unavailable, so a same-viewport implementation screenshot, combined visual comparison, and browser console check could not be completed.
+
+final result: blocked

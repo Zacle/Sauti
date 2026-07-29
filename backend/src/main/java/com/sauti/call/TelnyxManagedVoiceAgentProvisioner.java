@@ -45,7 +45,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "25";
+        return "26";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -171,8 +171,11 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   If transcription contains an unclear sound, missing digit, interruption, or unfinished sequence,
                   store no phone update and ask for one slow natural repetition. Never reconstruct uncertain sounds
                   into plausible digits. During the signed booking review, read every stored digit individually in
-                  the caller's language. A caller correction is correct_review, never approval of the old review;
-                  produce and obtain approval of the focused correction review before saving.
+                  the caller's language. When a tool result contains callerPhoneDigits, reproduce each array element
+                  exactly once and in its original order. Never regenerate the number from conversational memory,
+                  duplicate a digit, omit a digit, or insert a separator as a digit. A caller correction is
+                  correct_review, never approval of the old review; produce and obtain approval of the focused
+                  correction review before saving.
                 - Interpret approval, correction, rejection, and negation semantically from the complete caller turn
                   and the immediately preceding question, in any language. Do not classify intent from a language
                   keyword list. For a signed booking review, you may record a clean correction or unconditional

@@ -16,6 +16,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -23,6 +25,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(name = "sauti.telephony.provider", havingValue = "telnyx")
 public class TelnyxTelephonyProvider implements TelephonyProvider {
+    private static final Logger LOGGER = LoggerFactory.getLogger(TelnyxTelephonyProvider.class);
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
@@ -163,6 +166,12 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
 
     public void answerInboundCall(Call call, String callControlId, String greeting) {
         requireConfigured();
+        // Resolve and, when necessary, synchronize the managed assistant while
+        // the inbound leg is still ringing. Doing this after answer creates
+        // several seconds of dead air for the caller on a cold configuration.
+        var startedAt = System.nanoTime();
+        var preparedAssistant = prepareAiAssistant(call, greeting);
+        var preparedAt = System.nanoTime();
         var body = new LinkedHashMap<String, Object>();
         body.put("command_id", UUID.randomUUID().toString());
         if (call.getAgent().isRecordCalls()) {
@@ -172,17 +181,40 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
             body.put("record_track", "both");
         }
         send("POST", apiBaseUrl + "/calls/" + encodePath(callControlId) + "/actions/answer", body);
-        startAiAssistant(call, callControlId, greeting);
+        var answeredAt = System.nanoTime();
+        startAiAssistant(call, callControlId, preparedAssistant);
+        var assistantStartedAt = System.nanoTime();
+        LOGGER.info(
+                "Telnyx inbound startup preparedMs={} answerMs={} assistantStartMs={}",
+                elapsedMilliseconds(startedAt, preparedAt),
+                elapsedMilliseconds(preparedAt, answeredAt),
+                elapsedMilliseconds(answeredAt, assistantStartedAt)
+        );
     }
 
     public void startAiAssistant(Call call, String callControlId, String greeting) {
+        startAiAssistant(call, callControlId, prepareAiAssistant(call, greeting));
+    }
+
+    private PreparedAiAssistant prepareAiAssistant(Call call, String greeting) {
         var managed = provisioningService.resolve(call, greeting);
+        return new PreparedAiAssistant(
+                managed.externalAgentId(),
+                greeting == null ? "" : greeting.trim()
+        );
+    }
+
+    private void startAiAssistant(
+            Call call,
+            String callControlId,
+            PreparedAiAssistant prepared
+    ) {
         var assistant = new LinkedHashMap<String, Object>();
-        assistant.put("id", managed.externalAgentId());
+        assistant.put("id", prepared.externalAgentId());
         assistant.put("dynamic_variables", Map.of("sauti_call_sid", call.getTwilioCallSid()));
         var body = new LinkedHashMap<String, Object>();
         body.put("assistant", Map.copyOf(assistant));
-        body.put("greeting", greeting == null ? "" : greeting.trim());
+        body.put("greeting", prepared.greeting());
         var configuredVoice = blank(call.getAgent().getTtsVoiceId());
         body.put(
                 "voice",
@@ -337,11 +369,18 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         return value == null ? "" : value.trim();
     }
 
+    private long elapsedMilliseconds(long startedAt, long endedAt) {
+        return Math.max(0, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(endedAt - startedAt));
+    }
+
     private String escapeXml(String value) {
         return value == null ? "" : value.replace("&", "&amp;").replace("<", "&lt;")
                 .replace(">", "&gt;").replace("\"", "&quot;");
     }
 
     public record NumberOrder(String id, String status, String phoneNumber, boolean requirementsMet) {
+    }
+
+    private record PreparedAiAssistant(String externalAgentId, String greeting) {
     }
 }

@@ -101,7 +101,11 @@ class ManagedVoiceAgentProvisionersTest {
                         "name introduction without an",
                         "every digit in the caller's finished sequence is unambiguous",
                         "Never reconstruct uncertain sounds",
-                        "A caller correction is correct_review"
+                        "reproduce each array element",
+                        "exactly once and in its original order",
+                        "Never regenerate the number from conversational memory",
+                        "A caller correction is",
+                        "correct_review"
                 )
                 .doesNotContain("{{telnyx_conversation_channel}}")
                 .contains("native", "hangup")

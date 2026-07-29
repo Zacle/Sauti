@@ -7,14 +7,14 @@
     "build": "next build",
     "start": "next start -p 8088",
     "lint": "eslint . --max-warnings=0",
-    "test:voice": "node --experimental-strip-types --test features/voice-runtime/managedRuntimeConfig.test.ts features/voice-runtime/telnyxEndConversation.test.ts features/voice-runtime/telnyxReadiness.test.ts features/voice-runtime/terminalIntent.test.ts features/voice-runtime/voiceDiagnostics.test.ts",
+    "test:voice": "node --experimental-strip-types --test features/voice-runtime/managedRuntimeConfig.test.ts features/voice-runtime/telnyxEndConversation.test.ts features/voice-runtime/telnyxReadiness.test.ts features/voice-runtime/telnyxTranscript.test.ts features/voice-runtime/terminalIntent.test.ts features/voice-runtime/voiceDiagnostics.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@radix-ui/react-popover": "^1.1.19",
     "@radix-ui/react-select": "^2.3.3",
     "@radix-ui/react-slider": "^1.4.3",
-    "@telnyx/ai-agent-lib": "^0.5.1",
+    "@telnyx/ai-agent-lib": "^0.6.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "flag-icons": "^7.5.0",

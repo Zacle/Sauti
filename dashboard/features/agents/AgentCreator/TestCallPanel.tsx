@@ -151,6 +151,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     setError("");
     endingRef.current = false;
     firstAgentAudioRef.current = false;
+    agentCaptionIdRef.current = "";
     updateStatus("connecting");
     try {
       const callPromise = startTestCall(agentId, voiceId).then((started) => {
@@ -206,6 +207,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             firstAgentAudioRef.current = true;
             recordDiagnostic("first_agent_audio");
           }
+          if (speaking) setError("");
           updateStatus(speaking ? "speaking" : "listening");
         },
         onLatencyMeasured(kind, latencyMs) {

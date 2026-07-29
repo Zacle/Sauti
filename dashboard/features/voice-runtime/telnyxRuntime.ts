@@ -13,6 +13,12 @@ import {
   startTelnyxConversationWhenReady,
 } from "./telnyxReadiness";
 import { callerClearlyRequestedBrowserEnd } from "./terminalIntent";
+import {
+  TelnyxAgentTranscriptAccumulator,
+  type CompletedAgentTranscript,
+} from "./telnyxTranscript";
+
+const RESPONSE_TIMEOUT_MS = 25_000;
 
 export async function connectTelnyxRuntime(
   session: BrowserVoiceRuntimeSession,
@@ -47,7 +53,6 @@ export async function connectTelnyxRuntime(
   let stopped = false;
   let ended = false;
   let agentSpeaking = false;
-  let latestAgentText = "";
   let conversationStarted = false;
   let endingRequested = false;
   let providerCallControlId = "";
@@ -55,6 +60,29 @@ export async function connectTelnyxRuntime(
   let terminalIntentPending = false;
   let terminalFarewellStarted = false;
   let terminalEndTimer: number | undefined;
+  let responseTimer: number | undefined;
+  const agentTranscript = new TelnyxAgentTranscriptAccumulator();
+
+  const emitCompletedAgentTranscript = (
+    completed: CompletedAgentTranscript | undefined,
+  ) => {
+    if (completed) callbacks.onAgentTranscript(completed.text, completed.interrupted);
+  };
+
+  const clearResponseTimer = () => {
+    if (responseTimer !== undefined) window.clearTimeout(responseTimer);
+    responseTimer = undefined;
+  };
+
+  const armResponseTimer = () => {
+    clearResponseTimer();
+    responseTimer = window.setTimeout(() => {
+      responseTimer = undefined;
+      callbacks.onError(
+        "Telnyx did not return response audio within 25 seconds. You can repeat your last answer or end the conversation.",
+      );
+    }, RESPONSE_TIMEOUT_MS);
+  };
 
   const retainProviderCallControlId = (value: string | null | undefined) => {
     const normalized = value?.trim() ?? "";
@@ -83,6 +111,8 @@ export async function connectTelnyxRuntime(
   const finish = () => {
     if (!conversationStarted || ended || stopped) return;
     clearTerminalEndTimer();
+    clearResponseTimer();
+    emitCompletedAgentTranscript(agentTranscript.flush(false));
     ended = true;
     agentSpeaking = false;
     callbacks.onAgentSpeaking(false);
@@ -157,18 +187,25 @@ export async function connectTelnyxRuntime(
         callbacks.onLatencyMeasured?.("turn", Math.round(userPerceivedLatencyMs));
       }
       if (state === "speaking") {
+        clearResponseTimer();
         agentSpeaking = true;
         if (terminalIntentPending) terminalFarewellStarted = true;
         callbacks.onAgentSpeaking(true);
-        if (latestAgentText) callbacks.onAgentCaption(latestAgentText);
         return;
       }
       if (state === "thinking") {
-        if (agentSpeaking) callbacks.onInterrupted();
+        armResponseTimer();
+        if (agentSpeaking) {
+          emitCompletedAgentTranscript(agentTranscript.flush(true));
+          callbacks.onInterrupted();
+        }
         callbacks.onCallerSpeechEnded();
       }
       const completedTerminalFarewell =
         agentSpeaking && terminalIntentPending && terminalFarewellStarted;
+      if (agentSpeaking && state === "listening") {
+        emitCompletedAgentTranscript(agentTranscript.flush(false));
+      }
       agentSpeaking = false;
       callbacks.onAgentSpeaking(false);
       if (completedTerminalFarewell) scheduleTerminalEnd(450);
@@ -177,6 +214,7 @@ export async function connectTelnyxRuntime(
       const text = item.content.trim();
       if (!text) return;
       if (item.role === "user") {
+        emitCompletedAgentTranscript(agentTranscript.flush(false));
         terminalIntentPending = callerClearlyRequestedBrowserEnd(text);
         terminalFarewellStarted = false;
         clearTerminalEndTimer();
@@ -184,9 +222,11 @@ export async function connectTelnyxRuntime(
         callbacks.onCallerTranscript(text);
         return;
       }
-      latestAgentText = text;
-      callbacks.onAgentTranscript(text, false);
-      if (agentSpeaking) callbacks.onAgentCaption(text);
+      if (agentSpeaking) clearResponseTimer();
+      else armResponseTimer();
+      const update = agentTranscript.append(item.id, item.content);
+      emitCompletedAgentTranscript(update.completed);
+      callbacks.onAgentCaption(update.caption);
     });
   };
   configureClient(client);
@@ -283,6 +323,8 @@ export async function connectTelnyxRuntime(
     async stop() {
       if (stopped) return;
       clearTerminalEndTimer();
+      clearResponseTimer();
+      emitCompletedAgentTranscript(agentTranscript.flush(false));
       retainProviderIds();
       stopped = true;
       ended = true;

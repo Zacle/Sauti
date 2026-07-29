@@ -1,19 +1,19 @@
 "use client";
 
 import "./AuthForm.css";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   ChevronDown,
   Globe2,
   LoaderCircle,
-  LockKeyhole,
   MailCheck,
-  PhoneCall,
   ShieldCheck,
   UserRound,
+  Zap,
 } from "lucide-react";
 import { authApi, getOnboardingStatus } from "@/lib/api/auth";
 import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
@@ -38,7 +38,10 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [googleError, setGoogleError] = useState("");
   const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const businessNameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (mode === "verify") {
@@ -55,8 +58,17 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     if (mode === "verify") return;
     fetch("/api/v1/auth/oauth/google/status")
       .then((response) => response.json())
-      .then((body: { configured?: boolean }) => setGoogleConfigured(Boolean(body.configured)))
-      .catch(() => setGoogleConfigured(false));
+      .then((body: { configured?: boolean }) => {
+        const configured = Boolean(body.configured);
+        setGoogleConfigured(configured);
+        if (!configured) {
+          setGoogleError("Google sign-in is temporarily unavailable. Please continue with email.");
+        }
+      })
+      .catch(() => {
+        setGoogleConfigured(false);
+        setGoogleError("Google sign-in is temporarily unavailable. Please continue with email.");
+      });
   }, [mode]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -106,8 +118,28 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const googleQuery = new URLSearchParams({
     businessName: mode === "register" ? businessName : "",
     countryCode: mode === "register" ? countryCode : "",
-    returnPath: mode === "register" ? "/agents" : "/dashboard",
+    returnPath: mode === "register" ? "/onboarding" : "/dashboard",
   });
+  const googleUrl = `/api/v1/auth/oauth/google/authorize?${googleQuery.toString()}`;
+
+  function continueWithGoogle() {
+    setError("");
+    setGoogleError("");
+
+    if (mode === "register" && !businessName.trim()) {
+      setGoogleError("Enter your business name before continuing with Google.");
+      businessNameRef.current?.focus();
+      return;
+    }
+
+    if (!googleConfigured) {
+      setGoogleError("Google sign-in is temporarily unavailable. Please continue with email.");
+      return;
+    }
+
+    setGoogleBusy(true);
+    window.location.assign(googleUrl);
+  }
 
   return (
     <main className="app-auth-page">
@@ -116,99 +148,139 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       </Link>
       <section className="auth-shell">
         <div className="auth-copy">
-          <span>{isVerify ? "Email verification" : isLogin ? "Sauti Console" : "Workspace setup"}</span>
+          <span>{isVerify ? "Secure workspace access" : "Sauti voice operations"}</span>
           <h1>
             {isVerify
-              ? "Verify your email to activate the workspace."
+              ? "One quick check before your workspace goes live."
               : isLogin
-                ? "Sign in to run your AI phone operations."
-                : "Create the workspace for your first AI phone agent."}
+                ? "Your AI phone operations are ready when you are."
+                : "AI voice agents. Every language. Any scale."}
           </h1>
           <p>
-            Configure multilingual agents, monitor calls, review booking outcomes, and keep
-            customer conversations moving from one workspace.
+            Launch natural, multilingual conversations, monitor outcomes, and keep every
+            customer interaction moving from one focused workspace.
           </p>
+          <div className="auth-waveform" aria-hidden="true">
+            <Image
+              alt=""
+              fill
+              priority
+              sizes="(max-width: 900px) 0px, 52vw"
+              src="/images/marketing/conversation-waveform.png"
+            />
+          </div>
           <div className="auth-copy-notes">
-            <div><ShieldCheck size={18} /> Tenant-isolated tools and data</div>
-            <div><PhoneCall size={18} /> Live calls, transcripts, and outcomes</div>
-            <div><LockKeyhole size={18} /> Verified access before production launch</div>
+            <div><Globe2 size={18} /><span><strong>Multilingual by default</strong>Natural conversations across markets.</span></div>
+            <div><Zap size={18} /><span><strong>Live operational insight</strong>Calls, transcripts, and outcomes in one place.</span></div>
+            <div><ShieldCheck size={18} /><span><strong>Built for trusted access</strong>Workspace-isolated tools and customer data.</span></div>
           </div>
         </div>
 
-        <form className="auth-card" onSubmit={submit}>
-          <div className="auth-card-head">
-            <span>{isVerify ? <MailCheck size={22} /> : <UserRound size={22} />}</span>
-            <div>
-              <h2>{isVerify ? "Verify email" : isLogin ? "Log in" : "Create account"}</h2>
-              <p>{isVerify ? "Enter the six-digit code sent to your email." : "Use your workspace credentials."}</p>
+        <div className="auth-form-panel">
+          <form className="auth-card" onSubmit={submit}>
+            <div className="auth-card-head">
+              <span>{isVerify ? <MailCheck size={22} /> : <UserRound size={22} />}</span>
+              <div>
+                <h2>{isVerify ? "Verify your email" : isLogin ? "Welcome back" : "Create your workspace"}</h2>
+                <p>
+                  {isVerify
+                    ? "Enter the six-digit code sent to your email."
+                    : isLogin
+                      ? "Sign in to manage your voice agents."
+                      : "Start building your first AI voice agent today."}
+                </p>
+              </div>
             </div>
-          </div>
 
-          {!isVerify && (
-            <>
-              <a
-                aria-disabled={googleConfigured === false}
-                className={`google-auth-button ${googleConfigured === false ? "disabled" : ""}`}
-                href={`/api/v1/auth/oauth/google/authorize?${googleQuery.toString()}`}
-                onClick={(event) => {
-                  if (mode === "register" && !businessName.trim()) {
-                    event.preventDefault();
-                    setError("Enter your business name before continuing with Google.");
-                    return;
-                  }
-                  if (googleConfigured === false) {
-                    event.preventDefault();
-                    setError("Google sign-in is not configured. Add the Google OAuth client ID and secret to the backend environment.");
-                  }
-                }}
-              >
-                <span>G</span> Continue with Google
-              </a>
-              <div className="auth-divider"><span>or continue with email</span></div>
-            </>
-          )}
-
-          {mode === "register" && (
-            <div className="auth-field-row">
-              <label>Business name<input required value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Acme Health" /></label>
-              <label>Country
-                <span className="auth-country-select">
-                  <Globe2 size={17} />
-                  <select aria-label="Country" value={countryCode} onChange={(e) => setCountryCode(e.target.value)}>
-                    {COUNTRIES.map((country) => (
-                      <option value={country.code} key={country.code}>{country.name}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={17} />
-                </span>
-              </label>
-            </div>
-          )}
-          <label>Email<input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="owner@company.com" /></label>
-          {isVerify ? (
-            <label>Verification code<input required inputMode="numeric" minLength={6} maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="123456" /></label>
-          ) : (
-            <label>Password<input required minLength={8} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" /></label>
-          )}
-
-          {error && <div className="form-alert error" role="alert">{error}</div>}
-          {message && <div className="form-alert success" role="status">{message}</div>}
-          <button className="app-primary-button" disabled={busy} type="submit">
-            {busy ? <LoaderCircle className="spin" size={17} /> : null}
-            {isVerify ? "Verify email" : isLogin ? "Log in" : "Create workspace"}
-            {!busy && <ArrowRight size={17} />}
-          </button>
-
-          <p className="auth-switch">
-            {isVerify ? (
-              <>Didn&apos;t receive it? <button type="button" onClick={resend}>Resend code</button></>
-            ) : isLogin ? (
-              <>New to Sauti? <Link href="/register">Create workspace</Link></>
-            ) : (
-              <>Already have an account? <Link href="/login">Log in</Link></>
+            {mode === "register" && (
+              <div className="auth-field-row">
+                <label>
+                  Business name
+                  <input
+                    ref={businessNameRef}
+                    required
+                    value={businessName}
+                    onChange={(event) => {
+                      setBusinessName(event.target.value);
+                      if (googleError.startsWith("Enter your business")) setGoogleError("");
+                    }}
+                    placeholder="Acme Health"
+                  />
+                </label>
+                <label>
+                  Country
+                  <span className="auth-country-select">
+                    <Globe2 size={17} />
+                    <select aria-label="Country" value={countryCode} onChange={(event) => setCountryCode(event.target.value)}>
+                      {COUNTRIES.map((country) => (
+                        <option value={country.code} key={country.code}>{country.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown size={17} />
+                  </span>
+                </label>
+              </div>
             )}
-          </p>
-        </form>
+
+            {!isVerify && (
+              <>
+                <button
+                  className="google-auth-button"
+                  disabled={googleBusy || googleConfigured !== true}
+                  onClick={continueWithGoogle}
+                  type="button"
+                >
+                  {googleBusy ? <LoaderCircle className="spin" size={18} /> : <span aria-hidden="true">G</span>}
+                  {googleConfigured === null
+                    ? "Checking Google sign-in…"
+                    : googleBusy
+                      ? "Opening Google…"
+                      : "Continue with Google"}
+                </button>
+                <p className={`google-auth-helper ${googleError ? "error" : ""}`} role={googleError ? "alert" : undefined}>
+                  {googleError || (mode === "register"
+                    ? "Your workspace name and country will be used to finish setup."
+                    : "Use the Google account connected to your workspace.")}
+                </p>
+                <div className="auth-divider"><span>or continue with email</span></div>
+              </>
+            )}
+
+            <label>
+              Email
+              <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="owner@company.com" />
+            </label>
+            {isVerify ? (
+              <label>
+                Verification code
+                <input required inputMode="numeric" minLength={6} maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} placeholder="123456" />
+              </label>
+            ) : (
+              <label>
+                Password
+                <input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" />
+              </label>
+            )}
+
+            {error && <div className="form-alert error" role="alert">{error}</div>}
+            {message && <div className="form-alert success" role="status">{message}</div>}
+            <button className="app-primary-button" disabled={busy} type="submit">
+              {busy ? <LoaderCircle className="spin" size={17} /> : null}
+              {isVerify ? "Verify email" : isLogin ? "Log in" : "Create workspace"}
+              {!busy && <ArrowRight size={17} />}
+            </button>
+
+            <p className="auth-switch">
+              {isVerify ? (
+                <>Didn&apos;t receive it? <button type="button" onClick={resend}>Resend code</button></>
+              ) : isLogin ? (
+                <>New to Sauti? <Link href="/register">Create workspace</Link></>
+              ) : (
+                <>Already have an account? <Link href="/login">Log in</Link></>
+              )}
+            </p>
+          </form>
+        </div>
       </section>
     </main>
   );

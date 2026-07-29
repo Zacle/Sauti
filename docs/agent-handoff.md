@@ -225,6 +225,102 @@ Expected:
 
 ## Change log
 
+### 2026-07-29 - Stabilize Telnyx browser speech, transcripts, and stalled turns
+
+- Diagnosed `sauti-telnyx-diagnostics-1785349753398.json` from call
+  `de638d17-9846-4470-9793-9fe45b18cb25`.
+- The diagnostic separated three problems:
+  - startup reached the active conversation at 11.2 seconds: the Sauti call
+    response arrived at 4.9 seconds, Telnyx signaling at 7.3 seconds, and remote
+    audio/conversation activation at 11.2 seconds;
+  - the installed Telnyx AI Agent SDK 0.5.1 forced a local `listening` state for
+    every assistant text delta, producing rapid speaking/listening churn;
+  - the final caller turn entered `thinking` at 309.9 seconds and produced no
+    later transcript, audio, client-side tool, or provider error before the
+    user manually ended the test 82 seconds later.
+- Upgraded `@telnyx/ai-agent-lib` from 0.5.1 to 0.6.0. The stable 0.6.0 release
+  removes the SDK's synthetic listening-state emission from every assistant
+  text delta and includes a newer Telnyx WebRTC dependency.
+- Added a Telnyx assistant transcript accumulator:
+  - streamed text deltas belonging to one provider response now update one live
+    caption;
+  - the completed response is persisted once after speech ends instead of
+    saving every word/delta as a separate `CallTurn`;
+  - interruption and shutdown flush the accumulated utterance without losing
+    the final partial response;
+  - cumulative future SDK transcript items cannot duplicate an existing prefix.
+- Hardened phone readback after the supplied French call showed the caller say
+  ten digits (`0115752441`) while the agent repeatedly inserted an extra `4`.
+  When Sauti returns `callerPhoneDigits`, Telnyx must now reproduce each array
+  element exactly once and in order, without regenerating the number from
+  conversational memory. Telnyx managed configuration version is now `26`, so
+  existing assistants receive this contract on their next synchronization.
+- Removed cold managed-assistant synchronization from the answered portion of
+  real inbound calls. Previously `answerInboundCall` sent Telnyx's answer
+  command and only then called `ManagedVoiceAgentProvisioningService.resolve`;
+  after an agent/configuration change, that could reproduce the browser trace's
+  roughly four-second synchronization delay as dead air after pickup. Sauti now
+  resolves the assistant while the inbound leg is still ringing, then sends
+  `answer` followed immediately by `ai_assistant_start`. Warm calls continue to
+  reuse the stored binding. Safe timing logs now report only `preparedMs`,
+  `answerMs`, and `assistantStartMs`, without call IDs or customer data.
+- This does not mean a telephone caller waits for the browser trace's full 12.2
+  seconds. The browser measurement starts at the dashboard click and includes
+  call creation, microphone permission, SDK loading, WebRTC signaling, and
+  remote audio setup. The real Call Control path has no browser microphone,
+  SDK import, or WebRTC setup; after this change, post-answer latency consists
+  of the Telnyx answer/start command round trips and provider greeting startup.
+- Added a 25-second unresolved-response watchdog. If Telnyx enters `thinking`
+  but produces no response audio (with or without a text delta), the test panel
+  returns to a recoverable listening state with an explicit error instead of
+  displaying an indefinite spinner. It deliberately does not inject a fake
+  caller message or blindly retry, which could produce duplicate provider
+  responses.
+- Removed the Calls page's invented `turnIndex * 8 seconds` transcript time.
+  Stored turns do not contain media timestamps, so the UI now shows truthful
+  `Turn N` ordering rather than misleading values such as `00:1520`.
+- Files touched:
+  - `dashboard/features/voice-runtime/{telnyxRuntime,telnyxTranscript,telnyxTranscript.test}.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/calls/CallsPage/CallsPage.tsx`
+  - `dashboard/{package.json,package-lock.json}`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `backend/src/main/java/com/sauti/agent/TelnyxTelephonyProvider.java`
+  - `backend/src/test/java/com/sauti/agent/TelnyxTelephonyProviderTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run test:voice` - passed all 21 tests.
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run build` - passed; Next.js produced the optimized production build.
+  - focused Telnyx managed-provisioner test - passed.
+  - focused Telnyx inbound command-order test - passed; verifies assistant
+    resolution occurs before `answer`, followed by `ai_assistant_start`.
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed; Gradle reported
+    `BUILD SUCCESSFUL` in 1 minute 53 seconds.
+  - `git diff --check` - passed (line-ending notices only).
+  - `npm.cmd audit --json` - reported 9 known dependency advisories (4 moderate,
+    5 high), including advisories inherited through Telnyx WebRTC and the
+    existing Next.js/tooling tree; npm reports no available fix for the Telnyx
+    chain.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after reviewed deployment:
+  - repeat a French browser booking call and confirm agent replies remain one
+    continuous transcript turn without rapid speaking/listening flicker;
+  - compare startup stages across the first and second calls. A first-call-only
+    slow `call_created` stage indicates managed-assistant synchronization,
+    while the signaling/audio interval remains provider/network startup;
+  - place a real inbound phone call after changing an agent. Confirm ringing
+    continues during any cold assistant synchronization, then inspect
+    `preparedMs`, `answerMs`, and `assistantStartMs`; measure pickup-to-greeting
+    from the recording because Telnyx does not emit a greeting-audio-start
+    webhook for this Call Control command;
+  - repeat the phone correction. If Telnyx again produces no response for 25
+    seconds, the panel should show the recovery message and allow another turn;
+    provide the new diagnostic plus server-side managed-tool logs to determine
+    whether the provider stalled before or during a webhook tool.
+
 ### 2026-07-29 - Send one professional welcome email after account activation
 
 - Added a dedicated `welcome.html` email using the same email-safe Sauti design as verification, booking, and post-call messages.
@@ -6905,3 +7001,28 @@ Expected:
   - browser-rendered QA - blocked because the in-app browser connection failed in this session; recorded in `design-qa.md`.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up: capture `/login` and one console route in the in-app browser when available to confirm final placement and browser console state.
+
+### 2026-07-29 - Repair Google registration and redesign responsive authentication
+
+- Rebuilt the login, registration, and verification surfaces from the user-selected Product Design direction:
+  - desktop uses a dark two-panel voice-operations composition with the existing waveform asset and concise product benefits;
+  - tablet and phone layouts prioritize the form, remove the supporting visual panel, preserve safe gutters, and stack workspace fields below 560 px;
+  - inputs, OAuth state, focus treatment, loading state, and primary actions now share a consistent accessible visual hierarchy.
+- Repaired the Google registration interaction:
+  - workspace name and country now appear before the Google action so the required OAuth workspace context is understandable;
+  - the button visibly checks Google availability and reports unavailable, validation, and redirecting states directly beneath the action;
+  - a missing business name focuses the relevant field instead of surfacing an easy-to-miss error lower in the form;
+  - successful activation uses an explicit browser redirect and new Google registrations return through `/onboarding`.
+- Files touched:
+  - `dashboard/features/auth/AuthForm/AuthForm.tsx`
+  - `dashboard/features/auth/AuthForm/AuthForm.css`
+  - `design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - began the Next.js optimized production build but remained CPU-bound without further output; it was stopped after a bounded wait and did not emit a build error before termination.
+  - `git diff --check` - passed (line-ending notices only).
+  - browser-rendered Product Design comparison - blocked because the in-app browser connection was unavailable; recorded in `design-qa.md`.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: rerun the production build and capture `/register`, `/login`, and `/verify-email` at desktop and phone viewports when the browser/build environment is responsive.
