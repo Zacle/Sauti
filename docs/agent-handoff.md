@@ -8044,3 +8044,33 @@ Expected:
   - `npm.cmd run build` - passed.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up: after deployment, run a browser test through its configured limit and confirm it completes with `max-duration` without showing the Telnyx unexpected-session error.
+
+#### Follow-up: preserve browser speech quality and use the prepared STT language
+
+- Re-examined `sauti-telnyx-diagnostics-1785449769763.json`, which is the same Ailsa session as the time-limit trace.
+- Diagnostic findings:
+  - first agent audio arrived at 6.648 seconds, not 10 seconds: 5.088 seconds to establish the active Telnyx conversation plus 1.561 seconds of provider greeting latency;
+  - one later turn did take 10.359 seconds from caller endpoint to response audio;
+  - caller speech was detected on every shown turn and raw microphone peaks were commonly between about -4 dB and -10 dB, so the recognition failure was not caused by a quiet or unavailable microphone;
+  - the browser was applying native browser AGC/noise suppression and then a second fixed +3.5 dB gain plus aggressive 8:1 compression before sending audio to Telnyx.
+- Removed the redundant Web Audio gain/compressor path. The Telnyx local stream now receives the browser's native echo-cancelled, noise-suppressed, AGC-managed microphone track directly, while the analyzer remains read-only for diagnostics.
+- Changed Nova-3 transcription from broad `auto` detection to the language of the prepared assistant binding:
+  - Ailsa's English binding provisions `language=en`;
+  - Gerard's French binding provisions `language=fr`;
+  - other prepared bindings use their own normalized language code.
+- This explicit prior follows Telnyx's documented Nova-3 Assistant API surface and avoids using the undocumented `multi` value that could cause another provider validation failure.
+- Files additionally touched:
+  - `dashboard/features/voice-runtime/browserVoiceRuntime.ts`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Telnyx managed-assistant provisioning tests - passed;
+  - `.\gradlew.bat :backend:test` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run test:voice` - passed (30 tests);
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run build` - passed;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+- Known follow-up: after deployment and assistant reconciliation, repeat the Ailsa English test at a normal speaking volume. Compare the new diagnostic's `appliedGainDb=0`, caller transcript accuracy, first-audio latency, and per-turn latency. The remaining roughly 5-7 second cold conversation/greeting path is within Telnyx's provider-controlled WebRTC/assistant activation rather than Sauti's already-reused signaling preconnection.

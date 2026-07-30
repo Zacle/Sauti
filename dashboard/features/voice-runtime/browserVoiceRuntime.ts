@@ -116,28 +116,18 @@ export async function prepareBrowserMicrophone(): Promise<BrowserMicrophoneCaptu
   const AudioContextClass = window.AudioContext;
   const context = new AudioContextClass({ latencyHint: "interactive" });
   const source = context.createMediaStreamSource(sourceStream);
-  const gain = context.createGain();
-  const compressor = context.createDynamicsCompressor();
   const analyser = context.createAnalyser();
-  const destination = context.createMediaStreamDestination();
-  const gainFactor = 1.5;
-  gain.gain.value = gainFactor;
-  compressor.threshold.value = -14;
-  compressor.knee.value = 10;
-  compressor.ratio.value = 8;
-  compressor.attack.value = 0.003;
-  compressor.release.value = 0.18;
   analyser.fftSize = 2048;
   source.connect(analyser);
-  source.connect(gain);
-  gain.connect(compressor);
-  compressor.connect(destination);
   await context.resume();
   const samples = new Float32Array(analyser.fftSize);
   let stopped = false;
 
   return {
-    stream: destination.stream,
+    // Send the browser's native echo-cancelled, noise-suppressed, AGC-managed
+    // track directly. A second fixed gain/compressor stage distorted already
+    // strong microphones and reduced provider transcription accuracy.
+    stream: sourceStream,
     snapshot: {
       label: track.label || "Default microphone",
       autoGainControl: settings.autoGainControl ?? null,
@@ -145,7 +135,7 @@ export async function prepareBrowserMicrophone(): Promise<BrowserMicrophoneCaptu
       noiseSuppression: settings.noiseSuppression ?? null,
       channelCount: settings.channelCount ?? null,
       sampleRate: settings.sampleRate ?? null,
-      appliedGainDb: Math.round(20 * Math.log10(gainFactor) * 10) / 10,
+      appliedGainDb: 0,
     },
     readLevel() {
       analyser.getFloatTimeDomainData(samples);
@@ -164,10 +154,7 @@ export async function prepareBrowserMicrophone(): Promise<BrowserMicrophoneCaptu
       if (stopped) return;
       stopped = true;
       sourceStream.getTracks().forEach((item) => item.stop());
-      destination.stream.getTracks().forEach((item) => item.stop());
       source.disconnect();
-      gain.disconnect();
-      compressor.disconnect();
       analyser.disconnect();
       await context.close().catch(() => undefined);
     },

@@ -228,10 +228,10 @@ public class TelnyxManagedVoiceAgentProvisioner {
         ));
         var transcription = new LinkedHashMap<String, Object>();
         transcription.put("model", "deepgram/nova-3");
-        // Let the caller speak naturally. The blueprint language remains the
-        // immediate greeting/voice hint, while Nova-3 detects a different
-        // supported language without a menu or reconnect.
-        transcription.put("language", "auto");
+        // Every prepared Telnyx assistant already represents one configured
+        // opening language. Give Nova-3 that explicit prior instead of broad
+        // auto-detection, which misclassified short accented English turns.
+        transcription.put("language", transcriptionLanguage(blueprint));
         var transcriptionSettings = new LinkedHashMap<String, Object>();
         transcriptionSettings.put("smart_format", true);
         transcriptionSettings.put("numerals", true);
@@ -295,6 +295,11 @@ public class TelnyxManagedVoiceAgentProvisioner {
 
     private static String path(String value) {
         return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static String transcriptionLanguage(ManagedVoiceAgentBlueprint blueprint) {
+        var primary = trim(blueprint.language()).toLowerCase(java.util.Locale.ROOT);
+        return primary.isBlank() ? "en" : primary;
     }
 
     private static String shorten(String value, int maximum) {

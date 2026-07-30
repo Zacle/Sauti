@@ -44,7 +44,7 @@ class ManagedVoiceAgentProvisionersTest {
                 .containsEntry("voice_settings", Map.of("voice", "Telnyx.NaturalHD.astra"))
                 .containsEntry("transcription", Map.of(
                         "model", "deepgram/nova-3",
-                        "language", "auto",
+                        "language", "en",
                         "settings", Map.of(
                                 "smart_format", true,
                                 "numerals", true,
@@ -168,7 +168,16 @@ class ManagedVoiceAgentProvisionersTest {
         var body = ArgumentCaptor.forClass((Class<Map<String, Object>>) (Class<?>) Map.class);
         verify(http).post(any(), any(), any(), body.capture());
         assertThat(body.getValue())
-                .containsEntry("voice_settings", Map.of("voice", "Telnyx.NaturalHD.amarante"));
+                .containsEntry("voice_settings", Map.of("voice", "Telnyx.NaturalHD.amarante"))
+                .containsEntry("transcription", Map.of(
+                        "model", "deepgram/nova-3",
+                        "language", "fr",
+                        "settings", Map.of(
+                                "smart_format", true,
+                                "numerals", true,
+                                "keyterm", "SAT,Sauti"
+                        )
+                ));
     }
 
     @Test
