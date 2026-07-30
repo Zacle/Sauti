@@ -15,6 +15,12 @@ import {
   startTelnyxConversationWithAuthenticationRetry,
   startTelnyxConversationWhenReady,
 } from "./telnyxReadiness";
+import {
+  TELNYX_BROWSER_VAD,
+  TERMINAL_END_AFTER_DRAIN_MS,
+  TERMINAL_END_FALLBACK_MS,
+  terminalToolEndDelay,
+} from "./telnyxAudioPolicy";
 import { callerClearlyRequestedBrowserEnd } from "./terminalIntent";
 import {
   TelnyxAgentTranscriptAccumulator,
@@ -68,15 +74,10 @@ function createTelnyxClient(
     versionId: configString(session.configuration, "versionId") || "main",
     environment,
     region: region || undefined,
-    vad: {
-      // The SDK uses this client-side VAD for listening state and latency
-      // measurement. A lower threshold keeps normal laptop-mic speech from
-      // looking silent without changing Telnyx server-side endpointing.
-      volumeThreshold: 4,
-      silenceDurationMs: 700,
-      minSpeechDurationMs: 80,
-      maxLatencyMs: 15_000,
-    },
+    // The same threshold observes local and remote audio. The policy keeps
+    // residual remote noise from leaving the UI stuck in "speaking" while the
+    // retained microphone stream gets its own gain before reaching the SDK.
+    vad: TELNYX_BROWSER_VAD,
   });
 }
 
@@ -189,6 +190,7 @@ export async function connectTelnyxRuntime(
   let providerCallLegId = "";
   let terminalIntentPending = false;
   let terminalFarewellStarted = false;
+  let lastAgentStoppedAt = 0;
   let terminalEndTimer: number | undefined;
   let responseTimer: number | undefined;
   let transcriptFlushTimer: number | undefined;
@@ -319,12 +321,14 @@ export async function connectTelnyxRuntime(
       // Keep WebRTC open until Telnyx reports that the farewell stopped playing;
       // the longer timer is only a fallback for a missing speaking-state event.
       terminalIntentPending = true;
-      if (agentSpeaking) {
-        terminalFarewellStarted = true;
-        scheduleTerminalEnd(12_000);
-      } else {
-        scheduleTerminalEnd(650);
-      }
+      if (agentSpeaking) terminalFarewellStarted = true;
+      // If invocation arrives before TTS, speaking cancels this fallback. If
+      // it arrives after speech, leave time for WebRTC playout to drain.
+      scheduleTerminalEnd(terminalToolEndDelay({
+        agentSpeaking,
+        lastAgentStoppedAt,
+        now: Date.now(),
+      }));
       return { success: true, ending: true };
     });
     target.on("client.tool.invoked", ({ toolName }) => callbacks.onToolInvoked?.(toolName));
@@ -384,9 +388,10 @@ export async function connectTelnyxRuntime(
       if (agentSpeaking && state === "listening") {
         scheduleAgentTranscriptFlush();
       }
+      if (agentSpeaking) lastAgentStoppedAt = Date.now();
       agentSpeaking = false;
       callbacks.onAgentSpeaking(false);
-      if (completedTerminalFarewell) scheduleTerminalEnd(1_500);
+      if (completedTerminalFarewell) scheduleTerminalEnd(TERMINAL_END_AFTER_DRAIN_MS);
     });
     target.on("transcript.item", (item) => {
       const text = item.content.trim();
@@ -397,7 +402,7 @@ export async function connectTelnyxRuntime(
         terminalIntentPending = callerClearlyRequestedBrowserEnd(text);
         terminalFarewellStarted = false;
         clearTerminalEndTimer();
-        if (terminalIntentPending) scheduleTerminalEnd(12_000);
+        if (terminalIntentPending) scheduleTerminalEnd(TERMINAL_END_FALLBACK_MS);
         callbacks.onCallerTranscript(text);
         return;
       }

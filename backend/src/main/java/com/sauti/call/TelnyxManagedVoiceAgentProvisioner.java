@@ -26,7 +26,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
             @Value("${sauti.telnyx.public-base-url:http://localhost:8080}") String publicBaseUrl,
             @Value("${sauti.telnyx.tool-webhook-secret:}") String toolWebhookSecret,
             @Value("${sauti.telnyx.default-voice-id:Telnyx.NaturalHD.astra}") String defaultVoiceId,
-            @Value("${sauti.telnyx.ai-model:anthropic/claude-haiku-4-5}") String aiModel
+            @Value("${sauti.telnyx.ai-model:moonshotai/kimi-k2-6}") String aiModel
     ) {
         this.httpClient = httpClient;
         this.apiKey = trim(apiKey);
@@ -34,7 +34,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
         this.publicBaseUrl = stripTrailingSlash(publicBaseUrl);
         this.toolWebhookSecret = trim(toolWebhookSecret);
         this.defaultVoiceId = trim(defaultVoiceId);
-        this.aiModel = trim(aiModel).isBlank() ? "anthropic/claude-haiku-4-5" : trim(aiModel);
+        this.aiModel = trim(aiModel).isBlank() ? "moonshotai/kimi-k2-6" : trim(aiModel);
     }
 
     public String provider() {
@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "31";
+        return "33";
     }
 
     public ManagedVoiceAgentReference synchronize(

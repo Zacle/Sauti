@@ -585,6 +585,53 @@ class ConversationOrchestratorTest {
                 .contains("Never emit JSON");
     }
 
+    @Test
+    void managedRealtimeInstructionsRetainQualityAndSafetyWithASmallerStablePrefix() {
+        var provider = new SingleResponseProvider("unused");
+        var router = mock(ToolFulfillmentRouter.class);
+        var toolLoader = mock(AgentToolLoader.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var agentVariableService = mock(AgentVariableService.class);
+        var retrieval = mock(com.sauti.knowledge.KnowledgeRetrievalService.class);
+        when(retrieval.promptBlock(any(), any(), any())).thenReturn("");
+        var orchestrator = new ConversationOrchestrator(
+                provider, router, toolLoader, callTurnRepository, callSessionStore,
+                agentVariableService, new com.sauti.agent.KnowledgeBaseService(), retrieval, 4
+        );
+        var call = activeCall();
+        when(agentVariableService.resolvePrompt(call.getAgent(), call.getAgent().getSystemPrompt()))
+                .thenReturn("You are Alec, the virtual assistant for X-Fit.");
+        when(agentVariableService.businessName(call.getAgent())).thenReturn("X-Fit");
+        when(agentVariableService.conversationContext(call.getAgent())).thenReturn(
+                "- services_and_prices: standard membership $5"
+        );
+        when(toolLoader.loadForAgent(call.getAgent().getId())).thenReturn(List.of(
+                new LlmToolDefinition("update_conversation_state", "Persist state", Map.of()),
+                new LlmToolDefinition("check_availability", "Check slots", Map.of()),
+                new LlmToolDefinition("book_slot", "Book slot", Map.of())
+        ));
+
+        var general = orchestrator.realtimeInstructions(call, "en");
+        var managed = orchestrator.managedRealtimeInstructions(call, "en");
+
+        assertThat(managed)
+                .contains("You are working for X-Fit")
+                .contains("standard membership $5")
+                .contains("Speak only this language")
+                .contains("one question for one missing value")
+                .contains("check_availability")
+                .contains("book_slot")
+                .contains("update_conversation_state")
+                .contains("Preserve leading zeroes and repeated digits")
+                .contains("Read it digit by digit only in the final review")
+                .contains("phone, existing date, and exact existing time")
+                .contains("A correction to a booking review is not approval")
+                .contains("only actionPerformed=true proves a mutation happened")
+                .contains("Never cut off the farewell");
+        assertThat(managed.length()).isLessThan((int) (general.length() * 0.55));
+    }
+
     private Call activeCall() {
         var tenant = new Tenant("Demo Clinic", "owner@example.com", "SN");
         var agent = new Agent(tenant, "Amina", "Bonjour", "Prompt");

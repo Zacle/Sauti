@@ -225,6 +225,84 @@ Expected:
 
 ## Change log
 
+### 2026-07-30 - Reduce repeated Telnyx managed-assistant prompt cost
+
+- Added a dedicated compact instruction builder for provider-managed voice
+  sessions and switched managed assistant blueprints to use it.
+- Kept the full orchestration prompt unchanged for Sauti-owned text/tool
+  execution and recovery paths.
+- The compact contract retains the configured agent prompt, business facts,
+  manual approved knowledge, safety guardrails, after-hours behavior, current
+  state, multilingual behavior, booking identity and review rules, exact phone
+  handling, side-effect confirmation, factual tool-result handling, and clean
+  farewell requirements.
+- Deterministic tenant scope, state transitions, identity verification,
+  confirmation, and mutation checks remain server-enforced by Sauti tools; the
+  optimization removes repeated explanatory policy rather than weakening those
+  boundaries.
+- A representative regression test requires the managed instruction string to
+  be less than 55% of the general realtime instruction string while asserting
+  the important quality and safety behaviors. This measures the stable
+  instruction component only; Telnyx will still add tool schemas, conversation
+  history, and any retrieved context to billed prompt tokens.
+- Preserved manual FAQ/knowledge prompt content. Document retrieval behavior was
+  not changed by this optimization and still requires a separate managed-call
+  integration test before production pricing is finalized.
+- Bumped the Telnyx managed-assistant configuration version from `32` to `33`
+  so existing bindings reconcile to the compact prompt after deployment.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceAgentBlueprintFactory.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed voice, provisioning, and orchestration tests - passed;
+  - `.\gradlew.bat :backend:test` - passed;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: after reviewed deployment, run short French and English
+  browser/telephone regression calls for phone capture, new booking, existing
+  booking reschedule, FAQ/manual knowledge, document knowledge, interruption,
+  and farewell. Compare Telnyx prompt-token usage per inference request with
+  the prior approximately 12.8k-token baseline before changing customer prices.
+
+### 2026-07-30 - Use Telnyx-hosted Kimi K2.6 for managed assistants
+
+- Changed the managed Telnyx AI Assistant default model from
+  `anthropic/claude-haiku-4-5` to `moonshotai/kimi-k2-6`.
+- Reason:
+  - Telnyx currently recommends Kimi K2.6 for voice AI and real-time
+    applications because it combines low time-to-first-token with stronger
+    agentic/tool behavior;
+  - inference runs on Telnyx-hosted infrastructure, avoiding an external LLM
+    provider hop;
+  - Sauti's booking and rescheduling flows benefit from stronger multi-step
+    instruction following, but still require live regression testing because
+    provider recommendations do not guarantee identical tool-call behavior.
+- Preserved `TELNYX_AI_MODEL` as an environment override so maintainers can
+  roll back or run a controlled comparison without another code change.
+- Bumped the Telnyx managed-assistant configuration version from `31` to `32`
+  so bindings reconcile even when the rest of an agent blueprint is unchanged.
+- Updated local and production environment examples, provider testing
+  documentation, and the provisioning payload assertion.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/managed-voice-provider-testing.md`
+  - `docs/agent-handoff.md`
+- Deployment status: not deployed. Production currently has an explicit
+  `TELNYX_AI_MODEL` value according to prior handoff history; the maintainer
+  must update it to `moonshotai/kimi-k2-6` before the normal CI/CD deployment
+  for production to use the new model.
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.ManagedVoiceAgentProvisionersTest --tests com.sauti.call.ManagedVoiceAgentProvisioningServiceTest`
+    - passed.
+
 ### 2026-07-30 - Boost and measure quiet browser microphone input
 
 - Investigated `sauti-telnyx-diagnostics-1785403580675.json` after normal
@@ -276,6 +354,41 @@ Expected:
     levels with missed words point instead to provider STT/media quality;
   - do not increase gain again without those measurements because excess gain
     amplifies room noise and can make transcription worse.
+
+#### Follow-up: prevent stuck speaking and clipped final farewells
+
+- Investigated `sauti-telnyx-diagnostics-1785408989933.json` after a successful
+  reschedule ended with the UI stuck in `speaking` and the last sentence cut.
+- The diagnostic showed the final `speaking` state lasted about 54 seconds and
+  ended only when the test was manually stopped. The cause was the earlier VAD
+  threshold reduction: Telnyx applies `volumeThreshold` to both local and
+  remote audio, so residual remote noise could keep the agent marked speaking.
+- Restored Telnyx's volume threshold of `10`. Quiet caller input continues to
+  receive the separate `+3.5 dB` microphone-stage gain.
+- Set `remoteSilenceThresholdMs=1000` so natural pauses inside a final sentence
+  do not look like completed speech.
+- Hardened browser terminal timing:
+  - a tool invocation before TTS receives a 15-second safety fallback that is
+    cancelled when speaking begins;
+  - a tool invocation immediately after speech or a confirmed
+    speaking-to-listening transition waits 2.5 seconds for the WebRTC playout
+    buffer to drain before hang-up;
+  - clear caller goodbye intent also uses the 15-second fallback rather than
+    racing the final response.
+- Added `telnyxAudioPolicy.ts` and focused tests for the shared local/remote VAD
+  settings and terminal drain timing.
+- Files touched:
+  - `dashboard/features/voice-runtime/telnyxAudioPolicy.ts`
+  - `dashboard/features/voice-runtime/telnyxAudioPolicy.test.ts`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `dashboard/package.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run test:voice` - passed, 27/27 tests;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed; Next.js generated 50 static pages.
+- Deployment status remains unchanged: not deployed and uncommitted.
 
 ### 2026-07-30 - Pre-provision and preconnect the Telnyx browser demo
 
