@@ -22,7 +22,7 @@ import {
 } from "@/features/voice-runtime/browserVoiceRuntime";
 import type { VoiceDiagnosticEntry } from "@/features/voice-runtime/voiceDiagnostics";
 import {
-  browserLanguageHint,
+  configuredLanguageHint,
   displayLanguage,
 } from "@/features/voice-runtime/languagePreference";
 import type { BrowserVoiceRuntimeSession } from "@/types/api";
@@ -88,7 +88,7 @@ export function TestCallPanel({
   const [error, setError] = useState("");
   const [diagnosticCount, setDiagnosticCount] = useState(0);
   const [preparationStatus, setPreparationStatus] = useState<PreparationStatus>("idle");
-  const [languageHint, setLanguageHint] = useState(defaultLanguage);
+  const languageHint = configuredLanguageHint(supportedLanguages, defaultLanguage);
   const connectionRef = useRef<BrowserVoiceRuntimeConnection | null>(null);
   const callIdRef = useRef("");
   const statusRef = useRef<CallStatus>("idle");
@@ -123,10 +123,6 @@ export function TestCallPanel({
   useEffect(() => {
     void preloadBrowserVoiceRuntime().catch(() => undefined);
   }, []);
-
-  useEffect(() => {
-    setLanguageHint(browserLanguageHint(supportedLanguages, defaultLanguage));
-  }, [agentId, defaultLanguage, supportedLanguages]);
 
   function updatePreparationStatus(next: PreparationStatus) {
     preparationStatusRef.current = next;

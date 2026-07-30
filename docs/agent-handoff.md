@@ -92,9 +92,10 @@ Release policy:
 
 - Removed the primary language dropdown from both Agent Studio browser tests
   and the public Web Voice call page.
-- Browser calls now derive an opening-language hint from `navigator.languages`,
-  match it against the agent's supported languages, and fall back to the agent
-  default. The UI explains that detection is automatic instead of asking the
+- Browser and telephone calls now use the agent's configured primary language
+  as the opening-language hint. Browser locale is intentionally ignored so an
+  agent such as Gerard always greets in French when French is its primary
+  language. The UI explains that detection is automatic instead of asking the
   caller to configure the provider session.
 - Changed both the managed Telnyx Assistant configuration and telephone
   `ai_assistant_start` override to use `deepgram/nova-3` with `language=auto`.

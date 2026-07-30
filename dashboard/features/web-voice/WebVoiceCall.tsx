@@ -14,7 +14,7 @@ import {
   type BrowserVoiceRuntimeConnection,
 } from "@/features/voice-runtime/browserVoiceRuntime";
 import {
-  browserLanguageHint,
+  configuredLanguageHint,
   displayLanguage,
 } from "@/features/voice-runtime/languagePreference";
 import styles from "./WebVoiceCall.module.css";
@@ -41,7 +41,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     getPublicWebVoiceAgent(publicId)
       .then((loaded) => {
         setAgent(loaded);
-        setLanguageHint(browserLanguageHint(loaded.languages, loaded.defaultLanguage));
+        setLanguageHint(configuredLanguageHint(loaded.languages, loaded.defaultLanguage));
         setConsent(!loaded.consentRequired);
         setStatus("idle");
       })

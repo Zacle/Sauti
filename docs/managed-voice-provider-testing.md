@@ -72,10 +72,10 @@ treats the opening language as a hint and follows a different supported language
 only after the caller uses a clear full sentence.
 
 Agent Studio and Public Web Voice do not make callers choose a language.
-The browser locale selects the best supported opening-language hint and falls
-back to the agent default. Telephone calls greet in the agent default language,
-then automatically follow the caller. Changing the supported-language list
-queues background reconciliation for all current variants.
+Browser and telephone calls always greet in the agent's configured primary
+language, then automatically follow the caller after a clear full-sentence
+language switch. Changing the supported-language list queues background
+reconciliation for all current variants.
 
 Keep the variants until a single multilingual voice has passed live quality
 testing across every configured language. Automatic transcription does not
