@@ -29,6 +29,7 @@ import com.sauti.tool.ToolActionPolicy;
 import com.sauti.tool.ToolConfirmationPolicy;
 import com.sauti.tool.ToolFulfillmentRouter;
 import com.sauti.tool.WebhookToolFulfillment;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -445,6 +446,50 @@ class ManagedVoiceToolServiceTest {
                 "booking_number", "SAT-OHM2KFA6HOP1",
                 "caller_phone", "0115752441"
         ));
+    }
+
+    @Test
+    void exposesAuthoritativePhoneDigitsAtTheTopLevel() {
+        var repository = mock(CallRepository.class);
+        var router = mock(ToolFulfillmentRouter.class);
+        var sessions = mock(CallSessionStore.class);
+        var objectMapper = new ObjectMapper();
+        var tokenService = new WebVoiceTokenService(
+                "managed-voice-test-secret-managed-voice-test-secret", 10
+        );
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        when(call.getId()).thenReturn(UUID.randomUUID());
+        when(call.getTwilioCallSid()).thenReturn("phone-digits-call");
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getMaxCallDurationSeconds()).thenReturn(300);
+        when(router.route(any(), any())).thenAnswer(invocation -> {
+            var routedCall = (com.sauti.llm.LlmToolCall) invocation.getArgument(1);
+            return LlmToolResult.success(routedCall, Map.of(
+                    "status", "conversation_state_updated",
+                    "phoneCaptureStatus", "complete",
+                    "callerPhoneDigits",
+                    List.of("0", "1", "1", "5", "7", "5", "2", "4", "4", "1")
+            ));
+        });
+        var service = new ManagedVoiceToolService(
+                repository, tokenService, router, sessions, objectMapper
+        );
+
+        var result = service.executeAuthenticated(
+                "telnyx",
+                call,
+                "provider-phone-1",
+                "update_conversation_state",
+                "{}"
+        );
+
+        assertThat(result)
+                .containsEntry("phoneCaptureStatus", "complete")
+                .containsEntry(
+                        "callerPhoneDigits",
+                        List.of("0", "1", "1", "5", "7", "5", "2", "4", "4", "1")
+                );
     }
 
     @Test

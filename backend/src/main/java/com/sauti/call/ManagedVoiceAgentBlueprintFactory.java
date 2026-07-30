@@ -52,4 +52,15 @@ public class ManagedVoiceAgentBlueprintFactory {
                 keywords
         );
     }
+
+    public ManagedVoiceAgentBlueprint create(com.sauti.agent.Agent agent, String greeting) {
+        var preparationCall = new Call(
+                agent.getTenant(),
+                agent,
+                "PREPARE-" + agent.getId(),
+                "Browser test preparation",
+                "test"
+        );
+        return create(preparationCall, greeting);
+    }
 }

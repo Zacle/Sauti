@@ -1,4 +1,9 @@
-import type { Call, CallTurn, StartTestCallResponse } from "@/types/api";
+import type {
+  BrowserVoiceRuntimeSession,
+  Call,
+  CallTurn,
+  StartTestCallResponse,
+} from "@/types/api";
 import { apiBlobRequest, apiRequest } from "./client";
 
 export function listCalls() {
@@ -7,6 +12,16 @@ export function listCalls() {
 
 export function startTestCall(agentId: string, ttsVoiceId?: string) {
   return apiRequest<StartTestCallResponse>("/calls/test", {
+    method: "POST",
+    body: JSON.stringify({
+      agentId,
+      ttsVoiceId: ttsVoiceId?.trim() ?? "",
+    }),
+  });
+}
+
+export function prepareTestCallRuntime(agentId: string, ttsVoiceId?: string) {
+  return apiRequest<BrowserVoiceRuntimeSession>("/calls/test/runtime", {
     method: "POST",
     body: JSON.stringify({
       agentId,

@@ -32,6 +32,53 @@ type TelnyxAuthenticationRetryOptions = {
 
 export const TELNYX_CONVERSATION_START_TIMEOUT_MS = 12_000;
 
+export async function startTelnyxConversationWhenConnected({
+  startConversation,
+  subscribeConversation,
+  conversationTimeoutMs = TELNYX_CONVERSATION_START_TIMEOUT_MS,
+}: {
+  startConversation(): Promise<void>;
+  subscribeConversation: TelnyxConversationSubscription;
+  conversationTimeoutMs?: number;
+}): Promise<void> {
+  let settled = false;
+  let resolveConversation!: () => void;
+  let rejectConversation!: (error: Error) => void;
+  const conversationReady = new Promise<void>((resolve, reject) => {
+    resolveConversation = resolve;
+    rejectConversation = reject;
+  });
+  const settle = (error?: unknown) => {
+    if (settled) return;
+    settled = true;
+    if (error === undefined) {
+      resolveConversation();
+      return;
+    }
+    rejectConversation(error instanceof Error ? error : new Error(String(error)));
+  };
+  const unsubscribe = subscribeConversation({
+    active: () => settle(),
+    failed: (error) => settle(error),
+    disconnected: () => settle(
+      new Error("Telnyx disconnected before the conversation became active."),
+    ),
+  });
+  const timeout = setTimeout(
+    () => settle(
+      new Error("Telnyx signaling connected, but the conversation did not become active."),
+    ),
+    conversationTimeoutMs,
+  );
+  try {
+    await startConversation();
+    await conversationReady;
+  } finally {
+    clearTimeout(timeout);
+    unsubscribe();
+  }
+}
+
 export async function startTelnyxConversationWhenReady({
   connect,
   startConversation,
@@ -74,42 +121,11 @@ export async function startTelnyxConversationWhenReady({
       await startConversation();
       return;
     }
-    let conversationSettled = false;
-    let resolveConversation!: () => void;
-    let rejectConversation!: (error: Error) => void;
-    const conversationReady = new Promise<void>((resolve, reject) => {
-      resolveConversation = resolve;
-      rejectConversation = reject;
-    });
-    const settleConversation = (error?: unknown) => {
-      if (conversationSettled) return;
-      conversationSettled = true;
-      if (error === undefined) {
-        resolveConversation();
-        return;
-      }
-      rejectConversation(error instanceof Error ? error : new Error(String(error)));
-    };
-    const unsubscribeConversation = subscribeConversation({
-      active: () => settleConversation(),
-      failed: (error) => settleConversation(error),
-      disconnected: () => settleConversation(
-        new Error("Telnyx disconnected before the conversation became active."),
-      ),
-    });
-    const conversationTimeout = setTimeout(
-      () => settleConversation(
-        new Error("Telnyx signaling connected, but the conversation did not become active."),
-      ),
+    await startTelnyxConversationWhenConnected({
+      startConversation,
+      subscribeConversation,
       conversationTimeoutMs,
-    );
-    try {
-      await startConversation();
-      await conversationReady;
-    } finally {
-      clearTimeout(conversationTimeout);
-      unsubscribeConversation();
-    }
+    });
   } finally {
     if (timeout.id !== undefined) clearTimeout(timeout.id);
     unsubscribe();

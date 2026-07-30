@@ -41,6 +41,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { session, logout } = useAuth();
   const tenant = session?.tenant;
+  const isAgentStudio = pathname === "/agents/new" || /^\/agents\/[^/]+$/.test(pathname);
 
   function handleLogout() {
     logout();
@@ -48,7 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <main className={`console-shell ${["/agents", "/dashboard", "/calls", "/bookings", "/analytics", "/dashboard/integrations"].includes(pathname) || pathname.startsWith("/agents/") ? "agents-console-shell" : ""} ${pathname === "/dashboard" ? "dashboard-console-shell" : ""} ${pathname === "/calls" ? "calls-console-shell" : ""} ${pathname === "/bookings" ? "bookings-console-shell" : ""} ${pathname === "/analytics" ? "analytics-console-shell" : ""} ${pathname === "/dashboard/integrations" ? "integrations-console-shell" : ""}`}>
+    <main className={`console-shell ${["/agents", "/dashboard", "/calls", "/bookings", "/analytics", "/dashboard/integrations"].includes(pathname) || pathname.startsWith("/agents/") ? "agents-console-shell" : ""} ${isAgentStudio ? "agent-studio-console-shell" : ""} ${pathname === "/dashboard" ? "dashboard-console-shell" : ""} ${pathname === "/calls" ? "calls-console-shell" : ""} ${pathname === "/bookings" ? "bookings-console-shell" : ""} ${pathname === "/analytics" ? "analytics-console-shell" : ""} ${pathname === "/dashboard/integrations" ? "integrations-console-shell" : ""}`}>
       <aside className={`console-sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="console-sidebar-head">
           <Link className="console-brand" href="/dashboard">

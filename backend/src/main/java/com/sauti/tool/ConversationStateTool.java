@@ -73,6 +73,9 @@ public class ConversationStateTool {
     private static final Set<String> PHONE_CAPTURE_STATUS = Set.of(
             "not_applicable", "incomplete", "complete"
     );
+    private static final Set<String> PHONE_TARGETS = Set.of(
+            "not_applicable", "caller_phone", "new_caller_phone"
+    );
     private static final Set<String> CALLER_QUESTION = Set.of(
             "none", "answered_in_spoken_response", "requires_business_tool"
     );
@@ -187,6 +190,11 @@ public class ConversationStateTool {
                 "enum", List.of("not_applicable", "incomplete", "complete"),
                 "description", "Language-neutral completeness judgment for phone information in the latest caller turn. Use incomplete when any spoken digit is ambiguous, missing, interrupted, replaced by an unrecognized sound, or the caller has not clearly finished the sequence; emit no phone update and ask for one slow natural repetition. Use complete only when every digit is unambiguous and updates contains the complete normalized phone. Length alone never proves completeness. Use not_applicable when this turn supplies no phone."
         ));
+        properties.put("phone_target", Map.of(
+                "type", "string",
+                "enum", List.of("not_applicable", "caller_phone", "new_caller_phone"),
+                "description", "The phone field the latest caller utterance attempts to supply or correct, even when the sequence may be incomplete. Use caller_phone for the caller's primary or existing-booking verification number, new_caller_phone only for an explicitly requested replacement number, and not_applicable when no phone is attempted."
+        ));
         properties.put("spoken_response", Map.of(
                 "type", "string",
                 "description", "A concise, polite, natural reply in the caller's current language. Answer direct questions first. When call_disposition is end, this must be the complete brief respectful farewell and must not be empty. Otherwise leave empty only when a separate business tool must run before any reply. Never include tool syntax, JSON, headings, or private reasoning."
@@ -228,7 +236,7 @@ public class ConversationStateTool {
                         "required", List.of(
                                 "updates", "additional_details", "clear_fields",
                                 "booking_subject", "booking_intent", "turn_understanding",
-                                "name_capture_status", "phone_capture_status",
+                                "name_capture_status", "phone_capture_status", "phone_target",
                                 "spoken_response", "caller_question", "action_authorization",
                                 "call_disposition", "next_action", "business_tool", "source_utterance"
                         ),
@@ -277,7 +285,8 @@ public class ConversationStateTool {
                     ACTION_AUTHORIZATION,
                     "not_applicable"
             );
-            var next = reduce(call, existing, toolCall.arguments());
+            var reduction = reduce(call, existing, toolCall.arguments());
+            var next = reduction.state();
             var proposedReviewDecision = next.values().getOrDefault("review_decision", "");
             var approvalIsUnconditional = "approved".equals(proposedReviewDecision)
                     && "unconditional".equals(actionAuthorization)
@@ -305,7 +314,20 @@ public class ConversationStateTool {
             result.put("status", "conversation_state_updated");
             result.put("state", next.asNotes());
             result.put("bookingAllowed", !ConversationState.INTENT_PAUSED.equals(next.bookingIntent()));
-            var turnUpdates = updates(toolCall.arguments().get("updates"));
+            var turnUpdates = reduction.turnUpdates();
+            var phoneTurn = !"not_applicable".equals(reduction.phoneTarget());
+            if (phoneTurn) {
+                result.put(
+                        "phoneCaptureStatus",
+                        reduction.phoneAccepted() ? "complete" : "incomplete"
+                );
+                if (reduction.phoneAccepted()) {
+                    result.put(
+                            "callerPhoneDigits",
+                            phoneDigits(next.values().get(reduction.phoneTarget()))
+                    );
+                }
+            }
             var clearedFields = clearFields(
                     toolCall.arguments().get("clear_fields"),
                     call.getAgent().getBookingRequiredFields() == null
@@ -383,6 +405,8 @@ public class ConversationStateTool {
                     ? requestedBusinessTool : "";
             var nextAction = callMustEnd
                     ? "use_business_tool"
+                    : phoneTurn && !reduction.phoneAccepted()
+                    ? "reply"
                     : bookingIdentityBecameReady
                     ? "use_business_tool"
                     : "answered_in_spoken_response".equals(callerQuestion)
@@ -405,7 +429,9 @@ public class ConversationStateTool {
                         : reviewMustContinue || bookingBecameReady
                             ? "book_slot"
                             : requestedBusinessTool;
-            var spoken = "reply".equals(nextAction) && !incompleteBookingReference
+            var spoken = "reply".equals(nextAction)
+                    && !incompleteBookingReference
+                    && !phoneTurn
                     ? VoiceOutputGuard.speechText(stringArgument(toolCall.arguments(), "spoken_response"))
                     : "";
             if (!spoken.isBlank()) result.put("spokenResponse", spoken);
@@ -471,7 +497,16 @@ public class ConversationStateTool {
                     });
                 }
             }
-            result.put("instruction", incompleteBookingReference
+            result.put("instruction", phoneTurn && "reply".equals(nextAction)
+                    ? reduction.phoneAccepted()
+                        ? "The server accepted the phone from source evidence. In the caller's current language, "
+                            + "briefly acknowledge it, then read callerPhoneDigits exactly once in array order, one "
+                            + "element per digit, and ask whether it is correct. Do not use the model candidate, "
+                            + "conversation memory, grouping, or any other digit sequence."
+                        : "The server could not establish a complete phone from source evidence and stored no new "
+                            + "phone. In the caller's current language, ask for one slow complete repetition. Do not "
+                            + "read back, infer, repair, or mention the model candidate."
+                    : incompleteBookingReference
                     ? "The caller supplied only part of a Sauti booking number. Do not call lookup_booking and do "
                         + "not say that a lookup is running. Ask in the caller's current language for the complete "
                         + "reference: SAT, the dash, and all twelve following letters or digits. Preserve the phone "
@@ -610,20 +645,48 @@ public class ConversationStateTool {
         }
     }
 
-    private ConversationState reduce(Call call, ConversationState current, Map<String, Object> arguments) {
+    private Reduction reduce(Call call, ConversationState current, Map<String, Object> arguments) {
         var values = new LinkedHashMap<>(current.values());
         var allowedDetails = call.getAgent().getBookingRequiredFields() == null
                 ? Set.<String>of()
                 : Set.copyOf(call.getAgent().getBookingRequiredFields());
-        var turnUpdates = updates(arguments.get("updates"));
+        var turnUpdates = new LinkedHashMap<>(updates(arguments.get("updates")));
         var detailUpdates = updates(arguments.get("additional_details"));
         var nameCaptureStatus = choice(
                 arguments.get("name_capture_status"), NAME_CAPTURE_STATUS, "incomplete"
         );
-        var phoneCaptureStatus = choice(
+        var declaredPhoneCaptureStatus = choice(
                 arguments.get("phone_capture_status"), PHONE_CAPTURE_STATUS, "incomplete"
         );
         var sourceUtterance = sourceUtterance(call, arguments);
+        var phoneTarget = phoneTarget(arguments, turnUpdates);
+        var phoneAccepted = false;
+        var phoneCaptureStatus = declaredPhoneCaptureStatus;
+        var explicitPhoneTarget = choice(
+                arguments.get("phone_target"), PHONE_TARGETS, "not_applicable"
+        );
+        var extractionEligible = "complete".equals(declaredPhoneCaptureStatus)
+                || (!"not_applicable".equals(explicitPhoneTarget) && !sourceUtterance.isBlank());
+        if (!"not_applicable".equals(phoneTarget) && extractionEligible) {
+            var candidate = turnUpdates.getOrDefault(phoneTarget, "");
+            var extractedPhone = normalizePhone(
+                    phoneNumbers.extract(call, sourceUtterance, candidate)
+            );
+            turnUpdates.remove("caller_phone");
+            turnUpdates.remove("new_caller_phone");
+            if (!extractedPhone.isBlank()) {
+                turnUpdates.put(phoneTarget, extractedPhone);
+                phoneCaptureStatus = "complete";
+                phoneAccepted = true;
+            } else {
+                phoneCaptureStatus = "incomplete";
+            }
+        } else if (!"not_applicable".equals(phoneTarget)) {
+            turnUpdates.remove("caller_phone");
+            turnUpdates.remove("new_caller_phone");
+            phoneCaptureStatus = "incomplete";
+        }
+        var effectivePhoneCaptureStatus = phoneCaptureStatus;
         var extractedNames = new HashMap<String, String>();
         // Review decisions authorize at most the current caller turn. They must
         // never leak into a later turn as stale approval.
@@ -661,8 +724,8 @@ public class ConversationStateTool {
                 return;
             }
             if ("caller_phone".equals(key) || "new_caller_phone".equals(key)) {
-                if (!"complete".equals(phoneCaptureStatus)) return;
-                var normalizedPhone = normalizePhone(phoneNumbers.extract(call, sourceUtterance, value));
+                if (!"complete".equals(effectivePhoneCaptureStatus)) return;
+                var normalizedPhone = normalizePhone(value);
                 if (!normalizedPhone.isBlank()) values.put(key, normalizedPhone);
                 return;
             }
@@ -690,7 +753,33 @@ public class ConversationStateTool {
             values.remove("appointment_name");
             values.remove("recipient_relation");
         }
-        return new ConversationState(values, subject, intent, current.revision() + 1);
+        return new Reduction(
+                new ConversationState(values, subject, intent, current.revision() + 1),
+                Map.copyOf(turnUpdates),
+                phoneTarget,
+                phoneAccepted
+        );
+    }
+
+    private String phoneTarget(
+            Map<String, Object> arguments,
+            Map<String, String> turnUpdates
+    ) {
+        var fallback = turnUpdates.containsKey("new_caller_phone")
+                ? "new_caller_phone"
+                : turnUpdates.containsKey("caller_phone")
+                    ? "caller_phone"
+                    : "not_applicable";
+        return choice(arguments.get("phone_target"), PHONE_TARGETS, fallback);
+    }
+
+    private static List<String> phoneDigits(String phone) {
+        if (phone == null || phone.isBlank()) return List.of();
+        return phone.codePoints()
+                .filter(Character::isDigit)
+                .map(Character::getNumericValue)
+                .mapToObj(String::valueOf)
+                .toList();
     }
 
     private String sourceUtterance(Call call, Map<String, Object> arguments) {
@@ -737,6 +826,14 @@ public class ConversationStateTool {
         }
         if (digits.length() < 7 || digits.length() > 15) return "";
         return international ? "+" + digits : digits.toString();
+    }
+
+    private record Reduction(
+            ConversationState state,
+            Map<String, String> turnUpdates,
+            String phoneTarget,
+            boolean phoneAccepted
+    ) {
     }
 
     private String normalizeBookingNumber(String value) {

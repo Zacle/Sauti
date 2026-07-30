@@ -11,6 +11,7 @@ import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -25,6 +26,7 @@ public class AgentService {
     private final BookingRepository bookingRepository;
     private final ScheduledCallRepository scheduledCallRepository;
     private final KnowledgeBaseService knowledgeBaseService;
+    private final ApplicationEventPublisher events;
 
     public AgentService(
             AgentRepository agentRepository,
@@ -36,7 +38,8 @@ public class AgentService {
             CallRepository callRepository,
             BookingRepository bookingRepository,
             ScheduledCallRepository scheduledCallRepository,
-            KnowledgeBaseService knowledgeBaseService
+            KnowledgeBaseService knowledgeBaseService,
+            ApplicationEventPublisher events
     ) {
         this.agentRepository = agentRepository;
         this.tenantRepository = tenantRepository;
@@ -48,6 +51,7 @@ public class AgentService {
         this.bookingRepository = bookingRepository;
         this.scheduledCallRepository = scheduledCallRepository;
         this.knowledgeBaseService = knowledgeBaseService;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -98,6 +102,7 @@ public class AgentService {
         agent.configureLlmTier(request.llmTier());
         var saved = agentRepository.save(agent);
         defaultToolSeeder.seedDefaults(saved);
+        events.publishEvent(new AgentConfigurationChanged(tenantId, saved.getId()));
         return saved;
     }
 
@@ -136,6 +141,7 @@ public class AgentService {
         );
         agent.configureLlmTier(request.llmTier());
         defaultToolSeeder.synchronizeCapabilities(agent);
+        events.publishEvent(new AgentConfigurationChanged(tenantId, agent.getId()));
         return agent;
     }
 

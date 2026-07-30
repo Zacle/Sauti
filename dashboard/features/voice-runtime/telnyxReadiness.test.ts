@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   isTelnyxAuthenticationFailure,
   isTelnyxConversationStartupFailure,
+  startTelnyxConversationWhenConnected,
   startTelnyxConversationWhenReady,
   startTelnyxConversationWithAuthenticationRetry,
   TELNYX_CONVERSATION_START_TIMEOUT_MS,
@@ -94,6 +95,26 @@ test("does not report startup complete until the Telnyx conversation is active",
     "unsubscribe-conversation",
     "unsubscribe-signaling",
   ]);
+});
+
+test("starts directly on an already-connected Telnyx signaling client", async () => {
+  const order: string[] = [];
+  let markConversationActive: (() => void) | undefined;
+  const starting = startTelnyxConversationWhenConnected({
+    startConversation: async () => {
+      order.push("start");
+    },
+    subscribeConversation: (handlers) => {
+      markConversationActive = handlers.active;
+      return () => order.push("unsubscribe");
+    },
+  });
+
+  while (!markConversationActive) await Promise.resolve();
+  assert.deepEqual(order, ["start"]);
+  markConversationActive?.();
+  await starting;
+  assert.deepEqual(order, ["start", "unsubscribe"]);
 });
 
 test("fails a silent Telnyx start that never produces an active call", async () => {

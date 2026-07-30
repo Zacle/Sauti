@@ -53,6 +53,21 @@ export function preloadBrowserVoiceRuntime() {
   return loadTelnyxRuntime().then(({ preloadTelnyxRuntime }) => preloadTelnyxRuntime());
 }
 
+export function preconnectBrowserVoiceRuntime(session: BrowserVoiceRuntimeSession) {
+  if (session.provider.toLowerCase() !== "telnyx") {
+    throw new Error(`Unsupported browser voice runtime: ${session.provider}`);
+  }
+  return loadTelnyxRuntime().then(({ preconnectTelnyxRuntime }) =>
+    preconnectTelnyxRuntime(session)
+  );
+}
+
+export function releasePreconnectedBrowserVoiceRuntime() {
+  return loadTelnyxRuntime().then(({ releasePreconnectedTelnyxRuntime }) =>
+    releasePreconnectedTelnyxRuntime()
+  );
+}
+
 export async function warmBrowserMicrophone() {
   if (!navigator.mediaDevices?.getUserMedia) return;
   const stream = await navigator.mediaDevices.getUserMedia({

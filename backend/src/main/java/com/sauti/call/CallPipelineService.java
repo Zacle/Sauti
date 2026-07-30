@@ -699,6 +699,17 @@ public class CallPipelineService {
         return result;
     }
 
+    public String managedVoiceGreeting(Agent agent) {
+        return instantGreeting(agent, agent.getDefaultLanguage());
+    }
+
+    @Transactional(readOnly = true)
+    public String managedVoiceGreeting(java.util.UUID tenantId, java.util.UUID agentId) {
+        var agent = agentRepository.findByIdAndTenantId(agentId, tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
+        return managedVoiceGreeting(agent);
+    }
+
     private String instantGreeting(Agent agent, String language) {
         var resolvedLanguage = language == null || language.isBlank() ? agent.getDefaultLanguage() : language;
         if (resolvedLanguage.equals(agent.getDefaultLanguage())) {

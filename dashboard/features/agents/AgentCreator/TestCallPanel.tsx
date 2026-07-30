@@ -1,20 +1,25 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Download, LoaderCircle, Mic, Phone, PhoneOff, Send, Volume2 } from "lucide-react";
+import { Circle, Download, LoaderCircle, Mic, Phone, PhoneOff, Send, ShieldCheck, Volume2 } from "lucide-react";
 import {
   completeTestCall,
   correlateTestCall,
+  prepareTestCallRuntime,
   recordTestRealtimeTranscript,
   startTestCall,
 } from "@/lib/api/calls";
 import {
   connectBrowserVoiceRuntime,
+  preconnectBrowserVoiceRuntime,
   preloadBrowserVoiceRuntime,
+  releasePreconnectedBrowserVoiceRuntime,
   type BrowserVoiceRuntimeConnection,
   warmBrowserMicrophone,
 } from "@/features/voice-runtime/browserVoiceRuntime";
 import type { VoiceDiagnosticEntry } from "@/features/voice-runtime/voiceDiagnostics";
+import type { BrowserVoiceRuntimeSession } from "@/types/api";
 
 type TestCallPanelProps = {
   agentId?: string;
@@ -37,6 +42,25 @@ type CallStatus =
   | "working"
   | "speaking"
   | "ending";
+type PreparationStatus = "idle" | "preparing" | "ready" | "error";
+
+function AiCallOrb({ status, compact = false }: { status: CallStatus; compact?: boolean }) {
+  return (
+    <div className={`test-ai-orb status-${status} ${compact ? "compact" : ""}`} aria-hidden="true">
+      <Image
+        className="test-ai-rings"
+        alt=""
+        fill
+        priority
+        sizes={compact ? "150px" : "320px"}
+        src="/images/agents/sauti-ai-rings.png"
+      />
+      <span className="test-ai-core">
+        <Image alt="" fill sizes={compact ? "72px" : "108px"} src="/sauti-logo-circular.png" />
+      </span>
+    </div>
+  );
+}
 
 export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProps) {
   const [callId, setCallId] = useState("");
@@ -45,6 +69,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const [status, setStatus] = useState<CallStatus>("idle");
   const [error, setError] = useState("");
   const [diagnosticCount, setDiagnosticCount] = useState(0);
+  const [preparationStatus, setPreparationStatus] = useState<PreparationStatus>("idle");
   const connectionRef = useRef<BrowserVoiceRuntimeConnection | null>(null);
   const callIdRef = useRef("");
   const statusRef = useRef<CallStatus>("idle");
@@ -55,6 +80,13 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const agentCaptionIdRef = useRef("");
   const endingRef = useRef(false);
   const firstAgentAudioRef = useRef(false);
+  const preparationRef = useRef<{
+    key: string;
+    promise: Promise<BrowserVoiceRuntimeSession>;
+  } | null>(null);
+  const preparationStatusRef = useRef<PreparationStatus>("idle");
+  const preparationStartedAtRef = useRef(0);
+  const preparationReadyAtRef = useRef(0);
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({
@@ -66,11 +98,60 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   useEffect(() => () => {
     void connectionRef.current?.stop();
     connectionRef.current = null;
+    void releasePreconnectedBrowserVoiceRuntime();
   }, []);
 
   useEffect(() => {
     void preloadBrowserVoiceRuntime().catch(() => undefined);
   }, []);
+
+  function updatePreparationStatus(next: PreparationStatus) {
+    preparationStatusRef.current = next;
+    setPreparationStatus(next);
+  }
+
+  function prepareRuntime() {
+    if (!agentId || !voiceId?.toLowerCase().startsWith("telnyx.")) {
+      return Promise.reject(new Error(
+        "Save the agent with a Telnyx voice before preparing the demo.",
+      ));
+    }
+    const key = `${agentId}|${voiceId}`;
+    if (preparationRef.current?.key === key) return preparationRef.current.promise;
+    updatePreparationStatus("preparing");
+    preparationStartedAtRef.current = Date.now();
+    preparationReadyAtRef.current = 0;
+    const promise = prepareTestCallRuntime(agentId, voiceId)
+      .then(async (runtime) => {
+        await preconnectBrowserVoiceRuntime(runtime);
+        if (preparationRef.current?.key === key) {
+          preparationReadyAtRef.current = Date.now();
+          updatePreparationStatus("ready");
+        }
+        return runtime;
+      })
+      .catch((caught) => {
+        if (preparationRef.current?.key === key) updatePreparationStatus("error");
+        throw caught;
+      });
+    preparationRef.current = { key, promise };
+    return promise;
+  }
+
+  useEffect(() => {
+    preparationRef.current = null;
+    if (!agentId || !voiceId?.toLowerCase().startsWith("telnyx.")) {
+      updatePreparationStatus("idle");
+      return;
+    }
+    void prepareRuntime().catch(() => undefined);
+    return () => {
+      preparationRef.current = null;
+      void releasePreconnectedBrowserVoiceRuntime();
+    };
+    // Preparation is intentionally keyed only by the persisted agent and voice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId, voiceId]);
 
   function updateStatus(next: CallStatus) {
     if (statusRef.current !== next) {
@@ -154,6 +235,24 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     agentCaptionIdRef.current = "";
     updateStatus("connecting");
     try {
+      const readyBeforeStart = preparationStatusRef.current === "ready";
+      if (preparationStatusRef.current === "error") preparationRef.current = null;
+      const preparedRuntimePromise = prepareRuntime();
+      const microphonePromise = warmBrowserMicrophone()
+        .then(() => recordDiagnostic("microphone_ready"))
+        .catch(() => recordDiagnostic("microphone_warmup_failed", undefined, "warn"));
+      await preparedRuntimePromise;
+      recordDiagnostic(
+        readyBeforeStart ? "startup_preconnection_reused" : "startup_preconnection_waited",
+        {
+          preparationMs: preparationReadyAtRef.current && preparationStartedAtRef.current
+            ? preparationReadyAtRef.current - preparationStartedAtRef.current
+            : 0,
+          readyAgeMs: readyBeforeStart && preparationReadyAtRef.current
+            ? Date.now() - preparationReadyAtRef.current
+            : 0,
+        },
+      );
       const callPromise = startTestCall(agentId, voiceId).then((started) => {
         recordDiagnostic("call_created", {
           provider: started.runtime?.provider ?? "unknown",
@@ -161,9 +260,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         });
         return started;
       });
-      const microphonePromise = warmBrowserMicrophone()
-        .then(() => recordDiagnostic("microphone_ready"))
-        .catch(() => recordDiagnostic("microphone_warmup_failed", undefined, "warn"));
       const [started] = await Promise.all([
         callPromise,
         microphonePromise,
@@ -248,6 +344,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           void finishCall(outcome ?? "completed", false);
         },
       });
+      preparationRef.current = null;
+      updatePreparationStatus("idle");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to start the Telnyx test call.";
       recordDiagnostic("start_failed", { message }, "error");
@@ -255,6 +353,8 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       callIdRef.current = "";
       setCallId("");
       updateStatus("idle");
+      preparationRef.current = null;
+      updatePreparationStatus("error");
     }
   }
 
@@ -293,6 +393,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       setCallId("");
       updateStatus("idle");
       endingRef.current = false;
+      void prepareRuntime().catch(() => undefined);
     }
   }
 
@@ -314,22 +415,50 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   return (
     <aside className={`agent-test-panel ${active ? "active" : ""}`}>
       {!active ? (
-        <div className="agent-test-canvas">
-          <span className="test-orb"><Mic size={28} /></span>
+        <div className={`agent-test-canvas status-${status}`}>
           <small>Telnyx browser test call</small>
-          <h2>Talk to {agentName || "your agent"}</h2>
+          <h2>Test your agent</h2>
           <p>Test the selected voice, conversation behavior, and business tools before taking the agent live.</p>
+          <AiCallOrb status={status} />
+          <div className="test-call-state-legend" aria-label="AI call animation states">
+            <span><Circle size={8} fill="currentColor" /> Listening</span>
+            <span><Circle size={8} fill="currentColor" /> Thinking</span>
+            <span><Circle size={8} fill="currentColor" /> Speaking</span>
+          </div>
+          <div className="test-call-voice-summary">
+            <span><Volume2 size={17} /></span>
+            <div><small>Selected voice</small><strong>{voiceId || "Choose a Telnyx voice"}</strong></div>
+          </div>
           {!voiceId?.toLowerCase().startsWith("telnyx.") && (
             <p className="test-runtime-note">Select and save a Telnyx voice in Voice settings to run this test.</p>
           )}
           <button
-            disabled={!agentId || status === "connecting" || !voiceId?.toLowerCase().startsWith("telnyx.")}
+            disabled={
+              !agentId
+              || status === "connecting"
+              || preparationStatus === "preparing"
+              || !voiceId?.toLowerCase().startsWith("telnyx.")
+            }
             onClick={() => void beginCall()}
             type="button"
           >
-            {status === "connecting" ? <LoaderCircle className="spin" size={17} /> : <Phone size={17} />}
-            {!agentId ? "Save agent to test" : status === "connecting" ? "Preparing Telnyx..." : "Start Telnyx test call"}
+            {status === "connecting" || preparationStatus === "preparing"
+              ? <LoaderCircle className="spin" size={17} />
+              : <Phone size={17} />}
+            {!agentId
+              ? "Save agent to test"
+              : status === "connecting"
+                ? "Starting conversation..."
+                : preparationStatus === "preparing"
+                  ? "Preparing voice demo..."
+                  : preparationStatus === "error"
+                    ? "Retry voice preparation"
+                    : "Start Telnyx test call"}
           </button>
+          {preparationStatus === "ready" && (
+            <p className="test-runtime-note">Voice demo ready. Signaling is already connected.</p>
+          )}
+          <p className="test-call-privacy"><ShieldCheck size={13} /> Calls are private and used for testing only.</p>
           {diagnosticCount > 0 && (
             <button className="test-diagnostics-download" onClick={downloadDiagnostics} type="button">
               <Download size={15} /> Download last diagnostics ({diagnosticCount})
@@ -348,6 +477,19 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
               <PhoneOff size={15} /> {status === "ending" ? "Saving..." : "End"}
             </button>
           </header>
+          <div className="test-call-live-stage">
+            <AiCallOrb status={status} compact />
+            <div>
+              <small>AI call state</small>
+              <strong>{
+                status === "capturing" ? "Listening"
+                  : status === "thinking" || status === "working" ? "Thinking"
+                    : status === "speaking" ? "Speaking"
+                      : status === "ending" ? "Wrapping up"
+                        : "Ready"
+              }</strong>
+            </div>
+          </div>
           <div className="test-call-transcript" ref={transcriptRef}>
             {messages.map((message) => (
               <div className={message.role} key={message.id}>

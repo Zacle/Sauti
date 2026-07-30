@@ -237,22 +237,71 @@ class ConversationStateToolTest {
                         : "";
         var tool = new ConversationStateTool(sessions, null, names, phones);
 
-        tool.execute(call, toolCall(Map.of(
-                "updates", Map.of("caller_phone", "01157524441"),
-                "additional_details", Map.of(),
-                "clear_fields", List.of(),
-                "booking_subject", "unchanged",
-                "booking_intent", "active",
-                "phone_capture_status", "complete",
-                "source_utterance", "zéro un un cinq sept cinq deux quatre quatre un",
-                "next_action", "reply",
-                "business_tool", "",
-                "spoken_response", "Merci."
+        var result = tool.execute(call, toolCall(Map.ofEntries(
+                Map.entry("updates", Map.of("caller_phone", "01157524441")),
+                Map.entry("additional_details", Map.of()),
+                Map.entry("clear_fields", List.of()),
+                Map.entry("booking_subject", "unchanged"),
+                Map.entry("booking_intent", "active"),
+                Map.entry("phone_capture_status", "complete"),
+                Map.entry("phone_target", "caller_phone"),
+                Map.entry("source_utterance", "zéro un un cinq sept cinq deux quatre quatre un"),
+                Map.entry("next_action", "reply"),
+                Map.entry("business_tool", ""),
+                Map.entry("spoken_response", "Incorrect model readback 01157524441.")
         )));
 
         assertThat(captureState(sessions, "source-phone-call").values())
                 .containsEntry("caller_phone", "0115752441")
                 .doesNotContainValue("01157524441");
+        assertThat(result.result())
+                .containsEntry("phoneCaptureStatus", "complete")
+                .containsEntry(
+                        "callerPhoneDigits",
+                        List.of("0", "1", "1", "5", "7", "5", "2", "4", "4", "1")
+                )
+                .doesNotContainKey("spokenResponse");
+        assertThat(result.result().get("instruction").toString())
+                .contains("read callerPhoneDigits exactly once");
+    }
+
+    @Test
+    void serverAcceptsACompleteSourceEvenWhenTheManagedModelCallsItIncomplete() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("model-incomplete-phone-call");
+        when(sessions.conversationState("model-incomplete-phone-call")).thenReturn(Optional.of(
+                ConversationState.empty()
+        ));
+        PersonNameEntityExtractor names = (ignored, candidate) -> candidate;
+        PhoneNumberEntityExtractor phones = (ignored, source, candidate) ->
+                "zéro un un cinq sept cinq deux quatre quatre un".equals(source)
+                        ? "0115752441"
+                        : "";
+        var tool = new ConversationStateTool(sessions, null, names, phones);
+
+        var result = tool.execute(call, toolCall(Map.ofEntries(
+                Map.entry("updates", Map.of()),
+                Map.entry("additional_details", Map.of()),
+                Map.entry("clear_fields", List.of()),
+                Map.entry("booking_subject", "unchanged"),
+                Map.entry("booking_intent", "active"),
+                Map.entry("phone_capture_status", "incomplete"),
+                Map.entry("phone_target", "caller_phone"),
+                Map.entry("source_utterance", "zéro un un cinq sept cinq deux quatre quatre un"),
+                Map.entry("next_action", "reply"),
+                Map.entry("business_tool", ""),
+                Map.entry("spoken_response", "Je vous écoute pour la suite.")
+        )));
+
+        assertThat(captureState(sessions, "model-incomplete-phone-call").values())
+                .containsEntry("caller_phone", "0115752441");
+        assertThat(result.result())
+                .containsEntry("phoneCaptureStatus", "complete")
+                .containsEntry(
+                        "callerPhoneDigits",
+                        List.of("0", "1", "1", "5", "7", "5", "2", "4", "4", "1")
+                )
+                .doesNotContainKey("spokenResponse");
     }
 
     @Test

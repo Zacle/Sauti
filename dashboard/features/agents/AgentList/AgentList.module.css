@@ -22,11 +22,10 @@
 .eyebrow { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border: 1px solid rgba(28, 224, 208, .24); border-radius: 8px; color: #28e4d6; background: rgba(20, 191, 181, .08); font-size: .7rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
 .hero-create { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 12px; color: #001c24; background: linear-gradient(135deg, #22e5d8, #35d9ef); box-shadow: 0 12px 32px rgba(27, 225, 213, .2); font-size: .82rem; font-weight: 700; }
 
-.voice-visual { position: relative; height: 130px; min-width: 260px; }
-.wave-line { position: absolute; inset: 39px 0 auto; height: 52px; opacity: .65; background: repeating-radial-gradient(ellipse at 50% 50%, transparent 0 19px, rgba(28, 236, 220, .2) 20px 21px, transparent 22px 34px); filter: blur(.2px); transform: scaleY(.55); }
-.voice-ring { position: absolute; left: 50%; bottom: 13px; width: 160px; height: 42px; border: 1px solid rgba(28, 235, 219, .48); border-radius: 50%; background: radial-gradient(ellipse, rgba(21, 220, 207, .22), transparent 64%); box-shadow: 0 0 22px rgba(22, 223, 210, .16); transform: translateX(-50%); }
-.voice-ring:nth-of-type(3) { bottom: 29px; width: 108px; height: 33px; }
-.voice-core { position: absolute; left: 50%; top: 9px; display: grid; width: 62px; height: 62px; place-items: center; border: 1px solid rgba(29, 240, 224, .72); border-radius: 50%; color: #2bf2e4; background: linear-gradient(145deg, #0b4051, #062235); box-shadow: 0 12px 28px rgba(0,0,0,.45), 0 0 28px rgba(26, 231, 217, .15); transform: translateX(-50%); }
+.voice-visual { position: relative; width: min(360px, 28vw); height: 130px; min-width: 260px; filter: drop-shadow(0 0 22px rgba(38, 128, 233, .18)); }
+.voice-rings-image { object-fit: contain; animation: agentRingsRotate 26s linear infinite; }
+.ai-hero-logo { position: absolute; top: 50%; left: 50%; overflow: hidden; border-radius: 50%; box-shadow: 0 0 0 8px rgba(38, 117, 219, .08), 0 0 30px rgba(40, 134, 255, .28); transform: translate(-50%, -50%); animation: agentLogoPulse 3.2s ease-in-out infinite; }
+.ai-hero-logo img { width: 100%; height: 100%; object-fit: cover; }
 
 .studio-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; gap: 22px; }
 .agents-workspace { min-width: 0; }
@@ -72,6 +71,8 @@
 .accent-1 .agent-list-avatar { border-color: #7965f2; background: linear-gradient(145deg, #4b3b93, #152745); box-shadow: 0 0 0 7px rgba(115, 88, 239, .07), 0 0 28px rgba(104, 81, 232, .2); }
 .accent-2 .agent-list-avatar { border-color: #c15dd1; background: linear-gradient(145deg, #743c7d, #262440); box-shadow: 0 0 0 7px rgba(189, 78, 199, .07), 0 0 28px rgba(194, 75, 188, .17); }
 .agent-list-avatar small { position: absolute; right: -5px; bottom: 4px; display: grid; width: 27px; height: 27px; place-items: center; border: 1px solid rgba(120, 233, 255, .45); border-radius: 50%; color: #aff8ff; background: #13729a; box-shadow: 0 5px 13px rgba(0,0,0,.25); }
+.agent-brand-mark { overflow: hidden; border-radius: 50%; box-shadow: 0 0 22px rgba(44, 132, 255, .25); }
+.agent-brand-mark img { width: 100%; height: 100%; object-fit: cover; }
 .agent-identity h2 { display: flex; align-items: center; gap: 6px; margin: 0 0 5px; font-size: 1.05rem; font-weight: 600; }
 .agent-identity h2 svg { color: #23dfd2; fill: rgba(35,223,210,.14); }
 .agent-identity p { min-height: 38px; margin: 0; color: #93a7bc; font-size: .7rem; line-height: 1.45; }
@@ -133,6 +134,8 @@
 .empty-create:hover { transform: translateY(-1px); box-shadow: 0 16px 38px -17px rgba(36,225,211,.9); }
 
 @keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes agentRingsRotate { to { transform: rotate(360deg); } }
+@keyframes agentLogoPulse { 0%, 100% { transform: translate(-50%, -50%) scale(.96); } 50% { transform: translate(-50%, -50%) scale(1.04); } }
 
 @media (max-width: 1280px) {
   .studio-layout { grid-template-columns: 1fr; }
@@ -168,4 +171,5 @@
 @media (prefers-reduced-motion: reduce) {
   .agents-loading-grid span { animation: none; }
   .agent-list-card { transition: none; }
+  .voice-rings-image, .ai-hero-logo { animation: none; }
 }

@@ -46,9 +46,9 @@ class TelnyxTelephonyProviderTest {
             when(agent.getTtsVoiceId()).thenReturn("Telnyx.NaturalHD.astra");
             when(agent.getSupportedLanguages()).thenReturn(List.of("fr"));
             when(agent.getDefaultLanguage()).thenReturn("fr");
-            when(provisioning.resolve(call, "Bonjour")).thenAnswer(ignored -> {
+            when(provisioning.existing(call)).thenAnswer(ignored -> {
                 synchronized (order) {
-                    order.add("resolve");
+                    order.add("existing");
                 }
                 return new ManagedVoiceAgentReference("assistant-1", "main", "{}");
             });
@@ -65,7 +65,7 @@ class TelnyxTelephonyProviderTest {
             provider.answerInboundCall(call, "v3:test-control", "Bonjour");
 
             assertThat(order).containsExactly(
-                    "resolve",
+                    "existing",
                     "/calls/v3%3Atest-control/actions/answer",
                     "/calls/v3%3Atest-control/actions/ai_assistant_start"
             );

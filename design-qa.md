@@ -38,6 +38,49 @@ final result: blocked
 
 ---
 
+# Agent Studio Option 2 Design QA
+
+- Source visual truth: `C:\Users\Zacle\.codex\generated_images\019fab01-cdf5-74e3-84be-78463e67622f\call_ydi4FUUF50WIhsWW1oPGRv3f.png`
+- Implementation evidence: `D:\Documents\Sauti\design-qa\agent-studio-option-2-final-1607x934.png`
+- Combined comparison: `D:\Documents\Sauti\design-qa\agent-studio-option-2-comparison.png`
+- Viewport: 1607 x 934 CSS pixels for both source and implementation
+- State: new Appointment Booker agent, Main settings selected, unsaved test call idle
+
+## Full-view comparison evidence
+
+The implementation follows the selected fixed command-workspace composition: a slim global icon rail, a persistent setup/progress rail, one independently scrollable settings surface, and a fixed test-call panel. The implementation retains the existing Sauti settings controls and real draft state instead of replacing them with mock content.
+
+## Focused region comparison evidence
+
+- The right call panel uses the generated concentric AI-ring asset with the circular Sauti mark at its center.
+- Listening, Thinking, and Speaking states are represented beside the orb and the same orb remains visible during active calls.
+- The left setup rail derives progress and configured indicators from the current form values.
+- At 1607 x 934, the document body remains fixed at the viewport height while only `.agent-studio-form` scrolls.
+- At 1024 x 768, the outer document remains fixed, the center pane remains the only scroll owner, and the test-call rail collapses to preserve working space.
+
+## Interaction and accessibility checks
+
+- Setup navigation was exercised between Main settings and Behavior & prompt; both content and active state updated correctly.
+- Test-call controls continue to use the existing Telnyx state and validation logic. The unsaved template correctly shows the disabled “Save agent to test” state.
+- Reduced-motion styles pause the decorative ring animation.
+- Browser console contained no errors. The above-the-fold ring image LCP warning was corrected by marking the image as high priority.
+
+## Comparison history
+
+- Iteration 1 exposed an outer document scrollbar beneath the fixed workspace.
+- The root document overflow was constrained and the internal settings pane retained `overflow-y: auto`.
+- Iteration 2 passed the full-view comparison and scroll-ownership checks.
+
+## Intentional differences
+
+- The implementation shows the actual unsaved-agent and unselected-voice state instead of the source mock’s ready-to-call state.
+- Existing production settings are kept intact, so the central form contains richer controls than the visual concept.
+- A live provider call was not placed during local QA; the active Listening, Thinking, and Speaking render paths are implemented but still require provider-backed verification.
+
+final result: passed
+
+---
+
 # Authentication Experience Design QA
 
 - Selected visual truth: `C:\Users\Zacle\.codex\generated_images\019fab01-cdf5-74e3-84be-78463e67622f\call_OlpXUx8btmIhczLc1uy0DLRu.png`

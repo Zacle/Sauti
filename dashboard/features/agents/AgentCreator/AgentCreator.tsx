@@ -1,6 +1,7 @@
 "use client";
 
 import "./AgentCreator.css";
+import "./AgentCreatorRedesign.css";
 import Link from "next/link";
 import * as Select from "@radix-ui/react-select";
 import * as Slider from "@radix-ui/react-slider";
@@ -348,14 +349,14 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
 }
 
 const studioSections = [
-  { id: "main", label: "Main settings", icon: Settings2 },
-  { id: "behavior", label: "Behavior & prompt", icon: MessageSquareText },
-  { id: "speech", label: "Speech & transcription", icon: Languages },
-  { id: "calls", label: "Call behaviour", icon: PhoneCall },
-  { id: "routing", label: "Routing", icon: Route },
-  { id: "integrations", label: "Integrations", icon: Plug },
-  { id: "knowledge", label: "Knowledge", icon: BookOpen },
-  { id: "postcall", label: "Post-call", icon: Check },
+  { id: "main", label: "Main settings", description: "Name, purpose, voice & more", icon: Settings2 },
+  { id: "behavior", label: "Behavior & prompt", description: "Persona and instructions", icon: MessageSquareText },
+  { id: "speech", label: "Speech & transcription", description: "Voice and recognition", icon: Languages },
+  { id: "calls", label: "Call behaviour", description: "Silence, voicemail & DTMF", icon: PhoneCall },
+  { id: "routing", label: "Routing", description: "Transfers and operating hours", icon: Route },
+  { id: "integrations", label: "Integrations", description: "Connected business tools", icon: Plug },
+  { id: "knowledge", label: "Knowledge", description: "Documents and approved answers", icon: BookOpen },
+  { id: "postcall", label: "Post-call", description: "Outcomes and extraction", icon: Check },
 ] as const;
 
 export function AgentCreator({
@@ -779,6 +780,25 @@ export function AgentCreator({
         : readiness?.nextStep === "enable_channel" ? "Enable a channel"
         : readiness?.nextStep === "activate_agent" ? "Activate agent"
           : readiness?.active ? "Active" : "";
+  const setupMilestones = [
+    Boolean(name.trim() && description.trim()),
+    Boolean(voice),
+    !needsBusinessDetails,
+    !bookingEnabled || Boolean(readiness?.calendarConfigured),
+    Boolean(readiness?.channelConfigured),
+    Boolean(readiness?.active),
+  ];
+  const completedMilestones = setupMilestones.filter(Boolean).length;
+  const setupProgress = Math.round((completedMilestones / setupMilestones.length) * 100);
+  const completedStudioSections = new Set<(typeof studioSections)[number]["id"]>();
+  if (name.trim() && description.trim()) completedStudioSections.add("main");
+  if (prompt.trim()) completedStudioSections.add("behavior");
+  if (voice) completedStudioSections.add("speech");
+  if (maxDuration) completedStudioSections.add("calls");
+  if (timezone) completedStudioSections.add("routing");
+  if (!bookingEnabled || readiness?.calendarConfigured) completedStudioSections.add("integrations");
+  if (knowledgeBase.trim()) completedStudioSections.add("knowledge");
+  if (postCallExtractionFields.length) completedStudioSections.add("postcall");
 
   return (
     <>
@@ -846,10 +866,17 @@ export function AgentCreator({
 
           <div className="agent-studio-layout">
             <aside className="agent-studio-nav">
-              <span>Configure</span>
-              {studioSections.map(({ id, label, icon: Icon }) => (
+              <span>Agent setup</span>
+              <div className="studio-setup-progress" aria-label={`${completedMilestones} of ${setupMilestones.length} setup milestones complete`}>
+                <div><strong>Setup progress</strong><span>{setupProgress}%</span></div>
+                <i aria-hidden="true"><span style={{ width: `${setupProgress}%` }} /></i>
+                <small>{completedMilestones} of {setupMilestones.length} milestones complete</small>
+              </div>
+              {studioSections.map(({ id, label, description: sectionDescription, icon: Icon }) => (
                 <button className={activeSection === id ? "active" : ""} type="button" key={id} onClick={() => setActiveSection(id)}>
-                  <Icon size={18} /> {label}
+                  <Icon size={18} />
+                  <span><strong>{label}</strong><small>{sectionDescription}</small></span>
+                  {completedStudioSections.has(id) && <Check className="studio-nav-check" size={14} aria-label="Configured" />}
                 </button>
               ))}
               <div className="studio-template-note">

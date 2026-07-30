@@ -9,6 +9,7 @@ import {
 } from "./managedRuntimeConfig";
 import { finalizeTelnyxEndConversation } from "./telnyxEndConversation";
 import {
+  startTelnyxConversationWhenConnected,
   startTelnyxConversationWithAuthenticationRetry,
   startTelnyxConversationWhenReady,
 } from "./telnyxReadiness";
@@ -20,9 +21,18 @@ import {
 
 const RESPONSE_TIMEOUT_MS = 25_000;
 const AGENT_TRANSCRIPT_SETTLE_MS = 1_200;
+const PRECONNECTED_CLIENT_TTL_MS = 60_000;
 type TelnyxAgentModule = typeof import("@telnyx/ai-agent-lib");
+type TelnyxClient = InstanceType<TelnyxAgentModule["TelnyxAIAgent"]>;
 
 let telnyxAgentModule: Promise<TelnyxAgentModule> | undefined;
+let preconnectedClient: {
+  key: string;
+  client: TelnyxClient;
+  ready: Promise<void>;
+  expires: ReturnType<typeof setTimeout>;
+  invalidate: () => void;
+} | undefined;
 
 export function preloadTelnyxRuntime() {
   telnyxAgentModule ??= import("@telnyx/ai-agent-lib").catch((error) => {
@@ -32,20 +42,26 @@ export function preloadTelnyxRuntime() {
   return telnyxAgentModule.then(() => undefined);
 }
 
-export async function connectTelnyxRuntime(
+function runtimeKey(session: BrowserVoiceRuntimeSession) {
+  return [
+    configString(session.configuration, "agentId"),
+    configString(session.configuration, "versionId") || "main",
+    configString(session.configuration, "environment") || "production",
+    configString(session.configuration, "region"),
+  ].join("|");
+}
+
+function createTelnyxClient(
+  TelnyxAIAgent: TelnyxAgentModule["TelnyxAIAgent"],
   session: BrowserVoiceRuntimeSession,
-  callbacks: BrowserVoiceRuntimeCallbacks,
-): Promise<BrowserVoiceRuntimeConnection> {
-  await preloadTelnyxRuntime();
-  const { TelnyxAIAgent } = await telnyxAgentModule!;
-  callbacks.onStartupStage?.("sdk_loaded");
+) {
   const agentId = configString(session.configuration, "agentId");
   if (!agentId) throw new Error("Telnyx did not return an AI assistant id.");
   const environment = configString(session.configuration, "environment") === "development"
     ? "development"
     : "production";
   const region = configString(session.configuration, "region");
-  const createClient = () => new TelnyxAIAgent({
+  return new TelnyxAIAgent({
     agentId,
     versionId: configString(session.configuration, "versionId") || "main",
     environment,
@@ -57,7 +73,102 @@ export async function connectTelnyxRuntime(
       maxLatencyMs: 15_000,
     },
   });
-  let client = createClient();
+}
+
+function connectClient(client: TelnyxClient, timeoutMs = 15_000) {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const settle = (error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      client.off("agent.connected", connected);
+      client.off("agent.error", failed);
+      client.off("agent.disconnected", disconnected);
+      if (error === undefined) resolve();
+      else reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    const connected = () => settle();
+    const failed = (error: unknown) => settle(error);
+    const disconnected = () => settle(
+      new Error("Telnyx disconnected before the prepared connection became ready."),
+    );
+    const timeout = setTimeout(
+      () => settle(new Error("Telnyx did not preconnect before the connection timeout.")),
+      timeoutMs,
+    );
+    client.on("agent.connected", connected);
+    client.on("agent.error", failed);
+    client.on("agent.disconnected", disconnected);
+    void client.connect().catch(failed);
+  });
+}
+
+export async function releasePreconnectedTelnyxRuntime() {
+  const prepared = preconnectedClient;
+  if (!prepared) return;
+  preconnectedClient = undefined;
+  clearTimeout(prepared.expires);
+  prepared.client.off("agent.disconnected", prepared.invalidate);
+  await prepared.client.disconnect().catch(() => undefined);
+}
+
+export async function preconnectTelnyxRuntime(session: BrowserVoiceRuntimeSession) {
+  await preloadTelnyxRuntime();
+  const { TelnyxAIAgent } = await telnyxAgentModule!;
+  const key = runtimeKey(session);
+  if (preconnectedClient?.key === key) {
+    await preconnectedClient.ready;
+    return;
+  }
+  await releasePreconnectedTelnyxRuntime();
+  const client = createTelnyxClient(TelnyxAIAgent, session);
+  const ready = startTelnyxConversationWithAuthenticationRetry({
+    start: () => connectClient(client),
+    clearReconnectToken: () => client.clearReconnectToken(),
+    conversationRetryDelaysMs: [],
+  });
+  const invalidate = () => {
+    if (preconnectedClient?.client !== client) return;
+    clearTimeout(preconnectedClient.expires);
+    preconnectedClient = undefined;
+  };
+  const expires = setTimeout(() => {
+    if (preconnectedClient?.client !== client) return;
+    void releasePreconnectedTelnyxRuntime();
+  }, PRECONNECTED_CLIENT_TTL_MS);
+  preconnectedClient = { key, client, ready, expires, invalidate };
+  client.on("agent.disconnected", invalidate);
+  try {
+    await ready;
+  } catch (error) {
+    if (preconnectedClient?.client === client) {
+      await releasePreconnectedTelnyxRuntime();
+    }
+    throw error;
+  }
+}
+
+export async function connectTelnyxRuntime(
+  session: BrowserVoiceRuntimeSession,
+  callbacks: BrowserVoiceRuntimeCallbacks,
+): Promise<BrowserVoiceRuntimeConnection> {
+  await preloadTelnyxRuntime();
+  const { TelnyxAIAgent } = await telnyxAgentModule!;
+  callbacks.onStartupStage?.("sdk_loaded");
+  const createClient = () => createTelnyxClient(TelnyxAIAgent, session);
+  const prepared = preconnectedClient?.key === runtimeKey(session)
+    ? preconnectedClient
+    : undefined;
+  let client = prepared?.client ?? createClient();
+  let signalingAlreadyConnected = Boolean(prepared);
+  if (prepared) {
+    await prepared.ready;
+    clearTimeout(prepared.expires);
+    prepared.client.off("agent.disconnected", prepared.invalidate);
+    if (preconnectedClient?.client === prepared.client) preconnectedClient = undefined;
+    callbacks.onStartupStage?.("signaling_ready", { prepared: true });
+  }
   const audio = document.createElement("audio");
   audio.autoplay = true;
   audio.setAttribute("playsinline", "");
@@ -265,7 +376,38 @@ export async function connectTelnyxRuntime(
 
   try {
     await startTelnyxConversationWithAuthenticationRetry({
-      start: () => startTelnyxConversationWhenReady({
+      start: () => signalingAlreadyConnected
+        ? startTelnyxConversationWhenConnected({
+          startConversation: () => client.startConversation({
+            customHeaders: [
+              { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
+              { name: "X-Sauti-Conversation-Channel", value: "web_call" },
+            ],
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          }),
+          subscribeConversation: ({ active, failed, disconnected }) => {
+            const conversationActive = (notification: {
+              call?: { state?: string } | null;
+            }) => {
+              if (notification.call?.state !== "active") return;
+              callbacks.onStartupStage?.("conversation_active");
+              active();
+            };
+            client.on("conversation.update", conversationActive);
+            client.on("agent.error", failed);
+            client.on("agent.disconnected", disconnected);
+            return () => {
+              client.off("conversation.update", conversationActive);
+              client.off("agent.error", failed);
+              client.off("agent.disconnected", disconnected);
+            };
+          },
+        })
+        : startTelnyxConversationWhenReady({
         connect: () => client.connect(),
         startConversation: () => client.startConversation({
           customHeaders: [
@@ -317,7 +459,7 @@ export async function connectTelnyxRuntime(
             client.off("agent.disconnected", disconnected);
           };
         },
-      }),
+        }),
       clearReconnectToken: () => client.clearReconnectToken(),
       onRetry: (attempt) => callbacks.onStartupStage?.("authentication_retry", { attempt }),
       resetConversation: async () => {
@@ -326,6 +468,7 @@ export async function connectTelnyxRuntime(
         if (ending) await ending.catch(() => undefined);
         await previousClient.disconnect().catch(() => undefined);
         client = createClient();
+        signalingAlreadyConnected = false;
         configureClient(client);
       },
       onConversationRetry: (attempt) =>

@@ -225,6 +225,141 @@ Expected:
 
 ## Change log
 
+### 2026-07-30 - Pre-provision and preconnect the Telnyx browser demo
+
+- Used diagnostic `sauti-telnyx-diagnostics-1785367072409.json` to split the
+  previous `12.070s` click-to-first-audio delay:
+  - microphone ready at `0.543s`;
+  - backend test-call response at `5.213s`;
+  - Telnyx signaling ready at `7.535s`;
+  - conversation active at `10.835s`;
+  - first greeting audio at `12.070s`.
+- Removed managed-assistant synchronization from interactive call startup:
+  - agent create/update publishes an after-commit configuration event;
+  - a bounded background worker synchronizes queued agents outside the save
+    request and queues all existing agents after application startup;
+  - a periodic reconciliation scan catches configuration changes made through
+    related tool, variable, or integration paths;
+  - browser, public Web Voice, and inbound telephone startup now read the
+    retained binding and return a short "still preparing" error if no binding
+    exists instead of blocking the caller on a Telnyx management API request.
+- Added authenticated `POST /api/v1/calls/test/runtime`. Opening the saved
+  agent's test panel calls this endpoint to synchronize the current blueprint
+  before the user starts a call. It validates that the selected voice has
+  actually been saved and uses the same resolved greeting as call creation,
+  including configured variables and fallback greeting behavior.
+- Added bounded browser signaling preconnection:
+  - the Telnyx SDK and anonymous signaling connection are prepared while the
+    test panel is idle;
+  - Start creates the lightweight Sauti call and starts a conversation on the
+    already-connected client rather than reconnecting;
+  - unused prepared clients disconnect after 60 seconds and are released when
+    the panel unmounts or its agent/voice identity changes;
+  - transient Telnyx authentication/version-propagation failures retain the
+    existing bounded retry behavior;
+  - after a call completes, the next demo connection is prepared again.
+- The idle test panel now distinguishes `Preparing voice demo` from
+  `Voice demo ready`. The Start button is enabled only after background
+  signaling is ready, so a prospect does not begin a visibly stalled call.
+- Added diagnostic events `startup_preconnection_reused` and
+  `startup_preconnection_waited`, including preparation duration and the age
+  of the ready connection. Existing `call_created`, signaling, active, and
+  first-audio events remain, allowing the next production diagnostic to prove
+  the actual reduction rather than infer it.
+- Preserved the unrelated in-progress Agent Studio visual redesign and its
+  untracked `dashboard/public/images/agents/` assets.
+- Files touched for this change:
+  - `backend/src/main/java/com/sauti/agent/AgentConfigurationChanged.java`
+  - `backend/src/main/java/com/sauti/agent/AgentService.java`
+  - `backend/src/main/java/com/sauti/agent/TelnyxTelephonyProvider.java`
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/call/CallPipelineService.java`
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceAgentBlueprintFactory.java`
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceAgentPreparationWorker.java`
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceAgentProvisioningService.java`
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceAgentReconciliationService.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxAiBrowserVoiceRuntimeService.java`
+  - `backend/src/test/java/com/sauti/agent/TelnyxTelephonyProviderTest.java`
+  - `backend/src/test/java/com/sauti/call/ManagedBrowserVoiceRuntimeServicesTest.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentReconciliationServiceTest.java`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/voice-runtime/browserVoiceRuntime.ts`
+  - `dashboard/features/voice-runtime/telnyxReadiness.ts`
+  - `dashboard/features/voice-runtime/telnyxReadiness.test.ts`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `dashboard/lib/api/calls.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused provisioning, reconciliation, browser runtime, and inbound
+    telephony backend tests passed.
+  - all 23 dashboard voice-runtime tests passed.
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run lint` passed with zero warnings.
+  - `.\gradlew.bat :backend:test` passed.
+  - `npm.cmd run build` passed and generated all 50 static pages.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: wait for `Voice demo ready`,
+  click Start, then download diagnostics. A warm run must contain
+  `startup_preconnection_reused`; `call_created` should no longer include
+  assistant synchronization, and signaling-ready should report
+  `prepared=true`. Measure at least 20 warm calls before setting the final P50
+  and P95 startup SLO or comparing another provider.
+
+### 2026-07-30 - Make the server own phone completeness and readback
+
+- Diagnosed browser-call diagnostic
+  `sauti-telnyx-diagnostics-1785367072409.json` and its transcript. The caller
+  clearly said the ten digits `0 1 1 5 7 5 2 4 4 1`, but Telnyx first
+  classified the complete sequence as unfinished and later spoke
+  `01 15 75 24 441`, duplicating a `4`.
+- Correlated the call with release state. Commit `ec8a2c9` (managed
+  configuration version `30`) passed CI and finished production deployment at
+  `2026-07-29T22:58:14Z`; the call began at
+  `2026-07-29T23:15:38.658Z`. This was therefore a real version-30 failure,
+  not a call against stale production.
+- Closed two gaps in version 30:
+  - the narrow server extractor now evaluates every utterance explicitly
+    targeted at a phone field, even when Telnyx labels the capture
+    `incomplete` and omits a model-authored phone update;
+  - the conversation-state result now exposes the accepted phone as
+    `callerPhoneDigits`, an ordered array of single digits, at both the
+    business result and managed-provider top level.
+- Added required language-neutral `phone_target` state metadata so the model
+  identifies whether an utterance attempts `caller_phone`,
+  `new_caller_phone`, or no phone. The server still determines the actual
+  digits and completeness from verbatim `source_utterance`.
+- Suppressed model-authored `spoken_response` on phone-capture turns. For a
+  complete number, Telnyx is instructed to acknowledge in the caller's current
+  language and read only `callerPhoneDigits`, exactly once per array element.
+  For incomplete evidence, it must ask for one complete repetition and may not
+  read, repair, or mention its candidate.
+- Bumped the Telnyx managed configuration version from `30` to `31`.
+- Diagnostic timing also showed first agent audio at `12.070s`:
+  microphone ready at `0.543s`, backend call created at `5.213s`, signaling
+  ready at `7.535s`, conversation active at `10.835s`, then first audio
+  `1.235s` later. It recorded multiple provider interruption transitions,
+  matching the overlapping agent/caller fragments in the transcript. This
+  evidence is retained separately from the phone-state correction; the file
+  contains no raw audio or server-side managed-tool arguments.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceToolService.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceToolServiceTest.java`
+  - `backend/src/test/java/com/sauti/tool/ConversationStateToolTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused conversation-state, managed-tool response, and provisioning tests
+    passed, 52 tests total.
+  - `.\gradlew.bat :backend:test` passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Required live verification after deployment: say the ten French digits once.
+  Even if Telnyx internally considers the sequence incomplete, Sauti must
+  return and read exactly `0,1,1,5,7,5,2,4,4,1`, store `0115752441`, and
+  never speak or store `01157524441`.
+
 ### 2026-07-30 - Preserve exact multilingual phone digits from caller evidence
 
 - Diagnosed a French call where the caller clearly supplied the ten digits
@@ -7257,3 +7392,35 @@ Expected:
   - browser-rendered Product Design comparison - blocked because the in-app browser connection was unavailable; recorded in `design-qa.md`.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up: rerun the production build and capture `/register`, `/login`, and `/verify-email` at desktop and phone viewports when the browser/build environment is responsive.
+
+### 2026-07-30 - Redesign Agents and Agent Studio from Product Design Option 2
+
+- Reworked the agent editor into the selected fixed command-workspace layout:
+  - slimmed the global application navigation to an icon rail on agent editor routes;
+  - added a persistent setup rail with progress derived from real form milestones;
+  - constrained scrolling to the central settings pane so the page no longer leaves a large empty region below the editor;
+  - kept the test-call rail fixed on desktop and collapsed it at tablet widths.
+- Added a transparent generated Sauti AI-ring asset and used it with the circular brand mark in the Agents hero and test-call panel.
+- Added animated idle and live-call circle treatments for Listening, Thinking, and Speaking while preserving the existing Telnyx call state and validation logic.
+- Replaced letter-only agent avatars in the Agents list with the shared Sauti mark and retained the existing agent data/actions.
+- Files touched:
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentList/AgentList.tsx`
+  - `dashboard/features/agents/AgentList/AgentList.module.css`
+  - `dashboard/public/images/agents/sauti-ai-rings.png`
+  - `design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js generated the optimized production build.
+  - Product Design same-viewport comparison at 1607 x 934 - passed.
+  - Browser interaction check for setup navigation - passed.
+  - Scroll ownership at 1607 x 934 and 1024 x 768 - passed; the body stays fixed and only the main settings pane scrolls.
+  - Browser console - no errors; the new above-the-fold ring asset priority warning was corrected.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: place a provider-backed browser call after deployment or with valid local Telnyx configuration to verify the animated live Listening, Thinking, and Speaking transitions end to end.

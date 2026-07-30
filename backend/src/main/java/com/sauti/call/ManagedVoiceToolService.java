@@ -313,7 +313,8 @@ public class ManagedVoiceToolService {
                 "spokenResponse", "bookingCreated", "bookingFound", "updated", "cancelled",
                 "bookingNumber", "bookingStatus", "appointmentAt", "retryField",
                 "capturedBookingNumber", "bookingNumberReadback", "nextMissingField",
-                "remainingMissingFieldCount", "nextInvalidField", "ended"
+                "remainingMissingFieldCount", "nextInvalidField", "phoneCaptureStatus",
+                "callerPhoneDigits", "ended"
         ).forEach(name -> copyFact(facts, response, name));
         return Map.copyOf(response);
     }

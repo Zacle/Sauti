@@ -16,7 +16,7 @@ class ManagedBrowserVoiceRuntimeServicesTest {
         var provisioning = mock(ManagedVoiceAgentProvisioningService.class);
         var fixture = fixture();
         when(provisioning.isConfigured()).thenReturn(true);
-        when(provisioning.resolve(fixture.call(), "Hello"))
+        when(provisioning.existing(fixture.call()))
                 .thenReturn(new ManagedVoiceAgentReference("assistant-42", "main", "{}"));
         var service = new TelnyxAiBrowserVoiceRuntimeService(
                 provisioning, "development", "eu-west"
@@ -31,6 +31,27 @@ class ManagedBrowserVoiceRuntimeServicesTest {
                 .containsEntry("environment", "development")
                 .containsEntry("region", "eu-west")
                 .doesNotContainValue("call-token");
+    }
+
+    @Test
+    void telnyxSynchronizesBeforeTheInteractiveCallAndReturnsPreconnectConfiguration() {
+        var provisioning = mock(ManagedVoiceAgentProvisioningService.class);
+        var fixture = fixture();
+        when(provisioning.isConfigured()).thenReturn(true);
+        when(provisioning.synchronize(fixture.agent(), "Hello"))
+                .thenReturn(new ManagedVoiceAgentReference("assistant-42", "version-31", "{}"));
+        var service = new TelnyxAiBrowserVoiceRuntimeService(
+                provisioning, "production", "eu"
+        );
+
+        var session = service.prepare(fixture.agent(), "Hello");
+
+        assertThat(session.configuration())
+                .containsEntry("agentId", "assistant-42")
+                .containsEntry("versionId", "version-31")
+                .containsEntry("environment", "production")
+                .containsEntry("region", "eu")
+                .doesNotContainKey("callSid");
     }
 
     @Test

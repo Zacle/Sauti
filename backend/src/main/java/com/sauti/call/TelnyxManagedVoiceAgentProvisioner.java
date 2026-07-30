@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "30";
+        return "31";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -174,6 +174,9 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 - On every update_conversation_state call, copy the exact latest caller transcript verbatim into
                   source_utterance. Never translate, normalize, summarize, correct, repunctuate, or omit repeated
                   fragments from source_utterance. Sauti uses it as server-side evidence for exact entity extraction.
+                  Set phone_target to caller_phone or new_caller_phone whenever that utterance attempts to supply or
+                  correct that field, even when you believe the sequence is incomplete; otherwise set it to
+                  not_applicable. Sauti, not conversational memory, determines the authoritative digits.
                 - A phone number is complete only when every digit in the caller's finished sequence is unambiguous.
                   If transcription contains an unclear sound, missing digit, interruption, or unfinished sequence,
                   store no phone update and ask for one slow natural repetition. Never reconstruct uncertain sounds

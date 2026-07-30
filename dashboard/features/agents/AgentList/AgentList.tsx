@@ -1,6 +1,7 @@
 "use client";
 
 import styles from "./AgentList.module.css";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -13,7 +14,6 @@ import {
   Grid2X2,
   Languages,
   List,
-  Mic2,
   MoreHorizontal,
   PhoneCall,
   Plus,
@@ -28,6 +28,7 @@ import type { Agent, AgentStats } from "@/types/api";
 import { previewDashboardData } from "@/features/dashboard/data/preview-data";
 import { useAuth } from "@/hooks/useAuth";
 import { DeleteAgentDialog } from "@/features/agents/DeleteAgentDialog/DeleteAgentDialog";
+import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 
 type AgentFilter = "all" | "live" | "draft";
 
@@ -141,10 +142,15 @@ export function AgentsPage() {
           <p>Design, test, and deploy voice agents that sound human and drive results.</p>
         </div>
         <div className={styles["voice-visual"]} aria-hidden="true">
-          <span className={styles["wave-line"]} />
-          <span className={styles["voice-ring"]} />
-          <span className={styles["voice-ring"]} />
-          <span className={styles["voice-core"]}><Mic2 size={25} /></span>
+          <Image
+            className={styles["voice-rings-image"]}
+            alt=""
+            fill
+            priority
+            sizes="360px"
+            src="/images/agents/sauti-ai-rings.png"
+          />
+          <BrandLogo className={styles["ai-hero-logo"]} size={62} />
         </div>
         <Link className={styles["hero-create"]} href="/agents/new"><Plus size={17} /> Create agent</Link>
       </header>
@@ -208,7 +214,7 @@ export function AgentsPage() {
                     </div>
                   </div>
                   <div className={styles["agent-identity"]}>
-                    <span className={styles["agent-list-avatar"]}>{agent.name.slice(0, 1).toUpperCase()}<small><Activity size={13} /></small></span>
+                    <span className={styles["agent-list-avatar"]}><BrandLogo className={styles["agent-brand-mark"]} size={58} /><small><Activity size={13} /></small></span>
                     <h2>{agent.name} {agent.active && <CheckCircle2 size={15} />}</h2>
                     <p>{agent.description || "Voice agent ready to be configured for your business."}</p>
                   </div>

@@ -198,7 +198,7 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
     }
 
     private PreparedAiAssistant prepareAiAssistant(Call call, String greeting) {
-        var managed = provisioningService.resolve(call, greeting);
+        var managed = provisioningService.existing(call);
         return new PreparedAiAssistant(
                 managed.externalAgentId(),
                 greeting == null ? "" : greeting.trim()

@@ -1,5 +1,6 @@
 package com.sauti.call;
 
+import com.sauti.agent.Agent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,7 +36,21 @@ public class TelnyxAiBrowserVoiceRuntimeService {
         if (!isConfigured()) {
             throw new IllegalStateException("Telnyx browser calls require TELNYX_API_KEY.");
         }
-        var managedAgent = provisioningService.resolve(call, greeting);
+        return session(provisioningService.existing(call), call.getTwilioCallSid());
+    }
+
+    public BrowserVoiceRuntimeSession prepare(Agent agent, String greeting) {
+        if (!isConfigured()) {
+            throw new IllegalStateException("Telnyx browser calls require TELNYX_API_KEY.");
+        }
+        var managedAgent = provisioningService.synchronize(agent, greeting);
+        return session(managedAgent, "");
+    }
+
+    private BrowserVoiceRuntimeSession session(
+            ManagedVoiceAgentReference managedAgent,
+            String callSid
+    ) {
         var configuration = new LinkedHashMap<String, Object>();
         configuration.put("agentId", managedAgent.externalAgentId());
         configuration.put(
@@ -43,8 +58,7 @@ public class TelnyxAiBrowserVoiceRuntimeService {
                 managedAgent.externalVersionId().isBlank() ? "main" : managedAgent.externalVersionId()
         );
         configuration.put("environment", environment);
-        configuration.put("greeting", greeting == null ? "" : greeting);
-        configuration.put("callSid", call.getTwilioCallSid());
+        if (callSid != null && !callSid.isBlank()) configuration.put("callSid", callSid);
         if (!region.isBlank()) configuration.put("region", region);
         return new BrowserVoiceRuntimeSession(provider(), "", "", Map.copyOf(configuration));
     }

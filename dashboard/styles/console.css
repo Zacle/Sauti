@@ -1479,6 +1479,99 @@
   }
 }
 
+/* Agent Studio uses a fixed application frame: global tools and call context stay
+   anchored while the selected settings document owns the only desktop scrollbar. */
+@media (min-width: 821px) {
+  .console-shell.agent-studio-console-shell {
+    grid-template-columns: 76px minmax(0, 1fr);
+    width: 100%;
+    height: 100vh;
+    height: 100svh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .agent-studio-console-shell .console-sidebar {
+    width: 76px;
+    align-items: center;
+    padding: 17px 10px 14px;
+  }
+
+  .agent-studio-console-shell .console-sidebar-head {
+    width: 100%;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .agent-studio-console-shell .console-brand {
+    gap: 0;
+  }
+
+  .agent-studio-console-shell .console-brand strong,
+  .agent-studio-console-shell .workspace-switcher,
+  .agent-studio-console-shell .console-nav > span,
+  .agent-studio-console-shell .console-nav a:not(.active)::after,
+  .agent-studio-console-shell .console-sidebar-footer {
+    display: none;
+  }
+
+  .agent-studio-console-shell .console-nav {
+    width: 100%;
+    gap: 9px;
+    margin-top: 28px;
+  }
+
+  .agent-studio-console-shell .console-nav a {
+    width: 48px;
+    min-height: 48px;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+    color: #7790aa;
+    font-size: 0;
+  }
+
+  .agent-studio-console-shell .console-nav a svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .agent-studio-console-shell .console-nav a:hover {
+    color: #eaf7ff;
+    transform: none;
+  }
+
+  .agent-studio-console-shell .console-nav a.active {
+    color: #5bf1e6;
+    background: rgba(20, 121, 135, 0.26);
+    box-shadow: inset 2px 0 #31e3d6, 0 10px 30px rgba(0, 0, 0, 0.18);
+  }
+
+  .agent-studio-console-shell .console-main {
+    grid-column: 2;
+    height: 100vh;
+    height: 100svh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .agent-studio-console-shell .console-topbar {
+    display: none;
+  }
+
+  .agent-studio-console-shell .console-content,
+  .agent-studio-console-shell .console-content:has(> .agent-studio) {
+    width: 100%;
+    height: 100vh;
+    height: 100svh;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .volume-column span,
   .voice-preview-orb,

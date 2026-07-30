@@ -34,21 +34,58 @@ public class ManagedVoiceAgentProvisioningService {
     }
 
     public ManagedVoiceAgentReference resolve(Call call, String greeting) {
+        return synchronize(
+                call.getTenant(),
+                call.getAgent(),
+                blueprintFactory.create(call, greeting)
+        );
+    }
+
+    public ManagedVoiceAgentReference synchronize(com.sauti.agent.Agent agent, String greeting) {
+        return synchronize(
+                agent.getTenant(),
+                agent,
+                blueprintFactory.create(agent, greeting)
+        );
+    }
+
+    public ManagedVoiceAgentReference existing(Call call) {
+        return existing(call.getTenant().getId(), call.getAgent().getId());
+    }
+
+    private ManagedVoiceAgentReference existing(java.util.UUID tenantId, java.util.UUID agentId) {
         if (!provisioner.isConfigured()) {
             throw new VoiceRuntimeUnavailableException(
                     "Telnyx calls require TELNYX_API_KEY, PUBLIC_BASE_URL, and TELNYX_TOOL_WEBHOOK_SECRET "
                             + "in the running backend."
             );
         }
-        var lockKey = call.getAgent().getId() + ":telnyx";
+        return repository.findByTenantIdAndAgentIdAndProvider(tenantId, agentId, "telnyx")
+                .map(this::reference)
+                .orElseThrow(() -> new VoiceRuntimeUnavailableException(
+                        "This agent is still preparing for voice calls. Wait a moment and try again."
+                ));
+    }
+
+    private ManagedVoiceAgentReference synchronize(
+            com.sauti.tenant.Tenant tenant,
+            com.sauti.agent.Agent agent,
+            ManagedVoiceAgentBlueprint blueprint
+    ) {
+        if (!provisioner.isConfigured()) {
+            throw new VoiceRuntimeUnavailableException(
+                    "Telnyx calls require TELNYX_API_KEY, PUBLIC_BASE_URL, and TELNYX_TOOL_WEBHOOK_SECRET "
+                            + "in the running backend."
+            );
+        }
+        var lockKey = agent.getId() + ":telnyx";
         var lock = synchronizationLocks.computeIfAbsent(lockKey, ignored -> new Object());
         synchronized (lock) {
             try {
-                var blueprint = blueprintFactory.create(call, greeting);
                 var blueprintHash = hash(blueprint, provisioner.configurationVersion());
                 var existingBinding = repository.findByTenantIdAndAgentIdAndProvider(
-                        call.getTenant().getId(),
-                        call.getAgent().getId(),
+                        tenant.getId(),
+                        agent.getId(),
                         "telnyx"
                 ).orElse(null);
                 if (existingBinding != null && blueprintHash.equals(existingBinding.getBlueprintHash())) {
@@ -60,8 +97,8 @@ public class ManagedVoiceAgentProvisioningService {
                 );
                 if (existingBinding == null) {
                     existingBinding = new ManagedVoiceAgentBinding(
-                            call.getTenant(),
-                            call.getAgent(),
+                            tenant,
+                            agent,
                             "telnyx",
                             blueprintHash,
                             synchronizedReference
