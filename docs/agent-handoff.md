@@ -8001,3 +8001,12 @@ Expected:
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up: after deployment, repeat a French browser cancellation with intent plus phone in the first caller sentence, verify that the agent asks only for the missing date/time, waits for an explicit later approval, and leaves the call within a few seconds of the final farewell.
+
+#### Follow-up: clear the terminal-delay CI lint warnings
+
+- Kept the `terminalToolEndDelay` input contract unchanged for its callers and tests, but destructured only `agentSpeaking`; the historical timing fields remain accepted without introducing unused local variables.
+- Verification:
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run test:voice` - passed (29 tests);
+  - `npm.cmd run typecheck` - passed.
+- Deployment status: not deployed. The lint fix remains uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.

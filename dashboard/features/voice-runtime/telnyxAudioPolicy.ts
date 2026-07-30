@@ -11,8 +11,6 @@ export const TERMINAL_END_FALLBACK_MS = 15_000;
 
 export function terminalToolEndDelay({
   agentSpeaking,
-  lastAgentStoppedAt: _lastAgentStoppedAt,
-  now: _now,
 }: {
   agentSpeaking: boolean;
   lastAgentStoppedAt: number;
