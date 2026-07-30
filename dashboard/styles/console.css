@@ -1520,17 +1520,17 @@
     overflow: hidden;
   }
 
-  .console-shell.agents-console-shell.sidebar-collapsed {
+  .console-shell.sidebar-collapsed {
     grid-template-columns: 76px minmax(0, 1fr);
   }
 
-  .agents-console-shell.sidebar-collapsed .console-sidebar {
+  .sidebar-collapsed .console-sidebar {
     width: 76px;
     align-items: center;
     padding: 17px 10px 14px;
   }
 
-  .agents-console-shell.sidebar-collapsed .console-sidebar-head {
+  .sidebar-collapsed .console-sidebar-head {
     width: 100%;
     flex-direction: column;
     justify-content: center;
@@ -1538,26 +1538,26 @@
     padding: 0 0 5px;
   }
 
-  .agents-console-shell.sidebar-collapsed .console-brand {
+  .sidebar-collapsed .console-brand {
     gap: 0;
   }
 
-  .agents-console-shell.sidebar-collapsed .console-brand strong,
-  .agents-console-shell.sidebar-collapsed .workspace-switcher,
-  .agents-console-shell.sidebar-collapsed .console-nav > span,
-  .agents-console-shell.sidebar-collapsed .console-nav a:not(.active)::after {
+  .sidebar-collapsed .console-brand strong,
+  .sidebar-collapsed .workspace-switcher,
+  .sidebar-collapsed .console-nav > span,
+  .sidebar-collapsed .console-nav a:not(.active)::after {
     display: none;
   }
 
-  .agents-console-shell.sidebar-collapsed .console-nav {
+  .sidebar-collapsed .console-nav {
     width: 100%;
     gap: 9px;
     margin-top: 14px;
   }
 
-  .agents-console-shell.sidebar-collapsed .console-nav a,
-  .agents-console-shell.sidebar-collapsed .console-sidebar-footer a,
-  .agents-console-shell.sidebar-collapsed .console-sidebar-footer button {
+  .sidebar-collapsed .console-nav a,
+  .sidebar-collapsed .console-sidebar-footer a,
+  .sidebar-collapsed .console-sidebar-footer button {
     width: 48px;
     min-height: 48px;
     justify-content: center;
@@ -1568,26 +1568,26 @@
     font-size: 0;
   }
 
-  .agents-console-shell.sidebar-collapsed .console-nav a svg,
-  .agents-console-shell.sidebar-collapsed .console-sidebar-footer svg {
+  .sidebar-collapsed .console-nav a svg,
+  .sidebar-collapsed .console-sidebar-footer svg {
     width: 20px;
     height: 20px;
   }
 
-  .agents-console-shell.sidebar-collapsed .console-nav a:hover,
-  .agents-console-shell.sidebar-collapsed .console-sidebar-footer a:hover,
-  .agents-console-shell.sidebar-collapsed .console-sidebar-footer button:hover {
+  .sidebar-collapsed .console-nav a:hover,
+  .sidebar-collapsed .console-sidebar-footer a:hover,
+  .sidebar-collapsed .console-sidebar-footer button:hover {
     color: #eaf7ff;
     transform: none;
   }
 
-  .agents-console-shell.sidebar-collapsed .console-nav a.active {
+  .sidebar-collapsed .console-nav a.active {
     color: #5bf1e6;
     background: rgba(20, 121, 135, 0.26);
     box-shadow: inset 2px 0 #31e3d6, 0 10px 30px rgba(0, 0, 0, 0.18);
   }
 
-  .agents-console-shell.sidebar-collapsed .console-sidebar-footer {
+  .sidebar-collapsed .console-sidebar-footer {
     width: 100%;
     justify-items: center;
     padding-top: 12px;

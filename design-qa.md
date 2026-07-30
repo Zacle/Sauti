@@ -73,6 +73,7 @@ The implementation follows the selected fixed command-workspace composition: a s
 - Follow-up regression check found that the route-level fixed shell also constrained the pre-editor template chooser.
 - The overflow lock now activates only when the configured studio is mounted; the template chooser has a verified independent 294 px scroll range at 1280 x 720, while the configured editor retains center-only scrolling.
 - The global Agents navigation is now expanded at 252 px by default and collapses to 76 px only through the visible user control. Both states were browser-verified, including persistence after reload.
+- The collapse control now belongs to the shared authenticated shell rather than Agents alone; the preference was verified across Dashboard and Calls while retaining the same expanded and compact dimensions.
 
 ## Intentional differences
 

@@ -7451,3 +7451,15 @@ Expected:
 - `npm.cmd run lint` - passed with zero warnings.
 - `npm.cmd run build` - passed; Next.js generated the optimized production build.
 - Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: make navigation collapse global
+
+- Moved the collapse/expand control and state from Agents-only behavior into the shared `AppShell`.
+- The same 252 px expanded and 76 px compact modes now apply across Dashboard, Agents, Calls, Bookings, Analytics, Integrations, and other authenticated console routes.
+- Replaced the route-specific preference with `sauti-sidebar-collapsed` and retained the earlier Agents key as a one-time fallback so existing preferences are not lost.
+- Kept the control desktop-only; narrow screens continue to use the established mobile navigation drawer.
+- Browser verification confirmed that collapsing on Dashboard remains collapsed after navigating to Calls, and expanding on Calls restores the full shared navigation.
+- `npm.cmd run typecheck` - passed.
+- `npm.cmd run lint` - passed with zero warnings.
+- `npm.cmd run build` - passed; Next.js generated the optimized production build.
+- Deployment status remains unchanged: not deployed and uncommitted.

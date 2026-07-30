@@ -44,17 +44,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { session, logout } = useAuth();
   const tenant = session?.tenant;
-  const isAgentsArea = pathname === "/agents" || pathname.startsWith("/agents/");
   const isAgentStudio = pathname === "/agents/new" || /^\/agents\/[^/]+$/.test(pathname);
 
   useEffect(() => {
-    setSidebarCollapsed(window.localStorage.getItem("sauti-agents-sidebar-collapsed") === "true");
+    const savedPreference = window.localStorage.getItem("sauti-sidebar-collapsed")
+      ?? window.localStorage.getItem("sauti-agents-sidebar-collapsed");
+    setSidebarCollapsed(savedPreference === "true");
   }, []);
 
   function toggleSidebar() {
     setSidebarCollapsed((collapsed) => {
       const next = !collapsed;
-      window.localStorage.setItem("sauti-agents-sidebar-collapsed", String(next));
+      window.localStorage.setItem("sauti-sidebar-collapsed", String(next));
       return next;
     });
   }
@@ -65,24 +66,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <main className={`console-shell ${["/agents", "/dashboard", "/calls", "/bookings", "/analytics", "/dashboard/integrations"].includes(pathname) || pathname.startsWith("/agents/") ? "agents-console-shell" : ""} ${isAgentStudio ? "agent-studio-console-shell" : ""} ${isAgentsArea && sidebarCollapsed ? "sidebar-collapsed" : ""} ${pathname === "/dashboard" ? "dashboard-console-shell" : ""} ${pathname === "/calls" ? "calls-console-shell" : ""} ${pathname === "/bookings" ? "bookings-console-shell" : ""} ${pathname === "/analytics" ? "analytics-console-shell" : ""} ${pathname === "/dashboard/integrations" ? "integrations-console-shell" : ""}`}>
+    <main className={`console-shell ${["/agents", "/dashboard", "/calls", "/bookings", "/analytics", "/dashboard/integrations"].includes(pathname) || pathname.startsWith("/agents/") ? "agents-console-shell" : ""} ${isAgentStudio ? "agent-studio-console-shell" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${pathname === "/dashboard" ? "dashboard-console-shell" : ""} ${pathname === "/calls" ? "calls-console-shell" : ""} ${pathname === "/bookings" ? "bookings-console-shell" : ""} ${pathname === "/analytics" ? "analytics-console-shell" : ""} ${pathname === "/dashboard/integrations" ? "integrations-console-shell" : ""}`}>
       <aside className={`console-sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="console-sidebar-head">
           <Link className="console-brand" href="/dashboard">
             <BrandLogo /><strong>Sauti</strong>
           </Link>
-          {isAgentsArea && (
-            <button
-              className="nav-collapse-toggle"
-              type="button"
-              onClick={toggleSidebar}
-              aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
-              aria-pressed={sidebarCollapsed}
-              title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-            </button>
-          )}
+          <button
+            className="nav-collapse-toggle"
+            type="button"
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+            aria-pressed={sidebarCollapsed}
+            title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
           <button className="mobile-close" onClick={() => setMobileOpen(false)} aria-label="Close navigation"><X size={19} /></button>
         </div>
         <button className="workspace-switcher" type="button">
