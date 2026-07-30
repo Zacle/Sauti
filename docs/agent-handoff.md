@@ -7965,3 +7965,39 @@ Expected:
   - `npm.cmd run lint` - passed with zero warnings;
   - `npm.cmd run build` - passed; Next.js generated the optimized production build.
 - Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-07-30 - Make managed cancellation confirmation and browser-call ending deterministic
+
+- Investigated `sauti-telnyx-diagnostics-1785443460245.json` and its French cancellation transcript.
+- Corrected compound workflow intake guidance:
+  - one caller utterance may supply several facts, and all clear facts must be persisted in one `update_conversation_state` call;
+  - the agent asks for only one missing value at a time but must not ask again for a value already supplied in the same utterance.
+- Closed a managed-provider confirmation gap:
+  - a provider-supplied `confirmation_state=confirmed` no longer consumes a merely pending action;
+  - cancellation/reschedule execution now requires the server conversation state to show a later unconditional caller approval matching the retained action;
+  - repeated provider confirmation without that server-recorded approval remains deferred.
+- Corrected browser-call termination:
+  - the diagnostic showed `end_browser_call` completing at 78.573 seconds while the browser stayed in `thinking` until 98.407 seconds;
+  - when the terminal tool arrives after speech has stopped, the runtime now uses the short playout-drain delay instead of the 15-second fallback;
+  - the fallback remains while farewell audio is actively speaking;
+  - Telnyx's synthetic `(Conversation ended)` control caption is filtered from the customer transcript.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceToolService.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceToolServiceTest.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `dashboard/features/voice-runtime/telnyxAudioPolicy.ts`
+  - `dashboard/features/voice-runtime/telnyxAudioPolicy.test.ts`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `dashboard/features/voice-runtime/telnyxTranscript.ts`
+  - `dashboard/features/voice-runtime/telnyxTranscript.test.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused backend managed-tool and prompt tests - passed (25 tests);
+  - `.\gradlew.bat :backend:test` - passed;
+  - `npm.cmd run test:voice` - passed (29 tests);
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run build` - passed;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: after deployment, repeat a French browser cancellation with intent plus phone in the first caller sentence, verify that the agent asks only for the missing date/time, waits for an explicit later approval, and leaves the call within a few seconds of the final farewell.

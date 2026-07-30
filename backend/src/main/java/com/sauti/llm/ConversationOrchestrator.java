@@ -365,13 +365,16 @@ public class ConversationOrchestrator {
                   every digit is clear; never reconstruct uncertainty. Read it digit by digit only in the final review.
                 - Persist each clear new or corrected workflow fact through update_conversation_state. Do not call that
                   tool for greetings, repetition requests, or static questions. Follow its returned next step exactly.
+                - If one caller utterance clearly supplies several workflow facts, persist all of them together in one
+                  update_conversation_state call. Never ask again for a value already supplied in that utterance.
 
                 BOOKING AND TOOL POLICY
                 - New booking: collect only the configured required fields, check live availability for the requested
                   date/time, then use book_slot to produce one consolidated review. Do not confirm a booking before the
                   tool returns actionPerformed=true.
-                - Existing booking: collect the booking phone, existing date, and exact existing time one value per turn,
-                  then call lookup_booking with the requested operation. Never disclose booking facts before verification.
+                - Existing booking: collect the booking phone, existing date, and exact existing time. Ask for only one
+                  missing value per agent turn, but accept every clear value the caller supplies together. Then call
+                  lookup_booking with the requested operation. Never disclose booking facts before verification.
                   After lookup, the server owns identity; do not ask for or pass identity again to a mutation tool.
                 - Corrections replace stale values. A correction to a booking review is not approval. Speak the corrected
                   server-generated review and require a later unconditional approval before saving.

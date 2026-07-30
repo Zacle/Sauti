@@ -278,12 +278,16 @@ public class ManagedVoiceToolService {
                 || !"ready_for_action".equals(stringArgument(toolCall, "question_handling"))) {
             return toolCall;
         }
-        var retained = sessions.takePendingAction(
-                call.getTwilioCallSid(), toolCall.name()
-        );
+        var retained = sessions.pendingAction(call.getTwilioCallSid())
+                .filter(action -> action.toolName().equals(toolCall.name()));
         if (retained.isEmpty()) return toolCall;
 
         var businessArguments = retained.orElseThrow().arguments();
+        if (!sessions.consumeConfirmedAction(
+                call.getTwilioCallSid(), toolCall.name(), businessArguments
+        )) {
+            return toolCall;
+        }
         return ToolActionPolicy.managedConfirmedCall(toolCall, businessArguments);
     }
 

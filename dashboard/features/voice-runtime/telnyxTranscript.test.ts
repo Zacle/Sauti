@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { TelnyxAgentTranscriptAccumulator } from "./telnyxTranscript.ts";
+import {
+  isTelnyxControlTranscript,
+  TelnyxAgentTranscriptAccumulator,
+} from "./telnyxTranscript.ts";
 
 test("combines Telnyx assistant deltas into one utterance", () => {
   const transcript = new TelnyxAgentTranscriptAccumulator();
@@ -44,4 +47,9 @@ test("does not duplicate a future cumulative transcript item", () => {
     transcript.append("response-1-1785349753002", "Bonjour Zachary").caption,
     "Bonjour Zachary",
   );
+});
+
+test("recognizes the provider conversation-ended control transcript", () => {
+  assert.equal(isTelnyxControlTranscript("(Conversation ended)"), true);
+  assert.equal(isTelnyxControlTranscript("Au revoir."), false);
 });

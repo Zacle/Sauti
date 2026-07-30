@@ -39,7 +39,7 @@ import org.springframework.data.redis.core.ValueOperations;
 
 class ManagedVoiceToolServiceTest {
     @Test
-    void executesRescheduleAfterOneCallerApprovalWhenManagedSessionWasMissing() throws Exception {
+    void doesNotTreatRepeatedProviderConfirmationAsCallerApprovalWhenSessionWasMissing() throws Exception {
         var callRepository = mock(CallRepository.class);
         var agentToolRepository = mock(AgentToolRepository.class);
         var calendar = mock(SautiCalendarFulfillment.class);
@@ -114,7 +114,7 @@ class ManagedVoiceToolServiceTest {
                 "missing-session-reschedule", "reschedule-proposal",
                 "reschedule_booking", payload
         );
-        var approved = service.executeTelnyxWebhook(
+        var repeated = service.executeTelnyxWebhook(
                 "missing-session-reschedule", "reschedule-approved",
                 "reschedule_booking", payload
         );
@@ -122,11 +122,10 @@ class ManagedVoiceToolServiceTest {
         assertThat(proposal)
                 .containsEntry("status", "action_deferred")
                 .containsEntry("actionPerformed", false);
-        assertThat(approved)
-                .containsEntry("status", "booking_rescheduled")
-                .containsEntry("actionPerformed", true)
-                .containsEntry("updated", true);
-        verify(calendar, times(1)).execute(any(), any(), any());
+        assertThat(repeated)
+                .containsEntry("status", "action_deferred")
+                .containsEntry("actionPerformed", false);
+        verify(calendar, times(0)).execute(any(), any(), any());
     }
 
     @Test
@@ -513,13 +512,16 @@ class ManagedVoiceToolServiceTest {
         when(agent.getId()).thenReturn(agentId);
         when(agent.getMaxCallDurationSeconds()).thenReturn(300);
         when(repository.findByTwilioCallSid("call-later-confirm")).thenReturn(Optional.of(call));
-        when(sessions.takePendingAction("call-later-confirm", "cancel_booking")).thenReturn(Optional.of(
-                new PendingAction(
-                        "cancel_booking",
-                        Map.of("booking_number", "SAT-AB12CD34", "caller_phone", "0115752441"),
-                        4
-                )
+        var retainedArguments = Map.<String, Object>of(
+                "booking_number", "SAT-AB12CD34",
+                "caller_phone", "0115752441"
+        );
+        when(sessions.pendingAction("call-later-confirm")).thenReturn(Optional.of(
+                new PendingAction("cancel_booking", retainedArguments, 4)
         ));
+        when(sessions.consumeConfirmedAction(
+                "call-later-confirm", "cancel_booking", retainedArguments
+        )).thenReturn(true);
         when(router.route(any(), any())).thenAnswer(invocation -> {
             var toolCall = (com.sauti.llm.LlmToolCall) invocation.getArgument(1);
             return LlmToolResult.success(toolCall, Map.of(
@@ -545,14 +547,76 @@ class ManagedVoiceToolServiceTest {
 
         var result = service.execute("telnyx", "call-later-confirm", token, payload);
 
-        verify(sessions).takePendingAction(
-                "call-later-confirm",
-                "cancel_booking"
+        verify(sessions).consumeConfirmedAction(
+                "call-later-confirm", "cancel_booking", retainedArguments
         );
         assertThat(result)
                 .containsEntry("success", true)
                 .containsEntry("actionPerformed", true)
                 .containsEntry("status", "booking_cancelled");
+    }
+
+    @Test
+    void doesNotTrustProviderConfirmationBeforeServerRecordedCallerApproval() throws Exception {
+        var repository = mock(CallRepository.class);
+        var router = mock(ToolFulfillmentRouter.class);
+        var sessions = mock(CallSessionStore.class);
+        var objectMapper = new ObjectMapper();
+        var tokenService = new WebVoiceTokenService(
+                "managed-voice-test-secret-managed-voice-test-secret", 10
+        );
+        var call = mock(Call.class);
+        var agent = mock(Agent.class);
+        var agentId = UUID.randomUUID();
+        when(call.getId()).thenReturn(UUID.randomUUID());
+        when(call.getTwilioCallSid()).thenReturn("call-unapproved-cancel");
+        when(call.getDirection()).thenReturn("test");
+        when(call.isActive()).thenReturn(true);
+        when(call.getAgent()).thenReturn(agent);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getMaxCallDurationSeconds()).thenReturn(300);
+        when(repository.findByTwilioCallSid("call-unapproved-cancel"))
+                .thenReturn(Optional.of(call));
+        var retainedArguments = Map.<String, Object>of(
+                "booking_number", "SAT-AB12CD34",
+                "caller_phone", "0115752441"
+        );
+        when(sessions.pendingAction("call-unapproved-cancel")).thenReturn(Optional.of(
+                new PendingAction("cancel_booking", retainedArguments, 4)
+        ));
+        when(sessions.consumeConfirmedAction(
+                "call-unapproved-cancel", "cancel_booking", retainedArguments
+        )).thenReturn(false);
+        when(router.route(any(), any())).thenAnswer(invocation -> {
+            var toolCall = (com.sauti.llm.LlmToolCall) invocation.getArgument(1);
+            return LlmToolResult.success(toolCall, Map.of(
+                    "status", "action_deferred",
+                    "actionPerformed", false,
+                    "cancelled", false
+            ));
+        });
+        var service = new ManagedVoiceToolService(repository, tokenService, router, sessions, objectMapper);
+        var token = tokenService.issue("call-unapproved-cancel", agentId.toString());
+        var payload = objectMapper.readTree("""
+                {
+                  "name": "cancel_booking",
+                  "tool_call_id": "premature-provider-confirmation",
+                  "args": {
+                    "question_handling": "ready_for_action",
+                    "confirmation_state": "confirmed"
+                  }
+                }
+                """);
+
+        var result = service.execute("telnyx", "call-unapproved-cancel", token, payload);
+
+        var routed = ArgumentCaptor.forClass(com.sauti.llm.LlmToolCall.class);
+        verify(router).route(any(), routed.capture());
+        assertThat(routed.getValue().arguments())
+                .doesNotContainKeys("booking_number", "caller_phone");
+        assertThat(result)
+                .containsEntry("actionPerformed", false)
+                .containsEntry("cancelled", false);
     }
 
     @Test
@@ -583,9 +647,12 @@ class ManagedVoiceToolServiceTest {
         when(agent.getMaxCallDurationSeconds()).thenReturn(300);
         when(repository.findByTwilioCallSid("call-reschedule-confirm"))
                 .thenReturn(Optional.of(call));
-        when(sessions.takePendingAction("call-reschedule-confirm", "reschedule_booking")).thenReturn(Optional.of(
+        when(sessions.pendingAction("call-reschedule-confirm")).thenReturn(Optional.of(
                 new PendingAction("reschedule_booking", retainedArguments, 9)
         ));
+        when(sessions.consumeConfirmedAction(
+                "call-reschedule-confirm", "reschedule_booking", retainedArguments
+        )).thenReturn(true);
         when(router.route(any(), any())).thenAnswer(invocation -> {
             var toolCall = (com.sauti.llm.LlmToolCall) invocation.getArgument(1);
             return LlmToolResult.success(toolCall, Map.of(
@@ -611,8 +678,8 @@ class ManagedVoiceToolServiceTest {
 
         var result = service.execute("telnyx", "call-reschedule-confirm", token, payload);
 
-        verify(sessions).takePendingAction(
-                "call-reschedule-confirm", "reschedule_booking"
+        verify(sessions).consumeConfirmedAction(
+                "call-reschedule-confirm", "reschedule_booking", retainedArguments
         );
         var routed = ArgumentCaptor.forClass(com.sauti.llm.LlmToolCall.class);
         verify(router).route(any(), routed.capture());

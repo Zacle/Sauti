@@ -23,6 +23,7 @@ import {
 } from "./telnyxAudioPolicy";
 import { callerClearlyRequestedBrowserEnd } from "./terminalIntent";
 import {
+  isTelnyxControlTranscript,
   TelnyxAgentTranscriptAccumulator,
   type CompletedAgentTranscript,
 } from "./telnyxTranscript";
@@ -407,6 +408,7 @@ export async function connectTelnyxRuntime(
         callbacks.onCallerTranscript(text);
         return;
       }
+      if (isTelnyxControlTranscript(text)) return;
       if (agentSpeaking) clearResponseTimer();
       else armResponseTimer();
       const update = agentTranscript.append(item.id, item.content);

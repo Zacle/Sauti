@@ -34,6 +34,10 @@ export class TelnyxAgentTranscriptAccumulator {
   }
 }
 
+export function isTelnyxControlTranscript(content: string) {
+  return /^\(\s*conversation ended\s*\)$/i.test(content.trim());
+}
+
 function responseItemId(id: string) {
   // ai-agent-lib appends Date.now() to every assistant delta even though the
   // provider item id is stable for the full response.

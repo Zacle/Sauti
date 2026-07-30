@@ -13,17 +13,20 @@ test("keeps remote agent noise below the speaking threshold", () => {
   assert.equal(TELNYX_BROWSER_VAD.remoteSilenceThresholdMs, 1_000);
 });
 
-test("does not end while farewell audio may still be starting or playing", () => {
+test("keeps the fallback only while farewell audio is still playing", () => {
   assert.equal(terminalToolEndDelay({
     agentSpeaking: true,
     lastAgentStoppedAt: 0,
     now: 10_000,
   }), TERMINAL_END_FALLBACK_MS);
+});
+
+test("drains briefly when the terminal tool arrives after speech", () => {
   assert.equal(terminalToolEndDelay({
     agentSpeaking: false,
     lastAgentStoppedAt: 0,
     now: 10_000,
-  }), TERMINAL_END_FALLBACK_MS);
+  }), TERMINAL_END_AFTER_DRAIN_MS);
 });
 
 test("allows the WebRTC playout buffer to drain after speech stops", () => {
