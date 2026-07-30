@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Circle, Download, LoaderCircle, Mic, Phone, PhoneOff, Send, ShieldCheck, Volume2 } from "lucide-react";
+import { Download, LoaderCircle, Mic, Phone, PhoneOff, Send, ShieldCheck, Volume2 } from "lucide-react";
 import {
   completeTestCall,
   correlateTestCall,
@@ -44,20 +44,24 @@ type CallStatus =
   | "ending";
 type PreparationStatus = "idle" | "preparing" | "ready" | "error";
 
-function AiCallOrb({ status, compact = false }: { status: CallStatus; compact?: boolean }) {
+function PreCallOrb() {
   return (
-    <div className={`test-ai-orb status-${status} ${compact ? "compact" : ""}`} aria-hidden="true">
+    <div className="pre-call-orb" aria-hidden="true">
       <Image
-        className="test-ai-rings"
+        className="pre-call-orb-image pre-call-orb-layer-primary"
         alt=""
         fill
         priority
-        sizes={compact ? "150px" : "320px"}
-        src="/images/agents/sauti-ai-rings.png"
+        sizes="160px"
+        src="/images/agents/pre-call-orb.png"
       />
-      <span className="test-ai-core">
-        <Image alt="" fill sizes={compact ? "72px" : "108px"} src="/sauti-logo-circular.png" />
-      </span>
+      <Image
+        className="pre-call-orb-image pre-call-orb-layer-cloud"
+        alt=""
+        fill
+        sizes="160px"
+        src="/images/agents/pre-call-orb.png"
+      />
     </div>
   );
 }
@@ -419,15 +423,10 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           <small>Telnyx browser test call</small>
           <h2>Test your agent</h2>
           <p>Test the selected voice, conversation behavior, and business tools before taking the agent live.</p>
-          <AiCallOrb status={status} />
-          <div className="test-call-state-legend" aria-label="AI call animation states">
-            <span><Circle size={8} fill="currentColor" /> Listening</span>
-            <span><Circle size={8} fill="currentColor" /> Thinking</span>
-            <span><Circle size={8} fill="currentColor" /> Speaking</span>
-          </div>
+          <PreCallOrb />
           <div className="test-call-voice-summary">
             <span><Volume2 size={17} /></span>
-            <div><small>Selected voice</small><strong>{voiceId || "Choose a Telnyx voice"}</strong></div>
+            <div><small>Selected voice</small><strong>{voiceId ? "Voice ready" : "Choose a Telnyx voice"}</strong></div>
           </div>
           {!voiceId?.toLowerCase().startsWith("telnyx.") && (
             <p className="test-runtime-note">Select and save a Telnyx voice in Voice settings to run this test.</p>
@@ -477,19 +476,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
               <PhoneOff size={15} /> {status === "ending" ? "Saving..." : "End"}
             </button>
           </header>
-          <div className="test-call-live-stage">
-            <AiCallOrb status={status} compact />
-            <div>
-              <small>AI call state</small>
-              <strong>{
-                status === "capturing" ? "Listening"
-                  : status === "thinking" || status === "working" ? "Thinking"
-                    : status === "speaking" ? "Speaking"
-                      : status === "ending" ? "Wrapping up"
-                        : "Ready"
-              }</strong>
-            </div>
-          </div>
           <div className="test-call-transcript" ref={transcriptRef}>
             {messages.map((message) => (
               <div className={message.role} key={message.id}>

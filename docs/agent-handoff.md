@@ -7463,3 +7463,86 @@ Expected:
 - `npm.cmd run lint` - passed with zero warnings.
 - `npm.cmd run build` - passed; Next.js generated the optimized production build.
 - Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-07-30 - Correct Agent Studio navigation and call visual
+
+- Restored the shared console top bar on both new-agent and saved-agent editor routes. The top bar now occupies a 76 px grid row and the fixed editor uses the remaining viewport height.
+- Replaced the large concentric-rings treatment with a compact pre-call-only orb derived from the user-supplied pale sphere and diffused blue/lilac references.
+  - Generated with the built-in image tool on a removable green key background.
+  - Removed the key locally and saved the final 1254 x 1254 RGBA asset as `dashboard/public/images/agents/pre-call-orb.png`.
+  - The final asset contains one softly modeled blue/lilac sphere with no text, logo, waveform, or rings.
+- Removed the Listening, Thinking, and Speaking color legend.
+- Removed the decorative visual stage from the active-call layout; active calls retain transcript, concise textual activity, microphone state, and controls.
+- Stopped exposing the technical voice identifier in the pre-call summary; it now shows “Voice ready” or “Choose a Telnyx voice.”
+- Removed the animated rings illustration and associated asset/styles from `/agents`.
+- Files touched:
+  - `dashboard/styles/console.css`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
+  - `dashboard/features/agents/AgentList/AgentList.tsx`
+  - `dashboard/features/agents/AgentList/AgentList.module.css`
+  - `dashboard/public/images/agents/pre-call-orb.png`
+  - `design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - browser at 1280 x 720: shared top bar visible at 76 px on `/agents/new` and `/agents/[id]`;
+  - browser: compact pre-call orb measured 106 x 106 px; no state legend or active-call visual stage was present;
+  - browser: `/agents` contained neither the removed visual container nor a reference to the rings asset;
+  - browser: no visible technical ID on the saved-agent route check;
+  - browser console: no warnings or errors on the final corrected preview;
+  - Product Design full-view and focused side-by-side comparison - passed;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed; Next.js generated the optimized production build;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: place a provider-backed browser call to confirm the compact active layout with real transcript activity; the decorative orb is intentionally absent once the call starts.
+
+#### Follow-up: change the pre-call orb from bounce to internal sky motion
+
+- Cropped `pre-call-orb.png` to its visible alpha bounds so the real cloud texture fills a fixed circular viewport cleanly.
+- Replaced whole-orb vertical movement with two layered instances of the generated orb asset:
+  - the primary sky layer slowly pans, scales, rotates, and changes brightness/saturation;
+  - a blurred screen-blended cloud layer drifts in the opposite direction and gently crossfades;
+  - the outer 106 px circular boundary remains stationary.
+- Browser verification sampled the animation 1.4 seconds apart:
+  - wrapper position and 106 x 106 dimensions were identical;
+  - both internal layer transforms changed;
+  - the secondary cloud opacity changed;
+  - no bounce or outer translation remained.
+- `npm.cmd run typecheck` - passed.
+- `npm.cmd run lint` - passed with zero warnings.
+- `npm.cmd run build` - passed; Next.js generated the optimized production build.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: make internal sky displacement clearly visible
+
+- Increased the pre-call orb’s internal animation speed:
+  - primary sky cycle: 2.6 seconds;
+  - opposing cloud cycle: 3.2 seconds.
+- Increased internal travel, rotation, scale, brightness, saturation, hue shift, blur variation, and cloud opacity range while retaining the fixed circular clip.
+- Browser verification sampled the animation only 500 ms apart and confirmed:
+  - clearly changed transforms on both internal layers;
+  - changed cloud opacity;
+  - identical wrapper position and 106 x 106 dimensions;
+  - no browser console warnings or errors.
+- `npm.cmd run typecheck` - passed.
+- `npm.cmd run lint` - passed with zero warnings.
+- `npm.cmd run build` - passed; Next.js generated the optimized production build.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: make the internal sky flow multidirectional
+
+- Replaced the two-endpoint left/right ping-pong with closed multi-stop motion paths:
+  - the primary sky layer now moves through six distinct diagonal, vertical, and arcing positions;
+  - the translucent cloud layer follows an independent five-position route through different quadrants;
+  - both paths return to their starting transform for a smooth continuous loop instead of reversing on one axis.
+- Kept the outer 106 x 106 px circular viewport stationary so only the sky texture moves.
+- Browser verification sampled four frames 520 ms apart and confirmed:
+  - the primary and cloud translations moved through different positive and negative X/Y combinations;
+  - rotation, scale, cloud opacity, and filters continued changing independently;
+  - wrapper coordinates and dimensions remained identical across every sample.
+- `npm.cmd run typecheck` - passed.
+- `npm.cmd run lint` - passed with zero warnings.
+- `npm.cmd run build` - passed; Next.js generated the optimized production build.
+- Deployment status remains unchanged: not deployed and uncommitted.

@@ -1,7 +1,6 @@
 "use client";
 
 import styles from "./AgentList.module.css";
-import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -140,17 +139,6 @@ export function AgentsPage() {
           <span className={styles.eyebrow}><Sparkles size={13} /> Agent studio</span>
           <h1>AI voice agents</h1>
           <p>Design, test, and deploy voice agents that sound human and drive results.</p>
-        </div>
-        <div className={styles["voice-visual"]} aria-hidden="true">
-          <Image
-            className={styles["voice-rings-image"]}
-            alt=""
-            fill
-            priority
-            sizes="360px"
-            src="/images/agents/sauti-ai-rings.png"
-          />
-          <BrandLogo className={styles["ai-hero-logo"]} size={62} />
         </div>
         <Link className={styles["hero-create"]} href="/agents/new"><Plus size={17} /> Create agent</Link>
       </header>

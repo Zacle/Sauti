@@ -8,8 +8,7 @@ body:has(.agent-studio) {
 @media (min-width: 821px) {
   .agent-studio {
     width: 100%;
-    height: 100vh;
-    height: 100svh;
+    height: 100%;
     min-height: 0;
     margin: 0;
     grid-template-rows: 72px minmax(0, 1fr);
@@ -18,8 +17,7 @@ body:has(.agent-studio) {
 
   .console-main:has(.agent-studio),
   .console-content:has(> .agent-studio) {
-    height: 100vh;
-    height: 100svh;
+    height: 100%;
     min-height: 0;
     overflow: hidden;
   }
@@ -202,7 +200,7 @@ body:has(.agent-studio) {
 }
 
 .agent-test-panel.active {
-  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   padding: 0;
 }
 
@@ -245,91 +243,34 @@ body:has(.agent-studio) {
   line-height: 1.55;
 }
 
-.test-ai-orb {
+.pre-call-orb {
   position: relative;
-  width: clamp(220px, 18vw, 300px);
+  width: clamp(112px, 9vw, 148px);
   aspect-ratio: 1;
   flex: 0 0 auto;
-  margin: clamp(14px, 2.5vh, 25px) 0 12px;
-  filter: drop-shadow(0 0 28px rgba(37, 116, 230, 0.2));
-}
-
-.test-ai-rings {
-  object-fit: contain;
-  animation: aiRingsRotate 24s linear infinite;
-}
-
-.test-ai-core {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 35%;
-  aspect-ratio: 1;
+  margin: clamp(14px, 2vh, 20px) 0 8px;
   overflow: hidden;
   border-radius: 50%;
-  box-shadow:
-    0 0 0 9px rgba(34, 106, 220, 0.1),
-    0 0 38px rgba(40, 123, 255, 0.42);
-  transform: translate(-50%, -50%);
-  animation: aiCoreIdle 3.4s ease-in-out infinite;
+  background: #c9dcff;
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.34);
+  filter: drop-shadow(0 0 24px rgba(111, 141, 255, 0.24));
 }
 
-.test-ai-core img {
+.pre-call-orb-image {
   object-fit: cover;
+  will-change: transform, filter, opacity;
 }
 
-.test-ai-orb.status-connecting .test-ai-rings,
-.test-ai-orb.status-thinking .test-ai-rings,
-.test-ai-orb.status-working .test-ai-rings {
-  animation-duration: 5s;
+.pre-call-orb-layer-primary {
+  animation: preCallSkyDrift 3.8s linear infinite;
 }
 
-.test-ai-orb.status-listening .test-ai-rings,
-.test-ai-orb.status-capturing .test-ai-rings {
-  animation-duration: 12s;
-  filter: hue-rotate(-18deg) saturate(1.18);
+.pre-call-orb-layer-cloud {
+  opacity: 0.38;
+  mix-blend-mode: screen;
+  filter: blur(6px) saturate(1.18);
+  animation: preCallCloudDrift 4.4s linear infinite;
 }
-
-.test-ai-orb.status-speaking .test-ai-core {
-  animation: aiCoreSpeaking 850ms ease-in-out infinite;
-}
-
-.test-ai-orb.status-speaking .test-ai-rings {
-  animation: aiRingsRotate 8s linear infinite, aiRingsSpeaking 1.05s ease-in-out infinite;
-}
-
-.test-ai-orb.status-ending {
-  opacity: 0.7;
-}
-
-.test-ai-orb.compact {
-  width: 118px;
-  margin: 0;
-}
-
-.test-call-state-legend {
-  display: flex;
-  width: min(100%, 330px);
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  padding: 10px 12px;
-  border: 1px solid rgba(85, 145, 194, 0.18);
-  border-radius: 12px;
-  color: #a3b5c5;
-  background: rgba(7, 27, 47, 0.74);
-  font-size: 0.65rem;
-}
-
-.test-call-state-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.test-call-state-legend span:nth-child(1) { color: #70e9dc; }
-.test-call-state-legend span:nth-child(2) { color: #4f98ff; }
-.test-call-state-legend span:nth-child(3) { color: #bf76f5; }
 
 .test-call-voice-summary {
   display: grid;
@@ -408,55 +349,68 @@ body:has(.agent-studio) {
   font-size: 0.62rem;
 }
 
-.test-call-live-stage {
-  display: flex;
-  min-height: 140px;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 10px 18px;
-  border-bottom: 1px solid rgba(83, 144, 193, 0.16);
-  background:
-    radial-gradient(circle at 28% 50%, rgba(38, 95, 181, 0.16), transparent 11rem),
-    #041321;
+@keyframes preCallSkyDrift {
+  0% {
+    transform: scale(1.28) translate3d(-8%, 4%, 0) rotate(-4deg);
+    filter: brightness(0.92) saturate(0.9) hue-rotate(-7deg);
+  }
+  16% {
+    transform: scale(1.33) translate3d(-1%, -9%, 0) rotate(-1deg);
+    filter: brightness(1.04) saturate(1.02) hue-rotate(-2deg);
+  }
+  33% {
+    transform: scale(1.29) translate3d(9%, -3%, 0) rotate(4deg);
+    filter: brightness(1.12) saturate(1.14) hue-rotate(7deg);
+  }
+  50% {
+    transform: scale(1.34) translate3d(5%, 9%, 0) rotate(7deg);
+    filter: brightness(1.02) saturate(1.08) hue-rotate(3deg);
+  }
+  67% {
+    transform: scale(1.3) translate3d(-6%, 8%, 0) rotate(2deg);
+    filter: brightness(0.96) saturate(0.96) hue-rotate(-4deg);
+  }
+  84% {
+    transform: scale(1.35) translate3d(-10%, -4%, 0) rotate(-6deg);
+    filter: brightness(1.08) saturate(1.1) hue-rotate(5deg);
+  }
+  100% {
+    transform: scale(1.28) translate3d(-8%, 4%, 0) rotate(-4deg);
+    filter: brightness(0.92) saturate(0.9) hue-rotate(-7deg);
+  }
 }
 
-.test-call-live-stage > div:last-child {
-  display: grid;
-  min-width: 84px;
-  gap: 4px;
-}
-
-.test-call-live-stage small {
-  color: #718aa0;
-  font-size: 0.62rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.test-call-live-stage strong {
-  color: #56e6da;
-  font-size: 0.9rem;
-  font-weight: 650;
-}
-
-@keyframes aiRingsRotate {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes aiCoreIdle {
-  0%, 100% { transform: translate(-50%, -50%) scale(0.96); }
-  50% { transform: translate(-50%, -50%) scale(1.035); }
-}
-
-@keyframes aiCoreSpeaking {
-  0%, 100% { transform: translate(-50%, -50%) scale(0.94); }
-  50% { transform: translate(-50%, -50%) scale(1.09); }
-}
-
-@keyframes aiRingsSpeaking {
-  0%, 100% { opacity: 0.72; scale: 0.97; }
-  50% { opacity: 1; scale: 1.025; }
+@keyframes preCallCloudDrift {
+  0% {
+    opacity: 0.28;
+    transform: scale(1.38) translate3d(9%, -8%, 0) rotate(6deg);
+    filter: blur(8px) saturate(1.08);
+  }
+  20% {
+    opacity: 0.52;
+    transform: scale(1.27) translate3d(-2%, -11%, 0) rotate(2deg);
+    filter: blur(4px) saturate(1.26);
+  }
+  40% {
+    opacity: 0.34;
+    transform: scale(1.34) translate3d(-10%, 1%, 0) rotate(-5deg);
+    filter: blur(7px) saturate(1.12);
+  }
+  60% {
+    opacity: 0.62;
+    transform: scale(1.25) translate3d(-3%, 10%, 0) rotate(-2deg);
+    filter: blur(3px) saturate(1.3);
+  }
+  80% {
+    opacity: 0.42;
+    transform: scale(1.32) translate3d(10%, 6%, 0) rotate(5deg);
+    filter: blur(6px) saturate(1.18);
+  }
+  100% {
+    opacity: 0.28;
+    transform: scale(1.38) translate3d(9%, -8%, 0) rotate(6deg);
+    filter: blur(8px) saturate(1.08);
+  }
 }
 
 @media (max-width: 1380px) and (min-width: 1081px) {
@@ -476,9 +430,6 @@ body:has(.agent-studio) {
     display: none;
   }
 
-  .test-ai-orb {
-    width: 215px;
-  }
 }
 
 @media (max-width: 1080px) and (min-width: 821px) {
@@ -522,8 +473,8 @@ body:has(.agent-studio) {
     display: none;
   }
 
-  .test-ai-orb {
-    width: 190px;
+  .pre-call-orb {
+    width: 106px;
     margin-block: 10px 7px;
   }
 
@@ -555,10 +506,7 @@ body:has(.agent-studio) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .test-ai-rings,
-  .test-ai-core,
-  .test-ai-orb.status-speaking .test-ai-rings,
-  .test-ai-orb.status-speaking .test-ai-core {
+  .pre-call-orb-image {
     animation: none;
   }
 }
