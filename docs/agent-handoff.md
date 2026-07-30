@@ -225,6 +225,35 @@ Expected:
 
 ## Change log
 
+### 2026-07-30 - Correct the case-sensitive Telnyx Kimi K2.6 model ID
+
+- Replaced the rejected AI Assistant model alias
+  `moonshotai/kimi-k2-6` with Telnyx's canonical inference model ID
+  `moonshotai/Kimi-K2.6`.
+- Reason: the live Assistants API returned validation error `10027` with HTTP
+  422 for the lowercase/hyphenated alias. Telnyx's current model catalog and
+  Inference API examples specify the capitalized, dotted identifier even though
+  one AI Assistants release note documents the lowercase alias.
+- Updated application defaults, local and production examples, provider testing
+  documentation, and provisioning assertions.
+- Bumped managed-assistant configuration version from `33` to `34` so existing
+  bindings reconcile after deployment.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/managed-voice-provider-testing.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Telnyx provisioning and compact orchestration tests - passed;
+  - identifier scan confirmed no active lowercase alias remains;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. The production environment must also set
+  `TELNYX_AI_MODEL=moonshotai/Kimi-K2.6`; an existing environment value
+  overrides the corrected application default.
+
 ### 2026-07-30 - Reduce repeated Telnyx managed-assistant prompt cost
 
 - Added a dedicated compact instruction builder for provider-managed voice
@@ -271,7 +300,7 @@ Expected:
 ### 2026-07-30 - Use Telnyx-hosted Kimi K2.6 for managed assistants
 
 - Changed the managed Telnyx AI Assistant default model from
-  `anthropic/claude-haiku-4-5` to `moonshotai/kimi-k2-6`.
+  `anthropic/claude-haiku-4-5` to `moonshotai/Kimi-K2.6`.
 - Reason:
   - Telnyx currently recommends Kimi K2.6 for voice AI and real-time
     applications because it combines low time-to-first-token with stronger
@@ -297,7 +326,7 @@ Expected:
   - `docs/agent-handoff.md`
 - Deployment status: not deployed. Production currently has an explicit
   `TELNYX_AI_MODEL` value according to prior handoff history; the maintainer
-  must update it to `moonshotai/kimi-k2-6` before the normal CI/CD deployment
+  must update it to `moonshotai/Kimi-K2.6` before the normal CI/CD deployment
   for production to use the new model.
 - Verification:
   - `.\gradlew.bat :backend:test --tests com.sauti.call.ManagedVoiceAgentProvisionersTest --tests com.sauti.call.ManagedVoiceAgentProvisioningServiceTest`
