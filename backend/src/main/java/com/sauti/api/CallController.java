@@ -1,7 +1,7 @@
 package com.sauti.api;
 
 import com.sauti.auth.AuthenticatedUser;
-import com.sauti.agent.AgentService;
+import com.sauti.call.BrowserVoiceRuntimePreparationService;
 import com.sauti.call.CallDtos.CallResponse;
 import com.sauti.call.CallDtos.CallTurnResponse;
 import com.sauti.call.CallDtos.CompleteTestCallRequest;
@@ -40,7 +40,7 @@ public class CallController {
     private final CallRecordingService callRecordingService;
     private final WebVoiceTokenService webVoiceTokenService;
     private final TelnyxAiBrowserVoiceRuntimeService telnyxRuntime;
-    private final AgentService agentService;
+    private final BrowserVoiceRuntimePreparationService runtimePreparation;
 
     public CallController(
             CallQueryService callQueryService,
@@ -48,14 +48,14 @@ public class CallController {
             CallRecordingService callRecordingService,
             WebVoiceTokenService webVoiceTokenService,
             TelnyxAiBrowserVoiceRuntimeService telnyxRuntime,
-            AgentService agentService
+            BrowserVoiceRuntimePreparationService runtimePreparation
     ) {
         this.callQueryService = callQueryService;
         this.callPipelineService = callPipelineService;
         this.callRecordingService = callRecordingService;
         this.webVoiceTokenService = webVoiceTokenService;
         this.telnyxRuntime = telnyxRuntime;
-        this.agentService = agentService;
+        this.runtimePreparation = runtimePreparation;
     }
 
     @GetMapping
@@ -98,17 +98,10 @@ public class CallController {
             @RequestBody StartTestCallRequest request
     ) {
         requireTelnyx();
-        var agent = agentService.get(user.tenantId(), request.agentId());
-        var requestedVoice = request.ttsVoiceId() == null ? "" : request.ttsVoiceId().trim();
-        var savedVoice = agent.getTtsVoiceId() == null ? "" : agent.getTtsVoiceId().trim();
-        if (!requestedVoice.isBlank() && !requestedVoice.equals(savedVoice)) {
-            throw new IllegalArgumentException(
-                    "Save the selected Telnyx voice before preparing the test call"
-            );
-        }
-        return telnyxRuntime.prepare(
-                agent,
-                callPipelineService.managedVoiceGreeting(agent, request.language()),
+        return runtimePreparation.prepare(
+                user.tenantId(),
+                request.agentId(),
+                request.ttsVoiceId(),
                 request.language()
         );
     }

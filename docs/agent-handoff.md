@@ -147,6 +147,41 @@ Release policy:
 - Deployment status: not deployed. Change remains uncommitted for maintainer
   review and the normal GitHub Actions CI/CD workflow.
 
+### 2026-07-30: Keep primary-language browser preparation transactional
+
+- Diagnosed production diagnostic
+  `sauti-telnyx-diagnostics-1785441868388.json`:
+  - `/calls/test/runtime` returned HTTP 500 after 150 ms;
+  - no Sauti call was created;
+  - microphone preparation completed later and Telnyx preconnection never
+    started;
+  - the failure was therefore in Sauti runtime configuration, not French STT,
+    TTS playback, microphone input, or Telnyx WebRTC.
+- Confirmed read-only through the Telnyx API that Gerard's newly recreated
+  French assistant exists with a real version ID, the same configured Ultra
+  voice as English, Nova-3 `language=auto`, and anonymous web calls enabled.
+- Root cause: `CallController` loaded the agent through a completed
+  `AgentService.get()` transaction, then resolved the greeting and managed
+  binding from the detached entity. The primary-language path uniquely resolves
+  the saved greeting and tenant business identity, which may touch lazy
+  configuration after the persistence context is closed and surface as a raw
+  500. Non-primary generated greetings avoided that path.
+- Added `BrowserVoiceRuntimePreparationService` to keep agent loading, saved
+  primary-language greeting resolution, voice validation, and managed-binding
+  lookup inside one read-only transaction.
+- Preserved the latency fix: the runtime endpoint still performs no synchronous
+  Telnyx provisioning or provider write.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/CallController.java`
+  - `backend/src/main/java/com/sauti/call/BrowserVoiceRuntimePreparationService.java`
+  - `backend/src/test/java/com/sauti/call/BrowserVoiceRuntimePreparationServiceTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused browser preparation and managed-runtime tests - passed;
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed with all 43 migrations.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+
 Important deployment files:
 
 - `.github/workflows/ci.yml`
