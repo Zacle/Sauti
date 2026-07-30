@@ -7424,3 +7424,30 @@ Expected:
   - Browser console - no errors; the new above-the-fold ring asset priority warning was corrected.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
 - Known follow-up: place a provider-backed browser call after deployment or with valid local Telnyx configuration to verify the animated live Listening, Thinking, and Speaking transitions end to end.
+
+#### Follow-up: restore template chooser scrolling
+
+- Narrowed the root overflow lock to pages that actually contain `.agent-studio`; the `/agents/new` template chooser no longer inherits the editor-only document lock.
+- Added an explicit `overflow-y: auto` scroll owner for the template chooser while retaining the fixed shell and center-only scrolling after a template is selected.
+- Browser verification at 1280 x 720:
+  - template chooser `.console-content`: 720 px client height, 1014 px scroll height, and 294 px verified scroll range;
+  - configured editor: body fixed to the viewport, outer content hidden, and `.agent-studio-form` independently scrollable.
+- `npm.cmd run typecheck` - passed.
+- `npm.cmd run build` - passed; Next.js generated the optimized production build.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: make Agents navigation user-collapsible
+
+- Restored the full 252 px workspace navigation as the default on `/agents`, `/agents/new`, and saved-agent editor routes.
+- Added an accessible collapse/expand control to the Agents sidebar; compact mode is now 76 px and retains usable icon links for primary and footer navigation.
+- Persisted the user's Agents sidebar preference in browser storage and kept the desktop control hidden behind the existing mobile drawer behavior.
+- Browser verification:
+  - default expanded width: 252 px;
+  - manually collapsed width: 76 px;
+  - expand/collapse labels and visual state update correctly;
+  - collapsed preference survives reload;
+  - template chooser remains scrollable and configured-agent Main Settings remains the only editor scroll owner.
+- `npm.cmd run typecheck` - passed.
+- `npm.cmd run lint` - passed with zero warnings.
+- `npm.cmd run build` - passed; Next.js generated the optimized production build.
+- Deployment status remains unchanged: not deployed and uncommitted.

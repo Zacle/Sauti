@@ -70,6 +70,9 @@ The implementation follows the selected fixed command-workspace composition: a s
 - Iteration 1 exposed an outer document scrollbar beneath the fixed workspace.
 - The root document overflow was constrained and the internal settings pane retained `overflow-y: auto`.
 - Iteration 2 passed the full-view comparison and scroll-ownership checks.
+- Follow-up regression check found that the route-level fixed shell also constrained the pre-editor template chooser.
+- The overflow lock now activates only when the configured studio is mounted; the template chooser has a verified independent 294 px scroll range at 1280 x 720, while the configured editor retains center-only scrolling.
+- The global Agents navigation is now expanded at 252 px by default and collapses to 76 px only through the visible user control. Both states were browser-verified, including persistence after reload.
 
 ## Intentional differences
 

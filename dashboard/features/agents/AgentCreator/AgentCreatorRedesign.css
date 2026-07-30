@@ -1,6 +1,6 @@
 /* Product Design direction 2: fixed Agent Studio command workspace. */
-html:has(.agent-studio-console-shell),
-body:has(.agent-studio-console-shell) {
+html:has(.agent-studio),
+body:has(.agent-studio) {
   height: 100%;
   overflow: hidden;
 }
