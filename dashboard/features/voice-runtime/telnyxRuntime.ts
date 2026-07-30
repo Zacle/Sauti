@@ -53,7 +53,7 @@ export function preloadTelnyxRuntime() {
 function runtimeKey(session: BrowserVoiceRuntimeSession) {
   return [
     configString(session.configuration, "agentId"),
-    configString(session.configuration, "versionId") || "main",
+    configString(session.configuration, "versionId") || "latest",
     configString(session.configuration, "environment") || "production",
     configString(session.configuration, "region"),
   ].join("|");
@@ -69,9 +69,10 @@ function createTelnyxClient(
     ? "development"
     : "production";
   const region = configString(session.configuration, "region");
+  const versionId = configString(session.configuration, "versionId");
   return new TelnyxAIAgent({
     agentId,
-    versionId: configString(session.configuration, "versionId") || "main",
+    versionId: versionId || undefined,
     environment,
     region: region || undefined,
     // The same threshold observes local and remote audio. The policy keeps

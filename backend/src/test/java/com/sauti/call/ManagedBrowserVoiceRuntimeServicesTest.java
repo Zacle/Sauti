@@ -30,6 +30,7 @@ class ManagedBrowserVoiceRuntimeServicesTest {
                 .containsEntry("agentId", "assistant-42")
                 .containsEntry("environment", "development")
                 .containsEntry("region", "eu-west")
+                .doesNotContainKey("versionId")
                 .doesNotContainValue("call-token");
     }
 

@@ -57,10 +57,14 @@ public class TelnyxAiBrowserVoiceRuntimeService {
     ) {
         var configuration = new LinkedHashMap<String, Object>();
         configuration.put("agentId", managedAgent.externalAgentId());
-        configuration.put(
-                "versionId",
-                managedAgent.externalVersionId().isBlank() ? "main" : managedAgent.externalVersionId()
-        );
+        var versionId = trim(managedAgent.externalVersionId());
+        // Telnyx treats the assistant version as optional and selects the
+        // latest version when it is absent. "main" was Sauti's old local
+        // placeholder, not a provider version id, and can make anonymous
+        // WebRTC login fail for newly provisioned language variants.
+        if (!versionId.isBlank() && !"main".equalsIgnoreCase(versionId)) {
+            configuration.put("versionId", versionId);
+        }
         configuration.put("environment", environment);
         if (callSid != null && !callSid.isBlank()) configuration.put("callSid", callSid);
         if (!region.isBlank()) configuration.put("region", region);

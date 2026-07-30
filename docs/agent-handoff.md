@@ -34,6 +34,27 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-30: Omit synthetic Telnyx assistant versions during browser login
+
+- Diagnosed production diagnostic `sauti-telnyx-diagnostics-1785418768332.json`:
+  - microphone setup completed in 19 ms;
+  - startup failed after 210 ms;
+  - no Sauti call ID was created;
+  - event ordering places the failure in Telnyx preconnection for the prepared language variant.
+- Stopped exposing Sauti's legacy `"main"` placeholder as a Telnyx assistant version.
+- Browser runtime configuration now omits absent or synthetic version IDs so the Telnyx SDK selects the assistant's latest version, as intended by its anonymous-login contract.
+- Kept real provider version IDs unchanged and included in the runtime configuration.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxAiBrowserVoiceRuntimeService.java`
+  - `backend/src/test/java/com/sauti/call/ManagedBrowserVoiceRuntimeServicesTest.java`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.ManagedBrowserVoiceRuntimeServicesTest` - passed;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run build` - passed; Next.js generated 50 static pages.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+
 Important deployment files:
 
 - `.github/workflows/ci.yml`
