@@ -61,6 +61,21 @@ TELNYX_AI_MODEL=moonshotai/Kimi-K2.6
 
 The three API keys are the only required provider values. The backend reports a provider as unavailable until its API key is present. Restart Spring after changing `.env`; Spring does not reload process environment values during runtime.
 
+### Telnyx language variants
+
+One Sauti agent may support several languages. Sauti provisions a separate
+internal Telnyx assistant variant for every supported language while keeping one
+customer-facing agent, tool set, calendar, knowledge base, and analytics
+identity. Each variant fixes Nova-3 transcription to its language instead of
+using `auto`, which prevents short names and phone-number turns from being
+misclassified as another language.
+
+Agent Studio displays a test-language selector when an agent supports more than
+one language. Public Web Voice uses its requested language. Telephone calls use
+the language already selected on the Sauti call, falling back to the agent's
+default language. Changing the supported-language list queues background
+reconciliation for all current variants.
+
 ## Provider setup
 
 ### Retell

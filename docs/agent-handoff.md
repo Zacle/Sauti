@@ -225,6 +225,58 @@ Expected:
 
 ## Change log
 
+### 2026-07-30 - Provision fixed-language Telnyx variants per Sauti agent
+
+- Preserved one customer-facing Sauti agent while introducing one internal
+  Telnyx managed-assistant binding per supported language.
+- Added `language` to `managed_voice_agent_bindings`, migrated each existing
+  row to its agent's default language, and changed uniqueness to
+  `(agent_id, provider, language)`.
+- Background reconciliation now prepares every supported language with a
+  localized greeting, compatible voice, language-specific compact prompt, and
+  fixed Nova-3 transcription language.
+- Removed multilingual `auto` transcription from both Telnyx assistant
+  provisioning and the telephone `ai_assistant_start` override. A call now
+  resolves the binding and transcription hint from its selected language,
+  falling back to the agent default.
+- Added an Agent Studio test-language selector. Runtime preconnection and test
+  call creation include the selected language, so French, English, Arabic, and
+  other configured variants can be tested independently without duplicating
+  the Sauti agent.
+- Kept tools, knowledge, booking state, tenant scope, calendar, and analytics
+  shared at the Sauti-agent level. Only the provider assistant, STT language,
+  compatible voice, localized greeting, and prompt language vary.
+- Bumped the Telnyx configuration version from `34` to `35` so the existing
+  default-language binding receives the fixed transcription configuration.
+- Files touched:
+  - `backend/src/main/resources/db/migration/V42__managed_voice_agent_language_variants.sql`
+  - managed binding, blueprint, provisioning, preparation, browser runtime,
+    call pipeline, controller, and Telnyx telephone/provider classes
+  - managed provisioning, browser runtime, telephone, and call tests
+  - `dashboard/lib/api/calls.ts`
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
+  - `docs/managed-voice-provider-testing.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed provisioning, provider payload, browser runtime, telephone,
+    and call-pipeline tests - passed;
+  - `.\gradlew.bat :backend:test` - passed;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run build` - passed;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Known follow-ups:
+  - run one short browser call per configured language after deployment and
+    compare phone/name transcription with the former `auto` baseline;
+  - inbound telephone calls currently start in the agent's default language
+    unless Sauti already has a selected language; automatic unknown-caller
+    language routing remains a separate gateway/handoff feature;
+  - obsolete provider variants are not yet deleted when a language is removed,
+    but they are no longer selected or reconciled.
+
 ### 2026-07-30 - Correct the case-sensitive Telnyx Kimi K2.6 model ID
 
 - Replaced the rejected AI Assistant model alias

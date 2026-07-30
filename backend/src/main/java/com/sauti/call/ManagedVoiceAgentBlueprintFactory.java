@@ -39,7 +39,7 @@ public class ManagedVoiceAgentBlueprintFactory {
                 .limit(100)
                 .toList();
         return new ManagedVoiceAgentBlueprint(
-                "Sauti " + agent.getName(),
+                "Sauti " + agent.getName() + " [" + language + "]",
                 greeting == null ? "" : greeting.trim(),
                 conversationOrchestrator.managedRealtimeInstructions(call, language),
                 agent.getTtsVoiceId(),
@@ -54,13 +54,22 @@ public class ManagedVoiceAgentBlueprintFactory {
     }
 
     public ManagedVoiceAgentBlueprint create(com.sauti.agent.Agent agent, String greeting) {
+        return create(agent, greeting, agent.getDefaultLanguage());
+    }
+
+    public ManagedVoiceAgentBlueprint create(
+            com.sauti.agent.Agent agent,
+            String greeting,
+            String language
+    ) {
         var preparationCall = new Call(
                 agent.getTenant(),
                 agent,
-                "PREPARE-" + agent.getId(),
+                "PREPARE-" + agent.getId() + "-" + language,
                 "Browser test preparation",
                 "test"
         );
+        preparationCall.selectLanguage(language);
         return create(preparationCall, greeting);
     }
 }

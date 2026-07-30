@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
@@ -42,28 +43,57 @@ public class ManagedVoiceAgentProvisioningService {
     }
 
     public ManagedVoiceAgentReference synchronize(com.sauti.agent.Agent agent, String greeting) {
+        return synchronize(agent, greeting, agent.getDefaultLanguage());
+    }
+
+    public ManagedVoiceAgentReference synchronize(
+            com.sauti.agent.Agent agent,
+            String greeting,
+            String language
+    ) {
+        var normalizedLanguage = supportedLanguage(agent, language);
         return synchronize(
                 agent.getTenant(),
                 agent,
-                blueprintFactory.create(agent, greeting)
+                blueprintFactory.create(agent, greeting, normalizedLanguage)
         );
     }
 
-    public ManagedVoiceAgentReference existing(Call call) {
-        return existing(call.getTenant().getId(), call.getAgent().getId());
+    public List<ManagedVoiceAgentReference> synchronizeAll(
+            com.sauti.agent.Agent agent,
+            java.util.function.Function<String, String> greeting
+    ) {
+        return agent.getSupportedLanguages().stream()
+                .map(language -> synchronize(agent, greeting.apply(language), language))
+                .toList();
     }
 
-    private ManagedVoiceAgentReference existing(java.util.UUID tenantId, java.util.UUID agentId) {
+    public ManagedVoiceAgentReference existing(Call call) {
+        return existing(
+                call.getTenant().getId(),
+                call.getAgent().getId(),
+                selectedLanguage(call)
+        );
+    }
+
+    private ManagedVoiceAgentReference existing(
+            java.util.UUID tenantId,
+            java.util.UUID agentId,
+            String language
+    ) {
         if (!provisioner.isConfigured()) {
             throw new VoiceRuntimeUnavailableException(
                     "Telnyx calls require TELNYX_API_KEY, PUBLIC_BASE_URL, and TELNYX_TOOL_WEBHOOK_SECRET "
                             + "in the running backend."
             );
         }
-        return repository.findByTenantIdAndAgentIdAndProvider(tenantId, agentId, "telnyx")
+        return repository.findByTenantIdAndAgentIdAndProviderAndLanguage(
+                        tenantId, agentId, "telnyx", language
+                )
                 .map(this::reference)
                 .orElseThrow(() -> new VoiceRuntimeUnavailableException(
-                        "This agent is still preparing for voice calls. Wait a moment and try again."
+                        "This agent is still preparing the " + language
+                                + " voice variant. Wait a moment and try again."
                 ));
     }
 
@@ -78,15 +108,17 @@ public class ManagedVoiceAgentProvisioningService {
                             + "in the running backend."
             );
         }
-        var lockKey = agent.getId() + ":telnyx";
+        var language = blueprint.language();
+        var lockKey = agent.getId() + ":telnyx:" + language;
         var lock = synchronizationLocks.computeIfAbsent(lockKey, ignored -> new Object());
         synchronized (lock) {
             try {
                 var blueprintHash = hash(blueprint, provisioner.configurationVersion());
-                var existingBinding = repository.findByTenantIdAndAgentIdAndProvider(
+                var existingBinding = repository.findByTenantIdAndAgentIdAndProviderAndLanguage(
                         tenant.getId(),
                         agent.getId(),
-                        "telnyx"
+                        "telnyx",
+                        language
                 ).orElse(null);
                 if (existingBinding != null && blueprintHash.equals(existingBinding.getBlueprintHash())) {
                     return reference(existingBinding);
@@ -100,6 +132,7 @@ public class ManagedVoiceAgentProvisioningService {
                             tenant,
                             agent,
                             "telnyx",
+                            language,
                             blueprintHash,
                             synchronizedReference
                     );
@@ -112,6 +145,22 @@ public class ManagedVoiceAgentProvisioningService {
                 synchronizationLocks.remove(lockKey, lock);
             }
         }
+    }
+
+    private String selectedLanguage(Call call) {
+        var selected = call.getLanguageDetected();
+        return supportedLanguage(call.getAgent(), selected);
+    }
+
+    private String supportedLanguage(com.sauti.agent.Agent agent, String language) {
+        var normalized = language == null ? "" : language.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalized.isBlank()) normalized = agent.getDefaultLanguage();
+        if (!agent.getSupportedLanguages().contains(normalized)) {
+            throw new IllegalArgumentException(
+                    "Language " + normalized + " is not supported by this agent"
+            );
+        }
+        return normalized;
     }
 
     private ManagedVoiceAgentReference reference(ManagedVoiceAgentBinding binding) {

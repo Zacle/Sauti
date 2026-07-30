@@ -40,10 +40,14 @@ public class TelnyxAiBrowserVoiceRuntimeService {
     }
 
     public BrowserVoiceRuntimeSession prepare(Agent agent, String greeting) {
+        return prepare(agent, greeting, agent.getDefaultLanguage());
+    }
+
+    public BrowserVoiceRuntimeSession prepare(Agent agent, String greeting, String language) {
         if (!isConfigured()) {
             throw new IllegalStateException("Telnyx browser calls require TELNYX_API_KEY.");
         }
-        var managedAgent = provisioningService.synchronize(agent, greeting);
+        var managedAgent = provisioningService.synchronize(agent, greeting, language);
         return session(managedAgent, "");
     }
 

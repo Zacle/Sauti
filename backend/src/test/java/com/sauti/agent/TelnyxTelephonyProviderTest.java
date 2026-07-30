@@ -42,6 +42,7 @@ class TelnyxTelephonyProviderTest {
             var agent = mock(Agent.class);
             when(call.getAgent()).thenReturn(agent);
             when(call.getTwilioCallSid()).thenReturn("v3:test-call");
+            when(call.getLanguageDetected()).thenReturn("fr");
             when(agent.isRecordCalls()).thenReturn(false);
             when(agent.getTtsVoiceId()).thenReturn("Telnyx.NaturalHD.astra");
             when(agent.getSupportedLanguages()).thenReturn(List.of("fr"));
@@ -70,7 +71,10 @@ class TelnyxTelephonyProviderTest {
                     "/calls/v3%3Atest-control/actions/ai_assistant_start"
             );
             assertThat(requestBodies.get(1))
-                    .contains("\"voice\":\"Telnyx.NaturalHD.amarante\"");
+                    .contains("\"voice\":\"Telnyx.NaturalHD.amarante\"")
+                    .contains("\"transcription\":{")
+                    .contains("\"model\":\"deepgram/nova-3\"")
+                    .contains("\"language\":\"fr\"");
         } finally {
             server.stop(0);
         }

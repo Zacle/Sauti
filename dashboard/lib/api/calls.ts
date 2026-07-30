@@ -10,22 +10,24 @@ export function listCalls() {
   return apiRequest<Call[]>("/calls");
 }
 
-export function startTestCall(agentId: string, ttsVoiceId?: string) {
+export function startTestCall(agentId: string, ttsVoiceId?: string, language?: string) {
   return apiRequest<StartTestCallResponse>("/calls/test", {
     method: "POST",
     body: JSON.stringify({
       agentId,
       ttsVoiceId: ttsVoiceId?.trim() ?? "",
+      language: language?.trim() ?? "",
     }),
   });
 }
 
-export function prepareTestCallRuntime(agentId: string, ttsVoiceId?: string) {
+export function prepareTestCallRuntime(agentId: string, ttsVoiceId?: string, language?: string) {
   return apiRequest<BrowserVoiceRuntimeSession>("/calls/test/runtime", {
     method: "POST",
     body: JSON.stringify({
       agentId,
       ttsVoiceId: ttsVoiceId?.trim() ?? "",
+      language: language?.trim() ?? "",
     }),
   });
 }

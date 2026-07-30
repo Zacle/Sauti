@@ -1045,7 +1045,13 @@ export function AgentCreator({
               {error && <div className="form-alert error">{error}</div>}
             </section>
 
-            <TestCallPanel agentId={agentId} agentName={name || "your agent"} voiceId={voice} />
+            <TestCallPanel
+              agentId={agentId}
+              agentName={name || "your agent"}
+              voiceId={voice}
+              defaultLanguage={language}
+              supportedLanguages={supportedLanguages}
+            />
           </div>
           {showPersonalisation && (
             <PersonalisationDrawer

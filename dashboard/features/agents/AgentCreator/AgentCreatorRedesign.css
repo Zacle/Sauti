@@ -295,6 +295,25 @@ body:has(.agent-studio) {
   margin: 10px 0 -5px;
 }
 
+.test-call-language {
+  display: grid;
+  width: min(100%, 330px);
+  gap: 6px;
+  margin-top: 10px;
+  color: #8da4b8;
+  font-size: 0.7rem;
+  text-align: left;
+}
+
+.test-call-language select {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(94, 151, 199, 0.28);
+  border-radius: 10px;
+  color: #dce9f3;
+  background: #071b2e;
+}
+
 .agent-test-canvas .test-call-privacy {
   display: flex;
   align-items: center;

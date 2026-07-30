@@ -74,7 +74,9 @@ public class CallController {
             @RequestBody StartTestCallRequest request
     ) {
         requireTelnyx();
-        var call = callPipelineService.startTestCall(user.tenantId(), request.agentId(), request.ttsVoiceId());
+        var call = callPipelineService.startTestCall(
+                user.tenantId(), request.agentId(), request.ttsVoiceId(), request.language()
+        );
         var greeting = callQueryService.firstAgentResponse(user.tenantId(), call.getId());
         var agentKey = call.getAgent().getId().toString();
         // Managed providers use this same call-scoped credential for server
@@ -106,7 +108,8 @@ public class CallController {
         }
         return telnyxRuntime.prepare(
                 agent,
-                callPipelineService.managedVoiceGreeting(user.tenantId(), request.agentId())
+                callPipelineService.managedVoiceGreeting(agent, request.language()),
+                request.language()
         );
     }
 

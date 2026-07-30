@@ -35,9 +35,9 @@ public class ManagedVoiceAgentPreparationWorker {
     @Transactional
     public void prepare(AgentConfigurationChanged changed) {
         agents.findByIdAndTenantId(changed.agentId(), changed.tenantId())
-                .ifPresent(agent -> provisioning.synchronize(
+                .ifPresent(agent -> provisioning.synchronizeAll(
                         agent,
-                        callPipeline.managedVoiceGreeting(agent)
+                        language -> callPipeline.managedVoiceGreeting(agent, language)
                 ));
     }
 }

@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "34";
+        return "35";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -230,7 +230,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
         transcription.put("model", "deepgram/nova-3");
         transcription.put(
                 "language",
-                blueprint.supportedLanguages().size() > 1 ? "auto" : blueprint.language()
+                blueprint.language()
         );
         var transcriptionSettings = new LinkedHashMap<String, Object>();
         transcriptionSettings.put("smart_format", true);

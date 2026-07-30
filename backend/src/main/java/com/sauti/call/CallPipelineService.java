@@ -71,6 +71,16 @@ public class CallPipelineService {
 
     @Transactional
     public Call startTestCall(java.util.UUID tenantId, java.util.UUID agentId, String ttsVoiceId) {
+        return startTestCall(tenantId, agentId, ttsVoiceId, null);
+    }
+
+    @Transactional
+    public Call startTestCall(
+            java.util.UUID tenantId,
+            java.util.UUID agentId,
+            String ttsVoiceId,
+            String preferredLanguage
+    ) {
         var agent = agentRepository.findByIdAndTenantId(agentId, tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
         synchronizeBusinessHours(agent);
@@ -78,14 +88,21 @@ public class CallPipelineService {
             agent.updateTtsVoiceId(ttsVoiceId);
             agentRepository.save(agent);
         }
+        var language = preferredLanguage == null || preferredLanguage.isBlank()
+                ? agent.getDefaultLanguage()
+                : preferredLanguage.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!agent.getSupportedLanguages().contains(language)) {
+            throw new IllegalArgumentException("Requested test-call language is not supported");
+        }
         var callSid = "TEST-" + java.util.UUID.randomUUID();
         var call = callRepository.save(new Call(agent.getTenant(), agent, callSid, "Browser test", "test"));
+        call.selectLanguage(language);
         callSessionStore.createIfAbsent(callSid, CallSession.fromCall(call, ""));
-        var opening = instantGreeting(agent, agent.getDefaultLanguage());
+        var opening = instantGreeting(agent, language);
         if (!opening.isBlank()) {
-            call.appendAgentMessage(agent.getDefaultLanguage(), opening);
+            call.appendAgentMessage(language, opening);
             callTurnRepository.save(new CallTurn(
-                    call, 1, "", opening, agent.getDefaultLanguage(), 0, 0, 0, false
+                    call, 1, "", opening, language, 0, 0, 0, false
             ));
         }
         dashboardEventPublisher.callStarted(call);
@@ -701,6 +718,10 @@ public class CallPipelineService {
 
     public String managedVoiceGreeting(Agent agent) {
         return instantGreeting(agent, agent.getDefaultLanguage());
+    }
+
+    public String managedVoiceGreeting(Agent agent, String language) {
+        return instantGreeting(agent, language);
     }
 
     @Transactional(readOnly = true)

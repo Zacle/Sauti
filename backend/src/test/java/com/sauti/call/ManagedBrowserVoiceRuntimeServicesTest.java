@@ -38,13 +38,13 @@ class ManagedBrowserVoiceRuntimeServicesTest {
         var provisioning = mock(ManagedVoiceAgentProvisioningService.class);
         var fixture = fixture();
         when(provisioning.isConfigured()).thenReturn(true);
-        when(provisioning.synchronize(fixture.agent(), "Hello"))
+        when(provisioning.synchronize(fixture.agent(), "Hello", "en"))
                 .thenReturn(new ManagedVoiceAgentReference("assistant-42", "version-31", "{}"));
         var service = new TelnyxAiBrowserVoiceRuntimeService(
                 provisioning, "production", "eu"
         );
 
-        var session = service.prepare(fixture.agent(), "Hello");
+        var session = service.prepare(fixture.agent(), "Hello", "en");
 
         assertThat(session.configuration())
                 .containsEntry("agentId", "assistant-42")
@@ -74,6 +74,7 @@ class ManagedBrowserVoiceRuntimeServicesTest {
         when(call.getTwilioCallSid()).thenReturn("call-42");
         when(call.getAgent()).thenReturn(agent);
         when(agent.getId()).thenReturn(UUID.fromString("48db9149-e363-4087-a814-754f1a9d61ef"));
+        when(agent.getDefaultLanguage()).thenReturn("en");
         return new Fixture(call, agent);
     }
 

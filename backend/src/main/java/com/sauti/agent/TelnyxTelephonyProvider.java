@@ -216,20 +216,21 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         var body = new LinkedHashMap<String, Object>();
         body.put("assistant", Map.copyOf(assistant));
         body.put("greeting", prepared.greeting());
+        var language = call.getLanguageDetected() == null || call.getLanguageDetected().isBlank()
+                ? call.getAgent().getDefaultLanguage()
+                : call.getLanguageDetected();
         var configuredVoice = blank(call.getAgent().getTtsVoiceId());
         body.put(
                 "voice",
                 TelnyxVoiceCompatibility.select(
                         configuredVoice,
-                        call.getAgent().getDefaultLanguage(),
+                        language,
                         defaultVoiceId
                 )
         );
         body.put("transcription", Map.of(
                 "model", "deepgram/nova-3",
-                "language", call.getAgent().getSupportedLanguages().size() > 1
-                        ? "auto"
-                        : call.getAgent().getDefaultLanguage()
+                "language", language
         ));
         body.put("send_message_history_updates", true);
         body.put("client_state", java.util.Base64.getEncoder().encodeToString(

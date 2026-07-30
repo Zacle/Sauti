@@ -19,7 +19,7 @@ import java.util.UUID;
         name = "managed_voice_agent_bindings",
         uniqueConstraints = @UniqueConstraint(
                 name = "uq_managed_voice_agent_provider",
-                columnNames = {"agent_id", "provider"}
+                columnNames = {"agent_id", "provider", "language"}
         )
 )
 public class ManagedVoiceAgentBinding extends Auditable {
@@ -36,6 +36,9 @@ public class ManagedVoiceAgentBinding extends Auditable {
 
     @Column(nullable = false, length = 32)
     private String provider;
+
+    @Column(nullable = false, length = 16)
+    private String language;
 
     @Column(nullable = false, length = 255)
     private String externalAgentId;
@@ -59,6 +62,7 @@ public class ManagedVoiceAgentBinding extends Auditable {
             Tenant tenant,
             Agent agent,
             String provider,
+            String language,
             String blueprintHash,
             ManagedVoiceAgentReference reference
     ) {
@@ -66,6 +70,7 @@ public class ManagedVoiceAgentBinding extends Auditable {
         this.tenant = tenant;
         this.agent = agent;
         this.provider = provider;
+        this.language = language;
         synchronize(blueprintHash, reference);
     }
 
@@ -83,6 +88,10 @@ public class ManagedVoiceAgentBinding extends Auditable {
 
     public String getProvider() {
         return provider;
+    }
+
+    public String getLanguage() {
+        return language;
     }
 
     public String getExternalAgentId() {

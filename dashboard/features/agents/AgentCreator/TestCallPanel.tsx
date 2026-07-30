@@ -26,6 +26,8 @@ type TestCallPanelProps = {
   agentId?: string;
   agentName: string;
   voiceId?: string;
+  defaultLanguage: string;
+  supportedLanguages: string[];
 };
 
 type Message = {
@@ -67,7 +69,13 @@ function PreCallOrb() {
   );
 }
 
-export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProps) {
+export function TestCallPanel({
+  agentId,
+  agentName,
+  voiceId,
+  defaultLanguage,
+  supportedLanguages,
+}: TestCallPanelProps) {
   const [callId, setCallId] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -75,6 +83,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const [error, setError] = useState("");
   const [diagnosticCount, setDiagnosticCount] = useState(0);
   const [preparationStatus, setPreparationStatus] = useState<PreparationStatus>("idle");
+  const [testLanguage, setTestLanguage] = useState(defaultLanguage);
   const connectionRef = useRef<BrowserVoiceRuntimeConnection | null>(null);
   const callIdRef = useRef("");
   const statusRef = useRef<CallStatus>("idle");
@@ -110,6 +119,16 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     void preloadBrowserVoiceRuntime().catch(() => undefined);
   }, []);
 
+  useEffect(() => {
+    setTestLanguage(defaultLanguage);
+  }, [agentId, defaultLanguage]);
+
+  useEffect(() => {
+    if (!supportedLanguages.includes(testLanguage)) {
+      setTestLanguage(defaultLanguage);
+    }
+  }, [defaultLanguage, supportedLanguages, testLanguage]);
+
   function updatePreparationStatus(next: PreparationStatus) {
     preparationStatusRef.current = next;
     setPreparationStatus(next);
@@ -121,12 +140,12 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         "Save the agent with a Telnyx voice before preparing the demo.",
       ));
     }
-    const key = `${agentId}|${voiceId}`;
+    const key = `${agentId}|${voiceId}|${testLanguage}`;
     if (preparationRef.current?.key === key) return preparationRef.current.promise;
     updatePreparationStatus("preparing");
     preparationStartedAtRef.current = Date.now();
     preparationReadyAtRef.current = 0;
-    const promise = prepareTestCallRuntime(agentId, voiceId)
+    const promise = prepareTestCallRuntime(agentId, voiceId, testLanguage)
       .then(async (runtime) => {
         await preconnectBrowserVoiceRuntime(runtime);
         if (preparationRef.current?.key === key) {
@@ -154,9 +173,9 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       preparationRef.current = null;
       void releasePreconnectedBrowserVoiceRuntime();
     };
-    // Preparation is intentionally keyed only by the persisted agent and voice.
+    // Preparation is keyed by the persisted agent, voice, and fixed STT language.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, voiceId]);
+  }, [agentId, voiceId, testLanguage]);
 
   function updateStatus(next: CallStatus) {
     if (statusRef.current !== next) {
@@ -270,7 +289,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
             : 0,
         },
       );
-      const callPromise = startTestCall(agentId, voiceId).then((started) => {
+      const callPromise = startTestCall(agentId, voiceId, testLanguage).then((started) => {
         recordDiagnostic("call_created", {
           provider: started.runtime?.provider ?? "unknown",
           voiceId: voiceId ?? "",
@@ -445,6 +464,20 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           <h2>Test your agent</h2>
           <p>Test the selected voice, conversation behavior, and business tools before taking the agent live.</p>
           <PreCallOrb />
+          {supportedLanguages.length > 1 && (
+            <label className="test-call-language">
+              Test language
+              <select
+                disabled={status === "connecting" || preparationStatus === "preparing"}
+                onChange={(event) => setTestLanguage(event.target.value)}
+                value={testLanguage}
+              >
+                {supportedLanguages.map((language) => (
+                  <option key={language} value={language}>{language.toUpperCase()}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {!voiceId?.toLowerCase().startsWith("telnyx.") && (
             <p className="test-runtime-note">Select and save a Telnyx voice in Voice settings to run this test.</p>
           )}
