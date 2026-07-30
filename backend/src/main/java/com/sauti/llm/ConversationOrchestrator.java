@@ -336,7 +336,12 @@ public class ConversationOrchestrator {
                 %s
 
                 LIVE CALL CONTEXT
-                - Caller language: %s. Speak only this language unless the caller clearly switches with a full sentence.
+                - Opening language hint: %s.
+                - Supported caller languages: %s.
+                - Automatically follow a supported language used in the caller's latest clear full sentence. The
+                  opening language is only a hint, not a restriction. Do not ask the caller to choose a language
+                  unless their language is unsupported or remains genuinely unclear. Do not switch because of one
+                  unclear word, a number, a proper name, or background speech.
                 - Business identity: %s
                 - Today in the business timezone: %s.
                 - Published operating hours: %s
@@ -390,6 +395,7 @@ public class ConversationOrchestrator {
                 """.formatted(
                 resolvedAgentPrompt,
                 resolvedLanguage,
+                String.join(", ", call.getAgent().getSupportedLanguages()),
                 businessIdentityInstruction(call),
                 today(call),
                 OperatingHoursSchedule.describe(effectiveHours),

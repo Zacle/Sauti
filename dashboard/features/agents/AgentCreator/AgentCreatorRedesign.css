@@ -295,23 +295,34 @@ body:has(.agent-studio) {
   margin: 10px 0 -5px;
 }
 
-.test-call-language {
-  display: grid;
+.test-call-language-auto {
+  display: flex;
+  align-items: center;
   width: min(100%, 330px);
-  gap: 6px;
+  gap: 10px;
   margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(94, 151, 199, 0.2);
+  border-radius: 12px;
   color: #8da4b8;
   font-size: 0.7rem;
   text-align: left;
+  background: rgba(7, 27, 46, 0.62);
 }
 
-.test-call-language select {
-  min-height: 40px;
-  padding: 0 12px;
-  border: 1px solid rgba(94, 151, 199, 0.28);
-  border-radius: 10px;
+.test-call-language-auto > svg {
+  flex: 0 0 auto;
+  color: #35d6c9;
+}
+
+.test-call-language-auto span {
+  display: grid;
+  gap: 2px;
+}
+
+.test-call-language-auto strong {
   color: #dce9f3;
-  background: #071b2e;
+  font-size: 0.72rem;
 }
 
 .agent-test-canvas .test-call-privacy {

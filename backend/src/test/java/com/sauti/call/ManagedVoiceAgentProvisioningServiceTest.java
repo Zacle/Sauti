@@ -3,6 +3,7 @@ package com.sauti.call;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -17,6 +18,41 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class ManagedVoiceAgentProvisioningServiceTest {
+
+    @Test
+    void readsAPreparedLanguageBindingWithoutCallingTelnyx() {
+        var repository = mock(ManagedVoiceAgentBindingRepository.class);
+        var blueprintFactory = mock(ManagedVoiceAgentBlueprintFactory.class);
+        var provisioner = mock(TelnyxManagedVoiceAgentProvisioner.class);
+        var tenant = mock(Tenant.class);
+        var agent = mock(Agent.class);
+        var tenantId = UUID.randomUUID();
+        var agentId = UUID.randomUUID();
+        var reference = new ManagedVoiceAgentReference("assistant-fr", "version-4", "{}");
+        var binding = new ManagedVoiceAgentBinding(
+                tenant, agent, "telnyx", "fr", "hash", reference
+        );
+
+        when(tenant.getId()).thenReturn(tenantId);
+        when(agent.getTenant()).thenReturn(tenant);
+        when(agent.getId()).thenReturn(agentId);
+        when(agent.getDefaultLanguage()).thenReturn("en");
+        when(agent.getSupportedLanguages()).thenReturn(List.of("en", "fr"));
+        when(provisioner.isConfigured()).thenReturn(true);
+        when(repository.findByTenantIdAndAgentIdAndProviderAndLanguage(
+                tenantId, agentId, "telnyx", "fr"
+        )).thenReturn(Optional.of(binding));
+
+        var service = new ManagedVoiceAgentProvisioningService(
+                repository,
+                blueprintFactory,
+                new ObjectMapper(),
+                provisioner
+        );
+
+        assertThat(service.existing(agent, "fr")).isEqualTo(reference);
+        verify(provisioner, never()).synchronize(any(), any());
+    }
 
     @Test
     void createsAndThenReusesTheTenantScopedProviderBindingForAnUnchangedBlueprint() {

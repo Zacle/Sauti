@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { Download, LoaderCircle, Mic, Phone, PhoneOff, Send, ShieldCheck, Volume2 } from "lucide-react";
+import { Download, Languages, LoaderCircle, Mic, Phone, PhoneOff, Send, ShieldCheck, Volume2 } from "lucide-react";
 import {
   completeTestCall,
   correlateTestCall,
@@ -10,6 +10,7 @@ import {
   recordTestRealtimeTranscript,
   startTestCall,
 } from "@/lib/api/calls";
+import { ApiError } from "@/lib/api/client";
 import {
   connectBrowserVoiceRuntime,
   prepareBrowserMicrophone,
@@ -20,6 +21,10 @@ import {
   type BrowserMicrophoneCapture,
 } from "@/features/voice-runtime/browserVoiceRuntime";
 import type { VoiceDiagnosticEntry } from "@/features/voice-runtime/voiceDiagnostics";
+import {
+  browserLanguageHint,
+  displayLanguage,
+} from "@/features/voice-runtime/languagePreference";
 import type { BrowserVoiceRuntimeSession } from "@/types/api";
 
 type TestCallPanelProps = {
@@ -83,7 +88,7 @@ export function TestCallPanel({
   const [error, setError] = useState("");
   const [diagnosticCount, setDiagnosticCount] = useState(0);
   const [preparationStatus, setPreparationStatus] = useState<PreparationStatus>("idle");
-  const [testLanguage, setTestLanguage] = useState(defaultLanguage);
+  const [languageHint, setLanguageHint] = useState(defaultLanguage);
   const connectionRef = useRef<BrowserVoiceRuntimeConnection | null>(null);
   const callIdRef = useRef("");
   const statusRef = useRef<CallStatus>("idle");
@@ -120,14 +125,8 @@ export function TestCallPanel({
   }, []);
 
   useEffect(() => {
-    setTestLanguage(defaultLanguage);
-  }, [agentId, defaultLanguage]);
-
-  useEffect(() => {
-    if (!supportedLanguages.includes(testLanguage)) {
-      setTestLanguage(defaultLanguage);
-    }
-  }, [defaultLanguage, supportedLanguages, testLanguage]);
+    setLanguageHint(browserLanguageHint(supportedLanguages, defaultLanguage));
+  }, [agentId, defaultLanguage, supportedLanguages]);
 
   function updatePreparationStatus(next: PreparationStatus) {
     preparationStatusRef.current = next;
@@ -140,14 +139,18 @@ export function TestCallPanel({
         "Save the agent with a Telnyx voice before preparing the demo.",
       ));
     }
-    const key = `${agentId}|${voiceId}|${testLanguage}`;
+    const key = `${agentId}|${voiceId}|${languageHint}`;
     if (preparationRef.current?.key === key) return preparationRef.current.promise;
     updatePreparationStatus("preparing");
     preparationStartedAtRef.current = Date.now();
     preparationReadyAtRef.current = 0;
-    const promise = prepareTestCallRuntime(agentId, voiceId, testLanguage)
+    recordDiagnostic("runtime_configuration_requested");
+    const promise = prepareTestCallRuntime(agentId, voiceId, languageHint)
       .then(async (runtime) => {
+        recordDiagnostic("runtime_configuration_ready");
+        recordDiagnostic("runtime_preconnect_started");
         await preconnectBrowserVoiceRuntime(runtime);
+        recordDiagnostic("runtime_preconnect_ready");
         if (preparationRef.current?.key === key) {
           preparationReadyAtRef.current = Date.now();
           updatePreparationStatus("ready");
@@ -173,9 +176,9 @@ export function TestCallPanel({
       preparationRef.current = null;
       void releasePreconnectedBrowserVoiceRuntime();
     };
-    // Preparation is keyed by the persisted agent, voice, and fixed STT language.
+    // Preparation is keyed by the persisted agent, voice, and opening-language hint.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentId, voiceId, testLanguage]);
+  }, [agentId, voiceId, languageHint]);
 
   function updateStatus(next: CallStatus) {
     if (statusRef.current !== next) {
@@ -289,7 +292,7 @@ export function TestCallPanel({
             : 0,
         },
       );
-      const callPromise = startTestCall(agentId, voiceId, testLanguage).then((started) => {
+      const callPromise = startTestCall(agentId, voiceId, languageHint).then((started) => {
         recordDiagnostic("call_created", {
           provider: started.runtime?.provider ?? "unknown",
           voiceId: voiceId ?? "",
@@ -391,7 +394,10 @@ export function TestCallPanel({
       updatePreparationStatus("idle");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to start the Telnyx test call.";
-      recordDiagnostic("start_failed", { message }, "error");
+      recordDiagnostic("start_failed", {
+        message,
+        httpStatus: caught instanceof ApiError ? caught.status : null,
+      }, "error");
       setError(message);
       callIdRef.current = "";
       setCallId("");
@@ -465,18 +471,13 @@ export function TestCallPanel({
           <p>Test the selected voice, conversation behavior, and business tools before taking the agent live.</p>
           <PreCallOrb />
           {supportedLanguages.length > 1 && (
-            <label className="test-call-language">
-              Test language
-              <select
-                disabled={status === "connecting" || preparationStatus === "preparing"}
-                onChange={(event) => setTestLanguage(event.target.value)}
-                value={testLanguage}
-              >
-                {supportedLanguages.map((language) => (
-                  <option key={language} value={language}>{language.toUpperCase()}</option>
-                ))}
-              </select>
-            </label>
+            <div className="test-call-language-auto">
+              <Languages size={15} />
+              <span>
+                <strong>Automatic language detection</strong>
+                Starts in {displayLanguage(languageHint)} and follows the caller
+              </span>
+            </div>
           )}
           {!voiceId?.toLowerCase().startsWith("telnyx.") && (
             <p className="test-runtime-note">Select and save a Telnyx voice in Voice settings to run this test.</p>

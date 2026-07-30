@@ -53,7 +53,98 @@ Release policy:
   - `.\gradlew.bat :backend:test --tests com.sauti.call.ManagedBrowserVoiceRuntimeServicesTest` - passed;
   - `npm.cmd run typecheck` - passed;
   - `npm.cmd run build` - passed; Next.js generated 50 static pages.
+- Deployment status: deployed as commit `7540ad7`; production diagnostic
+  `sauti-telnyx-diagnostics-1785430890553.json` showed the startup error persisted.
+
+#### Follow-up: remove synchronous Telnyx provisioning from browser startup
+
+- The second production diagnostic failed after 142 ms, before microphone preparation completed and before a call ID existed.
+- Changed `/calls/test/runtime` to read the already prepared language binding instead of synchronously writing the assistant configuration to Telnyx on every Start Call attempt.
+- Background agent-change preparation and periodic reconciliation remain responsible for creating and updating every language variant.
+- A missing binding now follows the existing controlled `503 voice_runtime_unavailable` path instead of putting a provider write in the latency-sensitive browser startup path.
+- Confirmed the French fallback voice is the supported
+  `Telnyx.NaturalHD.amarante`; the distinguishing factor was that French retained
+  the legacy binding migrated by V42 while the working languages were created
+  as new variants.
+- Added V43 to invalidate only French Telnyx managed-binding cache rows. Startup
+  reconciliation recreates them as clean provider assistants; agents, calls,
+  bookings, and customer data are unaffected.
+- Added diagnostic phase markers for:
+  - runtime configuration request and response;
+  - Telnyx preconnection start and readiness;
+  - HTTP status on startup failure.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceAgentProvisioningService.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxAiBrowserVoiceRuntimeService.java`
+  - `backend/src/test/java/com/sauti/call/ManagedBrowserVoiceRuntimeServicesTest.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisioningServiceTest.java`
+  - `backend/src/main/resources/db/migration/V43__recreate_french_managed_voice_bindings.sql`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - targeted managed-runtime and provisioning backend tests - passed;
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed with all 43 migrations;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run build` - passed; Next.js generated 50 static pages.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+
+### 2026-07-30: Replace caller language menus with automatic detection
+
+- Removed the primary language dropdown from both Agent Studio browser tests
+  and the public Web Voice call page.
+- Browser calls now derive an opening-language hint from `navigator.languages`,
+  match it against the agent's supported languages, and fall back to the agent
+  default. The UI explains that detection is automatic instead of asking the
+  caller to configure the provider session.
+- Changed both the managed Telnyx Assistant configuration and telephone
+  `ai_assistant_start` override to use `deepgram/nova-3` with `language=auto`.
+- Updated the compact managed-call prompt so the opening language is explicitly
+  only a hint. The agent follows a different supported language after a clear
+  full caller sentence, but not after a name, number, isolated word, or noise.
+- Retained the existing internal language variants for immediate localized
+  greetings and voice compatibility. This avoids coupling the UX improvement to
+  an unverified multilingual TTS migration.
+- Bumped the managed Telnyx configuration version from `35` to `36`, causing
+  background reconciliation to apply automatic transcription to existing
+  provider assistants.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/TelnyxTelephonyProvider.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - corresponding provider and prompt tests
+  - `dashboard/features/voice-runtime/languagePreference.ts`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
+  - `dashboard/features/web-voice/WebVoiceCall.tsx`
+  - `dashboard/features/web-voice/WebVoiceCall.module.css`
+  - `docs/managed-voice-provider-testing.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Telnyx provisioning, telephone, and managed-prompt tests - passed;
+  - `.\gradlew.bat :backend:test --rerun-tasks` - passed with all 43 migrations;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run build` - passed; Next.js generated 50 static pages.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Known risk: automatic STT can recognize a language switch, but the selected
+  language-specific TTS voice may pronounce the switched language less
+  naturally. After deployment, test full-sentence switches in each configured
+  language before replacing variants with one multilingual voice or adding
+  provider handoff.
+
+#### Follow-up: declare the Web Voice accent token in CSS
+
+- Added the default `--web-voice-accent` declaration to the public Web Voice
+  page root class.
+- The React inline style still overrides the token dynamically, while CSS
+  analyzers can now resolve every `var(--web-voice-accent)` reference without
+  reporting false unresolved-custom-property errors.
+- File touched:
+  - `dashboard/features/web-voice/WebVoiceCall.module.css`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+- Deployment status: not deployed. Change remains uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
 
 Important deployment files:
 

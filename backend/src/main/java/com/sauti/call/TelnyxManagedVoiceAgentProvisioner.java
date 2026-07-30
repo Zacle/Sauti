@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "35";
+        return "36";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -228,10 +228,10 @@ public class TelnyxManagedVoiceAgentProvisioner {
         ));
         var transcription = new LinkedHashMap<String, Object>();
         transcription.put("model", "deepgram/nova-3");
-        transcription.put(
-                "language",
-                blueprint.language()
-        );
+        // Let the caller speak naturally. The blueprint language remains the
+        // immediate greeting/voice hint, while Nova-3 detects a different
+        // supported language without a menu or reconnect.
+        transcription.put("language", "auto");
         var transcriptionSettings = new LinkedHashMap<String, Object>();
         transcriptionSettings.put("smart_format", true);
         transcriptionSettings.put("numerals", true);

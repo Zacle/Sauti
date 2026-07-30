@@ -66,15 +66,21 @@ The three API keys are the only required provider values. The backend reports a 
 One Sauti agent may support several languages. Sauti provisions a separate
 internal Telnyx assistant variant for every supported language while keeping one
 customer-facing agent, tool set, calendar, knowledge base, and analytics
-identity. Each variant fixes Nova-3 transcription to its language instead of
-using `auto`, which prevents short names and phone-number turns from being
-misclassified as another language.
+identity. The selected variant controls the immediate greeting and compatible
+voice, while Nova-3 transcription uses `language=auto`. The managed prompt
+treats the opening language as a hint and follows a different supported language
+only after the caller uses a clear full sentence.
 
-Agent Studio displays a test-language selector when an agent supports more than
-one language. Public Web Voice uses its requested language. Telephone calls use
-the language already selected on the Sauti call, falling back to the agent's
-default language. Changing the supported-language list queues background
-reconciliation for all current variants.
+Agent Studio and Public Web Voice do not make callers choose a language.
+The browser locale selects the best supported opening-language hint and falls
+back to the agent default. Telephone calls greet in the agent default language,
+then automatically follow the caller. Changing the supported-language list
+queues background reconciliation for all current variants.
+
+Keep the variants until a single multilingual voice has passed live quality
+testing across every configured language. Automatic transcription does not
+guarantee that a language-specific voice will pronounce every switched language
+equally well.
 
 ## Provider setup
 

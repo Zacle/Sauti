@@ -76,6 +76,17 @@ public class ManagedVoiceAgentProvisioningService {
         );
     }
 
+    public ManagedVoiceAgentReference existing(
+            com.sauti.agent.Agent agent,
+            String language
+    ) {
+        return existing(
+                agent.getTenant().getId(),
+                agent.getId(),
+                supportedLanguage(agent, language)
+        );
+    }
+
     private ManagedVoiceAgentReference existing(
             java.util.UUID tenantId,
             java.util.UUID agentId,

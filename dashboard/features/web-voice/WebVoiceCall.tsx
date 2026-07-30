@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Mic, PhoneOff, ShieldCheck, Sparkles } from "lucide-react";
+import { Languages, Mic, PhoneOff, ShieldCheck, Sparkles } from "lucide-react";
 import {
   completePublicWebVoiceSession,
   getPublicWebVoiceAgent,
@@ -13,6 +13,10 @@ import {
   connectBrowserVoiceRuntime,
   type BrowserVoiceRuntimeConnection,
 } from "@/features/voice-runtime/browserVoiceRuntime";
+import {
+  browserLanguageHint,
+  displayLanguage,
+} from "@/features/voice-runtime/languagePreference";
 import styles from "./WebVoiceCall.module.css";
 
 type Status = "loading" | "idle" | "connecting" | "live" | "ended" | "error";
@@ -21,7 +25,7 @@ type Message = { id: string; role: "agent" | "visitor"; text: string };
 export function WebVoiceCall({ publicId }: { publicId: string }) {
   const [agent, setAgent] = useState<PublicWebVoiceAgent | null>(null);
   const [status, setStatus] = useState<Status>("loading");
-  const [language, setLanguage] = useState("");
+  const [languageHint, setLanguageHint] = useState("");
   const [consent, setConsent] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -37,7 +41,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     getPublicWebVoiceAgent(publicId)
       .then((loaded) => {
         setAgent(loaded);
-        setLanguage(loaded.defaultLanguage);
+        setLanguageHint(browserLanguageHint(loaded.languages, loaded.defaultLanguage));
         setConsent(!loaded.consentRequired);
         setStatus("idle");
       })
@@ -86,7 +90,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
         publicId,
         consent,
         window.location.origin,
-        language || agent.defaultLanguage,
+        languageHint || agent.defaultLanguage,
       );
       if (!session.runtime || session.runtime.provider.toLowerCase() !== "telnyx") {
         throw new Error("The voice agent did not return a Telnyx session.");
@@ -183,12 +187,13 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
         <h2>{status === "live" ? speaking ? `${agent?.name} is speaking` : "Listening to you" : status === "ended" ? "Conversation ended" : "Talk with our assistant"}</h2>
         <p>{agent?.description ?? "Loading the voice assistant…"}</p>
         {status === "idle" && agent && agent.languages.length > 1 && (
-          <label className={styles.language}>
-            Conversation language
-            <select value={language} onChange={(event) => setLanguage(event.target.value)}>
-              {agent.languages.map((code) => <option value={code} key={code}>{languageName(code)}</option>)}
-            </select>
-          </label>
+          <div className={styles.languageAuto}>
+            <Languages size={18} />
+            <span>
+              <strong>Speak naturally in your language</strong>
+              Automatic detection · greeting starts in {displayLanguage(languageHint)}
+            </span>
+          </div>
         )}
         {status === "idle" && agent?.consentRequired && (
           <label className={styles.consent}>
@@ -215,12 +220,4 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       </section>
     </main>
   );
-}
-
-function languageName(code: string) {
-  try {
-    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code.toUpperCase();
-  } catch {
-    return code.toUpperCase();
-  }
 }

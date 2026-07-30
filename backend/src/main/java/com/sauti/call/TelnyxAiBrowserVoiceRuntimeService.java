@@ -47,7 +47,11 @@ public class TelnyxAiBrowserVoiceRuntimeService {
         if (!isConfigured()) {
             throw new IllegalStateException("Telnyx browser calls require TELNYX_API_KEY.");
         }
-        var managedAgent = provisioningService.synchronize(agent, greeting, language);
+        // Provisioning is handled asynchronously when an agent changes and by
+        // the reconciliation worker. The latency-sensitive browser preparation
+        // endpoint must only read a ready binding; synchronizing here makes a
+        // provider write part of every Start Call attempt.
+        var managedAgent = provisioningService.existing(agent, language);
         return session(managedAgent, "");
     }
 

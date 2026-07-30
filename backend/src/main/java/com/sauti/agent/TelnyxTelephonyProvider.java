@@ -230,7 +230,7 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         );
         body.put("transcription", Map.of(
                 "model", "deepgram/nova-3",
-                "language", language
+                "language", "auto"
         ));
         body.put("send_message_history_updates", true);
         body.put("client_state", java.util.Base64.getEncoder().encodeToString(

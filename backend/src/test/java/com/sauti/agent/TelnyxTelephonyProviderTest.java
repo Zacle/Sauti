@@ -74,7 +74,7 @@ class TelnyxTelephonyProviderTest {
                     .contains("\"voice\":\"Telnyx.NaturalHD.amarante\"")
                     .contains("\"transcription\":{")
                     .contains("\"model\":\"deepgram/nova-3\"")
-                    .contains("\"language\":\"fr\"");
+                    .contains("\"language\":\"auto\"");
         } finally {
             server.stop(0);
         }
