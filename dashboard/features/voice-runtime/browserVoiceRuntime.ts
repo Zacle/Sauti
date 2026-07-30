@@ -37,6 +37,25 @@ export type BrowserVoiceRuntimeConnection = {
   stop(): Promise<void>;
 };
 
+export type BrowserMicrophone = {
+  deviceId: string;
+  label: string;
+};
+
+export type BrowserMicrophoneSnapshot = {
+  deviceId: string;
+  label: string;
+  autoGainControl: boolean | null;
+  echoCancellation: boolean | null;
+  noiseSuppression: boolean | null;
+  channelCount: number | null;
+  sampleRate: number | null;
+};
+
+export type BrowserVoiceRuntimeOptions = {
+  microphoneDeviceId?: string;
+};
+
 type TelnyxRuntimeModule = typeof import("./telnyxRuntime");
 
 let telnyxRuntimeModule: Promise<TelnyxRuntimeModule> | undefined;
@@ -68,26 +87,64 @@ export function releasePreconnectedBrowserVoiceRuntime() {
   );
 }
 
-export async function warmBrowserMicrophone() {
-  if (!navigator.mediaDevices?.getUserMedia) return;
+export function browserMicrophoneConstraints(
+  microphoneDeviceId?: string,
+): MediaTrackConstraints {
+  return {
+    ...(microphoneDeviceId
+      ? { deviceId: { exact: microphoneDeviceId } }
+      : {}),
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: { ideal: 1 },
+  };
+}
+
+export async function listBrowserMicrophones(): Promise<BrowserMicrophone[]> {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return devices
+    .filter((device) => device.kind === "audioinput")
+    .map((device, index) => ({
+      deviceId: device.deviceId,
+      label: device.label || `Microphone ${index + 1}`,
+    }));
+}
+
+export async function warmBrowserMicrophone(
+  microphoneDeviceId?: string,
+): Promise<BrowserMicrophoneSnapshot | undefined> {
+  if (!navigator.mediaDevices?.getUserMedia) return undefined;
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
+    audio: browserMicrophoneConstraints(microphoneDeviceId),
   });
-  stream.getTracks().forEach((track) => track.stop());
+  const track = stream.getAudioTracks()[0];
+  const settings = track?.getSettings();
+  const snapshot = track && settings
+    ? {
+        deviceId: settings.deviceId ?? microphoneDeviceId ?? "",
+        label: track.label || "Default microphone",
+        autoGainControl: settings.autoGainControl ?? null,
+        echoCancellation: settings.echoCancellation ?? null,
+        noiseSuppression: settings.noiseSuppression ?? null,
+        channelCount: settings.channelCount ?? null,
+        sampleRate: settings.sampleRate ?? null,
+      }
+    : undefined;
+  stream.getTracks().forEach((item) => item.stop());
+  return snapshot;
 }
 
 export function connectBrowserVoiceRuntime(
   session: BrowserVoiceRuntimeSession,
   callbacks: BrowserVoiceRuntimeCallbacks,
+  options: BrowserVoiceRuntimeOptions = {},
 ): Promise<BrowserVoiceRuntimeConnection> {
   if (session.provider.toLowerCase() !== "telnyx") {
     throw new Error(`Unsupported browser voice runtime: ${session.provider}`);
   }
   return loadTelnyxRuntime().then(({ connectTelnyxRuntime }) =>
-    connectTelnyxRuntime(session, callbacks)
+    connectTelnyxRuntime(session, callbacks, options)
   );
 }

@@ -2,7 +2,9 @@ import type { BrowserVoiceRuntimeSession } from "@/types/api";
 import type {
   BrowserVoiceRuntimeCallbacks,
   BrowserVoiceRuntimeConnection,
+  BrowserVoiceRuntimeOptions,
 } from "./browserVoiceRuntime";
+import { browserMicrophoneConstraints } from "./browserVoiceRuntime";
 import {
   configString,
   providerError,
@@ -67,9 +69,12 @@ function createTelnyxClient(
     environment,
     region: region || undefined,
     vad: {
-      volumeThreshold: 10,
+      // The SDK uses this client-side VAD for listening state and latency
+      // measurement. A lower threshold keeps normal laptop-mic speech from
+      // looking silent without changing Telnyx server-side endpointing.
+      volumeThreshold: 4,
       silenceDurationMs: 700,
-      minSpeechDurationMs: 120,
+      minSpeechDurationMs: 80,
       maxLatencyMs: 15_000,
     },
   });
@@ -152,6 +157,7 @@ export async function preconnectTelnyxRuntime(session: BrowserVoiceRuntimeSessio
 export async function connectTelnyxRuntime(
   session: BrowserVoiceRuntimeSession,
   callbacks: BrowserVoiceRuntimeCallbacks,
+  options: BrowserVoiceRuntimeOptions = {},
 ): Promise<BrowserVoiceRuntimeConnection> {
   await preloadTelnyxRuntime();
   const { TelnyxAIAgent } = await telnyxAgentModule!;
@@ -383,11 +389,7 @@ export async function connectTelnyxRuntime(
               { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
               { name: "X-Sauti-Conversation-Channel", value: "web_call" },
             ],
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            },
+            audio: browserMicrophoneConstraints(options.microphoneDeviceId),
           }),
           subscribeConversation: ({ active, failed, disconnected }) => {
             const conversationActive = (notification: {
@@ -414,11 +416,7 @@ export async function connectTelnyxRuntime(
             { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
             { name: "X-Sauti-Conversation-Channel", value: "web_call" },
           ],
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
+          audio: browserMicrophoneConstraints(options.microphoneDeviceId),
         }),
         subscribeConversation: ({ active, failed, disconnected }) => {
           const conversationActive = (notification: {

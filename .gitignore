@@ -19,3 +19,5 @@ deploy/backups/
 secrets/
 *.service-account.json
 dashboard/.env.local
+/design-qa/pre-call-panel-no-voice-card.png
+/design-qa/setup-readiness-simplified.png
