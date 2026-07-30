@@ -192,6 +192,10 @@ export async function connectTelnyxRuntime(
   let terminalEndTimer: number | undefined;
   let responseTimer: number | undefined;
   let transcriptFlushTimer: number | undefined;
+  let microphoneLevelTimer: number | undefined;
+  let microphoneLevelWindowTimer: number | undefined;
+  let microphoneRmsDb = -100;
+  let microphonePeakDb = -100;
   const agentTranscript = new TelnyxAgentTranscriptAccumulator();
 
   const emitCompletedAgentTranscript = (
@@ -208,6 +212,30 @@ export async function connectTelnyxRuntime(
   const clearTranscriptFlushTimer = () => {
     if (transcriptFlushTimer !== undefined) window.clearTimeout(transcriptFlushTimer);
     transcriptFlushTimer = undefined;
+  };
+
+  const stopMicrophoneLevelMonitoring = () => {
+    if (microphoneLevelTimer !== undefined) window.clearInterval(microphoneLevelTimer);
+    if (microphoneLevelWindowTimer !== undefined) {
+      window.clearInterval(microphoneLevelWindowTimer);
+    }
+    microphoneLevelTimer = undefined;
+    microphoneLevelWindowTimer = undefined;
+  };
+
+  const startMicrophoneLevelMonitoring = () => {
+    const microphone = options.microphone;
+    if (!microphone || !callbacks.onMicrophoneLevel) return;
+    microphoneLevelTimer = window.setInterval(() => {
+      const level = microphone.readLevel();
+      microphoneRmsDb = Math.max(microphoneRmsDb, level.rmsDb);
+      microphonePeakDb = Math.max(microphonePeakDb, level.peakDb);
+    }, 100);
+    microphoneLevelWindowTimer = window.setInterval(() => {
+      callbacks.onMicrophoneLevel?.(microphoneRmsDb, microphonePeakDb);
+      microphoneRmsDb = -100;
+      microphonePeakDb = -100;
+    }, 2_000);
   };
 
   const scheduleAgentTranscriptFlush = () => {
@@ -257,12 +285,14 @@ export async function connectTelnyxRuntime(
     clearTerminalEndTimer();
     clearResponseTimer();
     clearTranscriptFlushTimer();
+    stopMicrophoneLevelMonitoring();
     emitCompletedAgentTranscript(agentTranscript.flush(false));
     ended = true;
     agentSpeaking = false;
     callbacks.onAgentSpeaking(false);
     audio.srcObject = null;
     audio.remove();
+    void options.microphone?.stop();
     callbacks.onEnded("completed");
   };
 
@@ -389,7 +419,10 @@ export async function connectTelnyxRuntime(
               { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
               { name: "X-Sauti-Conversation-Channel", value: "web_call" },
             ],
-            audio: browserMicrophoneConstraints(options.microphoneDeviceId),
+            audio: browserMicrophoneConstraints(),
+            localStream: options.microphone?.stream,
+          } as Parameters<TelnyxClient["startConversation"]>[0] & {
+            localStream?: MediaStream;
           }),
           subscribeConversation: ({ active, failed, disconnected }) => {
             const conversationActive = (notification: {
@@ -416,7 +449,10 @@ export async function connectTelnyxRuntime(
             { name: "X-Sauti-Call-Sid", value: configString(session.configuration, "callSid") },
             { name: "X-Sauti-Conversation-Channel", value: "web_call" },
           ],
-          audio: browserMicrophoneConstraints(options.microphoneDeviceId),
+          audio: browserMicrophoneConstraints(),
+          localStream: options.microphone?.stream,
+        } as Parameters<TelnyxClient["startConversation"]>[0] & {
+          localStream?: MediaStream;
         }),
         subscribeConversation: ({ active, failed, disconnected }) => {
           const conversationActive = (notification: {
@@ -475,12 +511,14 @@ export async function connectTelnyxRuntime(
     conversationStarted = true;
     callbacks.onStartupStage?.("conversation_started");
     retainProviderIds();
+    startMicrophoneLevelMonitoring();
     callbacks.onConnected();
   } catch (error) {
     stopped = true;
     ended = true;
     audio.remove();
     await client.disconnect().catch(() => undefined);
+    await options.microphone?.stop();
     throw new Error(providerError("Telnyx", error));
   }
 
@@ -499,12 +537,14 @@ export async function connectTelnyxRuntime(
       clearTerminalEndTimer();
       clearResponseTimer();
       clearTranscriptFlushTimer();
+      stopMicrophoneLevelMonitoring();
       emitCompletedAgentTranscript(agentTranscript.flush(false));
       retainProviderIds();
       stopped = true;
       ended = true;
       await client.endConversation();
       await client.disconnect();
+      await options.microphone?.stop();
       audio.srcObject = null;
       audio.remove();
     },

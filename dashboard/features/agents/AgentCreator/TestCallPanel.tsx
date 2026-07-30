@@ -12,13 +12,12 @@ import {
 } from "@/lib/api/calls";
 import {
   connectBrowserVoiceRuntime,
-  listBrowserMicrophones,
+  prepareBrowserMicrophone,
   preconnectBrowserVoiceRuntime,
   preloadBrowserVoiceRuntime,
   releasePreconnectedBrowserVoiceRuntime,
   type BrowserVoiceRuntimeConnection,
-  type BrowserMicrophone,
-  warmBrowserMicrophone,
+  type BrowserMicrophoneCapture,
 } from "@/features/voice-runtime/browserVoiceRuntime";
 import type { VoiceDiagnosticEntry } from "@/features/voice-runtime/voiceDiagnostics";
 import type { BrowserVoiceRuntimeSession } from "@/types/api";
@@ -45,7 +44,6 @@ type CallStatus =
   | "speaking"
   | "ending";
 type PreparationStatus = "idle" | "preparing" | "ready" | "error";
-const PREFERRED_MICROPHONE_KEY = "sauti.preferredMicrophoneId";
 
 function PreCallOrb() {
   return (
@@ -77,8 +75,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   const [error, setError] = useState("");
   const [diagnosticCount, setDiagnosticCount] = useState(0);
   const [preparationStatus, setPreparationStatus] = useState<PreparationStatus>("idle");
-  const [microphones, setMicrophones] = useState<BrowserMicrophone[]>([]);
-  const [microphoneDeviceId, setMicrophoneDeviceId] = useState("");
   const connectionRef = useRef<BrowserVoiceRuntimeConnection | null>(null);
   const callIdRef = useRef("");
   const statusRef = useRef<CallStatus>("idle");
@@ -113,26 +109,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
   useEffect(() => {
     void preloadBrowserVoiceRuntime().catch(() => undefined);
   }, []);
-
-  useEffect(() => {
-    const mediaDevices = navigator.mediaDevices;
-    if (!mediaDevices?.enumerateDevices) return;
-    const refresh = () => {
-      void listBrowserMicrophones()
-        .then((devices) => setMicrophones(devices))
-        .catch(() => undefined);
-    };
-    setMicrophoneDeviceId(window.localStorage.getItem(PREFERRED_MICROPHONE_KEY) ?? "");
-    refresh();
-    mediaDevices.addEventListener?.("devicechange", refresh);
-    return () => mediaDevices.removeEventListener?.("devicechange", refresh);
-  }, []);
-
-  function selectMicrophone(deviceId: string) {
-    setMicrophoneDeviceId(deviceId);
-    if (deviceId) window.localStorage.setItem(PREFERRED_MICROPHONE_KEY, deviceId);
-    else window.localStorage.removeItem(PREFERRED_MICROPHONE_KEY);
-  }
 
   function updatePreparationStatus(next: PreparationStatus) {
     preparationStatusRef.current = next;
@@ -263,48 +239,24 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
     firstAgentAudioRef.current = false;
     agentCaptionIdRef.current = "";
     updateStatus("connecting");
+    let microphoneCapture: BrowserMicrophoneCapture | undefined;
     try {
-      let activeMicrophoneDeviceId = microphoneDeviceId;
       const readyBeforeStart = preparationStatusRef.current === "ready";
       if (preparationStatusRef.current === "error") preparationRef.current = null;
       const preparedRuntimePromise = prepareRuntime();
-      const microphonePromise = warmBrowserMicrophone(activeMicrophoneDeviceId)
+      const microphonePromise = prepareBrowserMicrophone()
         .then((microphone) => {
-          recordDiagnostic("microphone_ready", microphone
-            ? {
-                label: microphone.label,
-                selectedDeviceMatched: !microphoneDeviceId
-                  || microphone.deviceId === microphoneDeviceId,
-                autoGainControl: microphone.autoGainControl,
-                echoCancellation: microphone.echoCancellation,
-                noiseSuppression: microphone.noiseSuppression,
-                channelCount: microphone.channelCount,
-                sampleRate: microphone.sampleRate,
-              }
-            : undefined);
-          void listBrowserMicrophones()
-            .then((devices) => setMicrophones(devices))
-            .catch(() => undefined);
-        })
-        .catch(async () => {
-          if (!activeMicrophoneDeviceId) {
-            recordDiagnostic("microphone_warmup_failed", undefined, "warn");
-            return;
-          }
-          recordDiagnostic("microphone_selection_unavailable", undefined, "warn");
-          activeMicrophoneDeviceId = "";
-          selectMicrophone("");
-          const fallback = await warmBrowserMicrophone();
-          recordDiagnostic("microphone_default_fallback", fallback
-            ? {
-                label: fallback.label,
-                autoGainControl: fallback.autoGainControl,
-                echoCancellation: fallback.echoCancellation,
-                noiseSuppression: fallback.noiseSuppression,
-                channelCount: fallback.channelCount,
-                sampleRate: fallback.sampleRate,
-              }
-            : undefined);
+          microphoneCapture = microphone;
+          recordDiagnostic("microphone_ready", {
+            label: microphone.snapshot.label,
+            autoGainControl: microphone.snapshot.autoGainControl,
+            echoCancellation: microphone.snapshot.echoCancellation,
+            noiseSuppression: microphone.snapshot.noiseSuppression,
+            channelCount: microphone.snapshot.channelCount,
+            sampleRate: microphone.snapshot.sampleRate,
+            appliedGainDb: microphone.snapshot.appliedGainDb,
+          });
+          return microphone;
         });
       await preparedRuntimePromise;
       recordDiagnostic(
@@ -325,7 +277,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
         });
         return started;
       });
-      const [started] = await Promise.all([
+      const [started, microphone] = await Promise.all([
         callPromise,
         microphonePromise,
         preloadBrowserVoiceRuntime(),
@@ -372,6 +324,13 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           if (speaking) setError("");
           updateStatus(speaking ? "speaking" : "listening");
         },
+        onMicrophoneLevel(rmsDb, peakDb) {
+          recordDiagnostic("microphone_level", {
+            rmsDb,
+            peakDb,
+            lowInput: peakDb < -32,
+          }, peakDb < -32 ? "warn" : "info");
+        },
         onLatencyMeasured(kind, latencyMs) {
           recordDiagnostic(`${kind}_latency`, { latencyMs });
         },
@@ -408,7 +367,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           recordDiagnostic("runtime_ended", { outcome: outcome ?? "completed" });
           void finishCall(outcome ?? "completed", false);
         },
-      }, { microphoneDeviceId: activeMicrophoneDeviceId || undefined });
+      }, { microphone });
       preparationRef.current = null;
       updatePreparationStatus("idle");
     } catch (caught) {
@@ -420,6 +379,7 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
       updateStatus("idle");
       preparationRef.current = null;
       updatePreparationStatus("error");
+      await microphoneCapture?.stop();
     }
   }
 
@@ -488,24 +448,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           {!voiceId?.toLowerCase().startsWith("telnyx.") && (
             <p className="test-runtime-note">Select and save a Telnyx voice in Voice settings to run this test.</p>
           )}
-          <label className="test-microphone-picker">
-            <span><Mic size={14} /> Microphone input</span>
-            <select
-              aria-label="Microphone input"
-              disabled={status === "connecting"}
-              onChange={(event) => selectMicrophone(event.target.value)}
-              value={microphoneDeviceId}
-            >
-              <option value="">System default microphone</option>
-              {microphones
-                .filter((microphone) => microphone.deviceId)
-                .map((microphone) => (
-                  <option key={microphone.deviceId} value={microphone.deviceId}>
-                    {microphone.label}
-                  </option>
-                ))}
-            </select>
-          </label>
           <button
             disabled={
               !agentId

@@ -225,30 +225,30 @@ Expected:
 
 ## Change log
 
-### 2026-07-30 - Make browser test calls use the intended microphone
+### 2026-07-30 - Boost and measure quiet browser microphone input
 
 - Investigated `sauti-telnyx-diagnostics-1785403580675.json` after normal
-  speech was missed unless the tester raised their voice.
-- The diagnostic showed that startup preconnection was reused successfully,
-  but it contained no selected-device or applied microphone information. One
-  caller turn remained in Telnyx's listening state for roughly 20 seconds
-  before transcription, which points to weak/wrong browser input rather than
-  an LLM interpretation problem.
-- Added a microphone selector to the saved-agent test panel:
-  - available browser audio inputs are listed and the tester's choice is
-    retained locally;
-  - the exact selected `deviceId` is passed to the Telnyx AI Agent WebRTC call;
-  - disconnected or browser-rotated device IDs fall back safely to the system
-    default instead of making the test call unusable.
-- Centralized browser microphone constraints so warm-up and the actual Telnyx
-  media call both request mono speech audio with automatic gain control, echo
-  cancellation, and noise suppression.
-- Corrected the microphone selector styling to use the Agent Studio's existing
-  dark palette values; no undefined `--console-*` custom properties remain in
-  `AgentCreatorRedesign.css`.
-- Extended downloaded diagnostics with the microphone label, whether the
-  selected device was honored, and the actual capture settings returned by the
-  browser. The opaque device ID is deliberately not exported.
+  speech was missed unless the tester raised their voice, then inspected
+  `sauti-telnyx-diagnostics-1785406351900.json` after the first adjustment.
+- The second diagnostic ruled out the wrong-device theory:
+  - Chrome used the built-in Intel microphone array;
+  - capture was 48 kHz mono;
+  - browser automatic gain control, echo cancellation, and noise suppression
+    were all active.
+- Removed the microphone selector because it added demo friction without
+  addressing the confirmed problem.
+- Replaced the open-and-stop warm-up capture plus Telnyx's second capture with
+  one retained microphone stream. The exact captured stream is now handed to
+  the Telnyx WebRTC call.
+- Added a conservative Web Audio input stage before Telnyx:
+  - `+3.5 dB` gain improves quiet laptop-microphone speech;
+  - a fast compressor limits loud peaks to reduce clipping;
+  - the original browser echo cancellation, noise suppression, automatic gain
+    control, and mono constraint remain enabled.
+- Added continuous input-level measurement. Downloaded diagnostics now include
+  two-second `microphone_level` windows with raw `rmsDb`, `peakDb`, and a
+  `lowInput` warning, plus the applied gain in `microphone_ready`. This makes
+  the next decision evidence-based instead of inferring level from transcripts.
 - Lowered the Telnyx library's client-side VAD threshold from 10 to 4 and its
   minimum speech duration from 120 ms to 80 ms. This makes the UI listening
   state and latency measurement react to normal quiet speech; Telnyx still
@@ -262,21 +262,20 @@ Expected:
   - `dashboard/package.json`
   - `docs/agent-handoff.md`
 - Verification:
-  - `npm.cmd run test:voice` - passed, 25/25 tests;
+  - `npm.cmd run test:voice` - passed, 24/24 tests;
   - `npm.cmd run typecheck` - passed;
   - `npm.cmd run lint` - passed with zero warnings;
   - `npm.cmd run build` - passed; Next.js generated 50 static pages.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and the normal GitHub Actions CI/CD workflow.
 - Live follow-up:
-  - choose the physical microphone in the new selector rather than relying on
-    `System default microphone`;
-  - place a test while speaking at an ordinary volume;
-  - download diagnostics and verify `microphone_ready` reports
-    `selectedDeviceMatched=true` and `autoGainControl=true`;
-  - if speech remains weak with the correct input, use the provider recording
-    and call-quality report to distinguish low OS input gain from WebRTC packet
-    loss before adding software gain, which can amplify noise and clipping.
+  - place a browser test while speaking at an ordinary volume;
+  - verify `microphone_ready.appliedGainDb=3.5`;
+  - inspect `microphone_level` windows that overlap caller speech. Repeated
+    peaks below `-32 dBFS` mean the OS/device input is still weak; healthy
+    levels with missed words point instead to provider STT/media quality;
+  - do not increase gain again without those measurements because excess gain
+    amplifies room noise and can make transcription worse.
 
 ### 2026-07-30 - Pre-provision and preconnect the Telnyx browser demo
 

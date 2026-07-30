@@ -19,6 +19,7 @@ export type BrowserVoiceRuntimeCallbacks = {
   onAgentCaption(text: string, turn?: number): void;
   onAgentTranscript(text: string, interrupted: boolean): void;
   onAgentSpeaking(value: boolean): void;
+  onMicrophoneLevel?(rmsDb: number, peakDb: number): void;
   onLatencyMeasured?(kind: "greeting" | "turn", latencyMs: number): void;
   onInterrupted(): void;
   onToolInvoked?(toolName: string): void;
@@ -37,23 +38,25 @@ export type BrowserVoiceRuntimeConnection = {
   stop(): Promise<void>;
 };
 
-export type BrowserMicrophone = {
-  deviceId: string;
-  label: string;
-};
-
 export type BrowserMicrophoneSnapshot = {
-  deviceId: string;
   label: string;
   autoGainControl: boolean | null;
   echoCancellation: boolean | null;
   noiseSuppression: boolean | null;
   channelCount: number | null;
   sampleRate: number | null;
+  appliedGainDb: number;
+};
+
+export type BrowserMicrophoneCapture = {
+  stream: MediaStream;
+  snapshot: BrowserMicrophoneSnapshot;
+  readLevel(): { rmsDb: number; peakDb: number };
+  stop(): Promise<void>;
 };
 
 export type BrowserVoiceRuntimeOptions = {
-  microphoneDeviceId?: string;
+  microphone?: BrowserMicrophoneCapture;
 };
 
 type TelnyxRuntimeModule = typeof import("./telnyxRuntime");
@@ -87,13 +90,8 @@ export function releasePreconnectedBrowserVoiceRuntime() {
   );
 }
 
-export function browserMicrophoneConstraints(
-  microphoneDeviceId?: string,
-): MediaTrackConstraints {
+export function browserMicrophoneConstraints(): MediaTrackConstraints {
   return {
-    ...(microphoneDeviceId
-      ? { deviceId: { exact: microphoneDeviceId } }
-      : {}),
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
@@ -101,39 +99,79 @@ export function browserMicrophoneConstraints(
   };
 }
 
-export async function listBrowserMicrophones(): Promise<BrowserMicrophone[]> {
-  if (!navigator.mediaDevices?.enumerateDevices) return [];
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  return devices
-    .filter((device) => device.kind === "audioinput")
-    .map((device, index) => ({
-      deviceId: device.deviceId,
-      label: device.label || `Microphone ${index + 1}`,
-    }));
-}
-
-export async function warmBrowserMicrophone(
-  microphoneDeviceId?: string,
-): Promise<BrowserMicrophoneSnapshot | undefined> {
-  if (!navigator.mediaDevices?.getUserMedia) return undefined;
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: browserMicrophoneConstraints(microphoneDeviceId),
+export async function prepareBrowserMicrophone(): Promise<BrowserMicrophoneCapture> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("This browser cannot access a microphone.");
+  }
+  const sourceStream = await navigator.mediaDevices.getUserMedia({
+    audio: browserMicrophoneConstraints(),
   });
-  const track = stream.getAudioTracks()[0];
+  const track = sourceStream.getAudioTracks()[0];
   const settings = track?.getSettings();
-  const snapshot = track && settings
-    ? {
-        deviceId: settings.deviceId ?? microphoneDeviceId ?? "",
-        label: track.label || "Default microphone",
-        autoGainControl: settings.autoGainControl ?? null,
-        echoCancellation: settings.echoCancellation ?? null,
-        noiseSuppression: settings.noiseSuppression ?? null,
-        channelCount: settings.channelCount ?? null,
-        sampleRate: settings.sampleRate ?? null,
+  if (!track || !settings) {
+    sourceStream.getTracks().forEach((item) => item.stop());
+    throw new Error("The browser did not return a usable microphone track.");
+  }
+
+  const AudioContextClass = window.AudioContext;
+  const context = new AudioContextClass({ latencyHint: "interactive" });
+  const source = context.createMediaStreamSource(sourceStream);
+  const gain = context.createGain();
+  const compressor = context.createDynamicsCompressor();
+  const analyser = context.createAnalyser();
+  const destination = context.createMediaStreamDestination();
+  const gainFactor = 1.5;
+  gain.gain.value = gainFactor;
+  compressor.threshold.value = -14;
+  compressor.knee.value = 10;
+  compressor.ratio.value = 8;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.18;
+  analyser.fftSize = 2048;
+  source.connect(analyser);
+  source.connect(gain);
+  gain.connect(compressor);
+  compressor.connect(destination);
+  await context.resume();
+  const samples = new Float32Array(analyser.fftSize);
+  let stopped = false;
+
+  return {
+    stream: destination.stream,
+    snapshot: {
+      label: track.label || "Default microphone",
+      autoGainControl: settings.autoGainControl ?? null,
+      echoCancellation: settings.echoCancellation ?? null,
+      noiseSuppression: settings.noiseSuppression ?? null,
+      channelCount: settings.channelCount ?? null,
+      sampleRate: settings.sampleRate ?? null,
+      appliedGainDb: Math.round(20 * Math.log10(gainFactor) * 10) / 10,
+    },
+    readLevel() {
+      analyser.getFloatTimeDomainData(samples);
+      let sumSquares = 0;
+      let peak = 0;
+      for (const sample of samples) {
+        sumSquares += sample * sample;
+        peak = Math.max(peak, Math.abs(sample));
       }
-    : undefined;
-  stream.getTracks().forEach((item) => item.stop());
-  return snapshot;
+      const rms = Math.sqrt(sumSquares / samples.length);
+      const toDb = (value: number) =>
+        Math.round(20 * Math.log10(Math.max(value, 0.00001)) * 10) / 10;
+      return { rmsDb: toDb(rms), peakDb: toDb(peak) };
+    },
+    async stop() {
+      if (stopped) return;
+      stopped = true;
+      sourceStream.getTracks().forEach((item) => item.stop());
+      destination.stream.getTracks().forEach((item) => item.stop());
+      source.disconnect();
+      gain.disconnect();
+      compressor.disconnect();
+      analyser.disconnect();
+      await context.close().catch(() => undefined);
+    },
+  };
 }
 
 export function connectBrowserVoiceRuntime(
