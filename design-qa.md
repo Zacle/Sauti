@@ -178,3 +178,46 @@ The most recent build gate is **Agent Studio Call Visual Correction QA** above, 
 The full findings, required fidelity surfaces, interaction checks, and P1/P2 correction history are recorded in that section. No actionable P0/P1/P2 findings remain.
 
 final result: passed
+
+---
+
+# Agent Studio Clarity Follow-up QA
+
+- Source visual truth:
+  - `C:\Users\Zacle\AppData\Local\Temp\codex-clipboard-8fe16dfc-2af0-41da-bf14-bcd7a08b9153.png` (364 x 743)
+  - `C:\Users\Zacle\AppData\Local\Temp\codex-clipboard-ac6be074-f54e-4e4c-831b-7bb9b3baf2c8.png` (438 x 94)
+- Rendered implementation:
+  - `D:\Documents\Sauti\design-qa\agent-studio-simplified-1280x720.png` (1280 x 720)
+  - `D:\Documents\Sauti\design-qa\setup-readiness-simplified.png` (250 x 572)
+  - `D:\Documents\Sauti\design-qa\pre-call-panel-no-voice-card.png` (308 x 572)
+- Viewport: 1280 x 720 CSS pixels at device scale 1.
+- State: new Appointment Booker agent, pre-call idle state, no selected Telnyx voice.
+- Density normalization: source and implementation were inspected at native pixel density; focused crops were used because the source screenshots cover individual interface regions.
+
+## Findings and comparison history
+
+- [P2 fixed] `4 of 6 milestones complete` did not explain what was being counted and appeared inconsistent with the eight visible editor sections.
+  - Fix: changed the card to `Launch readiness`, retained the useful percentage, and replaced the count with direct next-step guidance.
+  - Post-fix evidence: the focused sidebar capture shows `Complete the remaining setup requirements` with no milestone count.
+- [P2 fixed] The selected-voice card repeated state without helping the user act.
+  - Fix: removed the card and its styles while keeping the missing-voice instruction when configuration is required.
+  - Post-fix evidence: the focused pre-call capture moves directly from the orb to the actionable instruction and call button.
+
+## Required fidelity surfaces
+
+- Fonts and typography: existing Sauti type scale, weights, and antialiasing are unchanged; new copy fits without truncation.
+- Spacing and layout rhythm: removing the voice card reduces unnecessary vertical density while preserving the orb, instruction, call action, and privacy note.
+- Colors and visual tokens: the readiness card and call panel continue using the established console tokens.
+- Image quality and asset fidelity: the existing generated pre-call orb remains unchanged and sharp within its fixed circular crop.
+- Copy and content: unexplained milestone language and redundant voice-ready content are absent; remaining copy is task-oriented.
+
+## Interaction and regression checks
+
+- The setup percentage and progress fill continue to reflect the existing readiness calculation.
+- The call action remains disabled without a saved compatible voice and is explained by the retained instruction.
+- The pre-call orb continues to animate and is not shown during an active call.
+- The shared navigation, top bar, and Main Settings scroll ownership remain unchanged.
+- Focused source/implementation comparisons found no remaining actionable P0/P1/P2 mismatch.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed.
+
+final result: passed

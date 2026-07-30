@@ -424,10 +424,6 @@ export function TestCallPanel({ agentId, agentName, voiceId }: TestCallPanelProp
           <h2>Test your agent</h2>
           <p>Test the selected voice, conversation behavior, and business tools before taking the agent live.</p>
           <PreCallOrb />
-          <div className="test-call-voice-summary">
-            <span><Volume2 size={17} /></span>
-            <div><small>Selected voice</small><strong>{voiceId ? "Voice ready" : "Choose a Telnyx voice"}</strong></div>
-          </div>
           {!voiceId?.toLowerCase().startsWith("telnyx.") && (
             <p className="test-runtime-note">Select and save a Telnyx voice in Voice settings to run this test.</p>
           )}

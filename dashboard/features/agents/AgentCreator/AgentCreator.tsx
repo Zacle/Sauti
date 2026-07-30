@@ -867,10 +867,10 @@ export function AgentCreator({
           <div className="agent-studio-layout">
             <aside className="agent-studio-nav">
               <span>Agent setup</span>
-              <div className="studio-setup-progress" aria-label={`${completedMilestones} of ${setupMilestones.length} setup milestones complete`}>
-                <div><strong>Setup progress</strong><span>{setupProgress}%</span></div>
+              <div className="studio-setup-progress" aria-label={`Agent is ${setupProgress}% ready to go live`}>
+                <div><strong>Launch readiness</strong><span>{setupProgress}%</span></div>
                 <i aria-hidden="true"><span style={{ width: `${setupProgress}%` }} /></i>
-                <small>{completedMilestones} of {setupMilestones.length} milestones complete</small>
+                <small>{setupProgress === 100 ? "Ready to activate" : "Complete the remaining setup requirements"}</small>
               </div>
               {studioSections.map(({ id, label, description: sectionDescription, icon: Icon }) => (
                 <button className={activeSection === id ? "active" : ""} type="button" key={id} onClick={() => setActiveSection(id)}>

@@ -7546,3 +7546,28 @@ Expected:
 - `npm.cmd run lint` - passed with zero warnings.
 - `npm.cmd run build` - passed; Next.js generated the optimized production build.
 - Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: clarify launch readiness and simplify the pre-call panel
+
+- Replaced the ambiguous `N of 6 milestones complete` copy with:
+  - `Launch readiness`;
+  - the existing readiness percentage;
+  - `Complete the remaining setup requirements`, or `Ready to activate` at 100%.
+- Updated the accessible label to describe how ready the agent is to go live rather than exposing an unexplained milestone count.
+- Removed the `Selected voice / Voice ready` summary card from the pre-call panel.
+- Retained the actionable missing-voice instruction only when no compatible Telnyx voice is configured.
+- Removed the summary card's unused responsive and base styles.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
+  - `design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - browser at 1280 x 720: launch-readiness copy and percentage rendered in the setup sidebar;
+  - browser: no selected-voice summary card remained in the pre-call panel;
+  - focused source/implementation comparisons passed with no actionable P0/P1/P2 findings;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed; Next.js generated the optimized production build.
+- Deployment status remains unchanged: not deployed and uncommitted.

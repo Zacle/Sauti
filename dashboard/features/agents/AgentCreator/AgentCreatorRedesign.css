@@ -272,50 +272,6 @@ body:has(.agent-studio) {
   animation: preCallCloudDrift 4.4s linear infinite;
 }
 
-.test-call-voice-summary {
-  display: grid;
-  width: min(100%, 330px);
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 11px;
-  margin-top: 14px;
-  padding: 12px 13px;
-  border: 1px solid rgba(85, 145, 194, 0.18);
-  border-radius: 13px;
-  text-align: left;
-  background: rgba(7, 27, 47, 0.66);
-}
-
-.test-call-voice-summary > span {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 11px;
-  color: #58e7dd;
-  background: rgba(20, 137, 142, 0.18);
-}
-
-.test-call-voice-summary small,
-.test-call-voice-summary strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.test-call-voice-summary small {
-  color: #728ba1;
-  font-size: 0.61rem;
-}
-
-.test-call-voice-summary strong {
-  margin-top: 3px;
-  color: #dce9f2;
-  font-size: 0.73rem;
-  font-weight: 600;
-}
-
 .agent-test-canvas > button {
   width: min(100%, 330px);
   min-height: 48px;
@@ -478,10 +434,6 @@ body:has(.agent-studio) {
     margin-block: 10px 7px;
   }
 
-  .test-call-voice-summary {
-    margin-top: 10px;
-    padding-block: 9px;
-  }
 }
 
 @media (max-width: 820px) {
