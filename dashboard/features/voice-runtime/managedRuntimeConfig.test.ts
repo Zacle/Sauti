@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  configPositiveNumber,
   configPrimitives,
   configString,
   configStringArray,
@@ -10,6 +11,7 @@ import {
 test("managed runtime configuration accepts only expected public value types", () => {
   const configuration = {
     agentId: "agent-42",
+    maxCallDurationSeconds: 180,
     toolNames: ["read_data", "", 42, "save_data"],
     dynamicVariables: {
       callId: "call-42",
@@ -21,6 +23,8 @@ test("managed runtime configuration accepts only expected public value types", (
   };
 
   assert.equal(configString(configuration, "agentId"), "agent-42");
+  assert.equal(configPositiveNumber(configuration, "maxCallDurationSeconds"), 180);
+  assert.equal(configPositiveNumber(configuration, "missingDuration"), 0);
   assert.deepEqual(configStringArray(configuration, "toolNames"), ["read_data", "save_data"]);
   assert.deepEqual(configPrimitives(configuration, "dynamicVariables"), {
     callId: "call-42",

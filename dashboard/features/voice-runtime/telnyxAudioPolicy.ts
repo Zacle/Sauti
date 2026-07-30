@@ -8,6 +8,15 @@ export const TELNYX_BROWSER_VAD = {
 
 export const TERMINAL_END_AFTER_DRAIN_MS = 2_500;
 export const TERMINAL_END_FALLBACK_MS = 15_000;
+export const MAX_DURATION_ERROR_GRACE_MS = 3_000;
+
+export function reachedConfiguredMaxDuration(
+  maxDurationSeconds: number,
+  elapsedMs: number,
+) {
+  return maxDurationSeconds > 0
+    && elapsedMs >= maxDurationSeconds * 1_000 - MAX_DURATION_ERROR_GRACE_MS;
+}
 
 export function terminalToolEndDelay({
   agentSpeaking,

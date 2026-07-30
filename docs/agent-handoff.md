@@ -8010,3 +8010,37 @@ Expected:
   - `npm.cmd run test:voice` - passed (29 tests);
   - `npm.cmd run typecheck` - passed.
 - Deployment status: not deployed. The lint fix remains uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+
+### 2026-07-31 - Classify Telnyx browser time-limit endings correctly
+
+- Investigated `sauti-telnyx-diagnostics-1785449822307.json`.
+- Root cause:
+  - the browser conversation stayed healthy through the last response;
+  - Telnyx emitted `Connection to server lost` at 151.429 seconds, matching the agent's configured 150-second call limit;
+  - Sauti treated that provider boundary disconnect as an unexpected runtime failure and displayed the red error.
+- Added `maxCallDurationSeconds` to the public Telnyx browser-runtime configuration for both preconnected agent preparation and active call sessions.
+- Added strict positive-number parsing for managed runtime configuration.
+- The browser runtime now:
+  - starts a local duration guard from runtime connection startup;
+  - recognizes provider errors within three seconds of the configured limit as the expected boundary;
+  - records the terminal outcome as `max-duration`;
+  - suppresses the false unexpected-session error;
+  - stops timers, microphone monitoring, media, and the Telnyx client immediately instead of allowing reconnect behavior after the limit.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/TelnyxAiBrowserVoiceRuntimeService.java`
+  - `backend/src/test/java/com/sauti/call/ManagedBrowserVoiceRuntimeServicesTest.java`
+  - `dashboard/features/voice-runtime/managedRuntimeConfig.ts`
+  - `dashboard/features/voice-runtime/managedRuntimeConfig.test.ts`
+  - `dashboard/features/voice-runtime/telnyxAudioPolicy.ts`
+  - `dashboard/features/voice-runtime/telnyxAudioPolicy.test.ts`
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed browser-runtime backend tests - passed;
+  - `.\gradlew.bat :backend:test` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run test:voice` - passed (30 tests);
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run build` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+- Known follow-up: after deployment, run a browser test through its configured limit and confirm it completes with `max-duration` without showing the Telnyx unexpected-session error.

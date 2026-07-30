@@ -29,6 +29,7 @@ class ManagedBrowserVoiceRuntimeServicesTest {
         assertThat(session.configuration())
                 .containsEntry("agentId", "assistant-42")
                 .containsEntry("environment", "development")
+                .containsEntry("maxCallDurationSeconds", 180)
                 .containsEntry("region", "eu-west")
                 .doesNotContainKey("versionId")
                 .doesNotContainValue("call-token");
@@ -51,6 +52,7 @@ class ManagedBrowserVoiceRuntimeServicesTest {
                 .containsEntry("agentId", "assistant-42")
                 .containsEntry("versionId", "version-31")
                 .containsEntry("environment", "production")
+                .containsEntry("maxCallDurationSeconds", 180)
                 .containsEntry("region", "eu")
                 .doesNotContainKey("callSid");
     }
@@ -76,6 +78,7 @@ class ManagedBrowserVoiceRuntimeServicesTest {
         when(call.getAgent()).thenReturn(agent);
         when(agent.getId()).thenReturn(UUID.fromString("48db9149-e363-4087-a814-754f1a9d61ef"));
         when(agent.getDefaultLanguage()).thenReturn("en");
+        when(agent.getMaxCallDurationSeconds()).thenReturn(180);
         return new Fixture(call, agent);
     }
 

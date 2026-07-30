@@ -3,6 +3,11 @@ export function configString(configuration: Record<string, unknown>, name: strin
   return typeof value === "string" ? value.trim() : "";
 }
 
+export function configPositiveNumber(configuration: Record<string, unknown>, name: string) {
+  const value = configuration[name];
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 export function configStringArray(configuration: Record<string, unknown>, name: string) {
   const value = configuration[name];
   return Array.isArray(value)
