@@ -34,6 +34,52 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Restore a latency-first Telnyx inference default
+
+- Diagnosed production browser-call diagnostic
+  `sauti-telnyx-diagnostics-1785453482331.json`:
+  - the prepared Telnyx connection was reused after 5 ms;
+  - the Sauti call record existed after 471 ms and the microphone was ready
+    after 1.228 seconds;
+  - Telnyx marked the remote conversation active after 4.744 seconds;
+  - the first agent audio arrived after 6.867 seconds;
+  - recorded subsequent turn latencies ranged from 1.799 to 10.819 seconds,
+    with several replies above five seconds.
+- The healthy microphone timing and zero additional browser gain show that
+  capture is no longer the dominant delay. The multi-second variation after
+  conversation activation is consistent with the managed assistant's inference
+  path.
+- Restored Telnyx's fast `anthropic/claude-haiku-4-5` model as Sauti's default
+  instead of `moonshotai/Kimi-K2.6`. The `TELNYX_AI_MODEL` override remains
+  available for controlled comparison or rollback.
+- Bumped the managed Telnyx configuration version from 36 to 37 so existing
+  bindings are reconciled with the selected model.
+- Updated development and production environment examples and provider testing
+  documentation to match the latency-first default.
+- Files touched:
+  - `.env.example`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `deploy/.env.production.example`
+  - `docs/managed-voice-provider-testing.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.ManagedVoiceAgentProvisionersTest` - passed;
+  - `.\gradlew.bat :backend:test --console=plain` - passed.
+- Deployment status: not deployed. Changes are uncommitted for maintainer review
+  and the normal CI/CD path.
+- Operational requirement: if `/opt/sauti/.env.production` currently pins
+  `TELNYX_AI_MODEL=moonshotai/Kimi-K2.6`, the maintainer must change it to
+  `TELNYX_AI_MODEL=anthropic/claude-haiku-4-5` before the reviewed release.
+  Otherwise the explicit production value correctly continues to override the
+  new application default.
+- Follow-up: compare a fresh production diagnostic after reconciliation. The
+  first-audio total also contains approximately 4.7 seconds of Telnyx WebRTC and
+  conversation activation in this trace, which model selection alone cannot
+  remove. A browser-only model would require a channel-specific managed
+  assistant binding rather than the currently shared phone/browser assistant.
+
 ### 2026-07-30: Omit synthetic Telnyx assistant versions during browser login
 
 - Diagnosed production diagnostic `sauti-telnyx-diagnostics-1785418768332.json`:

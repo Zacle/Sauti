@@ -35,7 +35,7 @@ Set real values only in the uncommitted local `.env` or the deployed process sec
 | `ELEVENLABS_API_BASE_URL` | No | Defaults to `https://api.elevenlabs.io`. |
 | `TELNYX_AI_ENVIRONMENT` | No | `production` or `development`; defaults to `production`. |
 | `TELNYX_AI_REGION` | No | Optional WebRTC region such as the closest supported Telnyx region. |
-| `TELNYX_AI_MODEL` | No | Telnyx AI Assistant model; defaults to the canonical case-sensitive model ID `moonshotai/Kimi-K2.6`. |
+| `TELNYX_AI_MODEL` | No | Telnyx AI Assistant model; defaults to the latency-first model `anthropic/claude-haiku-4-5`. |
 | `TELNYX_API_KEY` | Telnyx | Server-only credential used to create/synchronize the generated assistant. It is never sent to the browser adapter. |
 | `SAUTI_TEST_VOICE_RUNTIME` | No | Default when an API client omits a runtime: `sauti`, `vapi`, `retell`, `elevenlabs`, or `telnyx`. Agent Studio sends the explicit selection. |
 
@@ -56,7 +56,7 @@ ELEVENLABS_API_BASE_URL=https://api.elevenlabs.io
 TELNYX_API_KEY=
 TELNYX_AI_ENVIRONMENT=production
 TELNYX_AI_REGION=
-TELNYX_AI_MODEL=moonshotai/Kimi-K2.6
+TELNYX_AI_MODEL=anthropic/claude-haiku-4-5
 ```
 
 The three API keys are the only required provider values. The backend reports a provider as unavailable until its API key is present. Restart Spring after changing `.env`; Spring does not reload process environment values during runtime.

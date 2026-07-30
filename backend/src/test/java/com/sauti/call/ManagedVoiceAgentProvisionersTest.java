@@ -118,7 +118,7 @@ class ManagedVoiceAgentProvisionersTest {
                 );
         assertThat(body.getValue().get("dynamic_variables"))
                 .isEqualTo(Map.of("sauti_conversation_channel", "phone_call"));
-        assertThat(body.getValue()).containsEntry("model", "moonshotai/Kimi-K2.6");
+        assertThat(body.getValue()).containsEntry("model", "anthropic/claude-haiku-4-5");
         @SuppressWarnings("unchecked")
         var telephony = (Map<String, Object>) body.getValue().get("telephony_settings");
         assertThat(telephony.get("recording_settings")).isEqualTo(Map.of(
@@ -217,7 +217,7 @@ class ManagedVoiceAgentProvisionersTest {
                 "https://sauti.example",
                 "tool-secret",
                 "Telnyx.NaturalHD.astra",
-                "moonshotai/Kimi-K2.6"
+                "anthropic/claude-haiku-4-5"
         );
     }
 
