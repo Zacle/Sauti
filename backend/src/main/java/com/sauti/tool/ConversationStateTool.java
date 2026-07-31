@@ -49,7 +49,7 @@ public class ConversationStateTool {
     private static final Set<String> COMMON_FIELDS = Set.of(
             "caller_name", "appointment_name", "recipient_relation", "service_type",
             "caller_phone", "new_caller_phone", "caller_email",
-            "booking_number", "booking_date", "booking_lookup_name", "booking_time",
+            "booking_number", "booking_reference_suffix", "booking_date", "booking_lookup_name", "booking_time",
             "existing_booking_action",
             "preferred_day", "preferred_time",
             "review_decision"
@@ -136,6 +136,7 @@ public class ConversationStateTool {
                     case "new_caller_phone" -> "Complete replacement contact phone explicitly requested for an existing booking, normalized to an optional leading plus followed only by digits. Never overwrite caller_phone, which verifies the current booking.";
                     case "caller_email" -> "Complete caller-provided email address.";
                     case "booking_number" -> "Accumulated customer-facing booking number supplied for a lookup, update, reschedule, or cancellation. Normalize spelled characters, number words, and dash/hyphen into the SAT-XXXXXXXXXXXX form, where exactly twelve characters follow SAT-. Consecutive partial fragments are valid updates, but never claim to look up a partial reference.";
+                    case "booking_reference_suffix" -> "Exactly the final four letters or digits the caller reads from the end of their booking confirmation. Normalize to four uppercase alphanumeric characters. Emit only after the server asks for this fallback; never infer it from a phone number.";
                     case "booking_date" -> "Date of an existing appointment, normalized to yyyy-MM-dd in the business timezone. This identifies an existing booking and is distinct from preferred_day for a new or replacement date.";
                     case "booking_lookup_name" -> "The exact semantic name entity the caller says the existing booking was saved under, with no surrounding sentence text in any language. If the caller spells the name letter by letter, reconstruct the name from those letters and prefer that explicit spelling over a nearby speech-to-text word. Never fill this from a name disclosed by a tool result.";
                     case "booking_time" -> "Exact time of an existing appointment normalized to HH:mm for private phone/date/time verification.";
@@ -344,7 +345,7 @@ public class ConversationStateTool {
                 pendingAction = Optional.empty();
             }
             var changesExistingBookingIdentity = Set.of(
-                    "caller_phone", "booking_date", "booking_time", "booking_number"
+                    "caller_phone", "booking_date", "booking_time", "booking_number", "booking_reference_suffix"
             ).stream().anyMatch(field -> turnUpdates.containsKey(field) || clearedFields.contains(field));
             if (changesExistingBookingIdentity) {
                 sessions.updateVerifiedBookingIdentity(call.getTwilioCallSid(), null);
@@ -379,6 +380,7 @@ public class ConversationStateTool {
                     && configuredFor(call, "check_availability");
             var incompleteBookingReference = incompleteBookingReference(next, turnUpdates);
             var bookingIdentityBecameReady = (turnUpdates.containsKey("booking_number")
+                    || turnUpdates.containsKey("booking_reference_suffix")
                     || turnUpdates.containsKey("caller_phone")
                     || turnUpdates.containsKey("booking_date")
                     || turnUpdates.containsKey("booking_lookup_name")
@@ -595,6 +597,16 @@ public class ConversationStateTool {
             arguments.put("requested_action", existingBookingAction(state));
             return Optional.of(Map.copyOf(arguments));
         }
+        var bookingReferenceSuffix = normalizeBookingReferenceSuffix(
+                state.values().getOrDefault("booking_reference_suffix", "")
+        );
+        if (bookingReferenceSuffix.length() == 4 && !callerPhone.isBlank()) {
+            return Optional.of(Map.of(
+                    "booking_reference_suffix", bookingReferenceSuffix,
+                    "caller_phone", callerPhone,
+                    "requested_action", existingBookingAction(state)
+            ));
+        }
         var bookingDate = state.values().getOrDefault("booking_date", "").trim();
         try {
             java.time.LocalDate.parse(bookingDate);
@@ -634,6 +646,11 @@ public class ConversationStateTool {
 
     private boolean completeBookingNumber(String value) {
         return value != null && value.trim().matches("SAT-[A-Z0-9]{12}");
+    }
+
+    private String normalizeBookingReferenceSuffix(String value) {
+        return value == null
+                ? "" : value.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
     }
 
     private Optional<PendingAction> pendingAction(Call call) {
@@ -712,6 +729,11 @@ public class ConversationStateTool {
                     normalized = previous + normalized.replaceFirst("^-", "");
                 }
                 if (!normalized.isBlank()) values.put(key, normalized);
+                return;
+            }
+            if ("booking_reference_suffix".equals(key)) {
+                var normalized = normalizeBookingReferenceSuffix(value);
+                if (normalized.length() == 4) values.put(key, normalized);
                 return;
             }
             if (PERSON_NAME_FIELDS.contains(key)) {

@@ -447,6 +447,46 @@ class ConversationStateToolTest {
     }
 
     @Test
+    void finalFourReferenceCharactersUseRetainedPhoneAndActionForOneFallbackLookup() {
+        var sessions = mock(CallSessionStore.class);
+        var call = call("suffix-reference-call");
+        when(sessions.conversationState("suffix-reference-call")).thenReturn(Optional.of(
+                new ConversationState(
+                        Map.of(
+                                "caller_phone", "0115753441",
+                                "existing_booking_action", "cancel"
+                        ),
+                        ConversationState.SUBJECT_SELF,
+                        ConversationState.INTENT_ACTIVE,
+                        5
+                )
+        ));
+        var tool = new ConversationStateTool(sessions, lookupRepository(call));
+
+        var result = tool.execute(call, toolCall(Map.of(
+                "updates", Map.of("booking_reference_suffix", "e-f-5-6"),
+                "additional_details", Map.of(),
+                "clear_fields", List.of(),
+                "booking_subject", "unchanged",
+                "booking_intent", "unchanged",
+                "next_action", "reply",
+                "business_tool", "",
+                "spoken_response", "Thank you."
+        )));
+
+        assertThat(result.result())
+                .containsEntry("nextAction", "use_business_tool")
+                .containsEntry("nextTool", "lookup_booking")
+                .containsEntry("nextToolAuthorized", true)
+                .containsEntry("nextToolArguments", Map.of(
+                        "booking_reference_suffix", "EF56",
+                        "caller_phone", "0115753441",
+                        "requested_action", "cancel"
+                ))
+                .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
     void correctedSpeakerNameUpdatesASelfBookingWithoutDependingOnCallerWording() {
         var sessions = mock(CallSessionStore.class);
         var call = call("semantic-call");

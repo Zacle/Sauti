@@ -23,12 +23,13 @@ public class DefaultToolSeeder {
                         "time_preference", property("string", "Exact preferred time in HH:mm when provided, otherwise a period such as morning", ""),
                         "duration_minutes", property("integer", "Appointment duration in minutes", "")
                 ), List.of("date")), "sauti_calendar", "noop_calendar", 10);
-        seed(agent, "lookup_booking", "Look up an existing booking after collecting its phone, appointment date, and exact time, or a complete reference the caller volunteers. Never reveal booking details before server verification.",
+        seed(agent, "lookup_booking", "Look up an existing booking after collecting its phone, appointment date, and exact time; after a miss, retry once with the same phone and the final four characters of the confirmation reference. Never reveal booking details before server verification.",
                 schema(Map.of(
                         "caller_phone", property("string", "Exact phone number used when the booking was created", "phone"),
                         "booking_date", property("string", "Existing appointment date in yyyy-MM-dd format", "date"),
                         "booking_time", property("string", "Exact existing appointment time in HH:mm", ""),
                         "booking_number", property("string", "Optional complete SAT-XXXXXXXXXXXX reference volunteered by the caller", ""),
+                        "booking_reference_suffix", property("string", "Exactly the final four letters or digits of the booking confirmation reference", ""),
                         "requested_action", property("string", "Explicit operation: lookup, update, reschedule, or cancel", "")
                 ), List.of("caller_phone", "requested_action")), "sauti_calendar", "noop_calendar", 21);
         seed(agent, "book_slot", "Two-step booking: appointment_name is the service recipient. Set review_action semantically to prepare_review, correct_review, or unconditional approve_review from the caller's meaning in their language. If that turn also contains a question, condition, hesitation, correction, or information request, set question_handling to answer_before_action so nothing is saved until it is answered and freshly confirmed. The server retains the private review token. Never ask the caller to spell or expose the token.",

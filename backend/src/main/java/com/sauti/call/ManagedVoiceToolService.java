@@ -329,6 +329,7 @@ public class ManagedVoiceToolService {
                 "nextAction", "nextTool", "nextToolAuthorized", "nextToolArguments",
                 "spokenResponse", "bookingCreated", "bookingFound", "updated", "cancelled",
                 "bookingNumber", "bookingStatus", "appointmentAt", "retryField",
+                "retryRecommended",
                 "capturedBookingNumber", "bookingNumberReadback", "nextMissingField",
                 "remainingMissingFieldCount", "nextInvalidField", "phoneCaptureStatus",
                 "callerPhoneDigits", "ended"

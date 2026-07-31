@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "40";
+        return "42";
     }
 
     public ManagedVoiceAgentReference synchronize(

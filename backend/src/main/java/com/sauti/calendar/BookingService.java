@@ -122,6 +122,27 @@ public class BookingService {
     }
 
     @Transactional(readOnly = true)
+    public List<Booking> findByReferenceSuffixForAgent(
+            UUID tenantId,
+            UUID agentId,
+            String bookingReferenceSuffix
+    ) {
+        Objects.requireNonNull(tenantId, "Tenant is required");
+        Objects.requireNonNull(agentId, "Agent is required");
+        var suffix = bookingReferenceSuffix == null
+                ? "" : bookingReferenceSuffix.replaceAll("[^A-Za-z0-9]", "").toUpperCase(java.util.Locale.ROOT);
+        if (suffix.length() != 4) return List.of();
+        var matches = bookingRepository
+                .findAllByTenantIdAndAgent_IdAndStatusNotAndBookingReferenceEndingWithIgnoreCase(
+                        tenantId,
+                        agentId,
+                        "cancelled",
+                        suffix
+                );
+        return matches == null ? List.of() : matches;
+    }
+
+    @Transactional(readOnly = true)
     public List<Booking> findOnAppointmentDateForAgent(
             UUID tenantId,
             UUID agentId,

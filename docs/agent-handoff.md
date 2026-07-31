@@ -34,6 +34,115 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Stop failed booking lookups after one complete attempt
+
+- Investigated browser diagnostic
+  `sauti-telnyx-diagnostics-1785480624509.json` and the supplied Ailsa
+  cancellation transcript after agent-level booking isolation was deployed.
+- The isolation worked: Ailsa could not find the booking created by Gerard.
+  However, the authoritative `booking_identity_mismatch` result explicitly told
+  the model to restart with phone, date, and time. The shared prompt repeated
+  that instruction, causing a second full identity cycle and unnecessary model,
+  transcription, and synthesis usage.
+- The diagnostic recorded:
+  - conversation active after 4.676 seconds;
+  - first agent audio after 5.957 seconds;
+  - later turn latencies from 0.559 to 10.801 seconds;
+  - two failed lookup cycles before the caller ended the call.
+- Changed a completed phone/date/time lookup with no matching agent-owned
+  booking into a clear terminal outcome for that attempt:
+  - `status=booking_not_found`;
+  - `bookingFound=false`;
+  - `actionPerformed=false`;
+  - `retryRecommended=false`;
+  - `nextAction=reply`;
+  - no `retryField`.
+- The result instruction now requires one concise statement that no matching
+  booking was found and nothing changed. It prohibits asking for phone, date, or
+  time again and prohibits restarting lookup automatically.
+- Preserved caller choice without creating a loop: the agent may state that the
+  caller can check their confirmation and voluntarily try again with corrected
+  details or a complete Sauti reference, then it must stop and wait.
+- Kept the existing character-by-character correction flow for a booking
+  reference the caller explicitly supplies. That path has a specific captured
+  value to correct and is distinct from repeating an entire failed
+  phone/date/time identity cycle.
+- Exposed `retryRecommended` at the top of the managed-provider response so the
+  model does not need to infer it from nested data.
+- Updated the shared managed-agent prompt and bumped the Telnyx configuration
+  version from 40 to 41 so existing assistants reconcile the non-looping rule.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceToolService.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/test/java/com/sauti/llm/ConversationOrchestratorTest.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.tool.SautiCalendarFulfillmentTest --tests com.sauti.llm.ConversationOrchestratorTest --tests com.sauti.call.ManagedVoiceToolServiceTest --tests com.sauti.call.ManagedVoiceAgentProvisionersTest --console=plain` - passed;
+  - `.\gradlew.bat :backend:test --console=plain` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+#### Follow-up: use a four-character confirmation fallback and color bookings by agent
+
+- Replaced the terminal first lookup miss with one bounded, easier fallback:
+  - retain the already verified phone privately;
+  - ask once for exactly the final four letters or digits of the customer-facing
+    booking confirmation;
+  - run one additional `lookup_booking`;
+  - stop without another identity question if the suffix still does not match.
+- The suffix lookup remains tenant- and agent-scoped, excludes cancelled
+  bookings, and also requires the retained phone to match. It succeeds only
+  when exactly one booking matches. A collision returns
+  `booking_reference_suffix_ambiguous` and never guesses or discloses booking
+  details.
+- Updated the platform-owned conversation-state and runtime tool schemas so
+  existing agents can capture `booking_reference_suffix` without reseeding
+  their stored tool rows.
+- Replaced the robotic “nothing was changed” instruction with operation-specific
+  guidance in the caller's current language:
+  - cancellation: no booking was cancelled;
+  - reschedule: the appointment has not been moved;
+  - update: no booking details were updated.
+- Bumped the managed Telnyx configuration version from 41 to 42 so existing
+  assistants reconcile the suffix field and new response guidance.
+- Confirmed and regression-tested that local scheduling conflicts are scoped to
+  one agent. Different agents in the same workspace can therefore book the same
+  date and time, while the same agent still cannot overlap its own bookings.
+- Added deterministic agent colors to both booking list rows and calendar
+  items. The same agent ID always maps to the same accessible palette color;
+  the agent badge and booking edge make simultaneous bookings distinguishable
+  without changing booking status colors.
+- Files additionally touched:
+  - `backend/src/main/java/com/sauti/calendar/BookingIdentityService.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingRepository.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingService.java`
+  - `backend/src/main/java/com/sauti/tool/AgentToolLoader.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - `backend/src/main/java/com/sauti/tool/DefaultToolSeeder.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingIdentityServiceTest.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingServiceTest.java`
+  - `backend/src/test/java/com/sauti/tool/AgentToolLoaderTest.java`
+  - `backend/src/test/java/com/sauti/tool/ConversationStateToolTest.java`
+  - `dashboard/features/bookings/domain/bookings.ts`
+  - `dashboard/features/bookings/presentation/BookingsPage.tsx`
+  - `dashboard/features/bookings/presentation/BookingsPage.module.css`
+- Verification:
+  - focused booking identity, fulfillment, conversation state, tool schema,
+    prompt, and booking-service tests - passed;
+  - `.\gradlew.bat :backend:test` - passed;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+- Required live verification after deployment and version-42 reconciliation:
+  use wrong details once, provide the final four reference characters when
+  asked, and confirm an agent-owned booking is found without repeating phone,
+  date, or time. Also verify two same-time bookings from two agents display
+  different stable colors on `/bookings`.
+
 ### 2026-07-31: Isolate existing-booking voice operations by agent
 
 - Investigated the supplied cross-agent cancellation test:

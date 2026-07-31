@@ -148,6 +148,11 @@ public class AgentToolLoader {
                     "type", "string",
                     "description", "Optional complete Sauti reference voluntarily supplied by the caller: SAT- followed by twelve letters or digits. Use with caller_phone instead of date and time."
             ));
+            properties.put("booking_reference_suffix", Map.of(
+                    "type", "string",
+                    "pattern", "^[A-Za-z0-9]{4}$",
+                    "description", "Exactly the final four letters or digits printed at the end of the booking confirmation. Use only as the single fallback after phone, date, and exact time did not find a booking."
+            ));
             properties.put("booking_date", Map.of(
                     "type", "string",
                     "format", "date",
@@ -189,7 +194,8 @@ public class AgentToolLoader {
                 definition.name(),
                 definition.description() + ("lookup_booking".equals(definition.name())
                         ? " Identify the booking from caller-supplied phone, existing appointment date, and exact time, "
-                                + "or phone plus a complete reference the caller volunteers. Names are not identity "
+                                + "or retry once using the retained phone plus the final four confirmation-reference "
+                                + "characters. A complete reference may still be volunteered. Names are not identity "
                                 + "factors. Set requested_action from the caller's explicit request. Never reveal booking "
                                 + "facts until the server verifies the supplied values."
                         : " This action uses the server-owned identity established by lookup_booking. Do not supply, ask "

@@ -89,6 +89,8 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             return LlmToolResult.success(toolCall, bookingIdentityAmbiguous(toolCall));
         } catch (BookingIdentityReferenceRequiredException exception) {
             return LlmToolResult.success(toolCall, bookingIdentityReferenceRequired(toolCall));
+        } catch (BookingIdentitySuffixAmbiguousException exception) {
+            return LlmToolResult.success(toolCall, bookingIdentitySuffixAmbiguous(toolCall));
         } catch (BookingSlotUnavailableException exception) {
             return LlmToolResult.success(toolCall, Map.of(
                     "status", "slot_no_longer_available",
@@ -829,11 +831,12 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     ) {
         var suppliedPhone = requiredStringArg(arguments, "caller_phone");
         var bookingNumber = stringArg(arguments, "booking_number", "");
+        var bookingReferenceSuffix = stringArg(arguments, "booking_reference_suffix", "");
         final LocalDate date;
         final LocalTime time;
         final ZoneId timezone;
         try {
-            date = bookingNumber.isBlank()
+            date = bookingNumber.isBlank() && bookingReferenceSuffix.isBlank()
                     ? LocalDate.parse(requiredStringArg(arguments, "booking_date")) : null;
             var suppliedTime = stringArg(arguments, "booking_time", "");
             time = suppliedTime.isBlank() ? null : LocalTime.parse(suppliedTime);
@@ -846,6 +849,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 call.getAgent().getId(),
                 suppliedPhone,
                 bookingNumber,
+                bookingReferenceSuffix,
                 date,
                 time,
                 timezone
@@ -854,33 +858,52 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             case VERIFIED -> result.booking();
             case TIME_REQUIRED -> throw new BookingIdentityAmbiguousException();
             case REFERENCE_REQUIRED -> throw new BookingIdentityReferenceRequiredException();
+            case REFERENCE_SUFFIX_AMBIGUOUS -> throw new BookingIdentitySuffixAmbiguousException();
             case MISMATCH -> throw new BookingIdentityMismatchException();
         };
     }
 
     private Map<String, Object> bookingIdentityMismatch(LlmToolCall toolCall) {
-        if (stringArg(toolCall.arguments(), "booking_number", "").isBlank()) {
+        var bookingNumber = stringArg(toolCall.arguments(), "booking_number", "");
+        var bookingReferenceSuffix = stringArg(toolCall.arguments(), "booking_reference_suffix", "");
+        if (bookingNumber.isBlank()) {
             var result = new LinkedHashMap<String, Object>();
-            result.put("status", "booking_identity_mismatch");
+            result.put("status", "booking_not_found");
             result.put("bookingFound", false);
             result.put("actionPerformed", false);
-            result.put("retryField", "caller_phone");
+            result.put("nextAction", "reply");
+            result.put("requestedAction", requestedAction(toolCall));
             switch (toolCall.name()) {
                 case "cancel_booking" -> result.put("cancelled", false);
                 case "update_booking", "reschedule_booking" -> result.put("updated", false);
                 default -> {
                 }
             }
-            result.put(
-                    "instruction",
-                    "No booking details were disclosed and no booking was changed. Tell the caller in their current "
-                            + "language only that the phone number, appointment date, and exact appointment time "
-                            + "could not be verified together. Do not say which value was wrong or reveal stored data. "
-                            + "Restart by asking for the booking phone, then date, then exact time."
-            );
+            if (bookingReferenceSuffix.isBlank()) {
+                result.put("retryRecommended", true);
+                result.put("retryField", "booking_reference_suffix");
+                result.put(
+                        "instruction",
+                        noMutationInstruction(toolCall) + " Say once in the caller's current language that no booking "
+                                + "matched the supplied details. Do not identify a wrong field, reveal stored data, or "
+                                + "ask for the phone/date/time again. Ask one short question for only the final four "
+                                + "letters or digits shown at the end of the booking confirmation. Keep the verified "
+                                + "phone already in private state and run lookup_booking once when those four characters "
+                                + "are supplied. Do not ask for the complete reference."
+                );
+            } else {
+                result.put("retryRecommended", false);
+                result.put(
+                        "instruction",
+                        noMutationInstruction(toolCall) + " Say briefly in the caller's current language that the "
+                                + "booking still could not be located with the final four confirmation characters. "
+                                + "Do not ask for any identity value again or start another lookup. Suggest checking "
+                                + "the confirmation or contacting the business, then stop and wait."
+                );
+            }
             return Map.copyOf(result);
         }
-        var captured = stringArg(toolCall.arguments(), "booking_number", "");
+        var captured = bookingNumber;
         var result = new LinkedHashMap<String, Object>();
         result.put("status", "booking_identity_mismatch");
         result.put("bookingFound", false);
@@ -896,7 +919,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         }
         result.put(
                 "instruction",
-                "No booking details were disclosed and no booking was changed. Tell the caller in their current "
+                noMutationInstruction(toolCall) + " Tell the caller in their current "
                         + "language that the booking number and phone number could not be matched together. "
                         + "Read bookingNumberReadback back one character at a time, including the dash, and ask "
                         + "the caller to repeat or correct the booking number only. Do not say whether that booking "
@@ -944,6 +967,41 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         return Map.copyOf(result);
     }
 
+    private Map<String, Object> bookingIdentitySuffixAmbiguous(LlmToolCall toolCall) {
+        return Map.of(
+                "status", "booking_reference_suffix_ambiguous",
+                "bookingFound", false,
+                "actionPerformed", false,
+                "retryRecommended", false,
+                "nextAction", "reply",
+                "requestedAction", requestedAction(toolCall),
+                "instruction", noMutationInstruction(toolCall) + " Explain briefly in the caller's current language "
+                        + "that the final four confirmation characters are not enough to identify one booking safely. "
+                        + "Do not disclose any booking data, ask for a full reference, or retry automatically. Suggest "
+                        + "contacting the business for help, then stop and wait."
+        );
+    }
+
+    private String noMutationInstruction(LlmToolCall toolCall) {
+        return switch (requestedAction(toolCall)) {
+            case "cancel" -> "Reassure the caller naturally that no booking was cancelled.";
+            case "reschedule" -> "Reassure the caller naturally that their appointment has not been moved.";
+            case "update" -> "Reassure the caller naturally that no booking details were updated.";
+            default -> "Be clear that the lookup did not find a booking.";
+        };
+    }
+
+    private String requestedAction(LlmToolCall toolCall) {
+        var requested = stringArg(toolCall.arguments(), "requested_action", "lookup");
+        if (java.util.Set.of("lookup", "update", "reschedule", "cancel").contains(requested)) return requested;
+        return switch (toolCall.name()) {
+            case "cancel_booking" -> "cancel";
+            case "reschedule_booking" -> "reschedule";
+            case "update_booking" -> "update";
+            default -> "lookup";
+        };
+    }
+
     private List<String> bookingNumberReadback(String value) {
         if (value == null || value.isBlank()) return List.of();
         return value.trim().toUpperCase(java.util.Locale.ROOT).chars()
@@ -958,6 +1016,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                     .orElse(ConversationState.empty());
             var values = new LinkedHashMap<>(existing.values());
             values.remove("booking_number");
+            values.remove("booking_reference_suffix");
             values.remove("booking_date");
             values.remove("booking_lookup_name");
             values.remove("booking_time");
@@ -1027,6 +1086,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     }
 
     private static final class BookingIdentityReferenceRequiredException extends RuntimeException {
+    }
+
+    private static final class BookingIdentitySuffixAmbiguousException extends RuntimeException {
     }
 
     @SuppressWarnings("unchecked")

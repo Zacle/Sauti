@@ -4,6 +4,7 @@ export type BookingStatusFilter = "all" | "upcoming" | "today" | "past" | "confi
 
 export type BookingViewModel = Booking & {
   agentName: string;
+  agentTone: number;
   appointmentDate: Date;
   bookedDate: Date;
   isUpcoming: boolean;
@@ -20,6 +21,7 @@ export function toBookingViewModels(bookings: Booking[], agents: Agent[], now = 
       return {
         ...booking,
         agentName: agentNames.get(booking.agentId) ?? "Unknown agent",
+        agentTone: stableAgentTone(booking.agentId),
         appointmentDate,
         bookedDate,
         isUpcoming: appointmentDate.getTime() >= now.getTime() && booking.status !== "cancelled",
@@ -28,6 +30,14 @@ export function toBookingViewModels(bookings: Booking[], agents: Agent[], now = 
       };
     })
     .sort((left, right) => left.appointmentDate.getTime() - right.appointmentDate.getTime());
+}
+
+export function stableAgentTone(agentId: string) {
+  let hash = 0;
+  for (const character of agentId) {
+    hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
+  }
+  return ((hash % 6) + 6) % 6;
 }
 
 export function filterBookings(bookings: BookingViewModel[], filter: BookingStatusFilter, query: string) {

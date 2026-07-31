@@ -291,15 +291,16 @@ function Metric({ icon: Icon, label, value, detail, tone }: { icon: typeof Calen
 function BookingRow({ booking, cancelling, saving, onCancel, onDelete, onEdit }: { booking: BookingViewModel; cancelling: boolean; saving: boolean; onCancel: () => void; onDelete: () => void; onEdit: () => void }) {
   const cancelled = booking.status === "cancelled";
   const synced = booking.calendarSyncStatus === "synced";
+  const agentTone = styles[`agentTone${booking.agentTone}`];
   return (
-    <article className={`${styles.bookingRow} ${polish.bookingRow} ${cancelled ? styles.cancelled : ""}`}>
+    <article className={`${styles.bookingRow} ${polish.bookingRow} ${agentTone} ${cancelled ? styles.cancelled : ""}`}>
       <div className={styles.timeColumn}><strong>{formatTime(booking.appointmentDate)}</strong><span><Clock3 size={13} /> {booking.durationMinutes} min</span></div>
       <div className={styles.bookingBody}>
         <div className={styles.bookingTitle}><i className={cancelled ? styles.cancelledDot : synced ? styles.syncedDot : styles.pendingDot} /><h3>{booking.serviceType}</h3></div>
         <p><UserRound size={14} /> {booking.callerName}</p>
         <div className={styles.tags}>
           <a href={`tel:${booking.callerPhone}`}><Phone size={13} /> {booking.callerPhone}</a>
-          <span><CalendarDays size={13} /> {booking.agentName}</span>
+          <span className={styles.agentBadge}><CalendarDays size={13} /> {booking.agentName}</span>
           <span><ArrowUpRight size={13} /> {booking.sourceLabel}</span>
           <span>{booking.bookingReference}</span>
         </div>
@@ -325,7 +326,7 @@ function CalendarView({ bookings, onEdit }: { bookings: BookingViewModel[]; onEd
     });
     return [...map.entries()].sort(([left], [right]) => left.localeCompare(right));
   }, [bookings]);
-  return <section className={styles.calendarView}>{days.map(([date, items]) => <article key={date}><header><strong>{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</strong><span>{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></header><div>{items.map((booking) => <button key={booking.id} onClick={() => onEdit(booking)} type="button"><time>{formatTime(booking.appointmentDate)}</time><strong>{booking.serviceType}</strong><span>{booking.callerName}</span></button>)}</div></article>)}</section>;
+  return <section className={styles.calendarView}>{days.map(([date, items]) => <article key={date}><header><strong>{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</strong><span>{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></header><div>{items.map((booking) => <button className={styles[`agentTone${booking.agentTone}`]} key={booking.id} onClick={() => onEdit(booking)} type="button"><time>{formatTime(booking.appointmentDate)}</time><strong>{booking.serviceType}</strong><span>{booking.callerName}</span><span className={styles.agentBadge}>{booking.agentName}</span></button>)}</div></article>)}</section>;
 }
 
 function Empty({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {

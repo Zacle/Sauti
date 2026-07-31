@@ -1292,9 +1292,12 @@ class SautiCalendarFulfillmentTest {
 
         assertThat(result.success()).isTrue();
         assertThat(result.result())
-                .containsEntry("status", "booking_identity_mismatch")
+                .containsEntry("status", "booking_not_found")
                 .containsEntry("bookingFound", false)
                 .containsEntry("actionPerformed", false)
+                .containsEntry("retryRecommended", true)
+                .containsEntry("retryField", "booking_reference_suffix")
+                .containsEntry("nextAction", "reply")
                 .containsEntry("cancelled", false);
         verify(fixture.bookingService, never()).cancel(any(), any());
         verify(fixture.callSessionStore, atLeastOnce())
@@ -1457,6 +1460,100 @@ class SautiCalendarFulfillmentTest {
         assertThat(remembered.getValue().values())
                 .doesNotContainKey("booking_number");
         verify(fixture.callSessionStore).updateVerifiedBookingIdentity(eq("call-sid"), any());
+    }
+
+    @Test
+    void lookupOffersOneShortReferenceSuffixFallbackAfterDetailsDoNotMatch() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.bookingService.findOnAppointmentDateForAgent(
+                any(), any(), eq(LocalDate.of(2026, 8, 10)), eq(java.time.ZoneId.of("UTC"))
+        )).thenReturn(List.of());
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-not-found", "lookup_booking", Map.of(
+                        "caller_phone", "0115752441",
+                        "booking_date", "2026-08-10",
+                        "booking_time", "15:00",
+                        "requested_action", "cancel"
+                )
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "booking_not_found")
+                .containsEntry("bookingFound", false)
+                .containsEntry("actionPerformed", false)
+                .containsEntry("retryRecommended", true)
+                .containsEntry("nextAction", "reply")
+                .containsEntry("retryField", "booking_reference_suffix")
+                .containsEntry("requestedAction", "cancel");
+        assertThat(result.result().get("instruction").toString())
+                .contains(
+                        "no booking matched the supplied details",
+                        "no booking was cancelled",
+                        "final four",
+                        "ask for the phone/date/time again",
+                        "Do not ask for the complete reference"
+                )
+                .doesNotContain("nothing was changed", "Restart by asking");
+    }
+
+    @Test
+    void lookupFindsAgentOwnedBookingFromPhoneAndFinalFourReferenceCharacters() {
+        var fixture = fixture(HOURS, List.of());
+        var booking = mock(com.sauti.calendar.Booking.class);
+        when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(booking.getBookingReference()).thenReturn("SAT-AB12CD34EF56");
+        when(booking.getCallerPhone()).thenReturn("0115752441");
+        when(booking.getCallerName()).thenReturn("Zachary");
+        when(booking.getServiceType()).thenReturn("class");
+        when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-08-10T15:00:00Z"));
+        when(booking.getDurationMinutes()).thenReturn(60);
+        when(booking.getStatus()).thenReturn("confirmed");
+        var agentId = fixture.call.getAgent().getId();
+        when(fixture.bookingService.findByReferenceSuffixForAgent(
+                any(), eq(agentId), eq("EF56")
+        )).thenReturn(List.of(booking));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-by-suffix", "lookup_booking", Map.of(
+                        "caller_phone", "0115752441",
+                        "booking_reference_suffix", "EF56",
+                        "requested_action", "lookup"
+                )
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_found")
+                .containsEntry("bookingFound", true)
+                .containsEntry("bookingNumber", "SAT-AB12CD34EF56");
+        verify(fixture.bookingService).findByReferenceSuffixForAgent(
+                any(), eq(agentId), eq("EF56")
+        );
+    }
+
+    @Test
+    void lookupDoesNotRepeatIdentityQuestionsAfterReferenceSuffixMisses() {
+        var fixture = fixture(HOURS, List.of());
+        when(fixture.bookingService.findByReferenceSuffixForAgent(any(), any(), eq("EF56")))
+                .thenReturn(List.of());
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "lookup-suffix-not-found", "lookup_booking", Map.of(
+                        "caller_phone", "0115752441",
+                        "booking_reference_suffix", "EF56",
+                        "requested_action", "reschedule"
+                )
+        ));
+
+        assertThat(result.result())
+                .containsEntry("status", "booking_not_found")
+                .containsEntry("retryRecommended", false)
+                .containsEntry("requestedAction", "reschedule")
+                .doesNotContainKey("retryField");
+        assertThat(result.result().get("instruction").toString())
+                .contains("appointment has not been moved", "Do not ask for any identity value again")
+                .doesNotContain("nothing was changed");
     }
 
     @Test

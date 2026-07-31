@@ -181,13 +181,17 @@ class AgentToolLoaderTest {
         var required = (List<String>) definition.inputSchema().get("required");
 
         assertThat(properties)
-                .containsKeys("caller_phone", "booking_date", "booking_time", "booking_number", "requested_action")
+                .containsKeys(
+                        "caller_phone", "booking_date", "booking_time", "booking_number",
+                        "booking_reference_suffix", "requested_action"
+                )
                 .doesNotContainKey("booking_lookup_name");
         assertThat(required)
                 .contains("caller_phone", "requested_action")
                 .doesNotContain("booking_number", "booking_date", "booking_time", "booking_lookup_name");
         assertThat(definition.description())
                 .contains("phone, existing appointment date, and exact time")
+                .contains("final four confirmation-reference")
                 .contains("Names are not identity factors");
     }
 

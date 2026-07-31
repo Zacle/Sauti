@@ -31,6 +31,7 @@ public class BookingIdentityService {
         Objects.requireNonNull(request, "Booking identity request is required");
         if (blank(request.callerPhone())) return Result.mismatch();
         if (!blank(request.bookingReference())) return verifyReference(request);
+        if (!blank(request.bookingReferenceSuffix())) return verifyReferenceSuffix(request);
         if (request.appointmentDate() == null || request.timezone() == null) {
             return Result.mismatch();
         }
@@ -72,6 +73,19 @@ public class BookingIdentityService {
                 : Result.mismatch();
     }
 
+    private Result verifyReferenceSuffix(Request request) {
+        var suffix = request.bookingReferenceSuffix().replaceAll("[^A-Z0-9]", "");
+        if (suffix.length() != 4) return Result.mismatch();
+        var matches = bookings.findByReferenceSuffixForAgent(
+                        request.tenantId(), request.agentId(), suffix
+                ).stream()
+                .filter(booking -> samePhone(booking.getCallerPhone(), request.callerPhone()))
+                .toList();
+        if (matches.isEmpty()) return Result.mismatch();
+        if (matches.size() > 1) return Result.referenceSuffixAmbiguous();
+        return Result.verified(matches.get(0));
+    }
+
     private boolean samePhone(String expected, String supplied) {
         var left = normalizePhone(expected);
         var right = normalizePhone(supplied);
@@ -95,6 +109,7 @@ public class BookingIdentityService {
             UUID agentId,
             String callerPhone,
             String bookingReference,
+            String bookingReferenceSuffix,
             LocalDate appointmentDate,
             LocalTime appointmentTime,
             ZoneId timezone
@@ -104,6 +119,8 @@ public class BookingIdentityService {
             Objects.requireNonNull(agentId, "Agent is required");
             bookingReference = bookingReference == null
                     ? "" : bookingReference.trim().toUpperCase(Locale.ROOT);
+            bookingReferenceSuffix = bookingReferenceSuffix == null
+                    ? "" : bookingReferenceSuffix.trim().toUpperCase(Locale.ROOT);
         }
     }
 
@@ -123,12 +140,17 @@ public class BookingIdentityService {
         static Result referenceRequired() {
             return new Result(Status.REFERENCE_REQUIRED, null);
         }
+
+        static Result referenceSuffixAmbiguous() {
+            return new Result(Status.REFERENCE_SUFFIX_AMBIGUOUS, null);
+        }
     }
 
     public enum Status {
         VERIFIED,
         TIME_REQUIRED,
         REFERENCE_REQUIRED,
+        REFERENCE_SUFFIX_AMBIGUOUS,
         MISMATCH
     }
 }

@@ -197,6 +197,44 @@ class BookingServiceTest {
     }
 
     @Test
+    void sameTimeRemainsAvailableToADifferentAgent() {
+        var fixture = fixture("Set up later");
+        var secondAgent = new Agent(fixture.tenant, "Gerard", "Bonjour", "Prompt");
+        secondAgent.update(
+                "Gerard", "Bonjour", "Prompt", "fr", List.of("fr"),
+                null, List.of(), true, "UTC", ""
+        );
+        when(fixture.bookingRepository
+                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        any(), any(), any(), any(), any()
+                )).thenReturn(List.of());
+        when(fixture.serviceAgentRepository().findByIdAndTenantId(
+                secondAgent.getId(), fixture.tenant.getId()
+        )).thenReturn(Optional.of(secondAgent));
+        var request = new CreateBookingRequest(
+                secondAgent.getId(),
+                null,
+                "Second customer",
+                "0115752441",
+                null,
+                "Class",
+                fixture.request.appointmentAt(),
+                60,
+                Map.of()
+        );
+
+        var booking = fixture.service.create(fixture.tenant.getId(), request);
+
+        assertThat(booking.getAgent().getId()).isEqualTo(secondAgent.getId());
+        var queriedAgent = ArgumentCaptor.forClass(UUID.class);
+        verify(fixture.bookingRepository)
+                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        any(), queriedAgent.capture(), any(), any(), any()
+                );
+        assertThat(queriedAgent.getValue()).isEqualTo(secondAgent.getId());
+    }
+
+    @Test
     void removesLocallyOccupiedIntervalsFromProviderAvailability() {
         var fixture = fixture("Google Calendar");
         var existing = new Booking(
@@ -407,6 +445,7 @@ class BookingServiceTest {
         return new Fixture(
                 tenant,
                 agent,
+                agentRepository,
                 bookingRepository,
                 callRepository,
                 outboundCallService,
@@ -422,6 +461,7 @@ class BookingServiceTest {
     private record Fixture(
             Tenant tenant,
             Agent requestAgent,
+            AgentRepository serviceAgentRepository,
             BookingRepository bookingRepository,
             CallRepository callRepository,
             OutboundCallService outboundCallService,

@@ -90,6 +90,7 @@ class BookingIdentityServiceTest {
                 AGENT_ID,
                 "0115753441",
                 "SAT-OTHERAGENT1",
+                "",
                 null,
                 null,
                 TIMEZONE
@@ -102,11 +103,60 @@ class BookingIdentityServiceTest {
         verify(bookings, never()).resolve(TENANT_ID, "SAT-OTHERAGENT1");
     }
 
+    @Test
+    void verifiesFinalFourReferenceCharactersOnlyWithinAgentAndPhoneScope() {
+        var bookings = mock(BookingService.class);
+        var booking = booking("0115753441", "2026-08-02T09:00:00+03:00");
+        when(bookings.findByReferenceSuffixForAgent(TENANT_ID, AGENT_ID, "EF56"))
+                .thenReturn(List.of(booking));
+        var request = new BookingIdentityService.Request(
+                TENANT_ID,
+                AGENT_ID,
+                "0115753441",
+                "",
+                "ef-56",
+                null,
+                null,
+                TIMEZONE
+        );
+
+        var result = new BookingIdentityService(bookings).verify(request);
+
+        assertThat(result.status()).isEqualTo(BookingIdentityService.Status.VERIFIED);
+        assertThat(result.booking()).isSameAs(booking);
+        verify(bookings).findByReferenceSuffixForAgent(TENANT_ID, AGENT_ID, "EF56");
+    }
+
+    @Test
+    void refusesToGuessWhenFinalFourCharactersMatchMultiplePhoneScopedBookings() {
+        var bookings = mock(BookingService.class);
+        var first = booking("0115753441", "2026-08-02T09:00:00+03:00");
+        var second = booking("0115753441", "2026-08-03T09:00:00+03:00");
+        when(bookings.findByReferenceSuffixForAgent(TENANT_ID, AGENT_ID, "EF56"))
+                .thenReturn(List.of(first, second));
+        var request = new BookingIdentityService.Request(
+                TENANT_ID,
+                AGENT_ID,
+                "0115753441",
+                "",
+                "EF56",
+                null,
+                null,
+                TIMEZONE
+        );
+
+        var result = new BookingIdentityService(bookings).verify(request);
+
+        assertThat(result.status()).isEqualTo(BookingIdentityService.Status.REFERENCE_SUFFIX_AMBIGUOUS);
+        assertThat(result.booking()).isNull();
+    }
+
     private BookingIdentityService.Request request(String phone, String time) {
         return new BookingIdentityService.Request(
                 TENANT_ID,
                 AGENT_ID,
                 phone,
+                "",
                 "",
                 DATE,
                 time == null ? null : java.time.LocalTime.parse(time),
