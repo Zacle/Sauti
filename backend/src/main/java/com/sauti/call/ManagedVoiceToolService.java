@@ -307,7 +307,20 @@ public class ManagedVoiceToolService {
                 || falseFact(facts, "updated")
                 || falseFact(facts, "cancelled");
         var response = new java.util.LinkedHashMap<String, Object>();
-        response.put("success", true);
+        var mutationCompleted = facts.get("actionPerformed") instanceof Boolean performed
+                ? performed
+                : null;
+        // Managed-provider models commonly treat a top-level success=true as a
+        // completed business action even when the nested factual result says
+        // actionPerformed=false. Keep transport acceptance separate from the
+        // requested mutation outcome so a pending review or rejected write
+        // cannot look successful in the most prominent response fields.
+        response.put("requestProcessed", true);
+        response.put("success", mutationCompleted == null || mutationCompleted);
+        if (mutationCompleted != null) {
+            response.put("mutationCompleted", mutationCompleted);
+            response.put("completionStatus", mutationCompleted ? "completed" : "not_completed");
+        }
         if (workflowPending) response.put("workflowPending", true);
         response.put("data", facts);
         List.of(

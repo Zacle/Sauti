@@ -110,6 +110,9 @@ class ManagedVoiceAgentProvisionersTest {
                 .doesNotContain("{{telnyx_conversation_channel}}")
                 .contains("native", "hangup")
                 .contains(
+                        "mutationCompleted, and actionPerformed must all be true",
+                        "A reschedule is never a conversational promise",
+                        "status=booking_rescheduled",
                         "spoken_farewell, outcome",
                         "call a webhook first",
                         "spoken farewell alone",
@@ -118,7 +121,7 @@ class ManagedVoiceAgentProvisionersTest {
                 );
         assertThat(body.getValue().get("dynamic_variables"))
                 .isEqualTo(Map.of("sauti_conversation_channel", "phone_call"));
-        assertThat(body.getValue()).containsEntry("model", "anthropic/claude-haiku-4-5");
+        assertThat(body.getValue()).containsEntry("model", "moonshotai/Kimi-K2.6");
         @SuppressWarnings("unchecked")
         var telephony = (Map<String, Object>) body.getValue().get("telephony_settings");
         assertThat(telephony.get("recording_settings")).isEqualTo(Map.of(
@@ -217,7 +220,7 @@ class ManagedVoiceAgentProvisionersTest {
                 "https://sauti.example",
                 "tool-secret",
                 "Telnyx.NaturalHD.astra",
-                "anthropic/claude-haiku-4-5"
+                "moonshotai/Kimi-K2.6"
         );
     }
 

@@ -26,7 +26,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
             @Value("${sauti.telnyx.public-base-url:http://localhost:8080}") String publicBaseUrl,
             @Value("${sauti.telnyx.tool-webhook-secret:}") String toolWebhookSecret,
             @Value("${sauti.telnyx.default-voice-id:Telnyx.NaturalHD.astra}") String defaultVoiceId,
-            @Value("${sauti.telnyx.ai-model:anthropic/claude-haiku-4-5}") String aiModel
+            @Value("${sauti.telnyx.ai-model:moonshotai/Kimi-K2.6}") String aiModel
     ) {
         this.httpClient = httpClient;
         this.apiKey = trim(apiKey);
@@ -34,7 +34,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
         this.publicBaseUrl = stripTrailingSlash(publicBaseUrl);
         this.toolWebhookSecret = trim(toolWebhookSecret);
         this.defaultVoiceId = trim(defaultVoiceId);
-        this.aiModel = trim(aiModel).isBlank() ? "anthropic/claude-haiku-4-5" : trim(aiModel);
+        this.aiModel = trim(aiModel).isBlank() ? "moonshotai/Kimi-K2.6" : trim(aiModel);
     }
 
     public String provider() {
@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "37";
+        return "39";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -152,10 +152,14 @@ public class TelnyxManagedVoiceAgentProvisioner {
 
                 TELNYX EXECUTION CONTRACT:
                 - Call a required business tool before speaking about its result.
-                - success=true means the tool request was processed. It does not by itself mean a business mutation
-                  happened. Only actionPerformed=true means Sauti's authoritative business state changed.
+                - requestProcessed=true means Sauti handled the tool request. For mutations, success,
+                  mutationCompleted, and actionPerformed must all be true before saying the requested change happened.
+                  completionStatus=not_completed means it did not happen, including when workflowPending=true.
                 - Treat the returned result as authoritative. For any mutation, claim success only when the result
                   explicitly contains actionPerformed=true.
+                - A reschedule is never a conversational promise. Look up the booking, verify availability, invoke
+                  reschedule_booking, and say it was rescheduled only from a result where actionPerformed=true and
+                  status=booking_rescheduled. If reschedule_booking was not invoked, the booking is unchanged.
                 - Tool data is language-neutral. When responseMode is present, render its structured data naturally
                   in the caller's current language and locale without changing stored names, references, or values.
                   Never expect or request a finite server-side translation.

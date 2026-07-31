@@ -34,6 +34,94 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Restore Kimi K2.6 after managed-tool regression
+
+- Restored the canonical Telnyx model
+  `moonshotai/Kimi-K2.6` after live tests with Gerard and Ailsa showed that the
+  latency-oriented Haiku configuration could verbally claim a reschedule
+  without completing it and could fail to finish the reschedule workflow.
+- Kept the new authoritative mutation-result safeguards:
+  `requestProcessed` is separate from `mutationCompleted`, and a booking change
+  may be described as completed only when `actionPerformed=true`.
+- Bumped the managed Telnyx configuration version from 38 to 39 so existing
+  assistants, including Gerard and Ailsa, reconcile back to Kimi rather than
+  retaining Haiku.
+- Updated application defaults, environment examples, provider documentation,
+  and provisioning tests to the exact case-sensitive model ID.
+- Files touched by the model restoration:
+  - `.env.example`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `deploy/.env.production.example`
+  - `docs/managed-voice-provider-testing.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.ManagedVoiceAgentProvisionersTest --tests com.sauti.call.ManagedVoiceToolServiceTest --console=plain` - passed;
+  - `.\gradlew.bat :backend:test --console=plain` - passed.
+- Deployment status: not deployed. All changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+- Operational requirement: production must either omit `TELNYX_AI_MODEL` or set
+  it to `moonshotai/Kimi-K2.6`; an explicit Haiku value in
+  `/opt/sauti/.env.production` would continue to override the application
+  default.
+
+### 2026-07-31: Make incomplete managed reschedules unmistakable
+
+- Investigated browser diagnostic
+  `sauti-telnyx-diagnostics-1785456663450.json` after one call verbally claimed
+  a reschedule that did not occur and another could not finish the reschedule.
+- The privacy-safe export contains browser lifecycle/audio timing but no caller
+  transcript, model messages, tool names, arguments, or results. It identifies
+  Sauti call `d82653f5-d427-4284-9abf-858d099ed781`, with a 5.371-second first
+  audio time and subsequent recorded turn latencies from 4.640 to 11.401
+  seconds. An authenticated production browser was unavailable for read-only
+  inspection of the private call archive.
+- Audited the server workflow:
+  - Sauti already commits a reschedule before returning
+    `status=booking_rescheduled`, `updated=true`, and
+    `actionPerformed=true`;
+  - deferred, rejected, or still-unconfirmed mutations return
+    `actionPerformed=false`;
+  - however, the managed-provider envelope previously exposed top-level
+    `success=true` for every successfully processed HTTP tool request, including
+    deferred mutations. A provider model could incorrectly treat that prominent
+    field as business success despite the nested authoritative facts.
+- Separated request acceptance from mutation completion in the managed response:
+  - `requestProcessed=true` means Sauti handled the webhook;
+  - a mutation now has `mutationCompleted` and `completionStatus`;
+  - pending or rejected mutations expose top-level `success=false`,
+    `mutationCompleted=false`, `completionStatus=not_completed`, and
+    `actionPerformed=false`;
+  - only an actually committed mutation exposes top-level `success=true`,
+    `mutationCompleted=true`, `completionStatus=completed`, and
+    `actionPerformed=true`.
+- Strengthened the Telnyx execution contract specifically for rescheduling:
+  lookup, availability, and `reschedule_booking` remain mandatory, and the
+  assistant may say the booking was rescheduled only from an authoritative
+  `status=booking_rescheduled` result with `actionPerformed=true`.
+- Bumped the Telnyx managed configuration version from 37 to 38 so existing
+  assistants reconcile the updated execution contract.
+- Files touched:
+  - `backend/src/main/java/com/sauti/call/ManagedVoiceToolService.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceToolServiceTest.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.ManagedVoiceToolServiceTest --tests com.sauti.call.ManagedVoiceAgentProvisionersTest --console=plain` - passed;
+  - `.\gradlew.bat :backend:test --console=plain` - passed.
+- Deployment status: not deployed. Changes are uncommitted for maintainer review
+  and the normal CI/CD path.
+- Follow-up/risk: a Telnyx-managed model controls whether it invokes a tool at
+  all, so prompt and result-envelope safeguards cannot suppress provider audio
+  that was generated without any tool call. After deployment, repeat one
+  reschedule and verify the booking row changed. If the assistant still claims
+  completion without invoking `reschedule_booking`, use the private archived
+  `conversationJson` to prove the missing invocation and move the public browser
+  demo's critical mutation flow to a Sauti-controlled runtime, where speech can
+  be gated on the server result.
+
 ### 2026-07-31: Restore a latency-first Telnyx inference default
 
 - Diagnosed production browser-call diagnostic

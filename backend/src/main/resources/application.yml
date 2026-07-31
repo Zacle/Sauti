@@ -190,7 +190,7 @@ sauti:
     connection-id: ${TELNYX_CONNECTION_ID:}
     ai-environment: ${TELNYX_AI_ENVIRONMENT:production}
     ai-region: ${TELNYX_AI_REGION:}
-    ai-model: ${TELNYX_AI_MODEL:anthropic/claude-haiku-4-5}
+    ai-model: ${TELNYX_AI_MODEL:moonshotai/Kimi-K2.6}
     default-voice-id: ${TELNYX_DEFAULT_VOICE_ID:Telnyx.NaturalHD.astra}
     api-base-url: ${TELNYX_API_BASE_URL:https://api.telnyx.com/v2}
     requirement-group-id: ${TELNYX_REQUIREMENT_GROUP_ID:}

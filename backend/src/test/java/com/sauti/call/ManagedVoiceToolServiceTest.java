@@ -223,6 +223,7 @@ class ManagedVoiceToolServiceTest {
 
         assertThat(first).isEqualTo(Map.of(
                 "success", true,
+                "requestProcessed", true,
                 "data", Map.of("available", true)
         ));
         assertThat(redelivery).isEqualTo(first);
@@ -324,9 +325,12 @@ class ManagedVoiceToolServiceTest {
         var result = service.execute("telnyx", "call-confirm", token, payload);
 
         assertThat(result)
-                .containsEntry("success", true)
+                .containsEntry("requestProcessed", true)
+                .containsEntry("success", false)
                 .containsEntry("workflowPending", true)
                 .containsEntry("actionPerformed", false)
+                .containsEntry("mutationCompleted", false)
+                .containsEntry("completionStatus", "not_completed")
                 .containsEntry("status", "action_deferred")
                 .doesNotContainKey("error");
         assertThat(result.get("instruction").toString()).contains("do not claim success");
@@ -374,9 +378,12 @@ class ManagedVoiceToolServiceTest {
         );
 
         assertThat(result)
-                .containsEntry("success", true)
+                .containsEntry("requestProcessed", true)
+                .containsEntry("success", false)
                 .containsEntry("workflowPending", true)
                 .containsEntry("actionPerformed", false)
+                .containsEntry("mutationCompleted", false)
+                .containsEntry("completionStatus", "not_completed")
                 .containsEntry("status", "booking_confirmation_required")
                 .doesNotContainKeys("nextTool", "nextToolAuthorized", "nextToolArguments");
         var routed = ArgumentCaptor.forClass(com.sauti.llm.LlmToolCall.class);
@@ -551,8 +558,11 @@ class ManagedVoiceToolServiceTest {
                 "call-later-confirm", "cancel_booking", retainedArguments
         );
         assertThat(result)
+                .containsEntry("requestProcessed", true)
                 .containsEntry("success", true)
                 .containsEntry("actionPerformed", true)
+                .containsEntry("mutationCompleted", true)
+                .containsEntry("completionStatus", "completed")
                 .containsEntry("status", "booking_cancelled");
     }
 
@@ -689,8 +699,11 @@ class ManagedVoiceToolServiceTest {
                 .containsEntry("confirmation_state", "confirmed")
                 .doesNotContainEntry("appointment_at", "2026-08-03T10:00:00");
         assertThat(result)
+                .containsEntry("requestProcessed", true)
                 .containsEntry("success", true)
                 .containsEntry("actionPerformed", true)
+                .containsEntry("mutationCompleted", true)
+                .containsEntry("completionStatus", "completed")
                 .containsEntry("status", "booking_rescheduled");
     }
 }
