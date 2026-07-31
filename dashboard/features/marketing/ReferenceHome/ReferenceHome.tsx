@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -25,6 +26,11 @@ import {
   Workflow,
 } from "lucide-react";
 import styles from "./ReferenceHome.module.css";
+
+const HeroMotionOverlay = dynamic(
+  () => import("./HeroMotionOverlay").then((module) => module.HeroMotionOverlay),
+  { ssr: false },
+);
 
 const outcomes = [
   { value: "42%", label: "more calls answered", detail: "Day and night, without busy signals." },
@@ -132,6 +138,7 @@ export default function ReferenceHome() {
           />
         </div>
         <div className={styles.heroShade} aria-hidden="true" />
+        <HeroMotionOverlay />
         <div className={styles.heroCopy} data-reveal>
           <span className={styles.eyebrow}><Sparkles size={14} /> Sauti living voice system</span>
           <h1>Your best conversations never go unanswered.</h1>

@@ -10,6 +10,9 @@ export function useRevealMotion() {
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const heroParallax = document.querySelector<HTMLElement>("[data-hero-parallax]");
     const page = document.querySelector<HTMLElement>("[data-motion-page]");
+    const motionSections = page
+      ? Array.from(page.querySelectorAll<HTMLElement>(":scope > section"))
+      : [];
     let animationFrame = 0;
 
     document.documentElement.classList.add("reveal-motion-ready");
@@ -38,6 +41,10 @@ export function useRevealMotion() {
         const heroRect = heroParallax.getBoundingClientRect();
         const heroProgress = Math.max(0, Math.min(1, -heroRect.top / Math.max(heroRect.height, 1)));
         heroParallax.style.setProperty(
+          "--hero-progress",
+          motionQuery.matches ? "0" : String(heroProgress),
+        );
+        heroParallax.style.setProperty(
           "--hero-shift",
           motionQuery.matches ? "0px" : `${heroProgress * 48}px`,
         );
@@ -48,6 +55,19 @@ export function useRevealMotion() {
         const progress = motionQuery.matches ? 0 : Math.max(0, Math.min(1, window.scrollY / scrollRange));
         page.style.setProperty("--page-progress", String(progress));
       }
+
+      motionSections.forEach((section) => {
+        const rect = section.getBoundingClientRect();
+        const sectionCenter = rect.top + rect.height / 2;
+        const centerOffset = Math.max(
+          -1,
+          Math.min(1, (sectionCenter - window.innerHeight / 2) / Math.max(window.innerHeight, 1)),
+        );
+        const shift = motionQuery.matches ? 0 : centerOffset * -30;
+        section.style.setProperty("--section-shift", `${shift}px`);
+        section.style.setProperty("--section-shift-small", `${shift * 0.52}px`);
+        section.style.setProperty("--section-shift-reverse", `${shift * -0.72}px`);
+      });
     };
 
     const requestMotionUpdate = () => {

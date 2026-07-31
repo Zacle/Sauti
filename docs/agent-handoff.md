@@ -1513,6 +1513,7 @@ Expected:
   - `.\gradlew.bat :backend:test` - passed; Gradle reported `BUILD SUCCESSFUL` in 1 minute 46 seconds.
   - repeated verification is asserted to produce exactly one welcome delivery.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+
 - Follow-up: send the welcome email to desktop and mobile preview inboxes alongside the other transactional variants before production visual sign-off.
 
 ### 2026-07-29 - Unify every active email under the Sauti status-first design
@@ -8473,3 +8474,145 @@ Expected:
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status remains unchanged: not deployed and uncommitted.
 - Known follow-up: after deployment and assistant reconciliation, repeat the Ailsa English test at a normal speaking volume. Compare the new diagnostic's `appliedGainDb=0`, caller transcript accuracy, first-audio latency, and per-turn latency. The remaining roughly 5-7 second cold conversation/greeting path is within Telnyx's provider-controlled WebRTC/assistant activation rather than Sauti's already-reused signaling preconnection.
+
+### 2026-07-31 - Add coordinated Remotion motion to the homepage hero
+
+- Added Remotion 4.0.503 and `@remotion/player` 4.0.503 to the dashboard.
+- Replaced disconnected hero decoration with one coordinated eight-second Remotion timeline:
+  - expanding voice rings originate at the phone;
+  - a luminous signal follows a curved conversation-to-action path;
+  - signal particles and ambient light share the same timeline and easing system.
+- Kept the motion layer decorative, pointer-inert, and behind all hero copy and actions.
+- Added a reduced-motion guard that does not mount the player when the visitor requests reduced motion.
+- Adjusted the composition for desktop and mobile so the motion remains behind readable content and does not interfere with the CTA buttons or the mobile action ribbon.
+- Loaded the Remotion player dynamically with server rendering disabled. The final production build keeps the homepage initial JavaScript at 121 kB rather than adding the full player to the first-load bundle.
+- Files touched:
+  - `dashboard/features/marketing/ReferenceHome/HeroMotionOverlay.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/package.json`
+  - `dashboard/package-lock.json`
+  - `docs/agent-handoff.md`
+- Verification:
+  - browser desktop preview: one Remotion hero layer mounted, the phone-centered rings and signal path rendered correctly, and the existing headline/actions stayed unobstructed;
+  - browser mobile preview at 390 x 844: headline, actions, signals, and ribbon remained readable and usable;
+  - browser console: no errors;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed; Next.js generated the optimized production build.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD workflow.
+
+#### Follow-up: synchronize the Remotion hero with scrolling
+
+- Fed the hero's normalized scroll position into the Remotion composition as a
+  typed input prop while keeping its eight-second ambient timeline running.
+- The voice signal scene now lifts, expands, and fades as the hero leaves the
+  viewport, using the same clamped bezier timing approach as the frame-based
+  motion.
+- Coordinated the hero copy and action ribbon with that scroll progress so the
+  foreground clears naturally into the outcomes section instead of moving as
+  disconnected layers.
+- Kept scroll work requestAnimationFrame-throttled and disabled all added
+  movement when the visitor requests reduced motion.
+- Files additionally touched:
+  - `dashboard/features/marketing/ReferenceHome/HeroMotionOverlay.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/hooks/useRevealMotion.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed; the homepage remained at 121 kB first-load
+    JavaScript.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: replace the subtle orbit with a visible scroll story
+
+- Reworked the Remotion hero after browser review showed that the thin orbit
+  and particles read as an inert decorative icon against the hero photograph.
+- Replaced that treatment with a large glass live-conversation panel that
+  visibly communicates the product workflow:
+  - an animated voice waveform establishes the active call;
+  - scrolling advances emphasis from `Listen` to `Understand` to `Act`;
+  - the panel counter-moves within the hero so the changing stages remain
+    visible while the page scrolls;
+  - the final stage reveals a prominent appointment-booked confirmation with
+    the calendar time and CRM sync result.
+- Accelerated the scroll-story distance so all three meaningful states are
+  reached while the panel is still inside the visible hero rather than after
+  it has left the viewport.
+- Added a QA progress attribute to the decorative overlay and acknowledged the
+  Remotion player license notice so the player does not add its own console
+  warning.
+- Browser verification at 1280 x 720 confirmed distinct top, middle, and final
+  states at scroll positions 0, approximately 250 px, and approximately 320 px.
+- Files additionally touched:
+  - `dashboard/features/marketing/ReferenceHome/HeroMotionOverlay.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed; the homepage remained at 121 kB first-load
+    JavaScript.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: extend motion across the full homepage
+
+- Corrected the scope after clarification that motion was expected throughout
+  the complete homepage, not only inside the hero.
+- Added a second, page-scoped Remotion composition that remains fixed across
+  the viewport and evolves with normalized document scroll:
+  - teal and violet edge glows travel between page regions;
+  - particles move continuously along both sides of the screen;
+  - a luminous signal path crosses the viewport and advances with scroll;
+  - a ten-step progress rail marks movement through the major homepage
+    sections.
+- Added per-section scroll depth to the actual page content. Outcome metrics,
+  workflow steps, the conversation panel, capability blocks, industry cards,
+  language and integration panels, analytics, trust cards, pricing, FAQ, and
+  the closing visual now move at coordinated but different depths as their
+  section crosses the viewport.
+- Kept both systems requestAnimationFrame-throttled and disabled when the
+  visitor requests reduced motion.
+- Files additionally touched:
+  - `dashboard/features/marketing/ReferenceHome/PageMotionOverlay.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  - `dashboard/hooks/useRevealMotion.ts`
+  - `docs/agent-handoff.md`
+- Verification:
+  - browser at 1280 x 720 confirmed the global Remotion layer and independent
+    content depth in the hero, capabilities/industries, and
+    languages/integrations/analytics regions;
+  - page progress advanced from 0 to 0.352 and 0.648 at the inspected lower
+    positions;
+  - browser console contained no errors;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed; homepage first-load JavaScript is 122 kB;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: remove the persistent page overlay
+
+- Removed the page-scoped Remotion composition at the user's request,
+  including its fixed signal path, particles, edge glows, and ten-step progress
+  rail.
+- Preserved the other motion work:
+  - the hero's live-conversation Remotion story;
+  - section reveal animations;
+  - per-section scroll depth across outcomes, workflow, capabilities,
+    industries, languages, integrations, analytics, trust, pricing, FAQ, and
+    the closing CTA.
+- Files additionally touched:
+  - removed `dashboard/features/marketing/ReferenceHome/PageMotionOverlay.tsx`;
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`;
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - repository search confirmed no remaining `PageMotionOverlay`,
+    `data-page-remotion`, or `data-page-progress` references;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed.
+- Deployment status remains unchanged: not deployed and uncommitted.

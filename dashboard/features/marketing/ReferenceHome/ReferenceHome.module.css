@@ -14,7 +14,14 @@
   background: var(--navy-deep);
 }
 
+.page > section {
+  --section-shift: 0px;
+  --section-shift-small: 0px;
+  --section-shift-reverse: 0px;
+}
+
 .hero {
+  --hero-progress: 0;
   --hero-shift: 0px;
   position: relative;
   display: flex;
@@ -50,10 +57,22 @@
     linear-gradient(180deg, rgba(2, 11, 22, 0.2), transparent 58%, rgba(2, 11, 22, 0.82));
 }
 
+.hero :global([data-hero-remotion]) {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(90deg, transparent 34%, #000 57%, #000 100%);
+}
+
 .heroCopy {
   width: min(610px, 48vw);
   position: relative;
   z-index: 2;
+  opacity: calc(1 - var(--hero-progress) * 0.58);
+  translate: 0 calc(var(--hero-progress) * -32px);
+  will-change: opacity, translate;
   animation: heroCopyIn 900ms 120ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -165,6 +184,9 @@
   bottom: 0;
   left: 0;
   z-index: 3;
+  opacity: calc(1 - var(--hero-progress) * 0.34);
+  translate: 0 calc(var(--hero-progress) * 22px);
+  will-change: opacity, translate;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   min-height: 82px;
@@ -1200,6 +1222,53 @@
   animation: ctaWave 2.4s ease-in-out infinite;
 }
 
+.outcomeGrid > div:nth-child(odd),
+.flow article:nth-child(odd),
+.industryGrid > a:nth-child(odd),
+.trustGrid article:nth-child(odd) {
+  translate: 0 var(--section-shift-small);
+}
+
+.outcomeGrid > div:nth-child(even),
+.flow article:nth-child(even),
+.industryGrid > a:nth-child(even),
+.trustGrid article:nth-child(even) {
+  translate: 0 var(--section-shift-reverse);
+}
+
+.flowDialogue,
+.languageDemo,
+.integrationFlow,
+.analyticsPanel,
+.planCard,
+.faq {
+  translate: 0 var(--section-shift);
+}
+
+.capabilityCore,
+.languageCascade,
+.trustProof,
+.closingCta > svg {
+  translate: 0 var(--section-shift-reverse);
+}
+
+.outcomeGrid > div,
+.flow article,
+.flowDialogue,
+.capabilityCore,
+.industryGrid > a,
+.languageDemo,
+.languageCascade,
+.integrationFlow,
+.analyticsPanel,
+.trustGrid article,
+.trustProof,
+.planCard,
+.faq,
+.closingCta > svg {
+  will-change: translate;
+}
+
 .page :global([data-reveal]),
 .page :global([data-reveal-left]),
 .page :global([data-reveal-right]),
@@ -1404,6 +1473,11 @@
     background:
       linear-gradient(180deg, rgba(2, 11, 22, 0.98), rgba(2, 11, 22, 0.83) 46%, rgba(2, 11, 22, 0.18) 72%, rgba(2, 11, 22, 0.94)),
       linear-gradient(90deg, rgba(2, 11, 22, 0.64), transparent);
+  }
+
+  .hero :global([data-hero-remotion]) {
+    opacity: 0.56;
+    mask-image: linear-gradient(180deg, transparent 0%, #000 42%, #000 100%);
   }
 
   .heroCopy {

@@ -14,6 +14,7 @@
     "@radix-ui/react-popover": "^1.1.19",
     "@radix-ui/react-select": "^2.3.3",
     "@radix-ui/react-slider": "^1.4.3",
+    "@remotion/player": "^4.0.503",
     "@telnyx/ai-agent-lib": "^0.6.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
@@ -24,6 +25,7 @@
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.0.0",
     "recharts": "^3.9.2",
+    "remotion": "^4.0.503",
     "wavesurfer.js": "^7.12.10"
   },
   "devDependencies": {
