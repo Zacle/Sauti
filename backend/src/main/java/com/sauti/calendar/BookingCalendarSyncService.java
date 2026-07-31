@@ -92,11 +92,12 @@ public class BookingCalendarSyncService {
             } catch (RuntimeException exception) {
                 booking.markSyncFailed(safeSyncError(exception));
                 LOGGER.warn(
-                        "Booking calendar synchronization failed bookingId={} attempt={} status={} error={}",
+                        "Booking calendar synchronization failed bookingId={} attempt={} status={} error={} reason={}",
                         booking.getId(),
                         booking.getCalendarSyncAttempts(),
                         booking.getCalendarSyncStatus(),
-                        exception.getClass().getSimpleName()
+                        exception.getClass().getSimpleName(),
+                        safeProviderReason(exception)
                 );
             }
         }
@@ -114,6 +115,14 @@ public class BookingCalendarSyncService {
                 return "The calendar did not confirm the event creation";
             }
             return "External calendar synchronization failed";
+        }
+
+        private String safeProviderReason(RuntimeException exception) {
+            var message = exception.getMessage() == null ? "" : exception.getMessage();
+            var matcher = java.util.regex.Pattern.compile(
+                    "Google Calendar request failed with status \\d{3}(?: \\([A-Za-z_]+\\))?"
+            ).matcher(message);
+            return matcher.find() ? matcher.group() : "not_available";
         }
     }
 }

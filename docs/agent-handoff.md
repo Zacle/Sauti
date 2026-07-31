@@ -34,6 +34,43 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Fix database-first Google event creation and retry stranded bookings
+
+- Investigated booking `SAT-IQOHKYR5R3PJ` from the dashboard. Read-only
+  production diagnostics workflow run `30662542792` confirmed that call
+  `be9ee447-50b2-4b42-851f-32bdc2d26fef` successfully checked Google-backed
+  availability in 535 ms and saved the booking at 20:14:39 UTC with status
+  `booking_saved_pending_calendar`. The dashboard's `Owner follow-up` state
+  proved that the asynchronous writer subsequently exhausted its five retries.
+- Corrected the Google Events API operation. New events now use the documented
+  insert endpoint, `POST /calendars/{calendarId}/events`, with Sauti's
+  deterministic event ID in the request body. The previous implementation used
+  `PUT /events/{eventId}`, which is Google's update operation and cannot create
+  a missing event.
+- Preserved idempotency: a retry that receives HTTP 409 for the deterministic
+  event ID is treated as already created. Existing event changes continue using
+  `PATCH`, and deletion behavior is unchanged.
+- Added migration `V44` to requeue confirmed Google Calendar bookings that had
+  reached `pending_owner_action` without ever receiving an external event ID.
+  This includes the reported booking. Genuine remaining provider failures still
+  return to `pending_owner_action` after the normal bounded retry sequence.
+- Improved safe diagnostics. The worker now logs only Google's numeric status
+  and reason token when available, and the production diagnostics workflow now
+  includes calendar synchronization failures. It does not log request bodies,
+  credentials, calendar contents, or customer fields.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/GoogleCalendarApiClient.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingCalendarSyncService.java`
+  - `backend/src/main/resources/db/migration/V44__retry_failed_google_calendar_creations.sql`
+  - `backend/src/test/java/com/sauti/calendar/GoogleCalendarApiClientTest.java`
+  - `.github/workflows/production-diagnostics.yml`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.calendar.GoogleCalendarApiClientTest" --tests "com.sauti.calendar.BookingServiceTest"` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD flow.
+
 ### 2026-07-31: Fix Google Calendar HTTP 400 for exact-minute timestamps
 
 - Diagnosed browser-call diagnostic `sauti-telnyx-diagnostics-1785521945500.json`

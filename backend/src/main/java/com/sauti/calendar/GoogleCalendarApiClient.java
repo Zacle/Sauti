@@ -125,13 +125,10 @@ public class GoogleCalendarApiClient {
                 .put("description", eventDescription(booking));
         body.putObject("start").put("dateTime", googleDateTime(start)).put("timeZone", booking.getAgent().getTimezone());
         body.putObject("end").put("dateTime", googleDateTime(end)).put("timeZone", booking.getAgent().getTimezone());
-        var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential))
-                + "/events/" + encode(eventId);
+        var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential)) + "/events";
         final String response;
         try {
-            response = send(credential, HttpRequest.newBuilder(URI.create(endpoint))
-                    .header("Content-Type", "application/json")
-                    .PUT(HttpRequest.BodyPublishers.ofString(body.toString())));
+            response = send(credential, eventInsertRequest(URI.create(endpoint), body.toString()));
         } catch (IllegalStateException exception) {
             if (exception.getMessage() != null && exception.getMessage().contains("status 409")) {
                 return eventId;
@@ -280,6 +277,12 @@ public class GoogleCalendarApiClient {
 
     static String googleDateTime(OffsetDateTime value) {
         return GOOGLE_RFC3339.format(value);
+    }
+
+    static HttpRequest.Builder eventInsertRequest(URI endpoint, String body) {
+        return HttpRequest.newBuilder(endpoint)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body));
     }
 
     private String googleErrorReason(String responseBody) {
