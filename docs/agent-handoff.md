@@ -34,6 +34,62 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Remove the Telnyx retained-action confirmation loop
+
+- Investigated browser diagnostic
+  `sauti-telnyx-diagnostics-1785458421180.json` and the supplied Ailsa
+  transcript.
+- The caller's `yes please yes` was a clear unconditional approval of the
+  immediately preceding server-retained reschedule review. The assistant
+  incorrectly repeated the review and eventually demanded the literal phrase
+  `I confirm`.
+- The diagnostic recorded:
+  - Telnyx conversation active after 4.849 seconds;
+  - first agent audio after 7.273 seconds;
+  - later turn latencies from 2.319 to 9.199 seconds;
+  - no exported tool names or results because the browser diagnostic remains
+    content-free.
+- Found a direct contradiction in the generated Telnyx execution contract:
+  - the authoritative rule correctly required every later action approval to
+    pass through `update_conversation_state`;
+  - a later line incorrectly instructed the model to invoke the retained
+    mutation directly with `confirmation_state=confirmed`;
+  - Sauti intentionally rejects that model-only shortcut because a side effect
+    requires a later server-recorded semantic approval. Repeating the direct
+    call therefore produced another deferred result and confirmation loop.
+- Removed the direct-mutation instruction. A later response to an explicit
+  action review must now:
+  - call `update_conversation_state` with the exact `source_utterance`;
+  - semantically set `review_decision=approved`,
+    `action_authorization=unconditional`, and `caller_question=none` for a clean
+    approval in any language;
+  - allow Sauti to invoke the exact retained mutation automatically.
+- Explicitly prohibited demanding a fixed or language-specific confirmation
+  phrase. Natural answers such as `yes please` are interpreted in context.
+- Added matching guidance directly to the generated
+  `reschedule_booking` webhook description: the first call retains the proposal
+  with `confirmation_state=not_confirmed`; the later caller answer goes to the
+  semantic state tool rather than directly back to the mutation.
+- Corrected the result guidance for the new managed envelope:
+  `success=false` with `requestProcessed=true` is a factual non-completion or
+  pending workflow outcome, not necessarily a transport failure.
+- Bumped the Telnyx managed configuration version from 39 to 40 so Gerard,
+  Ailsa, and other existing assistants reconcile the corrected contract.
+- Files touched for this correction:
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.call.ManagedVoiceAgentProvisionersTest --tests com.sauti.call.ManagedVoiceToolServiceTest --tests com.sauti.tool.ConversationStateToolTest --console=plain` - passed;
+  - `.\gradlew.bat :backend:test --console=plain` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+- Required live verification: after deployment and version-40 reconciliation,
+  repeat Ailsa's reschedule and answer the single review naturally with
+  `yes please`. It should execute `reschedule_booking` once, return
+  `status=booking_rescheduled` with `actionPerformed=true`, update the booking
+  row, and speak one factual confirmation without asking for a special phrase.
+
 ### 2026-07-31: Restore Kimi K2.6 after managed-tool regression
 
 - Restored the canonical Telnyx model

@@ -60,6 +60,12 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("callSid={{sauti_call_sid}}")
                 .contains("async=false")
                 .contains("timeout_ms=30000")
+                .contains(
+                        "confirmation_state=not_confirmed",
+                        "do not invoke this tool directly",
+                        "do not demand a fixed phrase",
+                        "update_conversation_state"
+                )
                 .contains("end_call")
                 .doesNotContain("/webhooks/telnyx/tools/end_call")
                 .doesNotContain("name=hang_up", "name=end_call")
@@ -113,6 +119,9 @@ class ManagedVoiceAgentProvisionersTest {
                         "mutationCompleted, and actionPerformed must all be true",
                         "A reschedule is never a conversational promise",
                         "status=booking_rescheduled",
+                        "review_decision=approved",
+                        "action_authorization=unconditional",
+                        "never demand a language-specific or fixed phrase",
                         "spoken_farewell, outcome",
                         "call a webhook first",
                         "spoken farewell alone",
@@ -240,6 +249,18 @@ class ManagedVoiceAgentProvisionersTest {
                                         "type", "object",
                                         "properties", Map.of(
                                                 "date", Map.of("type", "string")
+                                        ),
+                                        "additionalProperties", false
+                                ),
+                                true
+                        ),
+                        new LlmToolDefinition(
+                                "reschedule_booking",
+                                "Reschedule a verified booking.",
+                                Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "appointment_at", Map.of("type", "string")
                                         ),
                                         "additionalProperties", false
                                 ),

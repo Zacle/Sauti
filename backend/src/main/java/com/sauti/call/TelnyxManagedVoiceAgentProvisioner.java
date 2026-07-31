@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "39";
+        return "40";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -98,6 +98,12 @@ public class TelnyxManagedVoiceAgentProvisioner {
                         + "brief, natural, professional progress acknowledgment in the caller's current language. "
                         + "Do not ask a question and do not imply success or failure. After the result returns, "
                         + "continue automatically and explain only the factual outcome.";
+            }
+            if ("reschedule_booking".equals(tool.name())) {
+                description += " Invoke this tool with confirmation_state=not_confirmed to retain and review the "
+                        + "proposed change. On the caller's later answer, do not invoke this tool directly and do not "
+                        + "demand a fixed phrase. Send the complete answer to update_conversation_state; Sauti will "
+                        + "semantically authorize and invoke the retained reschedule when appropriate.";
             }
             webhook.put("description", description.trim());
             webhook.put(
@@ -200,9 +206,14 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 - workflowPending=true or actionPerformed=false is a valid workflow step, not a tool failure. Follow
                   instruction, nextTool, nextToolArguments, and nextToolAuthorized exactly. Do not retry the same
                   mutation merely because nothing changed yet.
-                - success=false means the tool itself failed. Never describe the requested mutation as completed.
-                - For an explicitly confirmed retained action, invoke the exact same tool and material arguments with
-                  confirmation_state=confirmed and question_handling=ready_for_action. Do not ask repeatedly.
+                - For a mutation, success=false means the requested change was not completed. When
+                  requestProcessed=true, follow the returned workflow instruction; otherwise explain only that the
+                  tool failed. Never describe the requested mutation as completed.
+                - A later response to a retained action confirmation must always be interpreted through
+                  update_conversation_state with the exact source_utterance. For a clear unconditional approval, set
+                  review_decision=approved, action_authorization=unconditional, and caller_question=none. Sauti will
+                  invoke the exact retained mutation automatically. Do not call the mutation tool directly, do not
+                  ask repeatedly, and never demand a language-specific or fixed phrase such as "I confirm".
                 - For a tool marked as potentially slow, speak its brief progress acknowledgment immediately before
                   invoking it, without asking the caller a question.
                 - After every tool result, continue automatically in the same turn; never wait for more caller speech.
