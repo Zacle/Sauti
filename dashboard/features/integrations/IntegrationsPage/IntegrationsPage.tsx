@@ -278,11 +278,22 @@ export function IntegrationsPage() {
                 Last delivery: {binding.lastDelivery.status}{binding.lastDelivery.lastError ? ` — ${binding.lastDelivery.lastError}` : ""}
               </p>}
               <footer>
-                <label className={styles.switch}><input type="checkbox" checked={binding?.enabled ?? false}
-                  disabled={busy === entry.provider || !agentId
-                    || (!(binding?.enabled ?? false) && !entry.authorizationConfigured)}
-                  onChange={(event) => void toggle(entry, event.target.checked)} /><span /> Agent enabled</label>
+                {entry.provider === "google_calendar" && !connection
+                  ? <span className={styles.connectionRequired}>Connect before enabling</span>
+                  : <label className={styles.switch}><input type="checkbox" checked={binding?.enabled ?? false}
+                    disabled={busy === entry.provider || !agentId
+                      || (!(binding?.enabled ?? false) && !entry.authorizationConfigured)}
+                    onChange={(event) => void toggle(entry, event.target.checked)} /><span /> Agent enabled</label>}
                 <div className={styles.actions}>
+                  {entry.provider === "google_calendar" && !connection && <button
+                    className={styles.googleConnect}
+                    disabled={!entry.authorizationConfigured || busy === entry.provider || !agentId}
+                    onClick={() => void startOAuth(entry)}
+                    type="button"
+                  >
+                    <Image alt="" height={17} src={logos.google_calendar} width={17} />
+                    Connect Google Calendar
+                  </button>}
                   {entry.provider === "google_calendar" && connection && <button
                     onClick={() => setCalendarEditing(true)} title="Configure calendar"><Settings2 size={15} /></button>}
                   {entry.requiresConnection && entry.provider !== "google_calendar" && <button

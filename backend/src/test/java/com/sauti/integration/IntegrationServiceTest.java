@@ -3,6 +3,7 @@ package com.sauti.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -169,5 +170,91 @@ class IntegrationServiceTest {
         verify(agent).updateRoutingPolicy("Fixed calendar");
         verify(agentVariables).updateIfPresent(agentId, "calendar_provider", "Google Calendar");
         verify(agentVariables).updateIfPresent(agentId, "routing_policy", "Fixed calendar");
+    }
+
+    @Test
+    void disconnectingGoogleCalendarRemovesBothStoredCredentialCopies() {
+        var objectMapper = new ObjectMapper();
+        var encryption = new CredentialEncryption("dev-tool-encryption-key-32-bytes");
+        var connections = mock(IntegrationConnectionRepository.class);
+        var bindings = mock(AgentIntegrationRepository.class);
+        var agents = mock(AgentRepository.class);
+        var tools = mock(AgentToolRepository.class);
+        var credentials = mock(CalendarCredentialRepository.class);
+        var agentVariables = mock(AgentVariableService.class);
+        var tenantId = UUID.randomUUID();
+        var agentId = UUID.randomUUID();
+        var connection = new IntegrationConnection(
+                tenantId,
+                "google_calendar",
+                "Google Calendar",
+                encryption.encrypt("{\"accessToken\":\"access\",\"refreshToken\":\"refresh\"}"),
+                "{\"calendarId\":\"primary\"}"
+        );
+        var binding = new AgentIntegration(tenantId, agentId, "google_calendar");
+        binding.configure(true, connection.getId(), "{}");
+        var credential = mock(CalendarCredential.class);
+        var agent = mock(Agent.class);
+        var tool = mock(AgentTool.class);
+
+        when(connections.findByIdAndTenantId(connection.getId(), tenantId)).thenReturn(Optional.of(connection));
+        when(bindings.findAllByTenantIdAndConnectionId(tenantId, connection.getId()))
+                .thenReturn(List.of(binding));
+        when(credentials.findAllByTenant_IdAndProviderOrderByCreatedAtDesc(tenantId, "google"))
+                .thenReturn(List.of(credential));
+        when(agents.findByIdAndTenantId(agentId, tenantId)).thenReturn(Optional.of(agent));
+        when(tools.findByAgent_IdOrderByDisplayOrderAsc(agentId)).thenReturn(List.of(tool));
+        when(agent.getCalendarProvider()).thenReturn("Google Calendar");
+        when(tool.getToolName()).thenReturn("book_slot");
+
+        var service = new IntegrationService(
+                objectMapper, encryption, new IntegrationCatalog(), connections, bindings,
+                mock(IntegrationDeliveryRepository.class), agents, tools, credentials, agentVariables,
+                mock(WebhookDestinationValidator.class)
+        );
+
+        service.disconnect(tenantId, connection.getId());
+
+        assertThat(binding.isEnabled()).isFalse();
+        verify(tool).disconnectCalendar();
+        verify(connections).delete(connection);
+        verify(credentials).deleteAll(List.of(credential));
+        verify(agent).updateCalendarProvider("Set up later");
+        verify(agent).updateRoutingPolicy("Set up later");
+        verify(agentVariables).updateIfPresent(agentId, "calendar_provider", "Set up later");
+        verify(agentVariables).updateIfPresent(agentId, "routing_policy", "Set up later");
+    }
+
+    @Test
+    void disconnectingAnotherProviderDoesNotDeleteGoogleCalendarCredentials() {
+        var objectMapper = new ObjectMapper();
+        var encryption = new CredentialEncryption("dev-tool-encryption-key-32-bytes");
+        var connections = mock(IntegrationConnectionRepository.class);
+        var bindings = mock(AgentIntegrationRepository.class);
+        var credentials = mock(CalendarCredentialRepository.class);
+        var tenantId = UUID.randomUUID();
+        var connection = new IntegrationConnection(
+                tenantId,
+                "hubspot",
+                "HubSpot",
+                encryption.encrypt("{\"accessToken\":\"access\"}"),
+                "{}"
+        );
+        when(connections.findByIdAndTenantId(connection.getId(), tenantId)).thenReturn(Optional.of(connection));
+        when(bindings.findAllByTenantIdAndConnectionId(tenantId, connection.getId())).thenReturn(List.of());
+
+        var service = new IntegrationService(
+                objectMapper, encryption, new IntegrationCatalog(), connections, bindings,
+                mock(IntegrationDeliveryRepository.class), mock(AgentRepository.class),
+                mock(AgentToolRepository.class), credentials, mock(AgentVariableService.class),
+                mock(WebhookDestinationValidator.class)
+        );
+
+        service.disconnect(tenantId, connection.getId());
+
+        verify(connections).delete(connection);
+        verify(credentials, never())
+                .findAllByTenant_IdAndProviderOrderByCreatedAtDesc(any(), any());
+        verify(credentials, never()).deleteAll(any());
     }
 }

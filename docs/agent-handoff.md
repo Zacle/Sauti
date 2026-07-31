@@ -34,6 +34,58 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Prepare Google Calendar for OAuth verification
+
+- Audited the production Google Calendar OAuth flow against Google's current
+  brand, domain, sensitive-scope, minimum-scope, privacy-policy, and
+  demonstration-video requirements.
+- Confirmed the application currently requests only:
+  - `https://www.googleapis.com/auth/calendar.events`;
+  - `https://www.googleapis.com/auth/calendar.freebusy`.
+- Confirmed the production homepage, privacy policy, and terms return HTTP 200,
+  and the integration dashboard redirects unauthenticated users to login.
+- Made Calendar authorization explicit in the integration marketplace:
+  - a disconnected Google Calendar card now shows `Connect before enabling`;
+  - the OAuth flow starts from a labeled `Connect Google Calendar` action with
+    the provider mark;
+  - the agent enablement switch appears only after a workspace connection
+    exists.
+- Closed a credential-retention gap on disconnect. Google Calendar tokens are
+  stored in both the workspace integration connection and the legacy Calendar
+  runtime credential. Disconnect now disables every bound agent, clears its
+  Calendar tools/settings, deletes the connection, and deletes the duplicated
+  tenant Calendar credential. Other integration disconnects cannot delete
+  Calendar credentials.
+- Added `docs/google-calendar-oauth-verification.md` with:
+  - exact production URLs, callbacks, scopes, and authorized domain;
+  - Google Cloud and Search Console configuration steps;
+  - ready-to-submit justifications for both Calendar scopes;
+  - a continuous verification-video script covering consent, live connection,
+    booking creation, rescheduling, cancellation, and disconnect;
+  - the evidence that must be collected before submission.
+- Files touched:
+  - `backend/src/main/java/com/sauti/integration/IntegrationService.java`
+  - `backend/src/test/java/com/sauti/integration/IntegrationServiceTest.java`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.module.css`
+  - `docs/google-calendar-oauth-verification.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused `IntegrationServiceTest` - passed;
+  - `.\gradlew.bat :backend:test` - passed;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed;
+  - public homepage, privacy, and terms HEAD checks returned HTTP 200;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- External follow-up: a Google Cloud project Owner/Editor must verify
+  `sauti.uk` ownership, configure the production OAuth client/consent screen,
+  run the live production demonstration, publish the audience, and submit the
+  sensitive-scope verification. Do not submit before the reviewed changes are
+  deployed and the demo passes against a dedicated verification calendar.
+
 ### 2026-07-31: Stop failed booking lookups after one complete attempt
 
 - Investigated browser diagnostic

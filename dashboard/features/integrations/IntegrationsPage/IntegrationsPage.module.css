@@ -149,6 +149,20 @@
 .switch input:checked + span { background:linear-gradient(90deg,#17bdb2,#32e0d2); box-shadow:0 0 14px rgba(30,220,207,.22); }
 .actions button { border-color:rgba(92,150,198,.2); color:#91a6b9; background:rgba(5,20,35,.72); }
 .actions button:hover { border-color:rgba(35,222,210,.42); color:#2ce5d8; }
+.connectionRequired { color:#879bae; font-size:.68rem; }
+.actions .googleConnect {
+  display:inline-flex;
+  width:auto;
+  min-height:36px;
+  padding:0 12px;
+  gap:8px;
+  border-color:rgba(95,151,197,.32);
+  color:#dceaf4;
+  font-size:.66rem;
+  white-space:nowrap;
+}
+.actions .googleConnect:hover { border-color:rgba(66,133,244,.7); color:#fff; }
+.actions .googleConnect img { border-radius:3px; }
 .backdrop { background:rgba(1,8,16,.76); backdrop-filter:blur(7px); }
 .dialog { border-color:rgba(83,143,190,.25); color:#dce9f3; background:linear-gradient(145deg,#081c30,#051524); box-shadow:0 30px 100px rgba(0,0,0,.55); }
 .dialog h2 { color:#f2f8fc; }.dialog header p,.oauthNote { color:#8298ab; }

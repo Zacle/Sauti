@@ -99,6 +99,9 @@ public class IntegrationService {
     @Transactional
     public void disconnect(UUID tenantId, UUID id) {
         var connection = requireConnection(tenantId, id);
+        var googleCalendarCredentials = "google_calendar".equals(connection.getProvider())
+                ? calendarCredentials.findAllByTenant_IdAndProviderOrderByCreatedAtDesc(tenantId, "google")
+                : List.<com.sauti.tool.CalendarCredential>of();
         bindings.findAllByTenantIdAndConnectionId(tenantId, id).stream()
                 .forEach(binding -> {
                     binding.disconnect();
@@ -118,6 +121,11 @@ public class IntegrationService {
                     }
                 });
         connections.delete(connection);
+        if (!googleCalendarCredentials.isEmpty()) {
+            // Calendar runtime credentials duplicate the workspace OAuth
+            // connection. Once every binding is disconnected, retain neither.
+            calendarCredentials.deleteAll(googleCalendarCredentials);
+        }
     }
 
     @Transactional
