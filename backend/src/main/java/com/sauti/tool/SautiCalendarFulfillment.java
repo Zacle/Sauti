@@ -810,7 +810,9 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 throw new BookingIdentityMismatchException();
             }
             try {
-                return bookingService.get(identity.tenantId(), identity.bookingId());
+                return bookingService.getForAgent(
+                        identity.tenantId(), call.getAgent().getId(), identity.bookingId()
+                );
             } catch (RuntimeException exception) {
                 callSessionStore.updateVerifiedBookingIdentity(call.getTwilioCallSid(), null);
                 throw new BookingIdentityMismatchException();
@@ -840,7 +842,13 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             throw new BookingIdentityMismatchException();
         }
         var result = bookingIdentityService.verify(new BookingIdentityService.Request(
-                call.getTenant().getId(), suppliedPhone, bookingNumber, date, time, timezone
+                call.getTenant().getId(),
+                call.getAgent().getId(),
+                suppliedPhone,
+                bookingNumber,
+                date,
+                time,
+                timezone
         ));
         return switch (result.status()) {
             case VERIFIED -> result.booking();

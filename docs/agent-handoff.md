@@ -34,6 +34,54 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Isolate existing-booking voice operations by agent
+
+- Investigated the supplied cross-agent cancellation test:
+  - Gerard created booking `SAT-39AGIOJXVY3H` for 10 August 2026 at 15:00;
+  - Ailsa then found that booking using its phone, date, and time and proceeded
+    to a cancellation review;
+  - the caller rejected cancellation, so the booking was not changed, but the
+    lookup and disclosure should never have occurred.
+- Root cause: `BookingIdentityService` verified existing bookings within the
+  workspace tenant but did not include the active call's agent ID. This allowed
+  one agent to find another agent's booking in the same workspace.
+- Added agent-scoped repository and booking-service operations for:
+  - booking ID retrieval;
+  - customer-facing booking-reference resolution;
+  - phone/date/time candidate lookup.
+- `BookingIdentityService.Request` now requires both tenant ID and agent ID.
+  Both the standard phone/date/time lookup and volunteered-reference path query
+  only bookings created by that exact agent.
+- Retained private booking identities are revalidated using tenant, current
+  agent, and booking ID before every voice-driven update, reschedule, or
+  cancellation. A retained or stale identity for another agent is cleared and
+  returns the existing generic identity-mismatch result without mutation.
+- Kept workspace-owner dashboard behavior unchanged. Existing REST booking
+  administration remains tenant-scoped so an authenticated workspace owner can
+  still manage all workspace bookings; the stricter ownership boundary applies
+  to caller-facing voice-agent tools.
+- Cross-agent failures do not reveal that another agent owns the booking. The
+  caller receives the same generic verification failure used for nonexistent
+  or mismatched booking details.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/BookingIdentityService.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingRepository.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingService.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingIdentityServiceTest.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests com.sauti.calendar.BookingIdentityServiceTest --tests com.sauti.tool.SautiCalendarFulfillmentTest --tests com.sauti.calendar.BookingServiceTest --console=plain` - passed;
+  - `.\gradlew.bat :backend:test --console=plain` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+- Required live verification: after deployment, call Ailsa with Gerard's exact
+  phone/date/time and confirm Ailsa reports only a generic verification failure,
+  discloses no booking details, and offers no update/reschedule/cancellation
+  review. Then call Gerard with the same values and confirm Gerard can find and
+  manage its own booking normally.
+
 ### 2026-07-31: Remove the Telnyx retained-action confirmation loop
 
 - Investigated browser diagnostic

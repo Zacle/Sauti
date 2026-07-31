@@ -1,6 +1,7 @@
 package com.sauti.tool;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -1182,7 +1183,8 @@ class SautiCalendarFulfillmentTest {
         when(updated.getId()).thenReturn(bookingId);
         when(updated.getBookingReference()).thenReturn("SAT-AB12CD34");
         when(updated.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-23T14:00:00Z"));
-        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
+        when(fixture.bookingService.resolveForAgent(any(), any(), eq("SAT-AB12CD34")))
+                .thenReturn(existing);
         when(fixture.bookingService.reschedule(any(), eq(bookingId), any())).thenReturn(updated);
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
@@ -1215,7 +1217,8 @@ class SautiCalendarFulfillmentTest {
         when(existing.getBookingReference()).thenReturn("SAT-AB12CD34");
         when(cancelled.getId()).thenReturn(bookingId);
         when(cancelled.getBookingReference()).thenReturn("SAT-AB12CD34");
-        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
+        when(fixture.bookingService.resolveForAgent(any(), any(), eq("SAT-AB12CD34")))
+                .thenReturn(existing);
         when(fixture.bookingService.cancel(any(), eq(bookingId))).thenReturn(cancelled);
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
@@ -1250,7 +1253,8 @@ class SautiCalendarFulfillmentTest {
                         tenantId, bookingId, "SAT-PRIVATE12345", "0115752441", OffsetDateTime.now()
                 )
         ));
-        when(fixture.bookingService.get(tenantId, bookingId)).thenReturn(existing);
+        when(fixture.bookingService.getForAgent(eq(tenantId), any(), eq(bookingId)))
+                .thenReturn(existing);
         when(fixture.bookingService.cancel(tenantId, bookingId)).thenReturn(cancelled);
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
@@ -1263,9 +1267,38 @@ class SautiCalendarFulfillmentTest {
         assertThat(result.result())
                 .containsEntry("status", "booking_cancelled")
                 .containsEntry("bookingNumber", "SAT-PRIVATE12345");
-        verify(fixture.bookingService).get(tenantId, bookingId);
+        verify(fixture.bookingService).getForAgent(eq(tenantId), any(), eq(bookingId));
         verify(fixture.bookingService).cancel(tenantId, bookingId);
         verify(fixture.bookingService, never()).resolve(any(), any());
+    }
+
+    @Test
+    void cancellationRejectsAPrivateIdentityOwnedByAnotherAgent() {
+        var fixture = fixture(HOURS, List.of());
+        var bookingId = java.util.UUID.randomUUID();
+        var tenantId = fixture.call.getTenant().getId();
+        when(fixture.callSessionStore.verifiedBookingIdentity("call-sid")).thenReturn(Optional.of(
+                new com.sauti.session.VerifiedBookingIdentity(
+                        tenantId, bookingId, "SAT-OTHERAGENT1", "0115752441", OffsetDateTime.now()
+                )
+        ));
+        when(fixture.bookingService.getForAgent(
+                tenantId, fixture.call.getAgent().getId(), bookingId
+        )).thenThrow(new jakarta.persistence.EntityNotFoundException("Booking not found"));
+
+        var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
+                "cancel-cross-agent", "cancel_booking", Map.of()
+        ));
+
+        assertThat(result.success()).isTrue();
+        assertThat(result.result())
+                .containsEntry("status", "booking_identity_mismatch")
+                .containsEntry("bookingFound", false)
+                .containsEntry("actionPerformed", false)
+                .containsEntry("cancelled", false);
+        verify(fixture.bookingService, never()).cancel(any(), any());
+        verify(fixture.callSessionStore, atLeastOnce())
+                .updateVerifiedBookingIdentity("call-sid", null);
     }
 
     @Test
@@ -1273,7 +1306,8 @@ class SautiCalendarFulfillmentTest {
         var fixture = fixture(HOURS, List.of());
         var existing = mock(com.sauti.calendar.Booking.class);
         when(existing.getCallerPhone()).thenReturn("011-575-2441");
-        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
+        when(fixture.bookingService.resolveForAgent(any(), any(), eq("SAT-AB12CD34")))
+                .thenReturn(existing);
         when(fixture.callSessionStore.conversationState("call-sid")).thenReturn(Optional.of(
                 new ConversationState(
                         Map.of(
@@ -1331,7 +1365,8 @@ class SautiCalendarFulfillmentTest {
         when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
         when(booking.getDurationMinutes()).thenReturn(60);
         when(booking.getStatus()).thenReturn("confirmed");
-        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(booking);
+        when(fixture.bookingService.resolveForAgent(any(), any(), eq("SAT-AB12CD34")))
+                .thenReturn(booking);
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "lookup-booking", "lookup_booking", Map.of(
@@ -1355,7 +1390,8 @@ class SautiCalendarFulfillmentTest {
         var fixture = fixture(HOURS, List.of());
         var booking = mock(com.sauti.calendar.Booking.class);
         when(booking.getCallerPhone()).thenReturn("011-575-2441");
-        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(booking);
+        when(fixture.bookingService.resolveForAgent(any(), any(), eq("SAT-AB12CD34")))
+                .thenReturn(booking);
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "lookup-booking", "lookup_booking", Map.of(
@@ -1386,8 +1422,8 @@ class SautiCalendarFulfillmentTest {
         when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
         when(booking.getDurationMinutes()).thenReturn(60);
         when(booking.getStatus()).thenReturn("confirmed");
-        when(fixture.bookingService.findOnAppointmentDate(
-                any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
+        when(fixture.bookingService.findOnAppointmentDateForAgent(
+                any(), any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
         )).thenReturn(List.of(booking));
         when(fixture.callSessionStore.conversationState("call-sid")).thenReturn(Optional.of(
                 new ConversationState(
@@ -1435,8 +1471,8 @@ class SautiCalendarFulfillmentTest {
         when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
         when(booking.getDurationMinutes()).thenReturn(60);
         when(booking.getStatus()).thenReturn("confirmed");
-        when(fixture.bookingService.findOnAppointmentDate(
-                any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
+        when(fixture.bookingService.findOnAppointmentDateForAgent(
+                any(), any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
         )).thenReturn(List.of(booking));
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
@@ -1473,8 +1509,8 @@ class SautiCalendarFulfillmentTest {
         when(booking.getServiceType()).thenReturn("consultation");
         when(booking.getDurationMinutes()).thenReturn(60);
         when(booking.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
-        when(fixture.bookingService.findOnAppointmentDate(
-                any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
+        when(fixture.bookingService.findOnAppointmentDateForAgent(
+                any(), any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
         )).thenReturn(List.of(booking));
         when(fixture.callSessionStore.conversationState("call-sid")).thenReturn(Optional.of(
                 new ConversationState(
@@ -1520,8 +1556,8 @@ class SautiCalendarFulfillmentTest {
         when(afternoon.getStatus()).thenReturn("confirmed");
         when(afternoon.getServiceType()).thenReturn("women hairstyle");
         when(afternoon.getDurationMinutes()).thenReturn(60);
-        when(fixture.bookingService.findOnAppointmentDate(
-                any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
+        when(fixture.bookingService.findOnAppointmentDateForAgent(
+                any(), any(), eq(LocalDate.of(2026, 7, 31)), eq(java.time.ZoneId.of("UTC"))
         )).thenReturn(List.of(morning, afternoon));
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
@@ -1577,7 +1613,8 @@ class SautiCalendarFulfillmentTest {
         when(updated.getServiceType()).thenReturn("women hairstyle");
         when(updated.getAppointmentAt()).thenReturn(OffsetDateTime.parse("2026-07-31T11:00:00Z"));
         when(updated.getDurationMinutes()).thenReturn(60);
-        when(fixture.bookingService.resolve(any(), eq("SAT-AB12CD34"))).thenReturn(existing);
+        when(fixture.bookingService.resolveForAgent(any(), any(), eq("SAT-AB12CD34")))
+                .thenReturn(existing);
         when(fixture.bookingService.update(any(), eq(bookingId), any())).thenReturn(updated);
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(

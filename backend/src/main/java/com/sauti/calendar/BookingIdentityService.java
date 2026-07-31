@@ -13,7 +13,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 /**
- * Language-neutral, tenant-scoped identity verification for existing bookings.
+ * Language-neutral, tenant-and-agent-scoped identity verification for existing bookings.
  *
  * <p>Caller names are deliberately not identity factors: speech recognition and
  * transliteration make them unreliable across languages. No booking data should
@@ -35,8 +35,8 @@ public class BookingIdentityService {
             return Result.mismatch();
         }
 
-        var candidates = bookings.findOnAppointmentDate(
-                        request.tenantId(), request.appointmentDate(), request.timezone()
+        var candidates = bookings.findOnAppointmentDateForAgent(
+                        request.tenantId(), request.agentId(), request.appointmentDate(), request.timezone()
                 ).stream()
                 .filter(booking -> samePhone(booking.getCallerPhone(), request.callerPhone()))
                 .toList();
@@ -61,7 +61,9 @@ public class BookingIdentityService {
     private Result verifyReference(Request request) {
         final Booking booking;
         try {
-            booking = bookings.resolve(request.tenantId(), request.bookingReference());
+            booking = bookings.resolveForAgent(
+                    request.tenantId(), request.agentId(), request.bookingReference()
+            );
         } catch (EntityNotFoundException | IllegalArgumentException exception) {
             return Result.mismatch();
         }
@@ -90,6 +92,7 @@ public class BookingIdentityService {
 
     public record Request(
             UUID tenantId,
+            UUID agentId,
             String callerPhone,
             String bookingReference,
             LocalDate appointmentDate,
@@ -98,6 +101,7 @@ public class BookingIdentityService {
     ) {
         public Request {
             Objects.requireNonNull(tenantId, "Tenant is required");
+            Objects.requireNonNull(agentId, "Agent is required");
             bookingReference = bookingReference == null
                     ? "" : bookingReference.trim().toUpperCase(Locale.ROOT);
         }

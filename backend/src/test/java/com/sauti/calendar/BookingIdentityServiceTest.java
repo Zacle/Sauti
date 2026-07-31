@@ -2,8 +2,11 @@ package com.sauti.calendar;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import jakarta.persistence.EntityNotFoundException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -13,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 class BookingIdentityServiceTest {
     private static final UUID TENANT_ID = UUID.randomUUID();
+    private static final UUID AGENT_ID = UUID.randomUUID();
     private static final LocalDate DATE = LocalDate.of(2026, 8, 2);
     private static final ZoneId TIMEZONE = ZoneId.of("Africa/Cairo");
 
@@ -20,7 +24,8 @@ class BookingIdentityServiceTest {
     void requiresCallerSuppliedTimeBeforeDisclosingASingleMatchingBooking() {
         var bookings = mock(BookingService.class);
         var booking = booking("0115753441", "2026-08-02T09:00:00+03:00");
-        when(bookings.findOnAppointmentDate(TENANT_ID, DATE, TIMEZONE)).thenReturn(List.of(booking));
+        when(bookings.findOnAppointmentDateForAgent(TENANT_ID, AGENT_ID, DATE, TIMEZONE))
+                .thenReturn(List.of(booking));
 
         var result = new BookingIdentityService(bookings).verify(request("0115753441", null));
 
@@ -33,7 +38,8 @@ class BookingIdentityServiceTest {
         var bookings = mock(BookingService.class);
         var booking = booking("011 575 3441", "2026-08-02T09:00:00+03:00");
         when(booking.getCallerName()).thenReturn("هاري");
-        when(bookings.findOnAppointmentDate(TENANT_ID, DATE, TIMEZONE)).thenReturn(List.of(booking));
+        when(bookings.findOnAppointmentDateForAgent(TENANT_ID, AGENT_ID, DATE, TIMEZONE))
+                .thenReturn(List.of(booking));
 
         var result = new BookingIdentityService(bookings).verify(request("0115753441", "09:00"));
 
@@ -45,7 +51,7 @@ class BookingIdentityServiceTest {
     void doesNotRevealWhetherThePhoneOrTimeWasWrong() {
         var bookings = mock(BookingService.class);
         var booking = booking("0115753441", "2026-08-02T09:00:00+03:00");
-        when(bookings.findOnAppointmentDate(TENANT_ID, DATE, TIMEZONE))
+        when(bookings.findOnAppointmentDateForAgent(TENANT_ID, AGENT_ID, DATE, TIMEZONE))
                 .thenReturn(List.of(booking));
 
         var wrongPhone = new BookingIdentityService(bookings).verify(request("0110000000", "09:00"));
@@ -62,7 +68,7 @@ class BookingIdentityServiceTest {
         var bookings = mock(BookingService.class);
         var first = booking("0115753441", "2026-08-02T09:00:00+03:00");
         var second = booking("0115753441", "2026-08-02T09:00:00+03:00");
-        when(bookings.findOnAppointmentDate(TENANT_ID, DATE, TIMEZONE)).thenReturn(List.of(
+        when(bookings.findOnAppointmentDateForAgent(TENANT_ID, AGENT_ID, DATE, TIMEZONE)).thenReturn(List.of(
                 first, second
         ));
 
@@ -72,9 +78,34 @@ class BookingIdentityServiceTest {
         assertThat(result.booking()).isNull();
     }
 
+    @Test
+    void referenceLookupCannotFallBackToAnotherAgentInTheWorkspace() {
+        var bookings = mock(BookingService.class);
+        var otherAgentBooking = booking("0115753441", "2026-08-02T09:00:00+03:00");
+        when(bookings.resolveForAgent(TENANT_ID, AGENT_ID, "SAT-OTHERAGENT1"))
+                .thenThrow(new EntityNotFoundException("Booking not found"));
+        when(bookings.resolve(TENANT_ID, "SAT-OTHERAGENT1")).thenReturn(otherAgentBooking);
+        var request = new BookingIdentityService.Request(
+                TENANT_ID,
+                AGENT_ID,
+                "0115753441",
+                "SAT-OTHERAGENT1",
+                null,
+                null,
+                TIMEZONE
+        );
+
+        var result = new BookingIdentityService(bookings).verify(request);
+
+        assertThat(result.status()).isEqualTo(BookingIdentityService.Status.MISMATCH);
+        assertThat(result.booking()).isNull();
+        verify(bookings, never()).resolve(TENANT_ID, "SAT-OTHERAGENT1");
+    }
+
     private BookingIdentityService.Request request(String phone, String time) {
         return new BookingIdentityService.Request(
                 TENANT_ID,
+                AGENT_ID,
                 phone,
                 "",
                 DATE,

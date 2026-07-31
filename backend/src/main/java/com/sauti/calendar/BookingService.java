@@ -87,6 +87,13 @@ public class BookingService {
     }
 
     @Transactional(readOnly = true)
+    public Booking getForAgent(UUID tenantId, UUID agentId, UUID bookingId) {
+        Objects.requireNonNull(agentId, "Agent is required");
+        return bookingRepository.findByIdAndTenantIdAndAgent_Id(bookingId, tenantId, agentId)
+                .orElseThrow(() -> new EntityNotFoundException("Booking not found"));
+    }
+
+    @Transactional(readOnly = true)
     public Booking getByReference(UUID tenantId, String bookingReference) {
         return bookingRepository.findByBookingReferenceIgnoreCaseAndTenantId(normalizeReference(bookingReference), tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Booking not found"));
@@ -99,6 +106,42 @@ public class BookingService {
         } catch (IllegalArgumentException ignored) {
             return getByReference(tenantId, identifier);
         }
+    }
+
+    @Transactional(readOnly = true)
+    public Booking resolveForAgent(UUID tenantId, UUID agentId, String identifier) {
+        Objects.requireNonNull(agentId, "Agent is required");
+        try {
+            return getForAgent(tenantId, agentId, UUID.fromString(identifier));
+        } catch (IllegalArgumentException ignored) {
+            return bookingRepository.findByBookingReferenceIgnoreCaseAndTenantIdAndAgent_Id(
+                            normalizeReference(identifier), tenantId, agentId
+                    )
+                    .orElseThrow(() -> new EntityNotFoundException("Booking not found"));
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<Booking> findOnAppointmentDateForAgent(
+            UUID tenantId,
+            UUID agentId,
+            LocalDate date,
+            ZoneId timezone
+    ) {
+        Objects.requireNonNull(tenantId, "Tenant is required");
+        Objects.requireNonNull(agentId, "Agent is required");
+        Objects.requireNonNull(date, "Appointment date is required");
+        Objects.requireNonNull(timezone, "Business timezone is required");
+        var start = date.atStartOfDay(timezone).toOffsetDateTime();
+        var end = date.plusDays(1).atStartOfDay(timezone).toOffsetDateTime();
+        return bookingRepository
+                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        tenantId,
+                        agentId,
+                        "cancelled",
+                        start,
+                        end
+                );
     }
 
     @Transactional(readOnly = true)
