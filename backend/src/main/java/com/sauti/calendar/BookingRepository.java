@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
@@ -48,6 +49,14 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
             UUID tenantId,
             UUID agentId,
+            String excludedStatus,
+            OffsetDateTime windowStart,
+            OffsetDateTime windowEnd
+    );
+
+    List<Booking> findAllByTenantIdAndAgent_IdInAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+            UUID tenantId,
+            Collection<UUID> agentIds,
             String excludedStatus,
             OffsetDateTime windowStart,
             OffsetDateTime windowEnd

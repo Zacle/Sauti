@@ -61,17 +61,34 @@ public class BookingCalendarSyncService {
             var booking = bookingRepository.findById(bookingId).orElse(null);
             if (booking == null || !"pending".equals(booking.getCalendarSyncStatus())) return;
             try {
+                if ("cancelled".equals(booking.getStatus())
+                        && (booking.getExternalEventId() == null || booking.getExternalEventId().isBlank())) {
+                    booking.markCalendarRemoved();
+                    return;
+                }
                 var provider = "Google Calendar".equalsIgnoreCase(booking.getAgent().getCalendarProvider())
                         ? calendarProviderFactory.connectedForAgent(booking.getAgent().getId())
                             .orElseThrow(() -> new IllegalStateException(
                                     "The selected calendar integration is not connected"
                             ))
                         : calendarProviderFactory.forAgent(booking.getAgent().getId());
-                var result = provider.createEvent(booking);
-                if (result == null || result.externalEventId() == null || result.externalEventId().isBlank()) {
-                    throw new IllegalStateException("Calendar provider did not return an event identifier");
+                if ("cancelled".equals(booking.getStatus())) {
+                    provider.deleteEvent(booking);
+                    booking.markCalendarRemoved();
+                } else if (booking.getExternalEventId() != null && !booking.getExternalEventId().isBlank()) {
+                    var result = provider.updateEvent(booking);
+                    var eventId = result == null ? "" : result.externalEventId();
+                    if (eventId == null || eventId.isBlank()) {
+                        throw new IllegalStateException("Calendar provider did not return an event identifier");
+                    }
+                    booking.markSynced(eventId);
+                } else {
+                    var result = provider.createEvent(booking);
+                    if (result == null || result.externalEventId() == null || result.externalEventId().isBlank()) {
+                        throw new IllegalStateException("Calendar provider did not return an event identifier");
+                    }
+                    booking.markSynced(result.externalEventId());
                 }
-                booking.markSynced(result.externalEventId());
             } catch (RuntimeException exception) {
                 booking.markSyncFailed(safeSyncError(exception));
                 LOGGER.warn(

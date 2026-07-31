@@ -22,6 +22,18 @@ Do not add Google Drive, full Calendar, Google Sheets, or future-use scopes to
 this verification request. Google Sheets has a separate Sauti OAuth
 configuration and should be verified separately when that integration is ready.
 
+Sauti is the booking system of record. Confirmed creates, reschedules, detail
+updates, and cancellations are committed to Sauti before Google Calendar is
+updated by the durable background synchronizer. Direct edits made to the Google
+event are intentionally not imported into the Sauti booking. Each generated
+event tells the workspace owner to manage the booking in Sauti.
+
+Agents connected to the same Google Calendar credential share one capacity-one
+availability scope even though each agent retains exclusive ownership of the
+bookings it creates. Pending Sauti bookings block that shared scope before the
+Google event is written, and the final database insert locks and rechecks the
+scope to prevent simultaneous double booking.
+
 ## Google Cloud configuration
 
 Use the Google Cloud project and OAuth web client whose client ID and secret are
@@ -91,10 +103,11 @@ environment values, or unrelated calendar data.
    `Test live connection`.
 7. Make a browser test call that asks for an available time and confirms a
    booking.
-8. Show the resulting Sauti booking and corresponding event in the selected
-   Google Calendar.
-9. Reschedule the booking and show the same Google event move.
-10. Cancel it and show the event removed.
+8. Show the resulting Sauti booking, wait for its Calendar status to become
+   synced, and show the corresponding event in the selected Google Calendar.
+9. Reschedule the booking in Sauti, wait for synchronization, and show the same
+   Google event move without blocking the caller on the Google write.
+10. Cancel it in Sauti, wait for synchronization, and show the event removed.
 11. Reconnect if needed for the recording, then demonstrate `Disconnect` and
     show that the Sauti connection and agent enablement are removed.
 

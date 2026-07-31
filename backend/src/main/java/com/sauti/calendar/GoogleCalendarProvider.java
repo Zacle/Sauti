@@ -45,8 +45,18 @@ public class GoogleCalendarProvider implements CalendarProvider {
 
     @Override
     public CalendarSyncResult updateEvent(Booking booking) {
-        client.updateEvent(credential, booking);
-        return new CalendarSyncResult(booking.getExternalEventId());
+        try {
+            client.updateEvent(credential, booking);
+            return new CalendarSyncResult(booking.getExternalEventId());
+        } catch (IllegalStateException exception) {
+            if (exception.getMessage() == null || !exception.getMessage().contains("status 404")) {
+                throw exception;
+            }
+            // Sauti is authoritative. If an owner removed the mirrored event
+            // directly, the next Sauti-side mutation recreates it instead of
+            // leaving the booking permanently unsynchronized.
+            return new CalendarSyncResult(client.createEvent(credential, booking));
+        }
     }
 
     @Override

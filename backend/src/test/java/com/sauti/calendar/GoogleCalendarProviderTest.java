@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -37,5 +38,22 @@ class GoogleCalendarProviderTest {
         assertThat(tuesday).isEmpty();
         verify(client).busy(any(), any(), any(), any());
         verify(client, never()).createEvent(any(), any());
+    }
+
+    @Test
+    void recreatesAMirroredEventDeletedDirectlyFromGoogleOnTheNextSautiUpdate() {
+        var credential = mock(CalendarCredential.class);
+        var client = mock(GoogleCalendarApiClient.class);
+        var booking = mock(Booking.class);
+        when(booking.getExternalEventId()).thenReturn("sauti-event-1");
+        doThrow(new IllegalStateException("Google Calendar request failed with status 404"))
+                .when(client).updateEvent(credential, booking);
+        when(client.createEvent(credential, booking)).thenReturn("sauti-event-1");
+        var provider = new GoogleCalendarProvider(credential, client);
+
+        var result = provider.updateEvent(booking);
+
+        assertThat(result.externalEventId()).isEqualTo("sauti-event-1");
+        verify(client).createEvent(credential, booking);
     }
 }

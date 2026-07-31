@@ -330,9 +330,10 @@ class SautiCalendarFulfillmentTest {
                 "13:00"
         );
         var fixture = fixture(openHours, List.of(occupied, alternative));
-        when(fixture.bookingService.excludeLocalConflicts(
-                any(), any(), any(), any(), any()
-        )).thenReturn(List.of(alternative));
+        when(fixture.bookingService.localOccupiedSlots(any(), any(), any(), any()))
+                .thenReturn(List.of(occupied));
+        when(fixture.bookingService.excludeLocalConflicts(any(), any()))
+                .thenReturn(List.of(alternative));
 
         var result = fixture.fulfillment.execute(fixture.call, fixture.tool, new LlmToolCall(
                 "availability-local-conflict", "check_availability",
@@ -1770,8 +1771,9 @@ class SautiCalendarFulfillmentTest {
         when(provider.availability(
                 agent, LocalDate.of(2026, 7, 22), 60, java.time.ZoneId.of("UTC")
         )).thenReturn(slots);
-        when(bookingService.excludeLocalConflicts(any(), any(), any(), any(), any()))
-                .thenAnswer(invocation -> invocation.getArgument(4));
+        when(bookingService.localOccupiedSlots(any(), any(), any(), any())).thenReturn(List.of());
+        when(bookingService.excludeLocalConflicts(any(), any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
         return new Fixture(
                 new SautiCalendarFulfillment(factory, bookingService, callSessionStore, intakeNotes),
                 call,

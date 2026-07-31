@@ -33,6 +33,7 @@ public class BookingService {
     private final WebhookDeliveryService webhookDeliveryService;
     private final OutboundCallService outboundCallService;
     private final CalendarProviderFactory calendarProviderFactory;
+    private final BookingConflictScopeService conflictScopeService;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final TransactionTemplate requiresNewTransaction;
@@ -44,6 +45,7 @@ public class BookingService {
             WebhookDeliveryService webhookDeliveryService,
             OutboundCallService outboundCallService,
             CalendarProviderFactory calendarProviderFactory,
+            BookingConflictScopeService conflictScopeService,
             ObjectMapper objectMapper,
             ApplicationEventPublisher eventPublisher,
             PlatformTransactionManager transactionManager
@@ -54,6 +56,7 @@ public class BookingService {
         this.webhookDeliveryService = webhookDeliveryService;
         this.outboundCallService = outboundCallService;
         this.calendarProviderFactory = calendarProviderFactory;
+        this.conflictScopeService = conflictScopeService;
         this.objectMapper = objectMapper;
         this.eventPublisher = eventPublisher;
         this.requiresNewTransaction = new TransactionTemplate(transactionManager);
@@ -173,12 +176,36 @@ public class BookingService {
             ZoneId timezone,
             List<CalendarAvailabilitySlot> providerSlots
     ) {
-        if (providerSlots == null || providerSlots.isEmpty()) return List.of();
+        return excludeLocalConflicts(providerSlots, localOccupiedSlots(tenantId, agentId, date, timezone));
+    }
+
+    @Transactional(readOnly = true)
+    public List<CalendarAvailabilitySlot> localOccupiedSlots(
+            UUID tenantId,
+            UUID agentId,
+            LocalDate date,
+            ZoneId timezone
+    ) {
         var dayStart = date.atStartOfDay(timezone).toOffsetDateTime();
-        var bookings = bookingsInWindow(tenantId, agentId, dayStart.minusDays(1), dayStart.plusDays(1));
+        var scope = conflictScopeService.resolve(tenantId, agentId);
+        return bookingsInWindow(tenantId, scope.agentIds(), dayStart.minusDays(1), dayStart.plusDays(1)).stream()
+                .map(booking -> new CalendarAvailabilitySlot(
+                        booking.getAppointmentAt(),
+                        bookingEnd(booking),
+                        "sauti_booking"
+                ))
+                .toList();
+    }
+
+    public List<CalendarAvailabilitySlot> excludeLocalConflicts(
+            List<CalendarAvailabilitySlot> providerSlots,
+            List<CalendarAvailabilitySlot> occupiedSlots
+    ) {
+        if (providerSlots == null || providerSlots.isEmpty()) return List.of();
+        var occupied = occupiedSlots == null ? List.<CalendarAvailabilitySlot>of() : occupiedSlots;
         return providerSlots.stream()
-                .filter(slot -> bookings.stream().noneMatch(booking -> overlaps(
-                        slot.start(), slot.end(), booking.getAppointmentAt(), bookingEnd(booking)
+                .filter(slot -> occupied.stream().noneMatch(existing -> overlaps(
+                        slot.start(), slot.end(), existing.start(), existing.end()
                 )))
                 .toList();
     }
@@ -268,9 +295,10 @@ public class BookingService {
         }
         var requestedDuration = request.durationMinutes() == null ? 60 : request.durationMinutes();
         var requestedEnd = request.appointmentAt().plusMinutes(requestedDuration);
+        var conflictScope = conflictScopeService.resolveAndLock(tenantId, agent.getId());
         var conflicts = bookingsInWindow(
                 tenantId,
-                agent.getId(),
+                conflictScope.agentIds(),
                 request.appointmentAt().minusDays(1),
                 requestedEnd
         );
@@ -305,13 +333,13 @@ public class BookingService {
 
     private List<Booking> bookingsInWindow(
             UUID tenantId,
-            UUID agentId,
+            java.util.Collection<UUID> agentIds,
             java.time.OffsetDateTime start,
             java.time.OffsetDateTime end
     ) {
         var bookings = bookingRepository
-                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
-                        tenantId, agentId, "cancelled", start, end
+                .findAllByTenantIdAndAgent_IdInAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        tenantId, agentIds, "cancelled", start, end
                 );
         return bookings == null ? List.of() : bookings;
     }
@@ -345,14 +373,8 @@ public class BookingService {
     @Transactional
     public Booking cancel(UUID tenantId, UUID bookingId) {
         var booking = get(tenantId, bookingId);
-        try {
-            var provider = providerFor(booking.getAgent());
-            if (provider == null) throw new IllegalStateException("No connected calendar provider");
-            provider.deleteEvent(booking);
-        } catch (RuntimeException exception) {
-            booking.markCalendarActionFailed(exception.getMessage());
-        }
         booking.cancel();
+        queueCalendarRefresh(booking);
         webhookDeliveryService.bookingCancelled(booking);
         eventPublisher.publishEvent(new BookingNotificationService.BookingStatusChangedEvent(
                 booking.getId(),
@@ -369,14 +391,7 @@ public class BookingService {
         var previousAppointmentAt = booking.getAppointmentAt();
         booking.reschedule(request.appointmentAt(), request.durationMinutes() == null
                 ? booking.getDurationMinutes() : request.durationMinutes());
-        try {
-            var provider = providerFor(booking.getAgent());
-            if (provider == null) throw new IllegalStateException("No connected calendar provider");
-            provider.updateEvent(booking);
-            booking.markSynced(booking.getExternalEventId());
-        } catch (RuntimeException exception) {
-            booking.markCalendarActionFailed(exception.getMessage());
-        }
+        queueCalendarRefresh(booking);
         eventPublisher.publishEvent(new BookingNotificationService.BookingStatusChangedEvent(
                 booking.getId(),
                 BookingNotificationService.BookingEmailStatus.RESCHEDULED,
@@ -394,15 +409,16 @@ public class BookingService {
                 request.appointmentAt(), request.durationMinutes() == null ? booking.getDurationMinutes() : request.durationMinutes(),
                 json(request.capturedData())
         );
-        try {
-            var provider = providerFor(booking.getAgent());
-            if (provider == null) throw new IllegalStateException("No connected calendar provider");
-            provider.updateEvent(booking);
-            booking.markSynced(booking.getExternalEventId());
-        } catch (RuntimeException exception) {
-            booking.markCalendarActionFailed(exception.getMessage());
-        }
+        queueCalendarRefresh(booking);
         return booking;
+    }
+
+    private void queueCalendarRefresh(Booking booking) {
+        if (hasExternalCalendar(booking.getAgent()) || booking.getExternalEventId() != null) {
+            booking.queueCalendarRefresh();
+        } else {
+            booking.markLocalOnly();
+        }
     }
 
     @Transactional

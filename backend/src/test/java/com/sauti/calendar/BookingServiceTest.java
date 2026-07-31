@@ -109,6 +109,134 @@ class BookingServiceTest {
     }
 
     @Test
+    void rescheduleCommitsToSautiAndQueuesCalendarUpdateWithoutCallingProvider() {
+        var fixture = fixture("Google Calendar");
+        var booking = existingBooking(fixture);
+        booking.markSynced("google-event-1");
+        when(fixture.bookingRepository.findByIdAndTenantId(booking.getId(), fixture.tenant.getId()))
+                .thenReturn(Optional.of(booking));
+        var newAppointment = booking.getAppointmentAt().plusDays(1);
+
+        fixture.service.reschedule(
+                fixture.tenant.getId(),
+                booking.getId(),
+                new BookingDtos.RescheduleBookingRequest(newAppointment, 45)
+        );
+
+        assertThat(booking.getAppointmentAt()).isEqualTo(newAppointment);
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("pending");
+        assertThat(booking.getExternalEventId()).isEqualTo("google-event-1");
+        verify(fixture.provider, never()).updateEvent(any());
+    }
+
+    @Test
+    void backgroundWorkerUpdatesTheExistingCalendarEvent() {
+        var fixture = fixture("Google Calendar");
+        var booking = existingBooking(fixture);
+        booking.markSynced("google-event-1");
+        booking.reschedule(booking.getAppointmentAt().plusDays(1), 45);
+        booking.queueCalendarRefresh();
+        when(fixture.bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+        when(fixture.calendarProviderFactory.connectedForAgent(fixture.requestAgent.getId()))
+                .thenReturn(Optional.of(fixture.provider));
+        when(fixture.provider.updateEvent(booking)).thenReturn(new CalendarSyncResult("google-event-1"));
+        var processor = new BookingCalendarSyncService.BookingCalendarSyncProcessor(
+                fixture.bookingRepository,
+                fixture.calendarProviderFactory
+        );
+
+        processor.synchronize(booking.getId());
+
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("synced");
+        assertThat(booking.getExternalEventId()).isEqualTo("google-event-1");
+        verify(fixture.provider).updateEvent(booking);
+        verify(fixture.provider, never()).createEvent(any());
+    }
+
+    @Test
+    void cancellationCommitsToSautiAndQueuesCalendarDeleteWithoutCallingProvider() {
+        var fixture = fixture("Google Calendar");
+        var booking = existingBooking(fixture);
+        booking.markSynced("google-event-1");
+        when(fixture.bookingRepository.findByIdAndTenantId(booking.getId(), fixture.tenant.getId()))
+                .thenReturn(Optional.of(booking));
+
+        fixture.service.cancel(fixture.tenant.getId(), booking.getId());
+
+        assertThat(booking.getStatus()).isEqualTo("cancelled");
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("pending");
+        assertThat(booking.getExternalEventId()).isEqualTo("google-event-1");
+        verify(fixture.provider, never()).deleteEvent(any());
+    }
+
+    @Test
+    void backgroundWorkerDeletesTheCalendarEventAndKeepsSautiCancelled() {
+        var fixture = fixture("Google Calendar");
+        var booking = existingBooking(fixture);
+        booking.markSynced("google-event-1");
+        booking.cancel();
+        booking.queueCalendarRefresh();
+        when(fixture.bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+        when(fixture.calendarProviderFactory.connectedForAgent(fixture.requestAgent.getId()))
+                .thenReturn(Optional.of(fixture.provider));
+        var processor = new BookingCalendarSyncService.BookingCalendarSyncProcessor(
+                fixture.bookingRepository,
+                fixture.calendarProviderFactory
+        );
+
+        processor.synchronize(booking.getId());
+
+        assertThat(booking.getStatus()).isEqualTo("cancelled");
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("synced");
+        assertThat(booking.getExternalEventId()).isNull();
+        verify(fixture.provider).deleteEvent(booking);
+    }
+
+    @Test
+    void cancellationBeforeCalendarCreationCompletesWithoutCreatingOrDeletingAnEvent() {
+        var fixture = fixture("Google Calendar");
+        var booking = existingBooking(fixture);
+        booking.queueCalendarSync();
+        booking.cancel();
+        booking.queueCalendarRefresh();
+        when(fixture.bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+        var processor = new BookingCalendarSyncService.BookingCalendarSyncProcessor(
+                fixture.bookingRepository,
+                fixture.calendarProviderFactory
+        );
+
+        processor.synchronize(booking.getId());
+
+        assertThat(booking.getStatus()).isEqualTo("cancelled");
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("synced");
+        verify(fixture.provider, never()).createEvent(any());
+        verify(fixture.provider, never()).deleteEvent(any());
+    }
+
+    @Test
+    void failedCalendarDeleteNeverRestoresACancelledSautiBooking() {
+        var fixture = fixture("Google Calendar");
+        var booking = existingBooking(fixture);
+        booking.markSynced("google-event-1");
+        booking.cancel();
+        booking.queueCalendarRefresh();
+        when(fixture.bookingRepository.findById(booking.getId())).thenReturn(Optional.of(booking));
+        when(fixture.calendarProviderFactory.connectedForAgent(fixture.requestAgent.getId()))
+                .thenReturn(Optional.of(fixture.provider));
+        doThrow(new IllegalStateException("Google unavailable")).when(fixture.provider).deleteEvent(booking);
+        var processor = new BookingCalendarSyncService.BookingCalendarSyncProcessor(
+                fixture.bookingRepository,
+                fixture.calendarProviderFactory
+        );
+
+        processor.synchronize(booking.getId());
+
+        assertThat(booking.getStatus()).isEqualTo("cancelled");
+        assertThat(booking.getCalendarSyncStatus()).isEqualTo("pending");
+        assertThat(booking.getCalendarSyncAttempts()).isEqualTo(1);
+    }
+
+    @Test
     void savesLocallyWithoutCallingProviderWhenNoExternalCalendarIsConfigured() {
         var fixture = fixture("Set up later");
 
@@ -183,7 +311,7 @@ class BookingServiceTest {
                 "{}"
         );
         when(fixture.bookingRepository
-                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                .findAllByTenantIdAndAgent_IdInAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
                         any(), any(), any(), any(), any()
                 )).thenReturn(List.of(existing));
 
@@ -205,7 +333,7 @@ class BookingServiceTest {
                 null, List.of(), true, "UTC", ""
         );
         when(fixture.bookingRepository
-                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                .findAllByTenantIdAndAgent_IdInAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
                         any(), any(), any(), any(), any()
                 )).thenReturn(List.of());
         when(fixture.serviceAgentRepository().findByIdAndTenantId(
@@ -226,12 +354,56 @@ class BookingServiceTest {
         var booking = fixture.service.create(fixture.tenant.getId(), request);
 
         assertThat(booking.getAgent().getId()).isEqualTo(secondAgent.getId());
-        var queriedAgent = ArgumentCaptor.forClass(UUID.class);
+        @SuppressWarnings("unchecked")
+        var queriedAgents = ArgumentCaptor.forClass((Class<java.util.Collection<UUID>>) (Class<?>) java.util.Collection.class);
         verify(fixture.bookingRepository)
-                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
-                        any(), queriedAgent.capture(), any(), any(), any()
+                .findAllByTenantIdAndAgent_IdInAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        any(), queriedAgents.capture(), any(), any(), any()
                 );
-        assertThat(queriedAgent.getValue()).isEqualTo(secondAgent.getId());
+        assertThat(queriedAgents.getValue()).containsExactly(secondAgent.getId());
+    }
+
+    @Test
+    void sameTimeIsBlockedAcrossAgentsSharingOneCalendarScope() {
+        var fixture = fixture("Google Calendar");
+        var secondAgent = new Agent(fixture.tenant, "Gerard", "Bonjour", "Prompt");
+        secondAgent.update(
+                "Gerard", "Bonjour", "Prompt", "fr", List.of("fr"),
+                null, List.of(), true, "UTC", ""
+        );
+        var existing = new Booking(
+                fixture.tenant,
+                fixture.requestAgent,
+                null,
+                "Existing customer",
+                "0100000000",
+                null,
+                "Haircut",
+                fixture.request.appointmentAt(),
+                fixture.request.durationMinutes(),
+                "{}"
+        );
+        when(fixture.serviceAgentRepository().findByIdAndTenantId(
+                secondAgent.getId(), fixture.tenant.getId()
+        )).thenReturn(Optional.of(secondAgent));
+        when(fixture.conflictScopeService.resolveAndLock(fixture.tenant.getId(), secondAgent.getId()))
+                .thenReturn(new BookingConflictScopeService.ConflictScope(
+                        UUID.randomUUID(),
+                        List.of(fixture.requestAgent.getId(), secondAgent.getId())
+                ));
+        when(fixture.bookingRepository
+                .findAllByTenantIdAndAgent_IdInAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                        any(), any(), any(), any(), any()
+                )).thenReturn(List.of(existing));
+        var request = new CreateBookingRequest(
+                secondAgent.getId(), null, "Second customer", "0115752441", null, "Class",
+                fixture.request.appointmentAt(), 60, Map.of()
+        );
+
+        assertThatThrownBy(() -> fixture.service.create(fixture.tenant.getId(), request))
+                .isInstanceOf(BookingSlotUnavailableException.class);
+
+        verify(fixture.bookingRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -250,7 +422,7 @@ class BookingServiceTest {
                 "{}"
         );
         when(fixture.bookingRepository
-                .findAllByTenantIdAndAgent_IdAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
+                .findAllByTenantIdAndAgent_IdInAndStatusNotAndAppointmentAtGreaterThanEqualAndAppointmentAtLessThan(
                         any(), any(), any(), any(), any()
                 )).thenReturn(List.of(existing));
         var occupied = new CalendarAvailabilitySlot(
@@ -424,6 +596,15 @@ class BookingServiceTest {
         when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
         var provider = mock(CalendarProvider.class);
         var calendarProviderFactory = mock(CalendarProviderFactory.class);
+        var conflictScopeService = mock(BookingConflictScopeService.class);
+        when(conflictScopeService.resolve(any(), any())).thenAnswer(invocation -> {
+            UUID requestedAgentId = invocation.getArgument(1, UUID.class);
+            return new BookingConflictScopeService.ConflictScope(null, List.of(requestedAgentId));
+        });
+        when(conflictScopeService.resolveAndLock(any(), any())).thenAnswer(invocation -> {
+            UUID requestedAgentId = invocation.getArgument(1, UUID.class);
+            return new BookingConflictScopeService.ConflictScope(null, List.of(requestedAgentId));
+        });
         var eventPublisher = mock(ApplicationEventPublisher.class);
         var callRepository = mock(CallRepository.class);
         var outboundCallService = mock(OutboundCallService.class);
@@ -434,6 +615,7 @@ class BookingServiceTest {
                 mock(WebhookDeliveryService.class),
                 outboundCallService,
                 calendarProviderFactory,
+                conflictScopeService,
                 new ObjectMapper(),
                 eventPublisher,
                 transactionManager
@@ -452,6 +634,7 @@ class BookingServiceTest {
                 transactionManager,
                 provider,
                 calendarProviderFactory,
+                conflictScopeService,
                 eventPublisher,
                 service,
                 request
@@ -468,6 +651,7 @@ class BookingServiceTest {
             PlatformTransactionManager transactionManager,
             CalendarProvider provider,
             CalendarProviderFactory calendarProviderFactory,
+            BookingConflictScopeService conflictScopeService,
             ApplicationEventPublisher eventPublisher,
             BookingService service,
             CreateBookingRequest request

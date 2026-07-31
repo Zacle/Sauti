@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -154,9 +155,13 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         if (businessOpen && !Boolean.FALSE.equals(withinOperatingHours)) {
             try {
                 var provider = calendarProviderFactory.forTool(toolConfig, call.getTenant().getId());
+                var localOccupied = CompletableFuture.supplyAsync(() -> bookingService.localOccupiedSlots(
+                        call.getTenant().getId(), call.getAgent().getId(), date, timezone
+                ));
                 availableSlots = provider.availability(call.getAgent(), date, duration, timezone);
                 availableSlots = bookingService.excludeLocalConflicts(
-                        call.getTenant().getId(), call.getAgent().getId(), date, timezone, availableSlots
+                        availableSlots,
+                        localOccupied.join()
                 );
             } catch (RuntimeException exception) {
                 calendarLive = false;
@@ -707,9 +712,12 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 "bookingNumber", booking.getBookingReference() == null
                         ? bookingNumber : booking.getBookingReference(),
                 "appointmentAt", inBusinessTimezone(call, booking.getAppointmentAt()).toString(),
+                "calendarSyncStatus", calendarSyncStatus(booking),
                 "updated", true,
-                "instruction", "Tell the caller in their current language that the booking was rescheduled, "
-                        + "using only bookingNumber and appointmentAt from this result. Do not invent another reference or time."
+                "instruction", "Tell the caller in their current language that the Sauti booking was rescheduled, "
+                        + "using only bookingNumber and appointmentAt from this result. External calendar synchronization "
+                        + "continues afterward, so do not ask the caller to wait for it or make it a condition of success. "
+                        + "Do not invent another reference or time."
         );
     }
 
@@ -722,8 +730,10 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 "bookingId", booking.getId(),
                 "bookingNumber", booking.getBookingReference() == null
                         ? bookingNumber : booking.getBookingReference(),
+                "calendarSyncStatus", calendarSyncStatus(booking),
                 "cancelled", true,
-                "instruction", "Tell the caller in their current language that bookingNumber was cancelled. "
+                "instruction", "Tell the caller in their current language that bookingNumber was cancelled in Sauti. "
+                        + "External calendar synchronization continues afterward, so do not ask the caller to wait for it. "
                         + "Do not claim that any other booking was changed."
         );
     }
@@ -794,11 +804,18 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 "serviceType", updated.getServiceType(),
                 "appointmentAt", inBusinessTimezone(call, updated.getAppointmentAt()).toString(),
                 "durationMinutes", updated.getDurationMinutes(),
+                "calendarSyncStatus", calendarSyncStatus(updated),
                 "updated", true,
-                "instruction", "Tell the caller in their current language that the requested booking details "
-                        + "were updated. Use only the factual fields in this result. Do not disclose contact details. "
+                "instruction", "Tell the caller in their current language that the requested Sauti booking details "
+                        + "were updated. External calendar synchronization continues afterward, so do not ask the caller "
+                        + "to wait for it. Use only the factual fields in this result. Do not disclose contact details. "
                         + "For date or time changes, use the separate reschedule workflow."
         );
+    }
+
+    private String calendarSyncStatus(com.sauti.calendar.Booking booking) {
+        var status = booking.getCalendarSyncStatus();
+        return status == null || status.isBlank() ? "pending" : status;
     }
 
     private com.sauti.calendar.Booking verifiedBooking(

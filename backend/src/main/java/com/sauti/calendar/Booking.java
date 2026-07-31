@@ -118,16 +118,31 @@ public class Booking extends Auditable {
         this.calendarSyncStatus = "not_configured";
         this.calendarSyncError = null;
         this.calendarSyncNextAttemptAt = null;
-        this.status = "confirmed";
     }
 
     public void queueCalendarSync() {
         this.externalEventId = null;
+        queueCalendarRefresh();
+        this.status = "confirmed";
+    }
+
+    /**
+     * Queues synchronization without discarding the existing external event
+     * link. The worker uses the local booking state to determine whether the
+     * external event must be created, updated, or deleted.
+     */
+    public void queueCalendarRefresh() {
         this.calendarSyncStatus = "pending";
         this.calendarSyncError = null;
         this.calendarSyncAttempts = 0;
         this.calendarSyncNextAttemptAt = OffsetDateTime.now();
-        this.status = "confirmed";
+    }
+
+    public void markCalendarRemoved() {
+        this.externalEventId = null;
+        this.calendarSyncStatus = "synced";
+        this.calendarSyncError = null;
+        this.calendarSyncNextAttemptAt = null;
     }
 
     public void markSyncFailed(String error) {
@@ -141,7 +156,7 @@ public class Booking extends Auditable {
             this.calendarSyncNextAttemptAt = OffsetDateTime.now()
                     .plusSeconds((long) Math.pow(2, this.calendarSyncAttempts) * 30);
         }
-        this.status = "confirmed";
+        if (!"cancelled".equals(this.status)) this.status = "confirmed";
     }
 
     public void markCalendarActionFailed(String error) {

@@ -30,4 +30,26 @@ class LlmToolDefinitionTest {
 
         assertThat(LlmToolDefinition.from(tool).callerWaitExpected()).isFalse();
     }
+
+    @Test
+    void keepsDatabaseFirstBookingMutationsOnTheFastPath() {
+        var tool = mock(AgentTool.class);
+        when(tool.getToolName()).thenReturn("reschedule_booking");
+        when(tool.getToolDescription()).thenReturn("Reschedule a booking");
+        when(tool.getParametersSchema()).thenReturn(Map.of("type", "object"));
+        when(tool.getFulfillmentType()).thenReturn("sauti_calendar");
+
+        assertThat(LlmToolDefinition.from(tool).callerWaitExpected()).isFalse();
+    }
+
+    @Test
+    void keepsLiveAvailabilityAcknowledgedAsPotentiallySlow() {
+        var tool = mock(AgentTool.class);
+        when(tool.getToolName()).thenReturn("check_availability");
+        when(tool.getToolDescription()).thenReturn("Check availability");
+        when(tool.getParametersSchema()).thenReturn(Map.of("type", "object"));
+        when(tool.getFulfillmentType()).thenReturn("sauti_calendar");
+
+        assertThat(LlmToolDefinition.from(tool).callerWaitExpected()).isTrue();
+    }
 }

@@ -34,6 +34,113 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Make every caller-facing Calendar mutation database-first
+
+- Kept Sauti as the single source of truth for bookings. Create, reschedule,
+  detail update, and cancellation now complete against the Sauti database
+  without waiting for an external Calendar write.
+- Extended the existing durable booking-row synchronization queue so the
+  worker derives the required external action from committed Sauti state:
+  - no external event ID: create the Calendar event;
+  - an existing external event ID: update that event;
+  - a cancelled booking with an external event ID: delete that event;
+  - a cancelled booking that was never externally created: finish without an
+    unnecessary provider request.
+- Preserved the external event ID while an update or cancellation is pending,
+  allowing retries to target the same event. Successful deletion clears the
+  link while retaining the cancelled Sauti record.
+- Calendar failures retain the authoritative Sauti result, retry with the
+  existing backoff, and never restore a cancelled booking to confirmed.
+- Made Google deletion idempotent when an owner already deleted the event
+  directly: HTTP 404 is accepted as an already-completed deletion.
+- If an owner directly deletes a mirrored Google event and later changes the
+  authoritative booking in Sauti, the synchronizer recreates the event from
+  current Sauti data rather than leaving it permanently unsynchronized.
+- Google events now identify Sauti as their management source and direct owners
+  to update or cancel the booking in Sauti. Direct Google edits remain
+  intentionally one-way and are not imported into the database.
+- Refined caller-wait behavior. Live availability and genuinely remote
+  integration/communication tools retain one brief progress acknowledgement;
+  local booking lookup and database-first mutations no longer add unnecessary
+  wait speech. Mutation results explicitly say Calendar synchronization happens
+  afterward and must not keep the caller waiting.
+- Bumped the Telnyx managed-assistant configuration version from 42 to 43 so
+  existing assistants reconcile the refined tool latency descriptions.
+- Updated the OAuth verification recording guide to wait for the visible
+  Calendar synchronization result after each Sauti-side action.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/Booking.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingService.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingCalendarSyncService.java`
+  - `backend/src/main/java/com/sauti/calendar/GoogleCalendarApiClient.java`
+  - `backend/src/main/java/com/sauti/calendar/GoogleCalendarProvider.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/main/java/com/sauti/llm/LlmToolDefinition.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingServiceTest.java`
+  - `backend/src/test/java/com/sauti/calendar/GoogleCalendarProviderTest.java`
+  - `backend/src/test/java/com/sauti/llm/LlmToolDefinitionTest.java`
+  - `docs/google-calendar-oauth-verification.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused booking synchronization, fulfillment, tool-latency, and managed
+    Telnyx provisioning tests - passed;
+  - `\.\gradlew.bat :backend:test --console=plain` - passed;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD workflow.
+- Intentional boundary: Sauti does not import direct event edits from Google
+  Calendar. Availability still reads current Google free/busy state, but
+  booking identity, details, status, and lifecycle remain authoritative in
+  Sauti.
+
+#### Follow-up: protect shared Google Calendar capacity across agents
+
+- Separated booking ownership from availability scope:
+  - lookup, update, reschedule, and cancellation remain restricted to the agent
+    that created the booking;
+  - active agents pointing to the same tenant-owned Google Calendar credential
+    now share one capacity/conflict scope.
+- Availability now excludes pending and confirmed Sauti bookings belonging to
+  every agent in that shared Calendar scope. A booking therefore blocks the
+  shared resource immediately, before its asynchronous Google event exists.
+- Final booking creation resolves the same scope again and takes a
+  tenant-scoped pessimistic lock on the shared Calendar credential before the
+  overlap check and insert. Simultaneous calls cannot both confirm the same
+  capacity-one slot. Local-only agents lock their own agent row, retaining
+  independent schedules across different agents while also closing the
+  same-agent race.
+- Kept separate Google credentials as separate resources. The current Google
+  integration still stores one selected Calendar ID on each workspace
+  credential; per-agent sub-calendar assignment and capacity greater than one
+  remain future product features.
+- Reduced availability latency:
+  - Google free/busy and Sauti conflict reads run concurrently;
+  - Google connections time out after two seconds and individual requests after
+    three seconds rather than occupying the full managed-tool timeout;
+  - identical free/busy reads share a three-second in-memory single-flight
+    cache;
+  - Calendar writes invalidate cached busy data, while authoritative pending
+    Sauti bookings always participate independently of the cache.
+- Files additionally touched:
+  - `backend/src/main/java/com/sauti/agent/AgentRepository.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingConflictScopeService.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingRepository.java`
+  - `backend/src/main/java/com/sauti/calendar/BookingService.java`
+  - `backend/src/main/java/com/sauti/calendar/GoogleCalendarApiClient.java`
+  - `backend/src/main/java/com/sauti/tool/AgentToolRepository.java`
+  - `backend/src/main/java/com/sauti/tool/CalendarCredentialRepository.java`
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingConflictScopeServiceTest.java`
+  - `backend/src/test/java/com/sauti/calendar/BookingServiceTest.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+- Additional verification:
+  - focused shared-scope, final-conflict, Google provider, and voice
+    availability tests - passed;
+  - `\.\gradlew.bat :backend:test --console=plain` - passed;
+  - `git diff --check` - passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+
 ### 2026-07-31: Prepare Google Calendar for OAuth verification
 
 - Audited the production Google Calendar OAuth flow against Google's current

@@ -11,7 +11,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -20,12 +25,20 @@ public class GoogleCalendarApiClient {
     private static final String TOKEN_URL = "https://oauth2.googleapis.com/token";
     private static final String CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(3);
+    private static final Duration BUSY_CACHE_TTL = Duration.ofSeconds(3);
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(CONNECT_TIMEOUT)
+            .build();
     private final ObjectMapper objectMapper;
     private final CredentialEncryption encryption;
     private final CalendarCredentialRepository credentialRepository;
     private final String clientId;
     private final String clientSecret;
+    private final ConcurrentHashMap<BusyCacheKey, BusyCacheEntry> busyCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<BusyCacheKey, CompletableFuture<List<BusyPeriod>>> busyRequests =
+            new ConcurrentHashMap<>();
 
     public GoogleCalendarApiClient(
             ObjectMapper objectMapper,
@@ -43,6 +56,38 @@ public class GoogleCalendarApiClient {
 
     public List<BusyPeriod> busy(CalendarCredential credential, OffsetDateTime from, OffsetDateTime to, String timezone) {
         var calendarId = calendarId(credential);
+        var key = new BusyCacheKey(credential.getId(), calendarId, from, to, timezone);
+        var now = System.nanoTime();
+        busyCache.entrySet().removeIf(entry -> entry.getValue().expiresAtNanos() <= now);
+        var cached = busyCache.get(key);
+        if (cached != null) return cached.periods();
+
+        var request = new CompletableFuture<List<BusyPeriod>>();
+        var running = busyRequests.putIfAbsent(key, request);
+        if (running != null) return awaitBusy(running);
+        try {
+            var periods = fetchBusy(credential, calendarId, from, to, timezone);
+            busyCache.put(key, new BusyCacheEntry(
+                    periods,
+                    System.nanoTime() + BUSY_CACHE_TTL.toNanos()
+            ));
+            request.complete(periods);
+            return periods;
+        } catch (RuntimeException exception) {
+            request.completeExceptionally(exception);
+            throw exception;
+        } finally {
+            busyRequests.remove(key, request);
+        }
+    }
+
+    private List<BusyPeriod> fetchBusy(
+            CalendarCredential credential,
+            String calendarId,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            String timezone
+    ) {
         var body = objectMapper.createObjectNode()
                 .put("timeMin", from.toString())
                 .put("timeMax", to.toString())
@@ -65,6 +110,7 @@ public class GoogleCalendarApiClient {
     }
 
     public String createEvent(CalendarCredential credential, Booking booking) {
+        invalidateBusyCache(credential);
         var start = booking.getAppointmentAt();
         var end = start.plusMinutes(booking.getDurationMinutes());
         var eventId = "sauti" + booking.getId().toString()
@@ -73,7 +119,7 @@ public class GoogleCalendarApiClient {
         var body = objectMapper.createObjectNode()
                 .put("id", eventId)
                 .put("summary", booking.getServiceType() + " — " + booking.getCallerName())
-                .put("description", "Booked by Sauti. Caller: " + booking.getCallerPhone());
+                .put("description", eventDescription(booking));
         body.putObject("start").put("dateTime", start.toString()).put("timeZone", booking.getAgent().getTimezone());
         body.putObject("end").put("dateTime", end.toString()).put("timeZone", booking.getAgent().getTimezone());
         var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential))
@@ -99,6 +145,7 @@ public class GoogleCalendarApiClient {
     }
 
     public void updateEvent(CalendarCredential credential, Booking booking) {
+        invalidateBusyCache(credential);
         if (booking.getExternalEventId() == null || booking.getExternalEventId().isBlank()) {
             throw new IllegalArgumentException("Booking is not linked to a Google Calendar event");
         }
@@ -106,7 +153,7 @@ public class GoogleCalendarApiClient {
         var end = start.plusMinutes(booking.getDurationMinutes());
         var body = objectMapper.createObjectNode()
                 .put("summary", booking.getServiceType() + " — " + booking.getCallerName())
-                .put("description", "Booked by Sauti. Caller: " + booking.getCallerPhone());
+                .put("description", eventDescription(booking));
         body.putObject("start").put("dateTime", start.toString()).put("timeZone", booking.getAgent().getTimezone());
         body.putObject("end").put("dateTime", end.toString()).put("timeZone", booking.getAgent().getTimezone());
         var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential))
@@ -118,8 +165,9 @@ public class GoogleCalendarApiClient {
 
     public void deleteEvent(CalendarCredential credential, String eventId) {
         if (eventId == null || eventId.isBlank()) return;
+        invalidateBusyCache(credential);
         var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential)) + "/events/" + encode(eventId);
-        send(credential, HttpRequest.newBuilder(URI.create(endpoint)).DELETE());
+        send(credential, HttpRequest.newBuilder(URI.create(endpoint)).DELETE(), java.util.Set.of(404));
     }
 
     public void test(CalendarCredential credential, String timezone) {
@@ -128,14 +176,24 @@ public class GoogleCalendarApiClient {
     }
 
     private String send(CalendarCredential credential, HttpRequest.Builder builder) {
+        return send(credential, builder, java.util.Set.of());
+    }
+
+    private String send(
+            CalendarCredential credential,
+            HttpRequest.Builder builder,
+            java.util.Set<Integer> acceptedStatuses
+    ) {
         try {
-            var request = builder.setHeader("Authorization", "Bearer " + accessToken(credential)).build();
+            var request = builder.timeout(REQUEST_TIMEOUT)
+                    .setHeader("Authorization", "Bearer " + accessToken(credential)).build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 401) {
-                request = builder.setHeader("Authorization", "Bearer " + refreshAccessToken(credential)).build();
+                request = builder.timeout(REQUEST_TIMEOUT)
+                        .setHeader("Authorization", "Bearer " + refreshAccessToken(credential)).build();
                 response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             }
-            if (response.statusCode() / 100 != 2) {
+            if (response.statusCode() / 100 != 2 && !acceptedStatuses.contains(response.statusCode())) {
                 throw new IllegalStateException("Google Calendar request failed with status " + response.statusCode());
             }
             return response.body();
@@ -145,6 +203,26 @@ public class GoogleCalendarApiClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Google Calendar request was interrupted", exception);
         }
+    }
+
+    private String eventDescription(Booking booking) {
+        return "Managed by Sauti. Update or cancel this booking in Sauti to keep systems synchronized."
+                + "\nBooking: " + booking.getBookingReference()
+                + "\nCaller: " + booking.getCallerPhone();
+    }
+
+    private List<BusyPeriod> awaitBusy(CompletableFuture<List<BusyPeriod>> request) {
+        try {
+            return request.join();
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof RuntimeException runtimeException) throw runtimeException;
+            throw exception;
+        }
+    }
+
+    private void invalidateBusyCache(CalendarCredential credential) {
+        var credentialId = credential.getId();
+        busyCache.keySet().removeIf(key -> key.credentialId().equals(credentialId));
     }
 
     private synchronized String accessToken(CalendarCredential credential) {
@@ -164,6 +242,7 @@ public class GoogleCalendarApiClient {
         try {
             var response = httpClient.send(
                     HttpRequest.newBuilder(URI.create(TOKEN_URL))
+                            .timeout(REQUEST_TIMEOUT)
                             .header("Content-Type", "application/x-www-form-urlencoded")
                             .POST(HttpRequest.BodyPublishers.ofString(body))
                             .build(),
@@ -200,5 +279,17 @@ public class GoogleCalendarApiClient {
     }
 
     public record BusyPeriod(OffsetDateTime start, OffsetDateTime end) {
+    }
+
+    private record BusyCacheKey(
+            UUID credentialId,
+            String calendarId,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            String timezone
+    ) {
+    }
+
+    private record BusyCacheEntry(List<BusyPeriod> periods, long expiresAtNanos) {
     }
 }
