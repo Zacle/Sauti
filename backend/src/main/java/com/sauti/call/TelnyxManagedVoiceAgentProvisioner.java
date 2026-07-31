@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "43";
+        return "44";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -169,6 +169,10 @@ public class TelnyxManagedVoiceAgentProvisioner {
                 - Tool data is language-neutral. When responseMode is present, render its structured data naturally
                   in the caller's current language and locale without changing stored names, references, or values.
                   Never expect or request a finite server-side translation.
+                - If check_availability returns status=calendar_temporarily_unavailable or
+                  responseMode=render_calendar_unavailable, availability is unknown rather than unavailable. Keep the
+                  requested date and time unchanged, do not offer any other date or time, and ask once whether the
+                  caller wants the exact same lookup retried. Opening hours never prove that an appointment is free.
                 - Treat update_conversation_state as the required semantic boundary whenever a caller turn supplies
                   or corrects customer facts, changes booking intent, authorizes a business action, or decides a signed
                   review. Persist every newly completed or corrected fact there; never acknowledge a value only in

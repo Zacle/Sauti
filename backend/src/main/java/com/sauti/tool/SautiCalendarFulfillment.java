@@ -185,12 +185,16 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
         )).toList());
         result.put("requestedTime", requestedTime.map(LocalTime::toString).orElse(requestedTimeText));
         if (withinOperatingHours != null) result.put("requestedTimeWithinOperatingHours", withinOperatingHours);
-        if (requestedTime.isPresent()) result.put("requestedTimeAvailable", matchingSlot.isPresent());
+        if (requestedTime.isPresent() && calendarLive) {
+            result.put("requestedTimeAvailable", matchingSlot.isPresent());
+        }
         matchingSlot.ifPresent(slot -> result.put("matchingSlot", slotMap(slot)));
         result.put("calendarLive", calendarLive);
         result.put("totalAvailableSlots", slots.size());
         result.put("slots", relevantSlots(slots, requestedTime));
-        result.put("nextOpenBusinessWindows", nextOpenBusinessWindows(effectiveHours, date, timezone));
+        if (calendarLive || !businessOpen || Boolean.FALSE.equals(withinOperatingHours)) {
+            result.put("nextOpenBusinessWindows", nextOpenBusinessWindows(effectiveHours, date, timezone));
+        }
         var status = !businessOpen
                 ? "closed_by_business_hours"
                 : Boolean.FALSE.equals(withinOperatingHours)
@@ -215,6 +219,14 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             result.put("instruction", "The requested time is available and the caller has an active booking intake. "
                     + "Call book_slot immediately without speaking, asking permission, or asking the caller to wait. "
                     + "The booking tool will validate missing fields and produce the exact review.");
+        } else if ("calendar_temporarily_unavailable".equals(status)) {
+            result.put("availabilityConfirmed", false);
+            result.put("retryRecommended", true);
+            result.put("responseMode", "render_calendar_unavailable");
+            result.put("instruction", "Say only that live availability for the caller's requested date or time "
+                    + "cannot be confirmed right now, then ask whether they want you to try the same request again. "
+                    + "Do not say the requested time is unavailable. Do not name, infer, or offer another date or "
+                    + "time because no alternative availability was verified.");
         } else {
             result.put("responseMode", "render_availability_result");
             result.put("instruction", "Explain the authoritative availability result concisely in the caller's "

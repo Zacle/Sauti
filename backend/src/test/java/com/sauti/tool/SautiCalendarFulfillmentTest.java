@@ -1151,8 +1151,17 @@ class SautiCalendarFulfillmentTest {
                 .containsEntry("status", "calendar_temporarily_unavailable")
                 .containsEntry("calendarLive", false)
                 .containsEntry("requestedTime", "12:00")
-                .containsEntry("responseMode", "render_availability_result")
-                .doesNotContainKey("spokenResponse");
+                .containsEntry("availabilityConfirmed", false)
+                .containsEntry("retryRecommended", true)
+                .containsEntry("responseMode", "render_calendar_unavailable")
+                .doesNotContainKeys(
+                        "spokenResponse",
+                        "requestedTimeAvailable",
+                        "nextOpenBusinessWindows"
+                );
+        assertThat(result.result().get("instruction").toString())
+                .contains("same request again")
+                .contains("Do not name, infer, or offer another date or time");
     }
 
     @Test

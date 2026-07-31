@@ -110,6 +110,8 @@ class ManagedVoiceAgentProvisionersTest {
                         "reproduce each array element",
                         "exactly once and in its original order",
                         "Never regenerate the number from conversational memory",
+                        "responseMode=render_calendar_unavailable",
+                        "Opening hours never prove that an appointment is free",
                         "A caller correction is",
                         "correct_review"
                 )

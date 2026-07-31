@@ -34,6 +34,36 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Prevent invented alternatives when live Calendar availability fails
+
+- Diagnosed browser-call diagnostic `sauti-telnyx-diagnostics-1785520985271.json`.
+  Caller audio and session startup were healthy; the availability turn reached
+  Sauti but the live Calendar lookup returned the controlled outage result.
+  The exported diagnostic does not contain the backend exception, so production
+  logs are still required to distinguish an HTTP timeout, OAuth refresh failure,
+  or Google API response.
+- Corrected the outage result so unknown availability is never represented as
+  an unavailable requested time.
+- Removed `nextOpenBusinessWindows` from Calendar-outage responses. Those values
+  describe published opening hours, not verified free slots; the model had
+  incorrectly offered them as alternative appointment dates.
+- Added a dedicated `render_calendar_unavailable` response contract: preserve
+  the exact requested date/time, state that live availability cannot currently
+  be confirmed, and ask once whether to retry that same lookup. It forbids
+  naming or inferring an alternative date/time.
+- Bumped the Telnyx managed-assistant configuration version from 43 to 44 so
+  existing managed assistants receive the stronger outage rule.
+- Files touched:
+  - `backend/src/main/java/com/sauti/tool/SautiCalendarFulfillment.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/tool/SautiCalendarFulfillmentTest.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.tool.SautiCalendarFulfillmentTest" --tests "com.sauti.call.ManagedVoiceAgentProvisionersTest"` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD flow.
+
 ### 2026-07-31: Make every caller-facing Calendar mutation database-first
 
 - Kept Sauti as the single source of truth for bookings. Create, reschedule,
