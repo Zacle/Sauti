@@ -11,6 +11,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -28,6 +29,8 @@ public class GoogleCalendarApiClient {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(3);
     private static final Duration BUSY_CACHE_TTL = Duration.ofSeconds(3);
+    private static final DateTimeFormatter GOOGLE_RFC3339 =
+            DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ssXXX");
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
             .build();
@@ -89,8 +92,8 @@ public class GoogleCalendarApiClient {
             String timezone
     ) {
         var body = objectMapper.createObjectNode()
-                .put("timeMin", from.toString())
-                .put("timeMax", to.toString())
+                .put("timeMin", googleDateTime(from))
+                .put("timeMax", googleDateTime(to))
                 .put("timeZone", timezone);
         body.putArray("items").addObject().put("id", calendarId);
         var response = send(credential, HttpRequest.newBuilder(URI.create(CALENDAR_API + "/freeBusy"))
@@ -120,8 +123,8 @@ public class GoogleCalendarApiClient {
                 .put("id", eventId)
                 .put("summary", booking.getServiceType() + " — " + booking.getCallerName())
                 .put("description", eventDescription(booking));
-        body.putObject("start").put("dateTime", start.toString()).put("timeZone", booking.getAgent().getTimezone());
-        body.putObject("end").put("dateTime", end.toString()).put("timeZone", booking.getAgent().getTimezone());
+        body.putObject("start").put("dateTime", googleDateTime(start)).put("timeZone", booking.getAgent().getTimezone());
+        body.putObject("end").put("dateTime", googleDateTime(end)).put("timeZone", booking.getAgent().getTimezone());
         var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential))
                 + "/events/" + encode(eventId);
         final String response;
@@ -154,8 +157,8 @@ public class GoogleCalendarApiClient {
         var body = objectMapper.createObjectNode()
                 .put("summary", booking.getServiceType() + " — " + booking.getCallerName())
                 .put("description", eventDescription(booking));
-        body.putObject("start").put("dateTime", start.toString()).put("timeZone", booking.getAgent().getTimezone());
-        body.putObject("end").put("dateTime", end.toString()).put("timeZone", booking.getAgent().getTimezone());
+        body.putObject("start").put("dateTime", googleDateTime(start)).put("timeZone", booking.getAgent().getTimezone());
+        body.putObject("end").put("dateTime", googleDateTime(end)).put("timeZone", booking.getAgent().getTimezone());
         var endpoint = CALENDAR_API + "/calendars/" + encode(calendarId(credential))
                 + "/events/" + encode(booking.getExternalEventId());
         send(credential, HttpRequest.newBuilder(URI.create(endpoint))
@@ -194,7 +197,8 @@ public class GoogleCalendarApiClient {
                 response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             }
             if (response.statusCode() / 100 != 2 && !acceptedStatuses.contains(response.statusCode())) {
-                throw new IllegalStateException("Google Calendar request failed with status " + response.statusCode());
+                throw new IllegalStateException("Google Calendar request failed with status "
+                        + response.statusCode() + googleErrorReason(response.body()));
             }
             return response.body();
         } catch (java.io.IOException exception) {
@@ -272,6 +276,23 @@ public class GoogleCalendarApiClient {
         return credential.getExternalId() == null || credential.getExternalId().isBlank()
                 ? "primary"
                 : credential.getExternalId();
+    }
+
+    static String googleDateTime(OffsetDateTime value) {
+        return GOOGLE_RFC3339.format(value);
+    }
+
+    private String googleErrorReason(String responseBody) {
+        try {
+            var error = objectMapper.readTree(responseBody).path("error");
+            var reason = error.path("status").asText("");
+            if (reason.isBlank() && error.path("errors").isArray() && !error.path("errors").isEmpty()) {
+                reason = error.path("errors").get(0).path("reason").asText("");
+            }
+            return reason.isBlank() ? "" : " (" + reason + ")";
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private static String encode(String value) {

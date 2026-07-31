@@ -34,6 +34,33 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-07-31: Fix Google Calendar HTTP 400 for exact-minute timestamps
+
+- Diagnosed browser-call diagnostic `sauti-telnyx-diagnostics-1785521945500.json`
+  and correlated its Sauti call ID `e16a563e-bbe0-44f5-a34b-cb45bec61443`
+  with read-only production diagnostics workflow run `30654815302`.
+- Production logs proved that Google was connected and the managed availability
+  tool reached Sauti, but Google rejected both FreeBusy requests with HTTP 400.
+  The attempts completed in 161-278 ms, ruling out the configured network
+  timeout as the cause.
+- Fixed the request-format mismatch that made OAuth validation pass while live
+  availability failed. The connection probe used a current timestamp containing
+  seconds; exact operating-hour boundaries could serialize without seconds
+  (for example `2026-08-03T09:00+03:00`). All FreeBusy and event create/update
+  timestamps now use an explicit RFC 3339 representation with seconds.
+- Added safe Google error-reason extraction for future non-2xx responses. Logs
+  may include Google's status/reason token but never its response message,
+  credentials, request body, calendar data, or customer content.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/GoogleCalendarApiClient.java`
+  - `backend/src/test/java/com/sauti/calendar/GoogleCalendarApiClientTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test --tests "com.sauti.calendar.GoogleCalendarApiClientTest" --tests "com.sauti.calendar.GoogleCalendarProviderTest" --tests "com.sauti.tool.SautiCalendarFulfillmentTest"` - passed.
+  - `.\gradlew.bat :backend:test` - passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD flow.
+
 ### 2026-07-31: Prevent invented alternatives when live Calendar availability fails
 
 - Diagnosed browser-call diagnostic `sauti-telnyx-diagnostics-1785520985271.json`.
