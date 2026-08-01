@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bot, CalendarDays, Check, ChevronDown, CircleAlert, Database, LoaderCircle, MessageSquare,
-  Plug, Search, Settings2, ShieldCheck, TestTube2, Trash2, WalletCards, X,
+  Plug, Search, Settings2, ShieldCheck, TableProperties, TestTube2, Trash2, WalletCards, X,
 } from "lucide-react";
 import { listAgents } from "@/lib/api/agents";
 import {
@@ -20,6 +20,7 @@ import {
   getIntegrationConnections,
   getWhatsAppSignupConfiguration,
   getWhatsAppTemplates,
+  initializeGoogleSheets,
   putAgentIntegration,
   selectGoogleCalendar,
   testGoogleCalendar,
@@ -59,8 +60,8 @@ const labels: Record<string, string> = {
   phoneNumberId: "Phone-number ID", templateName: "Approved template name",
   templateLanguage: "Template language", accessToken: "Long-lived system-user token",
   recipients: "Recipients (comma-separated)", spreadsheetId: "Spreadsheet ID",
-  range: "Sheet / range", lookupColumn: "Lookup column", returnColumns: "Return columns",
-  appendColumns: "Append columns", shortcode: "Shortcode", environment: "Environment",
+  range: "Customer lookup range", lookupColumn: "Phone lookup column", returnColumns: "Returned customer columns",
+  appendRange: "Post-call append range", appendColumns: "Append columns", shortcode: "Shortcode", environment: "Environment",
   minimumAmount: "Minimum amount", maximumAmount: "Maximum amount",
   consumerKey: "Consumer key", consumerSecret: "Consumer secret", passkey: "Passkey",
   eventTypeUri: "Event type URI",
@@ -126,7 +127,11 @@ export function IntegrationsPage() {
     if (!loading && agentId && searchParams.get("provider") === "google_calendar") {
       setCalendarEditing(true);
     }
-  }, [agentId, loading, searchParams]);
+    if (!loading && agentId && searchParams.get("provider") === "google_sheets") {
+      const sheets = catalog.find((entry) => entry.provider === "google_sheets");
+      if (sheets) setEditing(sheets);
+    }
+  }, [agentId, catalog, loading, searchParams]);
 
   function showError(caught: unknown) {
     setError(caught instanceof Error ? caught.message : "Unable to load integrations.");
@@ -200,7 +205,11 @@ export function IntegrationsPage() {
 
   async function testConnection(connection: IntegrationConnection) {
     setBusy(connection.provider);
-    try { await testIntegrationConnection(connection.id, agentId); await refresh(agentId); }
+    try {
+      const tested = await testIntegrationConnection(connection.id, agentId);
+      await refresh(agentId);
+      if (tested.status === "error") throw new Error(tested.lastError || `${connection.displayName} test failed.`);
+    }
     catch (caught) { showError(caught); } finally { setBusy(""); }
   }
 
@@ -224,8 +233,15 @@ export function IntegrationsPage() {
       </header>
 
       {searchParams.get("calendar") === "connected" && <div className={styles.success}><Check size={17} /> Google Calendar connected.</div>}
-      {searchParams.get("oauth") === "connected" && <div className={styles.success}><Check size={17} /> Provider account connected.</div>}
+      {searchParams.get("oauth") === "connected" && <div className={styles.success}><Check size={17} />
+        {searchParams.get("provider") === "google_sheets"
+          ? "Google account connected. Configure and test the spreadsheet to finish setup."
+          : "Provider account connected."}
+      </div>}
       {searchParams.get("oauth") === "cancelled" && <div className={styles.error}><CircleAlert size={17} /> Provider authorization was cancelled.</div>}
+      {searchParams.get("oauth") === "failed" && <div className={styles.error}><CircleAlert size={17} />
+        Google authorization could not be completed. Check the OAuth client, callback URL, API enablement, and test-user access.
+      </div>}
       {error && <div className={styles.error}><CircleAlert size={17} /> {error}<button onClick={() => setError("")}><X size={14} /></button></div>}
 
       <section className={styles.controls}>
@@ -602,6 +618,13 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
     const initial: Record<string, string> = {
       templateLanguage: "en_US", environment: "sandbox", authType: "none",
     };
+    if (entry.provider === "google_sheets") {
+      initial.range = "Customers!A:C";
+      initial.lookupColumn = "0";
+      initial.returnColumns = "0, 1, 2";
+      initial.appendRange = "Calls!A:F";
+      initial.appendColumns = "callId, startedAt, callerPhone, outcome, summary, sentiment";
+    }
     Object.entries(connection?.configuration ?? {}).forEach(([key, value]) => {
       initial[key] = Array.isArray(value) ? value.join(", ") : String(value ?? "");
     });
@@ -615,18 +638,25 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
     return true;
   });
   const [saving, setSaving] = useState(false);
+  const [initializing, setInitializing] = useState(false);
+  const [initializationMessage, setInitializationMessage] = useState("");
   const [error, setError] = useState("");
 
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
-    setSaving(true); setError("");
+  function configurationValues() {
     const configuration: Record<string, unknown> = {};
-    const credentials: Record<string, unknown> = {};
     entry.configurationFields.forEach((field) => {
       configuration[field] = field === "recipients"
         ? (values[field] ?? "").split(",").map((item) => item.trim()).filter(Boolean)
         : values[field] ?? "";
     });
+    return configuration;
+  }
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true); setError("");
+    const configuration = configurationValues();
+    const credentials: Record<string, unknown> = {};
     entry.credentialFields.forEach((field) => { credentials[field] = values[field] ?? ""; });
     try {
       const oauth = oauthProviders.includes(entry.provider);
@@ -634,6 +664,10 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
         await putAgentIntegration(agentId, {
           provider: entry.provider, enabled: true, connectionId: connection.id, configuration,
         });
+        const tested = await testIntegrationConnection(connection.id, agentId);
+        if (tested.status === "error") {
+          throw new Error(tested.lastError || `${entry.name} could not access the configured resource.`);
+        }
       } else if (connection) {
         await updateIntegrationConnection(connection.id, {
           configuration,
@@ -649,11 +683,58 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
     }
   }
 
+  async function initializeSheets() {
+    if (!connection) {
+      setError("Connect your Google account before creating the spreadsheet tabs.");
+      return;
+    }
+    setInitializing(true); setError(""); setInitializationMessage("");
+    try {
+      await putAgentIntegration(agentId, {
+        provider: entry.provider,
+        enabled: true,
+        connectionId: connection.id,
+        configuration: configurationValues(),
+      });
+      const result = await initializeGoogleSheets(agentId);
+      const tested = await testIntegrationConnection(connection.id, agentId);
+      if (tested.status === "error") {
+        throw new Error(tested.lastError || "Google Sheets could not access the initialized tabs.");
+      }
+      const created = result.createdTabs.length
+        ? `Created ${result.createdTabs.join(" and ")}. `
+        : "Both tabs already existed. ";
+      const headers = result.initializedHeaders.length
+        ? `Added headers to ${result.initializedHeaders.join(" and ")}.`
+        : "Existing headers were preserved.";
+      setInitializationMessage(created + headers);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to initialize the Google Sheets tabs.");
+    } finally {
+      setInitializing(false);
+    }
+  }
+
   return <div className={styles.backdrop} onMouseDown={onClose}>
     <form className={styles.dialog} onSubmit={(event) => void save(event)} onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><h2>{connection ? "Configure" : "Connect"} {entry.name}</h2><p>Secrets are encrypted before being stored.</p></div>
+      <header><div><h2>{connection ? "Configure" : "Connect"} {entry.name}</h2><p>
+        {entry.provider === "google_sheets"
+          ? "Use Sheets as an optional lightweight CRM and call log. Sauti remains the source of truth for calls and bookings."
+          : "Secrets are encrypted before being stored."}
+      </p></div>
         <button type="button" onClick={onClose}><X size={18} /></button></header>
       {fields.length === 0 && <p className={styles.oauthNote}>This provider requires OAuth. Use its authorization flow when application credentials are configured.</p>}
+      {entry.provider === "google_sheets" && <section className={styles.sheetsGuide}>
+        <div><TableProperties size={18} /><div><strong>Customers</strong>
+          <p>Lets the agent find customer details by phone and update a row only after caller confirmation.</p>
+          <code>Phone · Name · Email</code>
+        </div></div>
+        <div><TableProperties size={18} /><div><strong>Calls</strong>
+          <p>Receives an automatic post-call record for reporting, follow-up, and lightweight CRM workflows.</p>
+          <code>Call ID · Started At · Caller Phone · Outcome · Summary · Sentiment</code>
+        </div></div>
+        <p className={styles.sheetsSafety}>Choose an empty spreadsheet or one that already has these tabs. Sauti creates only missing tabs, adds headers only to an empty first row, and never replaces existing headers.</p>
+      </section>}
       <div className={styles.formFields}>
       {visibleFields.map((field) => <label key={field}><span>{labels[field] ?? field}</span>
         {field === "environment" || field === "authType" ? <div className={styles.selectControl}>
@@ -674,9 +755,21 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
           onChange={(event) => setValues({ ...values, [field]: event.target.value })} />}
       </label>)}
       </div>
+      {entry.provider === "google_sheets" && <div className={styles.sheetsInitializer}>
+        <button type="button" className={styles.initializeSheets} onClick={() => void initializeSheets()}
+          disabled={initializing || saving || !connection || !(values.spreadsheetId ?? "").trim()}>
+          {initializing ? <><LoaderCircle className="spin" size={16} /> Creating tabs…</> : <><TableProperties size={16} /> Create tabs and headers</>}
+        </button>
+        <p>{connection
+          ? "This saves the settings above, creates the missing tabs, adds safe default headers, and verifies access."
+          : "Connect your Google account first, then enter the spreadsheet ID."}</p>
+      </div>}
+      {initializationMessage && <div className={styles.formSuccess}><Check size={15} /> {initializationMessage}</div>}
       {error && <div className={styles.formError}>{error}</div>}
       <footer><button type="button" onClick={onClose}>Cancel</button>
-        <button className={styles.primary} disabled={saving || fields.length === 0}>{saving ? "Saving…" : "Save connection"}</button></footer>
+        <button className={styles.primary} disabled={saving || initializing || fields.length === 0}>
+          {saving ? "Saving…" : entry.provider === "google_sheets" ? "Save and test" : "Save connection"}
+        </button></footer>
     </form>
   </div>;
 }
@@ -709,10 +802,11 @@ function categoryIcon(category: string) {
 
 function placeholderFor(provider: string, field: string) {
   if (provider === "google_sheets" && field === "spreadsheetId") return "1AbCdEf… from the Google Sheets URL";
-  if (provider === "google_sheets" && field === "range") return "Calls!A:E";
+  if (provider === "google_sheets" && field === "range") return "Customers!A:C";
   if (provider === "google_sheets" && field === "lookupColumn") return "0";
   if (provider === "google_sheets" && field === "returnColumns") return "0, 1, 2";
-  if (provider === "google_sheets" && field === "appendColumns") return "startedAt, callerPhone, outcome, summary, sentiment";
+  if (provider === "google_sheets" && field === "appendRange") return "Calls!A:F";
+  if (provider === "google_sheets" && field === "appendColumns") return "callId, startedAt, callerPhone, outcome, summary, sentiment";
   if (provider === "calendly" && field === "eventTypeUri") return "https://api.calendly.com/event_types/...";
   if (provider === "calendly" && field === "bookingTitle") return "Appointment with {{caller_name}}";
   return "";

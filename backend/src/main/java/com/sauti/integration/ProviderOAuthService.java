@@ -79,7 +79,7 @@ public class ProviderOAuthService {
                 + "&redirect_uri=" + encode(provider.redirectUri())
                 + "&response_type=code"
                 + (provider.scope().isBlank() ? "" : "&scope=" + encode(provider.scope()))
-                + (provider.google() ? "&access_type=offline&prompt=consent" : "")
+                + (provider.google() ? "&access_type=offline&include_granted_scopes=true&prompt=consent" : "")
                 + "&state=" + encode(state(providerName, tenantId, agentId));
     }
 
@@ -99,6 +99,9 @@ public class ProviderOAuthService {
                 throw new IllegalArgumentException("Provider authorization failed with HTTP " + response.statusCode());
             }
             var node = objectMapper.readTree(response.body());
+            if (node.path("access_token").asText("").isBlank()) {
+                throw new IllegalArgumentException("Provider authorization returned no access token");
+            }
             var credentials = new LinkedHashMap<String, Object>();
             credentials.put("accessToken", node.path("access_token").asText());
             credentials.put("refreshToken", node.path("refresh_token").asText(""));
@@ -137,6 +140,33 @@ public class ProviderOAuthService {
         if (!accessToken.isBlank() && grantedAt > 0 && now < grantedAt + expiresIn - 300) {
             return accessToken;
         }
+        return refreshAccessToken(tenantId, providerName, runtime, provider, refreshToken, expiresIn, now);
+    }
+
+    public synchronized String refreshAccessToken(UUID tenantId, UUID agentId, String providerName) {
+        var provider = requireConfigured(providerName);
+        var runtime = integrations.runtime(tenantId, agentId, providerName);
+        var credentials = runtime.credentials();
+        return refreshAccessToken(
+                tenantId,
+                providerName,
+                runtime,
+                provider,
+                text(credentials.get("refreshToken")),
+                number(credentials.get("expiresIn"), 3600),
+                OffsetDateTime.now().toEpochSecond()
+        );
+    }
+
+    private String refreshAccessToken(
+            UUID tenantId,
+            String providerName,
+            IntegrationService.RuntimeConfiguration runtime,
+            Provider provider,
+            String refreshToken,
+            long expiresIn,
+            long now
+    ) {
         if (refreshToken.isBlank()) {
             throw new IllegalStateException(providerName + " authorization has expired; reconnect the provider");
         }
@@ -161,7 +191,7 @@ public class ProviderOAuthService {
             updates.put("accessToken", refreshedToken);
             updates.put("expiresIn", node.path("expires_in").asLong(expiresIn));
             updates.put("grantedAt", now);
-            updates.put("tokenType", node.path("token_type").asText(text(credentials.get("tokenType"))));
+            updates.put("tokenType", node.path("token_type").asText(text(runtime.credentials().get("tokenType"))));
             if (node.hasNonNull("refresh_token")) updates.put("refreshToken", node.get("refresh_token").asText());
             if (node.hasNonNull("instance_url")) updates.put("instanceUrl", node.get("instance_url").asText());
             integrations.updateOAuthCredentials(tenantId, runtime.connectionId(), updates);
@@ -173,31 +203,6 @@ public class ProviderOAuthService {
             throw exception;
         } catch (Exception exception) {
             throw new IllegalStateException(providerName + " token refresh failed", exception);
-        }
-    }
-
-    public void testGoogleSheets(UUID tenantId, UUID agentId) {
-        var runtime = integrations.runtime(tenantId, agentId, "google_sheets");
-        var spreadsheetId = text(runtime.configuration().get("spreadsheetId"));
-        var range = text(runtime.configuration().get("range"));
-        if (spreadsheetId.isBlank() || range.isBlank()) {
-            throw new IllegalStateException("Spreadsheet ID and range must be configured before testing");
-        }
-        var url = "https://sheets.googleapis.com/v4/spreadsheets/" + encode(spreadsheetId)
-                + "/values/" + encode(range) + "?majorDimension=ROWS";
-        try {
-            var response = httpClient.send(HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(20))
-                    .header("Authorization", "Bearer " + accessToken(tenantId, agentId, "google_sheets"))
-                    .GET().build(), HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() / 100 != 2) {
-                throw new IllegalStateException("Google Sheets test failed with HTTP " + response.statusCode());
-            }
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Google Sheets test was interrupted", exception);
-        } catch (java.io.IOException exception) {
-            throw new IllegalStateException("Google Sheets could not be reached", exception);
         }
     }
 

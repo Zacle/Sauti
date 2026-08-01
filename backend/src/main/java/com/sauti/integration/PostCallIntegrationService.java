@@ -50,6 +50,7 @@ public class PostCallIntegrationService {
     private final CallIntakeNoteService intakeNotes;
     private final IntegrationService integrationService;
     private final ProviderOAuthService oauth;
+    private final GoogleSheetsApiClient googleSheets;
     private final ObjectMapper objectMapper;
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
@@ -69,6 +70,7 @@ public class PostCallIntegrationService {
                                       CallIntakeNoteService intakeNotes,
                                       IntegrationService integrationService,
                                       ProviderOAuthService oauth,
+                                      GoogleSheetsApiClient googleSheets,
                                       ObjectMapper objectMapper,
                                       JavaMailSender mailSender,
                                       TemplateEngine templateEngine,
@@ -86,6 +88,7 @@ public class PostCallIntegrationService {
         this.intakeNotes = intakeNotes;
         this.integrationService = integrationService;
         this.oauth = oauth;
+        this.googleSheets = googleSheets;
         this.objectMapper = objectMapper;
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
@@ -234,15 +237,27 @@ public class PostCallIntegrationService {
         config.putAll(map(binding.getConfiguration()));
         var spreadsheet = required(config, "spreadsheetId");
         var range = required(config, "range");
+        var appendRange = String.valueOf(config.getOrDefault("appendRange", "")).trim();
+        if (appendRange.isBlank()) appendRange = range;
         var columns = stringList(config.get("appendColumns"));
-        if (columns.isEmpty()) columns = List.of("startedAt", "callerPhone", "outcome", "summary", "sentiment");
+        if (columns.isEmpty()) columns = List.of("callId", "startedAt", "callerPhone", "outcome", "summary", "sentiment");
+        if (!columns.contains("callId")) {
+            var idempotentColumns = new java.util.ArrayList<String>();
+            idempotentColumns.add("callId");
+            idempotentColumns.addAll(columns);
+            columns = List.copyOf(idempotentColumns);
+        }
         var values = columns.stream().map(column -> callValue(call, column)).toList();
-        var url = "https://sheets.googleapis.com/v4/spreadsheets/"
-                + urlPart(spreadsheet) + "/values/" + urlPart(range)
-                + ":append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS";
-        return post(url, Map.of("values", List.of(values)), Map.of(
-                "Authorization", "Bearer " + oauth.accessToken(
-                        call.getTenant().getId(), call.getAgent().getId(), "google_sheets")));
+        var callIdColumn = columns.indexOf("callId");
+        var existing = googleSheets.values(
+                call.getTenant().getId(), call.getAgent().getId(), spreadsheet, appendRange
+        ).path("values");
+        for (var row : existing) {
+            if (call.getId().toString().equals(row.path(callIdColumn).asText())) return 200;
+        }
+        return googleSheets.appendValues(
+                call.getTenant().getId(), call.getAgent().getId(), spreadsheet, appendRange, values
+        );
     }
 
     private int syncHubSpot(Call call, IntegrationConnection connection) {
@@ -473,7 +488,8 @@ public class PostCallIntegrationService {
             case "transcript" -> value(call.getTranscript());
             case "recordingUrl" -> value(call.getRecordingUrl());
             case "endedAt" -> value(call.getEndedAt());
-            default -> value(call.getStartedAt());
+            case "startedAt" -> value(call.getStartedAt());
+            default -> throw new IllegalArgumentException("Unsupported Google Sheets append column: " + column);
         };
     }
     private static String required(Map<String, Object> values, String key) {

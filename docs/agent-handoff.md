@@ -34,6 +34,98 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-08-01: Complete Google Sheets OAuth and agent workflows
+
+- Completed Google Sheets as a production integration rather than only an
+  OAuth connection. A centralized API client now reads, updates, appends, and
+  live-tests Sheets values with bounded timeouts, one forced token refresh on
+  an early HTTP 401, and safe provider errors that do not expose credentials or
+  sheet contents.
+- Preserved the integration security boundaries: OAuth credentials remain
+  encrypted and tenant/agent scoped, lookup results expose only explicitly
+  configured columns, and updates still require explicit caller confirmation.
+- Split customer lookup/update and post-call logging into separate configurable
+  A1 ranges. Post-call rows now carry the Sauti call ID and check for that ID
+  before appending, making retries idempotent instead of duplicating rows.
+- Strengthened configuration validation for spreadsheet IDs, A1 ranges,
+  zero-based column indexes, and supported post-call fields. Enabling the
+  integration activates its existing managed lookup/update tools.
+- Improved the dashboard OAuth return, connection testing, and configuration
+  flow. Saving Google Sheets now performs a live access test and reports
+  provider failures instead of showing success for an unusable sheet.
+- Added a Google Cloud verification guide with production callback details,
+  least-privilege test-data guidance, and an end-to-end submission video script.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/IntegrationController.java`
+  - `backend/src/main/java/com/sauti/integration/GoogleSheetsApiClient.java`
+  - `backend/src/main/java/com/sauti/integration/ProviderOAuthService.java`
+  - `backend/src/main/java/com/sauti/integration/DuringCallIntegrationFulfillment.java`
+  - `backend/src/main/java/com/sauti/integration/PostCallIntegrationService.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationCatalog.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationService.java`
+  - `backend/src/test/java/com/sauti/integration/GoogleSheetsApiClientTest.java`
+  - `backend/src/test/java/com/sauti/integration/DuringCallIntegrationFulfillmentTest.java`
+  - `backend/src/test/java/com/sauti/integration/IntegrationServiceTest.java`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `docs/google-sheets-oauth-verification.md`
+  - `docs/google-calendar-oauth-verification.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `.\gradlew.bat :backend:test` - passed (356 tests).
+  - `Push-Location dashboard; npm.cmd run typecheck; Pop-Location` - passed.
+  - `Push-Location dashboard; npm.cmd run build; Pop-Location` - passed (50 routes).
+  - `git diff --check` - passed; only the repository's expected LF-to-CRLF
+    working-tree notices were reported.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD flow.
+- Follow-up: no real Google account or production secret was available during
+  local verification. After deployment, complete one live OAuth connection,
+  lookup, confirmed update, and post-call append against a synthetic submission
+  spreadsheet before recording the Google verification video. Google OAuth
+  apps left in external `Testing` status can issue refresh tokens with a short
+  lifetime, so move the consent configuration to the appropriate production
+  state before relying on long-lived connections.
+
+#### Follow-up: add non-destructive Google Sheets tab initialization
+
+- Replaced the ambiguous Sheets setup with a guided customer-facing explanation:
+  `Customers` is the optional lightweight CRM lookup/update tab, `Calls` is the
+  automatic post-call reporting tab, and Sauti remains the source of truth for
+  calls and bookings.
+- Corrected the customer lookup default and placeholder from a `Calls` range to
+  `Customers!A:C`. The configured post-call destination remains `Calls!A:F`.
+- Added an authenticated, tenant- and agent-scoped `Create tabs and headers`
+  action. It saves and validates the selected agent's configuration, creates
+  only missing `Customers` and `Calls` tabs, initializes headers only when row
+  1 is empty, preserves all existing non-empty headers, and then performs the
+  live access test.
+- The default headers are:
+  - `Customers`: `Phone`, `Name`, `Email`;
+  - `Calls`: `Call ID`, `Started At`, `Caller Phone`, `Outcome`, `Summary`,
+    `Sentiment`.
+- Updated the OAuth verification and recording guide to demonstrate automatic
+  initialization with a synthetic phone-based customer record.
+- Files additionally touched:
+  - `backend/src/main/java/com/sauti/api/IntegrationController.java`
+  - `backend/src/main/java/com/sauti/integration/GoogleSheetsApiClient.java`
+  - `backend/src/test/java/com/sauti/integration/GoogleSheetsApiClientTest.java`
+  - `dashboard/lib/api/integrations.ts`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.module.css`
+  - `docs/google-sheets-oauth-verification.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Google Sheets client and integration service tests - passed;
+  - `.\gradlew.bat :backend:test` - passed;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed; Next.js generated 50 routes.
+- Deployment status remains unchanged: not deployed. Changes remain uncommitted
+  for maintainer review and the normal GitHub Actions CI/CD flow.
+- Known follow-up: after deployment, verify the initializer once against an
+  empty synthetic spreadsheet and once against a spreadsheet whose existing
+  `Customers` header row must remain unchanged.
+
 ### 2026-07-31: Fix database-first Google event creation and retry stranded bookings
 
 - Investigated booking `SAT-IQOHKYR5R3PJ` from the dashboard. Read-only

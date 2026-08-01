@@ -24,6 +24,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class IntegrationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(IntegrationService.class);
+    private static final java.util.Set<String> SHEETS_APPEND_COLUMNS = java.util.Set.of(
+            "callId", "agentId", "startedAt", "endedAt", "callerPhone", "direction",
+            "outcome", "summary", "sentiment", "intent", "transcript", "recordingUrl"
+    );
     private final ObjectMapper objectMapper;
     private final CredentialEncryption encryption;
     private final IntegrationCatalog catalog;
@@ -173,11 +177,7 @@ public class IntegrationService {
         }
         var bindingConfiguration = safe(request.configuration());
         if (request.enabled() && "google_sheets".equals(entry.provider())) {
-            for (var field : List.of("spreadsheetId", "range")) {
-                if (blank(String.valueOf(bindingConfiguration.get(field)))) {
-                    throw new IllegalArgumentException(field + " is required");
-                }
-            }
+            validateGoogleSheetsConfiguration(bindingConfiguration);
         }
         var binding = bindings.findByTenantIdAndAgentIdAndProvider(tenantId, agentId, entry.provider())
                 .orElseGet(() -> new AgentIntegration(tenantId, agentId, entry.provider()));
@@ -391,6 +391,59 @@ public class IntegrationService {
                 throw new IllegalArgumentException("environment must be sandbox or production");
             }
         }
+    }
+
+    private void validateGoogleSheetsConfiguration(Map<String, Object> configuration) {
+        var spreadsheetId = String.valueOf(configuration.getOrDefault("spreadsheetId", "")).trim();
+        var range = String.valueOf(configuration.getOrDefault("range", "")).trim();
+        if (spreadsheetId.isBlank()) throw new IllegalArgumentException("spreadsheetId is required");
+        if (!spreadsheetId.matches("[A-Za-z0-9_-]+")) {
+            throw new IllegalArgumentException("spreadsheetId must be copied from a Google Sheets URL");
+        }
+        if (range.isBlank()) throw new IllegalArgumentException("range is required");
+        if (!range.matches("(?:'[^']+'|[^!]+)!\\$?[A-Za-z]+\\$?\\d*(?::\\$?[A-Za-z]+\\$?\\d*)?")) {
+            throw new IllegalArgumentException("range must use A1 notation including a sheet tab, for example Calls!A:E");
+        }
+        var appendRange = String.valueOf(configuration.getOrDefault("appendRange", "")).trim();
+        if (!appendRange.isBlank()
+                && !appendRange.matches("(?:'[^']+'|[^!]+)!\\$?[A-Za-z]+\\$?\\d*(?::\\$?[A-Za-z]+\\$?\\d*)?")) {
+            throw new IllegalArgumentException("appendRange must use A1 notation including a sheet tab");
+        }
+        parseNonNegativeIndexes(configuration.get("returnColumns"), "returnColumns");
+        var lookup = String.valueOf(configuration.getOrDefault("lookupColumn", "0")).trim();
+        if (!lookup.isBlank() && parseNonNegativeIndexes(lookup, "lookupColumn").size() != 1) {
+            throw new IllegalArgumentException("lookupColumn must contain one zero-based column number");
+        }
+        var appendColumns = csv(configuration.get("appendColumns"));
+        var unsupported = appendColumns.stream().filter(column -> !SHEETS_APPEND_COLUMNS.contains(column)).toList();
+        if (!unsupported.isEmpty()) {
+            throw new IllegalArgumentException("Unsupported appendColumns: " + String.join(", ", unsupported));
+        }
+    }
+
+    private List<Integer> parseNonNegativeIndexes(Object value, String field) {
+        var items = csv(value);
+        var parsed = new java.util.ArrayList<Integer>();
+        for (var item : items) {
+            try {
+                var index = Integer.parseInt(item);
+                if (index < 0) throw new NumberFormatException();
+                parsed.add(index);
+            } catch (NumberFormatException exception) {
+                throw new IllegalArgumentException(field + " must contain zero-based non-negative column numbers");
+            }
+        }
+        return List.copyOf(parsed);
+    }
+
+    private List<String> csv(Object value) {
+        if (value instanceof List<?> list) {
+            return list.stream().map(String::valueOf).map(String::trim).filter(item -> !item.isBlank()).toList();
+        }
+        var text = value == null ? "" : String.valueOf(value);
+        if (text.isBlank()) return List.of();
+        return java.util.Arrays.stream(text.split(","))
+                .map(String::trim).filter(item -> !item.isBlank()).toList();
     }
 
     private IntegrationConnection requireConnection(UUID tenantId, UUID id) {

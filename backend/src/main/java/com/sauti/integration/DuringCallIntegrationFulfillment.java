@@ -31,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     private final IntegrationService integrations;
-    private final ProviderOAuthService oauth;
+    private final GoogleSheetsApiClient googleSheets;
     private final MpesaPaymentRequestRepository payments;
     private final ObjectMapper objectMapper;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -39,12 +39,12 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     private final String publicBaseUrl;
 
     public DuringCallIntegrationFulfillment(IntegrationService integrations,
-                                            ProviderOAuthService oauth,
+                                            GoogleSheetsApiClient googleSheets,
                                             MpesaPaymentRequestRepository payments,
                                             ObjectMapper objectMapper,
                                             @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBase,
                                             @Value("${sauti.telnyx.public-base-url}") String publicBaseUrl) {
-        this.integrations = integrations; this.oauth = oauth; this.payments = payments; this.objectMapper = objectMapper;
+        this.integrations = integrations; this.googleSheets = googleSheets; this.payments = payments; this.objectMapper = objectMapper;
         this.graphApiBase = graphApiBase.replaceFirst("/+$", "");
         this.publicBaseUrl = publicBaseUrl.replaceFirst("/+$", "");
     }
@@ -87,18 +87,17 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
         var config = runtime.configuration();
         var spreadsheet = required(config, "spreadsheetId");
         var range = required(config, "range");
-        var url = "https://sheets.googleapis.com/v4/spreadsheets/" + encode(spreadsheet)
-                + "/values/" + encode(range);
-        var response = send(HttpRequest.newBuilder(URI.create(url))
-                .header("Authorization", "Bearer " + oauth.accessToken(
-                        call.getTenant().getId(), call.getAgent().getId(), "google_sheets")).GET().build());
-        var rows = objectMapper.readTree(response.body()).path("values");
+        var rows = googleSheets.values(
+                call.getTenant().getId(), call.getAgent().getId(), spreadsheet, range
+        ).path("values");
         var lookup = string(toolCall.arguments().get("lookup_value"));
         int lookupIndex = integer(config.get("lookupColumn"), 0);
+        var returnColumns = columnIndexes(config.get("returnColumns"));
         for (JsonNode row : rows) {
             if (row.path(lookupIndex).asText().equalsIgnoreCase(lookup)) {
+                var values = projectedValues(row, returnColumns);
                 return LlmToolResult.success(toolCall, Map.of("found", true,
-                        "values", objectMapper.convertValue(row, List.class)));
+                        "values", values));
             }
         }
         return LlmToolResult.success(toolCall, Map.of("found", false));
@@ -112,11 +111,9 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
         var config = runtime.configuration();
         var spreadsheet = required(config, "spreadsheetId");
         var range = required(config, "range");
-        var token = oauth.accessToken(call.getTenant().getId(), call.getAgent().getId(), "google_sheets");
-        var response = send(HttpRequest.newBuilder(URI.create("https://sheets.googleapis.com/v4/spreadsheets/"
-                        + encode(spreadsheet) + "/values/" + encode(range)))
-                .header("Authorization", "Bearer " + token).GET().build());
-        var rows = objectMapper.readTree(response.body()).path("values");
+        var rows = googleSheets.values(
+                call.getTenant().getId(), call.getAgent().getId(), spreadsheet, range
+        ).path("values");
         var lookup = string(toolCall.arguments().get("lookup_value"));
         int lookupIndex = integer(config.get("lookupColumn"), 0);
         int rowIndex = -1;
@@ -132,13 +129,9 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
             return LlmToolResult.error(toolCall, "Replacement row values are required");
         }
         var targetRange = rowRange(range, rowIndex);
-        var updateUrl = "https://sheets.googleapis.com/v4/spreadsheets/" + encode(spreadsheet)
-                + "/values/" + encode(targetRange) + "?valueInputOption=USER_ENTERED";
-        send(HttpRequest.newBuilder(URI.create(updateUrl))
-                .header("Authorization", "Bearer " + token)
-                .header("Content-Type", "application/json")
-                .PUT(HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(Map.of("values", List.of(values)))))
-                .build());
+        googleSheets.updateValues(
+                call.getTenant().getId(), call.getAgent().getId(), spreadsheet, targetRange, values
+        );
         return LlmToolResult.success(toolCall, Map.of("found", true, "updated", true, "row", rowIndex));
     }
 
@@ -270,6 +263,23 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     }
     private static int integer(Object value, int fallback) {
         try { return Integer.parseInt(string(value)); } catch (Exception ignored) { return fallback; }
+    }
+    static List<Integer> columnIndexes(Object value) {
+        var text = string(value);
+        if (text.isBlank()) return List.of();
+        return java.util.Arrays.stream(text.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isBlank())
+                .map(Integer::parseInt)
+                .toList();
+    }
+    static List<String> projectedValues(JsonNode row, List<Integer> returnColumns) {
+        if (returnColumns.isEmpty()) {
+            var values = new java.util.ArrayList<String>();
+            row.forEach(value -> values.add(value.asText("")));
+            return List.copyOf(values);
+        }
+        return returnColumns.stream().map(index -> row.path(index).asText("")).toList();
     }
     private static String string(Object value) { return value == null ? "" : String.valueOf(value).trim(); }
     private static String encode(String value) {

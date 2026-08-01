@@ -9,6 +9,7 @@ import com.sauti.integration.IntegrationService.ConnectionRequest;
 import com.sauti.integration.IntegrationService.ConnectionResponse;
 import com.sauti.integration.IntegrationService.DeliveryResponse;
 import com.sauti.integration.ProviderOAuthService;
+import com.sauti.integration.GoogleSheetsApiClient;
 import com.sauti.integration.WhatsAppEmbeddedSignupService;
 import com.sauti.calendar.GoogleCalendarIntegrationService;
 import java.util.List;
@@ -38,17 +39,20 @@ public class IntegrationController {
     private final WhatsAppEmbeddedSignupService whatsappSignup;
     private final String dashboardBaseUrl;
     private final GoogleCalendarIntegrationService googleCalendar;
+    private final GoogleSheetsApiClient googleSheets;
 
     public IntegrationController(IntegrationCatalog catalog, IntegrationService service,
                                  ProviderOAuthService oauth,
                                  WhatsAppEmbeddedSignupService whatsappSignup,
                                  GoogleCalendarIntegrationService googleCalendar,
+                                 GoogleSheetsApiClient googleSheets,
                                  @Value("${sauti.dashboard.base-url}") String dashboardBaseUrl) {
         this.catalog = catalog;
         this.service = service;
         this.oauth = oauth;
         this.whatsappSignup = whatsappSignup;
         this.googleCalendar = googleCalendar;
+        this.googleSheets = googleSheets;
         this.dashboardBaseUrl = dashboardBaseUrl;
     }
 
@@ -93,13 +97,34 @@ public class IntegrationController {
         var provider = service.connectionProvider(user.tenantId(), id);
         if ("google_sheets".equals(provider)) {
             if (agentId == null) throw new IllegalArgumentException("agentId is required to test Google Sheets");
-            return service.test(user.tenantId(), id, () -> oauth.testGoogleSheets(user.tenantId(), agentId));
+            return service.test(user.tenantId(), id, () -> {
+                var runtime = service.runtime(user.tenantId(), agentId, "google_sheets");
+                googleSheets.test(
+                        user.tenantId(),
+                        agentId,
+                        String.valueOf(runtime.configuration().getOrDefault("spreadsheetId", "")),
+                        String.valueOf(runtime.configuration().getOrDefault("range", ""))
+                );
+            });
         }
         if ("google_calendar".equals(provider)) {
             if (agentId == null) throw new IllegalArgumentException("agentId is required to test Google Calendar");
             return service.test(user.tenantId(), id, () -> googleCalendar.test(user.tenantId(), agentId));
         }
         return service.test(user.tenantId(), id);
+    }
+
+    @PostMapping("/agents/{agentId}/integrations/google-sheets/initialize")
+    GoogleSheetsApiClient.InitializationResult initializeGoogleSheets(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID agentId
+    ) {
+        var runtime = service.runtime(user.tenantId(), agentId, "google_sheets");
+        return googleSheets.initialize(
+                user.tenantId(),
+                agentId,
+                String.valueOf(runtime.configuration().getOrDefault("spreadsheetId", ""))
+        );
     }
 
     @GetMapping("/agents/{agentId}/integrations")
@@ -153,10 +178,15 @@ public class IntegrationController {
                           @RequestParam(required = false) String state,
                           @RequestParam(required = false) String error) {
         if (error != null || code == null || state == null) {
-            return new RedirectView(dashboardBaseUrl + "/dashboard/integrations?oauth=cancelled");
+            return new RedirectView(dashboardBaseUrl + "/dashboard/integrations?oauth=cancelled&provider=" + provider);
         }
-        var agentId = oauth.complete(provider, code, state);
-        return new RedirectView(dashboardBaseUrl + "/dashboard/integrations?agentId=" + agentId + "&oauth=connected");
+        try {
+            var agentId = oauth.complete(provider, code, state);
+            return new RedirectView(dashboardBaseUrl + "/dashboard/integrations?agentId=" + agentId
+                    + "&oauth=connected&provider=" + provider);
+        } catch (RuntimeException exception) {
+            return new RedirectView(dashboardBaseUrl + "/dashboard/integrations?oauth=failed&provider=" + provider);
+        }
     }
 
     record CatalogEntryResponse(

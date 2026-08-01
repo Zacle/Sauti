@@ -31,7 +31,7 @@ public class IntegrationCatalog {
                     List.of(), List.of("webhookUrl")),
             new Entry("google_sheets", "Google Sheets", "Data",
                     "Look up rows during calls and append analysed calls.", true, true, true,
-                    List.of("spreadsheetId", "range", "lookupColumn", "returnColumns", "appendColumns"),
+                    List.of("spreadsheetId", "range", "lookupColumn", "returnColumns", "appendRange", "appendColumns"),
                     List.of()),
             new Entry("hubspot", "HubSpot", "CRM",
                     "Upsert contacts and attach a call note.", false, true, true,

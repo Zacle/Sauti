@@ -19,8 +19,9 @@ integration. It contains no client secret or other credential.
   - `https://www.googleapis.com/auth/calendar.freebusy`
 
 Do not add Google Drive, full Calendar, Google Sheets, or future-use scopes to
-this verification request. Google Sheets has a separate Sauti OAuth
-configuration and should be verified separately when that integration is ready.
+the Calendar authorization request. Google Sheets uses a separate, contextual
+Sauti authorization flow documented in
+[`google-sheets-oauth-verification.md`](google-sheets-oauth-verification.md).
 
 Sauti is the booking system of record. Confirmed creates, reschedules, detail
 updates, and cancellations are committed to Sauti before Google Calendar is

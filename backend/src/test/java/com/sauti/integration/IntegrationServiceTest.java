@@ -25,6 +25,54 @@ import org.junit.jupiter.api.Test;
 
 class IntegrationServiceTest {
     @Test
+    void enablesGoogleSheetsOnlyWithAValidatedAgentScopedRange() {
+        var objectMapper = new ObjectMapper();
+        var encryption = new CredentialEncryption("dev-tool-encryption-key-32-bytes");
+        var connections = mock(IntegrationConnectionRepository.class);
+        var bindings = mock(AgentIntegrationRepository.class);
+        var deliveries = mock(IntegrationDeliveryRepository.class);
+        var agents = mock(AgentRepository.class);
+        var tools = mock(AgentToolRepository.class);
+        var tenantId = UUID.randomUUID();
+        var agentId = UUID.randomUUID();
+        var agent = mock(Agent.class);
+        var lookup = mock(AgentTool.class);
+        var update = mock(AgentTool.class);
+        var connection = new IntegrationConnection(
+                tenantId, "google_sheets", "Google Sheets",
+                encryption.encrypt("{\"accessToken\":\"token\",\"refreshToken\":\"refresh\"}"), "{}"
+        );
+        when(agents.findByIdAndTenantId(agentId, tenantId)).thenReturn(Optional.of(agent));
+        when(connections.findByIdAndTenantId(connection.getId(), tenantId)).thenReturn(Optional.of(connection));
+        when(bindings.findByTenantIdAndAgentIdAndProvider(tenantId, agentId, "google_sheets"))
+                .thenReturn(Optional.empty());
+        when(bindings.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(deliveries.findFirstByAgentIntegrationIdOrderByCreatedAtDesc(any())).thenReturn(Optional.empty());
+        when(lookup.getToolName()).thenReturn("lookup_google_sheet_row");
+        when(update.getToolName()).thenReturn("update_google_sheet_row");
+        when(tools.findByAgent_IdOrderByDisplayOrderAsc(agentId)).thenReturn(List.of(lookup, update));
+        var service = new IntegrationService(
+                objectMapper, encryption, new IntegrationCatalog(), connections, bindings, deliveries,
+                agents, tools, mock(CalendarCredentialRepository.class), mock(AgentVariableService.class),
+                mock(WebhookDestinationValidator.class)
+        );
+
+        var result = service.configure(tenantId, agentId, new IntegrationService.BindingRequest(
+                "google_sheets", true, connection.getId(), Map.of(
+                        "spreadsheetId", "1AbC_def-123",
+                        "range", "Calls!A2:E",
+                        "lookupColumn", "0",
+                        "returnColumns", "0, 2, 4",
+                        "appendColumns", "startedAt, callerPhone, outcome"
+                )
+        ));
+
+        assertThat(result.enabled()).isTrue();
+        verify(lookup).configureForDraft(true, null);
+        verify(update).configureForDraft(true, null);
+    }
+
+    @Test
     void oauthReconnectPreservesRefreshTokenAndSheetsConfiguration() throws Exception {
         var objectMapper = new ObjectMapper();
         var encryption = new CredentialEncryption("dev-tool-encryption-key-32-bytes");

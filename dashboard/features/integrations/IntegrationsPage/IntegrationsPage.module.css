@@ -73,6 +73,19 @@
 .dialog > footer .primary { border-color: #42cfc4; color: #063e3a; background: #52ddcf; }
 .dialog > footer button:disabled { opacity: .55; cursor: not-allowed; }
 .formError { margin-top: 14px; padding: 10px; border-radius: 8px; color: #a43f35; background: #fff1ef; font-size: .72rem; }
+.formSuccess { display:flex; align-items:flex-start; gap:8px; margin-top:14px; padding:11px 12px; border-radius:9px; color:#08766f; background:#effbf8; font-size:.72rem; line-height:1.45; }
+.formSuccess svg { flex:none; margin-top:1px; }
+.sheetsGuide { display:grid; gap:11px; margin:-4px 0 20px; padding:15px; border:1px solid #d9e9e6; border-radius:14px; background:#f5fbfa; }
+.sheetsGuide > div { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:start; }
+.sheetsGuide svg { margin-top:1px; color:#0b958d; }
+.sheetsGuide strong { display:block; color:#17342f; font-size:.78rem; }
+.sheetsGuide p { margin:3px 0 6px; color:#64748b; font-size:.7rem; line-height:1.45; }
+.sheetsGuide code { color:#39716e; font-family:inherit; font-size:.66rem; }
+.sheetsGuide .sheetsSafety { margin:1px 0 0; padding-top:10px; border-top:1px solid #dcece9; color:#5c7181; }
+.sheetsInitializer { display:grid; gap:7px; margin-top:17px; padding:13px; border:1px dashed #c7d8df; border-radius:12px; }
+.initializeSheets { display:inline-flex; width:fit-content; min-height:40px; align-items:center; justify-content:center; gap:8px; padding:0 14px; border:1px solid #75cfc8; border-radius:10px; color:#075d59; background:#eafaf7; font:inherit; font-size:.74rem; font-weight:650; cursor:pointer; }
+.initializeSheets:disabled { opacity:.5; cursor:not-allowed; }
+.sheetsInitializer p { margin:0; color:#718096; font-size:.68rem; line-height:1.45; }
 .dialogLoading { display: flex; min-height: 120px; align-items: center; justify-content: center; gap: 9px; color: #64748b; font-size: .8rem; }
 .whatsappDialog { width: min(590px, 100%); }
 .connectionSummary { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; padding: 18px; border: 1px solid #d9e9e6; border-radius: 15px; background: linear-gradient(135deg, #f4fcfa, #fff); }
@@ -174,6 +187,15 @@
 .dialog > footer button { border-color:rgba(92,149,196,.22); color:#aebfcd; background:rgba(255,255,255,.03); }
 .dialog > footer .primary { border-color:#22d8cb; color:#012824; background:#2cdbcf; }
 .formError { color:#ff8b73; background:rgba(126,33,19,.2); }
+.formSuccess { color:#31d8b9; background:rgba(7,113,88,.16); }
+.sheetsGuide { border-color:rgba(35,206,190,.2); background:rgba(8,92,88,.1); }
+.sheetsGuide svg { color:#28dfd2; }
+.sheetsGuide strong { color:#dce9f2; }
+.sheetsGuide p,.sheetsInitializer p { color:#8298ab; }
+.sheetsGuide code { color:#36cfc3; }
+.sheetsGuide .sheetsSafety { border-color:rgba(35,206,190,.16); color:#91a6b9; }
+.sheetsInitializer { border-color:rgba(91,150,198,.25); }
+.initializeSheets { border-color:rgba(35,222,210,.42); color:#2ce5d8; background:rgba(7,108,108,.16); }
 .dialogLoading { color:#8197aa; }
 .connectionSummary { border-color:rgba(35,206,190,.2); background:rgba(8,92,88,.1); }
 .connectionSummary span { color:#7890a5; }.connectionSummary strong { color:#dce9f2; }

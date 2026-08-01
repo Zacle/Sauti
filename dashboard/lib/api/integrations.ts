@@ -118,6 +118,19 @@ export function testIntegrationConnection(id: string, agentId?: string) {
   return apiRequest<IntegrationConnection>(`/integrations/connections/${id}/test${query}`, { method: "POST" });
 }
 
+export type GoogleSheetsInitializationResult = {
+  createdTabs: string[];
+  initializedHeaders: string[];
+  preservedHeaders: string[];
+};
+
+export function initializeGoogleSheets(agentId: string) {
+  return apiRequest<GoogleSheetsInitializationResult>(
+    `/agents/${encodeURIComponent(agentId)}/integrations/google-sheets/initialize`,
+    { method: "POST" },
+  );
+}
+
 export function deleteIntegrationConnection(id: string) {
   return apiRequest<void>(`/integrations/connections/${id}`, { method: "DELETE" });
 }
