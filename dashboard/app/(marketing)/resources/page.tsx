@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CategoryScreen } from "@/features/marketing/DestinationScreen/DestinationScreen";
+import { MarketingResourcesOverviewPage } from "@/features/marketing/Resources/presentation/MarketingResourcesPage";
 
 export const metadata: Metadata = {
   title: "Resources | Sauti",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function ResourcesIndexPage() {
-  return <CategoryScreen section="resources" />;
+  return <MarketingResourcesOverviewPage />;
 }

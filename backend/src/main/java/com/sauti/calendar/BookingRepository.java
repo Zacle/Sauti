@@ -33,6 +33,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
     Optional<Booking> findFirstByCall_Id(UUID callId);
 
+    Optional<Booking> findFirstByTenantIdAndCall_IdAndAgent_Id(UUID tenantId, UUID callId, UUID agentId);
+
     List<Booking> findTop20ByCalendarSyncStatusAndCalendarSyncNextAttemptAtLessThanEqualOrderByCreatedAt(
             String calendarSyncStatus,
             OffsetDateTime nextAttemptAt

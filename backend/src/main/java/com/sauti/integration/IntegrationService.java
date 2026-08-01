@@ -410,15 +410,28 @@ public class IntegrationService {
             throw new IllegalArgumentException("appendRange must use A1 notation including a sheet tab");
         }
         parseNonNegativeIndexes(configuration.get("returnColumns"), "returnColumns");
-        var lookup = String.valueOf(configuration.getOrDefault("lookupColumn", "0")).trim();
-        if (!lookup.isBlank() && parseNonNegativeIndexes(lookup, "lookupColumn").size() != 1) {
-            throw new IllegalArgumentException("lookupColumn must contain one zero-based column number");
+        var lookupColumn = singleSheetColumn(configuration, "lookupColumn", "0");
+        var nameColumn = singleSheetColumn(configuration, "customerNameColumn", "1");
+        var emailColumn = singleSheetColumn(configuration, "customerEmailColumn", "2");
+        if (java.util.stream.Stream.of(lookupColumn, nameColumn, emailColumn).distinct().count() != 3) {
+            throw new IllegalArgumentException(
+                    "Customer phone, name, and email columns must use different zero-based column numbers"
+            );
         }
         var appendColumns = csv(configuration.get("appendColumns"));
         var unsupported = appendColumns.stream().filter(column -> !SHEETS_APPEND_COLUMNS.contains(column)).toList();
         if (!unsupported.isEmpty()) {
             throw new IllegalArgumentException("Unsupported appendColumns: " + String.join(", ", unsupported));
         }
+    }
+
+    private int singleSheetColumn(Map<String, Object> configuration, String field, String fallback) {
+        var value = String.valueOf(configuration.getOrDefault(field, fallback)).trim();
+        var parsed = parseNonNegativeIndexes(value, field);
+        if (parsed.size() != 1) {
+            throw new IllegalArgumentException(field + " must contain one zero-based column number");
+        }
+        return parsed.get(0);
     }
 
     private List<Integer> parseNonNegativeIndexes(Object value, String field) {

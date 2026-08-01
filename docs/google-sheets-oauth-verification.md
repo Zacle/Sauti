@@ -63,8 +63,11 @@ Google account, selects an agent, and configures the exact spreadsheet ID and
 ranges that agent may use. During a call, the agent can look up a row by a value
 in the owner-configured column and receives only the configured return columns.
 The agent may replace a matching configured row only after explicit caller
-confirmation. After a call is analysed, Sauti can append the owner-selected call
-fields to a separate configured log range using a durable retryable job.
+confirmation. When the call creates a confirmed Sauti booking, that same
+durable delivery also upserts the booking customer by normalized phone: a
+missing customer is appended, while an existing row receives only missing name
+or email values. After a call is analysed, Sauti appends the owner-selected call
+fields to a separate configured log range.
 
 Read-only access is insufficient because the user-facing integration includes
 confirmed row updates and owner-enabled post-call appends. Google Drive access
@@ -81,6 +84,8 @@ Create a dedicated spreadsheet containing synthetic data only:
    - spreadsheet ID: the ID between `/d/` and `/edit` in the Sheet URL;
    - lookup range: `Customers!A:C`;
    - lookup column: `0`;
+   - customer name column: `1`;
+   - customer email column: `2`;
    - return columns: `0, 1, 2`;
    - post-call append range: `Calls!A:F`;
    - append columns: `callId, startedAt, callerPhone, outcome, summary, sentiment`.
@@ -90,14 +95,17 @@ Create a dedicated spreadsheet containing synthetic data only:
    - `Calls`: `Call ID`, `Started At`, `Caller Phone`, `Outcome`, `Summary`,
      `Sentiment`.
    Existing tabs and non-empty header rows are preserved and never replaced.
-4. Add a synthetic customer row such as `+20115551234`, `Alex Morgan`,
-   `alex@example.test` to the `Customers` tab.
+4. Leave the `Customers` tab with headers only. The end-to-end booking test will
+   prove that Sauti creates the synthetic customer automatically.
 5. Click `Save and test`. Sauti must show the connection as connected before
    recording the review video.
 
 The call ID is always included in post-call writes so a delivery retry does not
-append the same call twice. Lookup and append ranges are separate so customer
-records are not mixed with call logs.
+append the same call twice. Customer retries match the normalized booking phone
+before writing, so they do not blindly append another customer. Existing
+non-empty customer name and email cells are never replaced by automatic sync.
+Lookup and append ranges are separate so customer records are not mixed with
+call logs.
 
 ## End-to-end verification video
 
@@ -113,12 +121,13 @@ tokens, unrelated Google files, or real customer data.
    explanation of the `Customers` and `Calls` business uses.
 6. Click `Create tabs and headers`, then show both initialized tabs in Google
    Sheets. Return to Sauti, click `Save and test`, and show connected status.
-7. Run a browser test call that looks up the synthetic phone number; show
-   that the agent returns only the configured fields.
-8. Ask to update the synthetic row, show the agent's explicit confirmation
-   request, confirm it, and show the changed row in Google Sheets.
-9. End the test call, wait for post-call analysis/delivery, and show exactly one
-   new row in the `Calls` tab.
+7. Run a browser test call that creates a confirmed booking for a synthetic
+   caller and phone number.
+8. End the call, wait for post-call analysis/delivery, and show exactly one new
+   customer row in `Customers` and exactly one new call row in `Calls`.
+9. Run a lookup for that synthetic phone and show that the agent returns only
+   the configured fields. Ask to update the row, show the agent's explicit
+   confirmation request, confirm it, and show the changed row in Google Sheets.
 10. Show Sauti's latest successful Google Sheets delivery status.
 11. Disconnect Google Sheets and show that the selected agent is disabled from
     using its Sheets tools.
@@ -136,10 +145,11 @@ Keep these items with the verification submission:
 - Search Console domain ownership;
 - successful Sauti live-test timestamp;
 - synthetic spreadsheet ID and ranges used in the demo;
-- one successful lookup, confirmed update, and post-call delivery record;
+- one automatic confirmed-booking customer upsert, successful lookup,
+  confirmed update, and post-call delivery record;
 - the unlisted video URL and recording account;
 - confirmation that the app audience is published rather than left in Testing.
 
-Do not submit until OAuth reconnect, token refresh, lookup, confirmed update,
-post-call append, duplicate-delivery protection, and disconnect all pass against
-the dedicated production test spreadsheet.
+Do not submit until OAuth reconnect, token refresh, automatic customer upsert,
+lookup, confirmed update, post-call append, duplicate-delivery protection, and
+disconnect all pass against the dedicated production test spreadsheet.

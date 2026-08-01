@@ -60,7 +60,8 @@ const labels: Record<string, string> = {
   phoneNumberId: "Phone-number ID", templateName: "Approved template name",
   templateLanguage: "Template language", accessToken: "Long-lived system-user token",
   recipients: "Recipients (comma-separated)", spreadsheetId: "Spreadsheet ID",
-  range: "Customer lookup range", lookupColumn: "Phone lookup column", returnColumns: "Returned customer columns",
+  range: "Customer lookup range", lookupColumn: "Phone column", customerNameColumn: "Name column",
+  customerEmailColumn: "Email column", returnColumns: "Returned customer columns",
   appendRange: "Post-call append range", appendColumns: "Append columns", shortcode: "Shortcode", environment: "Environment",
   minimumAmount: "Minimum amount", maximumAmount: "Maximum amount",
   consumerKey: "Consumer key", consumerSecret: "Consumer secret", passkey: "Passkey",
@@ -621,6 +622,8 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
     if (entry.provider === "google_sheets") {
       initial.range = "Customers!A:C";
       initial.lookupColumn = "0";
+      initial.customerNameColumn = "1";
+      initial.customerEmailColumn = "2";
       initial.returnColumns = "0, 1, 2";
       initial.appendRange = "Calls!A:F";
       initial.appendColumns = "callId, startedAt, callerPhone, outcome, summary, sentiment";
@@ -726,7 +729,7 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
       {fields.length === 0 && <p className={styles.oauthNote}>This provider requires OAuth. Use its authorization flow when application credentials are configured.</p>}
       {entry.provider === "google_sheets" && <section className={styles.sheetsGuide}>
         <div><TableProperties size={18} /><div><strong>Customers</strong>
-          <p>Lets the agent find customer details by phone and update a row only after caller confirmation.</p>
+          <p>Automatically adds confirmed booking customers by phone, safely fills missing name or email details, and supports caller-confirmed updates.</p>
           <code>Phone · Name · Email</code>
         </div></div>
         <div><TableProperties size={18} /><div><strong>Calls</strong>
@@ -804,6 +807,8 @@ function placeholderFor(provider: string, field: string) {
   if (provider === "google_sheets" && field === "spreadsheetId") return "1AbCdEf… from the Google Sheets URL";
   if (provider === "google_sheets" && field === "range") return "Customers!A:C";
   if (provider === "google_sheets" && field === "lookupColumn") return "0";
+  if (provider === "google_sheets" && field === "customerNameColumn") return "1";
+  if (provider === "google_sheets" && field === "customerEmailColumn") return "2";
   if (provider === "google_sheets" && field === "returnColumns") return "0, 1, 2";
   if (provider === "google_sheets" && field === "appendRange") return "Calls!A:F";
   if (provider === "google_sheets" && field === "appendColumns") return "callId, startedAt, callerPhone, outcome, summary, sentiment";

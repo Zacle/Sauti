@@ -51,6 +51,7 @@ public class PostCallIntegrationService {
     private final IntegrationService integrationService;
     private final ProviderOAuthService oauth;
     private final GoogleSheetsApiClient googleSheets;
+    private final GoogleSheetsCustomerSyncService googleSheetsCustomers;
     private final ObjectMapper objectMapper;
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
@@ -71,6 +72,7 @@ public class PostCallIntegrationService {
                                       IntegrationService integrationService,
                                       ProviderOAuthService oauth,
                                       GoogleSheetsApiClient googleSheets,
+                                      GoogleSheetsCustomerSyncService googleSheetsCustomers,
                                       ObjectMapper objectMapper,
                                       JavaMailSender mailSender,
                                       TemplateEngine templateEngine,
@@ -89,6 +91,7 @@ public class PostCallIntegrationService {
         this.integrationService = integrationService;
         this.oauth = oauth;
         this.googleSheets = googleSheets;
+        this.googleSheetsCustomers = googleSheetsCustomers;
         this.objectMapper = objectMapper;
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
@@ -239,6 +242,7 @@ public class PostCallIntegrationService {
         var range = required(config, "range");
         var appendRange = String.valueOf(config.getOrDefault("appendRange", "")).trim();
         if (appendRange.isBlank()) appendRange = range;
+        googleSheetsCustomers.syncConfirmedBookingCustomer(call, config);
         var columns = stringList(config.get("appendColumns"));
         if (columns.isEmpty()) columns = List.of("callId", "startedAt", "callerPhone", "outcome", "summary", "sentiment");
         if (!columns.contains("callId")) {

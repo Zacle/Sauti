@@ -85,6 +85,45 @@ final result: passed
 
 ---
 
+# Resources Console Option 2 Design QA
+
+- Source visual truth: `C:\Users\Zacle\.codex\generated_images\019fbc15-294f-7ad2-b6f6-0ec7de9f162e\exec-17f4f212-1d22-4065-b71d-920a4cf47435.png` (1487 x 1058)
+- Rendered implementation: `D:\Documents\Sauti\design-qa\resources-console-final-1440x1024.png` (1440 x 1008 screenshot pixels from a 1440 x 1024 CSS viewport)
+- Combined comparison: `D:\Documents\Sauti\design-qa\resources-console-comparison.png`
+- Density normalization: the source was resized with Lanczos sampling to the implementation capture size for the side-by-side comparison; no implementation pixels were rescaled.
+- State: Resources overview, Business owner audience, default booking-calendar query.
+
+## Findings and comparison history
+
+- [P1 fixed] The first desktop pass wrapped the hero title and pushed the console below the selected composition.
+  - Fix: tightened the desktop display scale, hero padding, status spacing, and console offset while preserving responsive wrapping below the desktop breakpoint.
+  - Evidence: the final 1440 px capture keeps the full title on one line and exposes the complete three-column console above the fold.
+- [P2 fixed] The featured-guide title initially wrapped despite the selected concept using one line.
+  - Fix: added a desktop-only guide-title scale and no-wrap rule; mobile and tablet continue to wrap naturally.
+- No actionable P0/P1/P2 findings remain after the second source-to-implementation comparison.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing Sauti font stack is retained; the hero, featured guide, rails, labels, and compact metadata reproduce the selected hierarchy without truncation or cramped controls.
+- Spacing and layout: the final overview preserves the selected search-first hierarchy, six-item browse rail, central launch guide, and trust rail. Card radii, borders, internal gaps, and section rhythm match the dark console treatment.
+- Colors and tokens: navy surfaces, cyan primary actions, violet builder accents, mint trust states, muted body copy, and restrained borders map to the selected visual direction with accessible contrast.
+- Image and icon quality: the selected design contains no required photographic or raster hero asset. The existing Sauti logo and one consistent Lucide icon family are used; no CSS illustration or placeholder imagery substitutes for a source asset.
+- Copy and content: navigation and guidance are grounded in the project SRS, including multilingual agents, RAG-backed answers, bookings, analytics, tenant isolation, encrypted credentials, signed callbacks, and consent controls. Case-study content is explicitly framed as implementation patterns rather than invented customer claims.
+- Interactions and accessibility: search submission, query clearing, audience selection, route navigation, native FAQ expansion, keyboard-reachable controls, semantic labels, visible focus behavior, live status feedback, and reduced-motion handling were checked.
+- Responsive resilience: desktop (1440 px) and mobile (390 px) checks found no horizontal overflow, clipped controls, or broken hierarchy. The browse rail, launch sequence, journey cards, and trust content collapse into usable single-column arrangements.
+
+## Functional and route checks
+
+- Search was exercised with the Builder audience and a custom tenant-isolation query; the result status updated correctly.
+- The Documentation, API Reference, Blog, Case Studies, FAQs, and Security routes all rendered their tailored content with a main landmark and no horizontal overflow.
+- FAQ disclosure controls expanded correctly.
+- A fresh production-preview navigation emitted no browser warnings or errors.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed; the build generated all six static resource detail routes.
+
+final result: passed
+
+---
+
 # Agent Studio Call Visual Correction QA
 
 - Source visual truth:

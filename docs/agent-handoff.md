@@ -34,6 +34,50 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-08-01: Design and implement the Resources Console
+
+- Replaced the generic marketing resource category surface with the selected
+  Product Design Option 2: a search-first Resource Console with a six-resource
+  browse rail, central launch guide, popular journeys, and a trust center.
+- Added working search, query clearing, audience filters, route navigation, and
+  native FAQ disclosure interactions. A reduced-motion-aware Remotion Player
+  provides contextual response motion without blocking the core content.
+- Built tailored Documentation, API Reference, Blog, Case Studies, FAQs, and
+  Security screens instead of repeating one placeholder detail template.
+- Grounded the content in the project SRS and current architecture: multilingual
+  agents, RAG-backed answers, booking workflows, analytics, REST/webhook
+  references, tenant isolation, encrypted credentials, signed callbacks, and
+  recording/consent controls. Case Studies are labeled as implementation
+  patterns so the public site does not imply unverified customer claims.
+- Added responsive behavior for tablet and mobile, including usable browse,
+  guide-step, journey, trust, API, FAQ, and related-resource layouts.
+- Files touched:
+  - `dashboard/app/(marketing)/resources/page.tsx`
+  - `dashboard/app/(marketing)/resources/[slug]/page.tsx`
+  - `dashboard/features/marketing/Resources/domain/resource-content.ts`
+  - `dashboard/features/marketing/Resources/presentation/MarketingResourcesPage.tsx`
+  - `dashboard/features/marketing/Resources/presentation/MarketingResourcesPage.module.css`
+  - `dashboard/features/marketing/Resources/presentation/ResourceSearchMotion.tsx`
+  - `design-qa.md`
+  - `design-qa/resources-console-final-1440x1024.png`
+  - `design-qa/resources-console-comparison.png`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` - passed.
+  - `npm.cmd run lint` - passed with zero warnings.
+  - `npm.cmd run build` - passed; Next.js generated 50 routes, including all
+    six static resource detail routes.
+  - Browser checks passed at 1440 x 1024 and 390 x 844 with no horizontal
+    overflow; search/filter updates, FAQ expansion, and all six resource routes
+    were exercised.
+  - Final normalized visual comparison passed with no remaining actionable
+    P0/P1/P2 design findings; see `design-qa.md`.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD flow.
+- Follow-up: the public guidance is repository-authored static content. A future
+  content-management pass can introduce dated articles and real customer proof
+  when approved source material exists.
+
 ### 2026-08-01: Complete Google Sheets OAuth and agent workflows
 
 - Completed Google Sheets as a production integration rather than only an
@@ -125,6 +169,49 @@ Release policy:
 - Known follow-up: after deployment, verify the initializer once against an
   empty synthetic spreadsheet and once against a spreadsheet whose existing
   `Customers` header row must remain unchanged.
+
+#### Follow-up: upsert confirmed booking customers into Google Sheets
+
+- Fixed the behavior where `Calls` received a post-call row but a newly booked
+  caller never appeared in `Customers`. The previous implementation had no
+  customer-create path; `Customers` supported lookup and confirmed updates only.
+- Added a booking-backed customer sync step to the existing durable Google
+  Sheets delivery. It runs only when the completed call owns a confirmed Sauti
+  booking and resolves that booking with tenant, agent, and call scope.
+- Customer synchronization is retry-safe:
+  - phone matching uses Sauti's normalized booking-phone representation;
+  - a missing phone appends one customer row;
+  - an existing phone is not appended again;
+  - automatic enrichment writes only an individually blank name or email cell,
+    so it never replaces a non-empty customer value or rewrites the whole row.
+- Added explicit zero-based phone, name, and email column mappings with safe
+  defaults `0`, `1`, and `2`. Configuration validation requires the three
+  mappings to be non-negative and distinct.
+- Updated the integration dialog and verification guide to explain that
+  confirmed bookings automatically create or safely enrich customer records.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/BookingRepository.java`
+  - `backend/src/main/java/com/sauti/integration/GoogleSheetsCustomerSyncService.java`
+  - `backend/src/main/java/com/sauti/integration/PostCallIntegrationService.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationCatalog.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationService.java`
+  - `backend/src/test/java/com/sauti/integration/GoogleSheetsCustomerSyncServiceTest.java`
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `docs/google-sheets-oauth-verification.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused Google Sheets customer-sync and configuration tests - passed;
+  - `.\gradlew.bat :backend:test --info` - passed;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed; Next.js generated 50 routes.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD flow.
+- Known follow-ups:
+  - previously delivered calls are not retroactively backfilled; verify using a
+    new confirmed booking after deployment;
+  - run the production test once with a missing customer and once with the same
+    phone already present to prove append and deduplication behavior.
 
 ### 2026-07-31: Fix database-first Google event creation and retry stranded bookings
 
