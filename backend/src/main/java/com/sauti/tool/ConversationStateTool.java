@@ -12,6 +12,7 @@ import com.sauti.session.PendingAction;
 import com.sauti.session.PersonNameEntityExtractor;
 import com.sauti.session.PersonNameNormalizer;
 import com.sauti.session.PhoneNumberEntityExtractor;
+import com.sauti.session.PhoneNumberFragment;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -189,7 +190,7 @@ public class ConversationStateTool {
         properties.put("phone_capture_status", Map.of(
                 "type", "string",
                 "enum", List.of("not_applicable", "incomplete", "complete"),
-                "description", "Language-neutral completeness judgment for phone information in the latest caller turn. Use incomplete when any spoken digit is ambiguous, missing, interrupted, replaced by an unrecognized sound, or the caller has not clearly finished the sequence; emit no phone update and ask for one slow natural repetition. Use complete only when every digit is unambiguous and updates contains the complete normalized phone. Length alone never proves completeness. Use not_applicable when this turn supplies no phone."
+                "description", "Language-neutral completeness judgment for phone information. Clear partial digit groups may continue across consecutive turns and are retained privately by the server. Use incomplete when the current group is clear but the caller intends to continue, or when any digit is ambiguous; emit no phone update. Use complete when the latest turn supplies a finished full number or clearly finishes the retained sequence, with the complete normalized phone in updates when available. Length alone never proves completeness. Use not_applicable when this turn supplies no phone digits."
         ));
         properties.put("phone_target", Map.of(
                 "type", "string",
@@ -327,6 +328,9 @@ public class ConversationStateTool {
                             "callerPhoneDigits",
                             phoneDigits(next.values().get(reduction.phoneTarget()))
                     );
+                } else if (!reduction.retainedPhoneDigits().isBlank()) {
+                    result.put("partialPhoneDigits", phoneDigits(reduction.retainedPhoneDigits()));
+                    result.put("partialPhoneDigitCount", reduction.retainedPhoneDigits().length());
                 }
             }
             var clearedFields = clearFields(
@@ -506,8 +510,14 @@ public class ConversationStateTool {
                             + "element per digit, and ask whether it is correct. Do not use the model candidate, "
                             + "conversation memory, grouping, or any other digit sequence."
                         : "The server could not establish a complete phone from source evidence and stored no new "
-                            + "phone. In the caller's current language, ask for one slow complete repetition. Do not "
-                            + "read back, infer, repair, or mention the model candidate."
+                            + "authoritative phone. "
+                            + (reduction.retainedPhoneDigits().isBlank()
+                                ? "No clear partial digits were retained. Ask for one slow complete repetition. "
+                                : "The clear partialPhoneDigits were retained privately. Give one brief listening cue "
+                                    + "and ask the caller to continue with the remaining digits or restart the complete "
+                                    + "number. Do not read the partial digits unless the caller explicitly asks what you "
+                                    + "have; if asked, read them exactly once in array order. ")
+                            + "Do not infer, repair, duplicate, or mention the model candidate."
                     : incompleteBookingReference
                     ? "The caller supplied only part of a Sauti booking number. Do not call lookup_booking and do "
                         + "not say that a lookup is running. Ask in the caller's current language for the complete "
@@ -678,6 +688,7 @@ public class ConversationStateTool {
         var sourceUtterance = sourceUtterance(call, arguments);
         var phoneTarget = phoneTarget(arguments, turnUpdates);
         var phoneAccepted = false;
+        var retainedPhoneDigits = "";
         var phoneCaptureStatus = declaredPhoneCaptureStatus;
         var explicitPhoneTarget = choice(
                 arguments.get("phone_target"), PHONE_TARGETS, "not_applicable"
@@ -686,17 +697,35 @@ public class ConversationStateTool {
                 || (!"not_applicable".equals(explicitPhoneTarget) && !sourceUtterance.isBlank());
         if (!"not_applicable".equals(phoneTarget) && extractionEligible) {
             var candidate = turnUpdates.getOrDefault(phoneTarget, "");
-            var extractedPhone = normalizePhone(
-                    phoneNumbers.extract(call, sourceUtterance, candidate)
-            );
+            var extraction = phoneNumbers.extractSequence(call, sourceUtterance, candidate);
             turnUpdates.remove("caller_phone");
             turnUpdates.remove("new_caller_phone");
-            if (!extractedPhone.isBlank()) {
-                turnUpdates.put(phoneTarget, extractedPhone);
-                phoneCaptureStatus = "complete";
-                phoneAccepted = true;
+            var previousFragment = phoneFragment(call, phoneTarget);
+            if (extraction.hasClearDigits()) {
+                var extractedDigits = extraction.digits();
+                var combinedDigits = extraction.complete()
+                        ? extractedDigits
+                        : mergePhoneFragment(previousFragment, extractedDigits);
+                var complete = combinedDigits.length() >= 7 && combinedDigits.length() <= 15
+                        && (extraction.complete() || "complete".equals(declaredPhoneCaptureStatus));
+                if (complete) {
+                    turnUpdates.put(phoneTarget, combinedDigits);
+                    sessions.updatePhoneNumberFragment(call.getTwilioCallSid(), null);
+                    phoneCaptureStatus = "complete";
+                    phoneAccepted = true;
+                } else {
+                    retainedPhoneDigits = combinedDigits;
+                    sessions.updatePhoneNumberFragment(
+                            call.getTwilioCallSid(), new PhoneNumberFragment(phoneTarget, combinedDigits)
+                    );
+                    phoneCaptureStatus = "incomplete";
+                }
             } else {
+                retainedPhoneDigits = previousFragment;
                 phoneCaptureStatus = "incomplete";
+            }
+            if (phoneAccepted) {
+                phoneCaptureStatus = "complete";
             }
         } else if (!"not_applicable".equals(phoneTarget)) {
             turnUpdates.remove("caller_phone");
@@ -779,8 +808,27 @@ public class ConversationStateTool {
                 new ConversationState(values, subject, intent, current.revision() + 1),
                 Map.copyOf(turnUpdates),
                 phoneTarget,
-                phoneAccepted
+                phoneAccepted,
+                retainedPhoneDigits
         );
+    }
+
+    private String phoneFragment(Call call, String target) {
+        try {
+            var fragment = sessions.phoneNumberFragment(call.getTwilioCallSid());
+            if (fragment == null || fragment.isEmpty() || !target.equals(fragment.get().target())) return "";
+            return fragment.get().digits();
+        } catch (RuntimeException ignored) {
+            return "";
+        }
+    }
+
+    private static String mergePhoneFragment(String previous, String latest) {
+        if (previous == null || previous.isBlank()) return latest;
+        if (latest.startsWith(previous)) return latest;
+        if (previous.startsWith(latest)) return previous;
+        var combined = previous + latest;
+        return combined.length() <= 15 ? combined : latest;
     }
 
     private String phoneTarget(
@@ -854,7 +902,8 @@ public class ConversationStateTool {
             ConversationState state,
             Map<String, String> turnUpdates,
             String phoneTarget,
-            boolean phoneAccepted
+            boolean phoneAccepted,
+            String retainedPhoneDigits
     ) {
     }
 

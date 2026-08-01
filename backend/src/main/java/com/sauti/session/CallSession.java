@@ -19,6 +19,7 @@ public class CallSession {
     private VerifiedBookingIdentity verifiedBookingIdentity;
     private BookingDraft pendingBookingDraft;
     private PendingAction pendingAction;
+    private PhoneNumberFragment phoneNumberFragment;
     private String agentSpeakingMarkName;
     private boolean speaking;
     private boolean currentTurnInterrupted;
@@ -144,6 +145,14 @@ public class CallSession {
 
     public void setPendingAction(PendingAction pendingAction) {
         this.pendingAction = pendingAction;
+    }
+
+    public PhoneNumberFragment getPhoneNumberFragment() {
+        return phoneNumberFragment;
+    }
+
+    public void setPhoneNumberFragment(PhoneNumberFragment phoneNumberFragment) {
+        this.phoneNumberFragment = phoneNumberFragment;
     }
 
     public String getAgentSpeakingMarkName() {

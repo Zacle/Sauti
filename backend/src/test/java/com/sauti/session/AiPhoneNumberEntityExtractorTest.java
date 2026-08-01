@@ -58,6 +58,24 @@ class AiPhoneNumberEntityExtractorTest {
     }
 
     @Test
+    void exposesClearIncompleteDigitsWithoutTreatingThemAsACompletePhone() {
+        var provider = mock(LlmToolCallingProvider.class);
+        when(provider.completeTurn(any())).thenReturn(new LlmToolTurnResponse(
+                "",
+                List.of(new LlmToolCall(
+                        "phone-1",
+                        "return_phone_digit_sequence",
+                        Map.of("status", "incomplete", "digits", List.of("0", "1", "0"))
+                ))
+        ));
+        var extractor = new AiPhoneNumberEntityExtractor(provider);
+
+        assertThat(extractor.extractSequence(call(), "zero one zero", "010"))
+                .isEqualTo(new PhoneNumberEntityExtractor.Extraction("incomplete", "010"));
+        assertThat(extractor.extract(call(), "zero one zero", "010")).isEmpty();
+    }
+
+    @Test
     void doesNotTrustTheModelsCandidateWhenSourceEvidenceIsMissing() {
         var provider = mock(LlmToolCallingProvider.class);
 

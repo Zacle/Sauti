@@ -23,11 +23,14 @@ public record LlmToolDefinition(
     }
 
     private static boolean callerWaitExpected(AgentTool tool) {
-        // Sauti booking mutations commit locally and queue external writes, so
-        // they should return before a filler can help. Availability and remote
-        // integration/communication actions can cross a network boundary.
+        // Even database-first booking operations can create a noticeable voice
+        // pause while the managed model selects, invokes, and consumes a tool
+        // result. Mark customer-facing workflow operations so Telnyx can cover
+        // that perceived wait. Static facts remain on the silent fast path.
         return switch (tool.getToolName()) {
-            case "check_availability", "send_confirmation_sms", "transfer_to_human",
+            case "check_availability", "lookup_booking", "book_slot", "update_booking",
+                    "reschedule_booking", "cancel_booking",
+                    "send_confirmation_sms", "transfer_to_human",
                     "send_whatsapp_message", "lookup_google_sheet_row", "update_google_sheet_row",
                     "request_mpesa_payment", "check_mpesa_payment", "call_custom_webhook" -> true;
             default -> "webhook".equals(tool.getFulfillmentType());

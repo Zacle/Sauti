@@ -56,6 +56,27 @@ class RedisCallSessionStoreTest {
     }
 
     @Test
+    void retainsPhoneFragmentsPrivatelyUntilTheyAreCleared() {
+        var redis = mock(StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        var values = (ValueOperations<String, String>) mock(ValueOperations.class);
+        when(redis.opsForValue()).thenReturn(values);
+        when(values.get(anyString())).thenReturn(null);
+        var store = new RedisCallSessionStore(redis, new ObjectMapper().findAndRegisterModules(), 7200);
+        store.create("phone-fragment", new CallSession());
+        var fragment = new PhoneNumberFragment("caller_phone", "010575");
+
+        store.updatePhoneNumberFragment("phone-fragment", fragment);
+
+        assertThat(store.phoneNumberFragment("phone-fragment")).contains(fragment);
+        assertThat(store.conversationState("phone-fragment").orElseThrow().values())
+                .doesNotContainKey("caller_phone");
+
+        store.updatePhoneNumberFragment("phone-fragment", null);
+        assertThat(store.phoneNumberFragment("phone-fragment")).isEmpty();
+    }
+
+    @Test
     void recordsAManagedConfirmationOnlyForTheExactRetainedAction() {
         var redis = mock(StringRedisTemplate.class);
         @SuppressWarnings("unchecked")

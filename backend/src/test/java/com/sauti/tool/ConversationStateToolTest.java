@@ -3,6 +3,7 @@ package com.sauti.tool;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,10 +16,12 @@ import com.sauti.session.ConversationState;
 import com.sauti.session.PendingAction;
 import com.sauti.session.PersonNameEntityExtractor;
 import com.sauti.session.PhoneNumberEntityExtractor;
+import com.sauti.session.PhoneNumberFragment;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -302,6 +305,70 @@ class ConversationStateToolTest {
                         List.of("0", "1", "1", "5", "7", "5", "2", "4", "4", "1")
                 )
                 .doesNotContainKey("spokenResponse");
+    }
+
+    @Test
+    void retainsClearPhoneGroupsAcrossTurnsWithoutDuplicatingARepeatedPrefix() {
+        var sessions = mock(CallSessionStore.class);
+        var sid = "fragmented-phone-call";
+        var call = call(sid);
+        var state = new AtomicReference<>(ConversationState.empty());
+        var fragment = new AtomicReference<PhoneNumberFragment>();
+        when(sessions.conversationState(sid)).thenAnswer(ignored -> Optional.of(state.get()));
+        when(sessions.phoneNumberFragment(sid))
+                .thenAnswer(ignored -> Optional.ofNullable(fragment.get()));
+        doAnswer(invocation -> {
+            state.set(invocation.getArgument(1));
+            return null;
+        }).when(sessions).updateConversationState(eq(sid), org.mockito.ArgumentMatchers.any());
+        doAnswer(invocation -> {
+            fragment.set(invocation.getArgument(1));
+            return null;
+        }).when(sessions).updatePhoneNumberFragment(eq(sid), org.mockito.ArgumentMatchers.any());
+        PersonNameEntityExtractor names = (ignored, candidate) -> candidate;
+        PhoneNumberEntityExtractor phones = new PhoneNumberEntityExtractor() {
+            @Override
+            public String extract(Call ignored, String source, String candidate) {
+                return "";
+            }
+
+            @Override
+            public Extraction extractSequence(Call ignored, String source, String candidate) {
+                return switch (source) {
+                    case "zero one zero" -> new Extraction("incomplete", "010");
+                    case "zero one zero five seven five" -> new Extraction("incomplete", "010575");
+                    case "two four four one" -> new Extraction("incomplete", "2441");
+                    default -> Extraction.unclear();
+                };
+            }
+        };
+        var tool = new ConversationStateTool(sessions, null, names, phones);
+
+        var first = tool.execute(call, phoneFragmentToolCall("zero one zero", "incomplete"));
+        assertThat(first.result())
+                .containsEntry("phoneCaptureStatus", "incomplete")
+                .containsEntry("partialPhoneDigits", List.of("0", "1", "0"))
+                .containsEntry("partialPhoneDigitCount", 3);
+        assertThat(state.get().values()).doesNotContainKey("caller_phone");
+
+        var repeatedPrefix = tool.execute(
+                call,
+                phoneFragmentToolCall("zero one zero five seven five", "incomplete")
+        );
+        assertThat(repeatedPrefix.result())
+                .containsEntry("partialPhoneDigits", List.of("0", "1", "0", "5", "7", "5"))
+                .containsEntry("partialPhoneDigitCount", 6);
+        assertThat(fragment.get().digits()).isEqualTo("010575");
+
+        var completed = tool.execute(call, phoneFragmentToolCall("two four four one", "complete"));
+        assertThat(completed.result())
+                .containsEntry("phoneCaptureStatus", "complete")
+                .containsEntry(
+                        "callerPhoneDigits",
+                        List.of("0", "1", "0", "5", "7", "5", "2", "4", "4", "1")
+                );
+        assertThat(state.get().values()).containsEntry("caller_phone", "0105752441");
+        assertThat(fragment.get()).isNull();
     }
 
     @Test
@@ -1580,6 +1647,22 @@ class ConversationStateToolTest {
                 ConversationStateTool.NAME,
                 Map.copyOf(complete)
         );
+    }
+
+    private LlmToolCall phoneFragmentToolCall(String source, String status) {
+        return toolCall(Map.ofEntries(
+                Map.entry("updates", Map.of()),
+                Map.entry("additional_details", Map.of()),
+                Map.entry("clear_fields", List.of()),
+                Map.entry("booking_subject", "unchanged"),
+                Map.entry("booking_intent", "active"),
+                Map.entry("phone_capture_status", status),
+                Map.entry("phone_target", "caller_phone"),
+                Map.entry("source_utterance", source),
+                Map.entry("next_action", "reply"),
+                Map.entry("business_tool", ""),
+                Map.entry("spoken_response", "Please continue with the remaining digits.")
+        ));
     }
 
     private Map<String, Object> arguments(Object... entries) {

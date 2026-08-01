@@ -186,6 +186,22 @@ public class RedisCallSessionStore implements CallSessionStore {
     }
 
     @Override
+    public Optional<PhoneNumberFragment> phoneNumberFragment(String callSid) {
+        return get(callSid).map(CallSession::getPhoneNumberFragment);
+    }
+
+    @Override
+    public void updatePhoneNumberFragment(String callSid, PhoneNumberFragment fragment) {
+        mutate(callSid, session -> {
+            if (session != null) {
+                session.setPhoneNumberFragment(fragment);
+                session.touch();
+            }
+            return session;
+        });
+    }
+
+    @Override
     public Optional<PendingAction> takePendingAction(String callSid, String toolName) {
         if (callSid == null || callSid.isBlank() || toolName == null || toolName.isBlank()) {
             return Optional.empty();

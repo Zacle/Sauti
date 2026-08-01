@@ -245,7 +245,7 @@ export function TestCallPanel({
   }
 
   async function beginCall() {
-    if (!agentId || statusRef.current === "connecting") return;
+    if (!agentId || statusRef.current !== "idle") return;
     if (!voiceId?.toLowerCase().startsWith("telnyx.")) {
       setError("Select and save a Telnyx voice before starting the test.");
       return;
@@ -304,7 +304,6 @@ export function TestCallPanel({
         throw new Error("The backend did not create a Telnyx test session.");
       }
       callIdRef.current = started.call.id;
-      setCallId(started.call.id);
       connectionRef.current = await connectBrowserVoiceRuntime(started.runtime, {
         onStartupStage(stage, details) {
           recordDiagnostic(`startup_${stage}`, details);
@@ -338,6 +337,10 @@ export function TestCallPanel({
           if (speaking && !firstAgentAudioRef.current) {
             firstAgentAudioRef.current = true;
             recordDiagnostic("first_agent_audio");
+            // Do not reveal an empty live-call view while Telnyx is still
+            // activating the conversation. The first real greeting audio is
+            // the point at which the agent is visibly ready for the caller.
+            setCallId(started.call.id);
           }
           if (speaking) setError("");
           updateStatus(speaking ? "speaking" : "listening");
@@ -481,20 +484,20 @@ export function TestCallPanel({
           <button
             disabled={
               !agentId
-              || status === "connecting"
+              || status !== "idle"
               || preparationStatus === "preparing"
               || !voiceId?.toLowerCase().startsWith("telnyx.")
             }
             onClick={() => void beginCall()}
             type="button"
           >
-            {status === "connecting" || preparationStatus === "preparing"
+            {status !== "idle" || preparationStatus === "preparing"
               ? <LoaderCircle className="spin" size={17} />
               : <Phone size={17} />}
             {!agentId
               ? "Save agent to test"
-              : status === "connecting"
-                ? "Starting conversation..."
+              : status !== "idle"
+                ? "Starting agent..."
                 : preparationStatus === "preparing"
                   ? "Preparing voice demo..."
                   : preparationStatus === "error"

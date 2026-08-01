@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "44";
+        return "45";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -94,10 +94,13 @@ public class TelnyxManagedVoiceAgentProvisioner {
             webhook.put("name", tool.name());
             var description = tool.description() == null ? "" : tool.description();
             if (tool.callerWaitExpected()) {
-                description += " This operation may take noticeable time. Immediately before invoking it, say one "
-                        + "brief, natural, professional progress acknowledgment in the caller's current language. "
-                        + "Do not ask a question and do not imply success or failure. After the result returns, "
-                        + "continue automatically and explain only the factual outcome.";
+                description += " This operation can make the caller wait. Unless a progress acknowledgment was "
+                        + "already spoken after the caller's latest turn, immediately before invoking it say exactly "
+                        + "one natural sentence, ideally under eight words, in the caller's current language. It "
+                        + "should communicate only that you are " + progressPurpose(tool.name()) + ". Do not ask a "
+                        + "question or imply success or failure. Do not add another progress sentence for an "
+                        + "immediately chained tool. After the result returns, continue automatically and explain "
+                        + "only the factual outcome.";
             }
             if ("reschedule_booking".equals(tool.name())) {
                 description += " Invoke this tool with confirmation_state=not_confirmed to retain and review the "
@@ -218,8 +221,9 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   review_decision=approved, action_authorization=unconditional, and caller_question=none. Sauti will
                   invoke the exact retained mutation automatically. Do not call the mutation tool directly, do not
                   ask repeatedly, and never demand a language-specific or fixed phrase such as "I confirm".
-                - For a tool marked as potentially slow, speak its brief progress acknowledgment immediately before
-                  invoking it, without asking the caller a question.
+                - For a tool marked as potentially slow, cover the wait with exactly one brief progress sentence in
+                  the caller's current language immediately before invoking it. Use no more than one progress sentence
+                  after each caller turn, even when tools are chained. Never ask a question or imply success.
                 - After every tool result, continue automatically in the same turn; never wait for more caller speech.
                 - Keep each spoken answer continuous and concise.
                 - On Telnyx, do not call the portable end_call webhook. Use Sauti's explicit conversation channel
@@ -310,6 +314,23 @@ public class TelnyxManagedVoiceAgentProvisioner {
         if (updating) body.put("promote_to_main", true);
         body.put("tags", java.util.List.of("sauti-managed"));
         return Map.copyOf(body);
+    }
+
+    private static String progressPurpose(String toolName) {
+        return switch (toolName) {
+            case "check_availability" -> "checking the requested time";
+            case "lookup_booking" -> "finding the booking";
+            case "book_slot" -> "preparing or saving the booking";
+            case "update_booking" -> "updating the booking details";
+            case "reschedule_booking" -> "checking or applying the requested change";
+            case "cancel_booking" -> "processing the cancellation request";
+            case "transfer_to_human" -> "connecting the caller with the team";
+            case "send_confirmation_sms", "send_whatsapp_message" -> "sending the requested message";
+            case "lookup_google_sheet_row" -> "checking the customer record";
+            case "update_google_sheet_row" -> "updating the customer record";
+            case "request_mpesa_payment", "check_mpesa_payment" -> "checking the payment request";
+            default -> "working on the request";
+        };
     }
 
     private static String path(String value) {

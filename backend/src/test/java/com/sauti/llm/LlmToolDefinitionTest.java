@@ -32,14 +32,29 @@ class LlmToolDefinitionTest {
     }
 
     @Test
-    void keepsDatabaseFirstBookingMutationsOnTheFastPath() {
+    void acknowledgesDatabaseFirstBookingOperationsToCoverVoiceRoundTripLatency() {
         var tool = mock(AgentTool.class);
         when(tool.getToolName()).thenReturn("reschedule_booking");
         when(tool.getToolDescription()).thenReturn("Reschedule a booking");
         when(tool.getParametersSchema()).thenReturn(Map.of("type", "object"));
         when(tool.getFulfillmentType()).thenReturn("sauti_calendar");
 
-        assertThat(LlmToolDefinition.from(tool).callerWaitExpected()).isFalse();
+        assertThat(LlmToolDefinition.from(tool).callerWaitExpected()).isTrue();
+    }
+
+    @Test
+    void acknowledgesBookingLookupAndSaveOperations() {
+        for (var toolName : java.util.List.of("lookup_booking", "book_slot")) {
+            var tool = mock(AgentTool.class);
+            when(tool.getToolName()).thenReturn(toolName);
+            when(tool.getToolDescription()).thenReturn("Booking operation");
+            when(tool.getParametersSchema()).thenReturn(Map.of("type", "object"));
+            when(tool.getFulfillmentType()).thenReturn("sauti_calendar");
+
+            assertThat(LlmToolDefinition.from(tool).callerWaitExpected())
+                    .as(toolName)
+                    .isTrue();
+        }
     }
 
     @Test

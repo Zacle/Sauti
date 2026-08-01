@@ -60,6 +60,10 @@ class ManagedVoiceAgentProvisionersTest {
                 .contains("callSid={{sauti_call_sid}}")
                 .contains("async=false")
                 .contains("timeout_ms=30000")
+                .contains("exactly one natural sentence")
+                .contains("checking the requested time")
+                .contains("checking or applying the requested change")
+                .contains("Do not add another progress sentence")
                 .contains(
                         "confirmation_state=not_confirmed",
                         "do not invoke this tool directly",
@@ -129,7 +133,9 @@ class ManagedVoiceAgentProvisionersTest {
                         "spoken farewell alone",
                         "final word has completely finished",
                         "Never invoke a terminal tool in parallel"
-                );
+                )
+                .contains("Use no more than one progress sentence")
+                .contains("Never ask a question or imply success");
         assertThat(body.getValue().get("dynamic_variables"))
                 .isEqualTo(Map.of("sauti_conversation_channel", "phone_call"));
         assertThat(body.getValue()).containsEntry("model", "moonshotai/Kimi-K2.6");

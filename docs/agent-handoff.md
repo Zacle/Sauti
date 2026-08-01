@@ -34,6 +34,92 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-08-01: Hide browser activation latency and cover tool waits naturally
+
+- Kept the browser test on its pre-call canvas after Start while Telnyx activates
+  the call. The live transcript/control screen now appears only when the first
+  real agent audio begins, instead of appearing as an empty call that says it is
+  preparing a response. The Start control uses `Starting agent...` during this
+  short activation period.
+- Preserved the existing proactive runtime preparation and signaling
+  preconnection. This is a perceived-latency UI correction; it does not delay
+  call creation or microphone preparation.
+- Expanded managed-tool wait coverage to booking lookup, review/save, update,
+  reschedule, and cancellation in addition to availability and remote
+  integrations. Telnyx is instructed to say one short, operation-specific
+  progress sentence in the caller's current language before the tool call.
+- Prevented filler chatter: at most one progress sentence is allowed after each
+  caller turn, including chained availability/booking operations. It must not
+  ask a question or imply that an operation succeeded before the tool result.
+- Advanced the Telnyx managed configuration version from 44 to 45 so the normal
+  reconciliation worker refreshes existing agent language bindings after
+  deployment without adding provider writes to the latency-sensitive Start
+  path.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `backend/src/main/java/com/sauti/llm/LlmToolDefinition.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/test/java/com/sauti/llm/LlmToolDefinitionTest.java`
+  - `backend/src/test/java/com/sauti/call/ManagedVoiceAgentProvisionersTest.java`
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused managed-tool and Telnyx provisioning tests passed;
+  - `\.\gradlew.bat :backend:test` passed;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed; Next.js generated 50 routes.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD flow.
+- Follow-up: after deployment and reconciliation, test a cold browser start and
+  availability-to-booking chain. Confirm the screen switches on greeting audio,
+  only one localized progress sentence is spoken per caller turn, and the final
+  factual result still comes exclusively from the tool response.
+
+### 2026-08-01: Retain clear phone-number fragments across caller turns
+
+- Investigated `sauti-telnyx-diagnostics-1785573803484.json`. The caller audio
+  was present at healthy levels; the failure was state handling, not microphone
+  volume. The semantic digit extractor correctly classified short groups such
+  as the first three digits as incomplete, but `update_conversation_state`
+  discarded them. The assistant therefore asked the caller to continue while
+  retaining no record of what it had already heard.
+- Added a private, call-scoped phone fragment to the Redis-backed call session.
+  Clear incomplete digit groups now survive consecutive turns without entering
+  authoritative booking state. Repeated or extended prefixes replace the
+  retained prefix instead of duplicating it, while distinct later groups append
+  in order.
+- Kept the safety boundary strict: an incomplete fragment is never saved as
+  `caller_phone`, and length alone never marks a number complete. Completion
+  still requires clear source evidence or an explicit semantic completion
+  judgment for the turn.
+- `update_conversation_state` now returns the retained digits and count to the
+  managed assistant. It asks the caller to continue or restart, and if the
+  caller asks what was heard, reads the retained digits exactly once rather
+  than saying that no number is available.
+- Updated the managed Telnyx instructions so every clear phone group is sent to
+  the state tool and its fragment guidance is followed.
+- Files touched:
+  - `backend/src/main/java/com/sauti/llm/ConversationOrchestrator.java`
+  - `backend/src/main/java/com/sauti/session/AiPhoneNumberEntityExtractor.java`
+  - `backend/src/main/java/com/sauti/session/CallSession.java`
+  - `backend/src/main/java/com/sauti/session/CallSessionStore.java`
+  - `backend/src/main/java/com/sauti/session/PhoneNumberEntityExtractor.java`
+  - `backend/src/main/java/com/sauti/session/PhoneNumberFragment.java`
+  - `backend/src/main/java/com/sauti/session/RedisCallSessionStore.java`
+  - `backend/src/main/java/com/sauti/tool/ConversationStateTool.java`
+  - related backend regression tests
+  - `docs/agent-handoff.md`
+- Verification:
+  - focused phone extractor, session-store, and conversation-state tests passed;
+  - `\.\gradlew.bat :backend:test` passed (364 tests);
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD flow.
+- Follow-up: after deployment and managed-assistant reconciliation, repeat the
+  browser flow using several short digit groups and ask “which digits do you
+  have?” midway. Confirm the agent reads the retained prefix once and saves only
+  the final complete number.
+
 ### 2026-08-01: Design and implement the Resources Console
 
 - Replaced the generic marketing resource category surface with the selected

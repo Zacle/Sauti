@@ -41,6 +41,10 @@ public interface CallSessionStore {
 
     void updatePendingAction(String callSid, PendingAction action);
 
+    Optional<PhoneNumberFragment> phoneNumberFragment(String callSid);
+
+    void updatePhoneNumberFragment(String callSid, PhoneNumberFragment fragment);
+
     /**
      * Atomically removes and returns the retained action only when its tool
      * name matches. Used by managed-provider confirmation callbacks so a

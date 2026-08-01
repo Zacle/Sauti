@@ -52,7 +52,9 @@ public class AiPhoneNumberEntityExtractor implements PhoneNumberEntityExtractor 
             Never repair a number from typical formatting, country rules, length, or the MODEL_CANDIDATE.
             MODEL_CANDIDATE is provided only to expose possible disagreement. Never use it as a substitute for
             SOURCE_UTTERANCE and never copy digits from it.
-            If any digit or the end of the sequence is ambiguous, return unclear or incomplete and no digits.
+            Use complete only when the caller clearly supplied a finished full number in this utterance.
+            Use incomplete with the clear digits when the caller supplied an unambiguous partial group and intends
+            to continue in another turn. Use unclear with no digits when any spoken digit itself is ambiguous.
             """;
 
     private final LlmToolCallingProvider provider;
@@ -63,10 +65,18 @@ public class AiPhoneNumberEntityExtractor implements PhoneNumberEntityExtractor 
 
     @Override
     public String extract(Call call, String sourceUtterance, String candidate) {
-        if (call == null) return "";
+        var extraction = extractSequence(call, sourceUtterance, candidate);
+        return extraction.complete() && extraction.digits().length() >= 7
+                ? extraction.digits()
+                : "";
+    }
+
+    @Override
+    public Extraction extractSequence(Call call, String sourceUtterance, String candidate) {
+        if (call == null) return Extraction.unclear();
         var source = clean(sourceUtterance);
         var fallback = clean(candidate);
-        if (source.isBlank()) return "";
+        if (source.isBlank()) return Extraction.unclear();
         try {
             var language = call.getLanguageDetected() == null || call.getLanguageDetected().isBlank()
                     ? call.getAgent().getDefaultLanguage()
@@ -88,18 +98,25 @@ public class AiPhoneNumberEntityExtractor implements PhoneNumberEntityExtractor 
             return response.toolCalls().stream()
                     .filter(tool -> TOOL_NAME.equals(tool.name()))
                     .findFirst()
-                    .filter(tool -> "complete".equalsIgnoreCase(text(tool.arguments(), "status")))
-                    .map(tool -> digitString(tool.arguments().get("digits")))
-                    .filter(value -> value.length() >= 7 && value.length() <= 15)
-                    .orElse("");
+                    .map(tool -> extraction(tool.arguments()))
+                    .orElseGet(Extraction::unclear);
         } catch (RuntimeException exception) {
             LOGGER.warn(
                     "Phone-digit semantic extraction failed callId={} exception={}",
                     call.getId(),
                     exception.getClass().getSimpleName()
             );
-            return "";
+            return Extraction.unclear();
         }
+    }
+
+    private static Extraction extraction(Map<String, Object> arguments) {
+        var status = text(arguments, "status").toLowerCase(java.util.Locale.ROOT);
+        var digits = digitString(arguments.get("digits"));
+        if (digits.length() > 15 || "unclear".equals(status)) return Extraction.unclear();
+        if (digits.isBlank()) return Extraction.unclear();
+        if ("complete".equals(status) && digits.length() < 7) status = "incomplete";
+        return new Extraction(status, digits);
     }
 
     private static String digitString(Object raw) {

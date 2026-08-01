@@ -362,7 +362,9 @@ public class ConversationOrchestrator {
                 - Keep the speaker (caller_name) separate from the service recipient (appointment_name). Names are opaque
                   entities: preserve the newest complete name in its original script and never store the introduction.
                 - Collect phone numbers naturally. Preserve leading zeroes and repeated digits. Accept a number only when
-                  every digit is clear; never reconstruct uncertainty. Read it digit by digit only in the final review.
+                  every digit is clear; never reconstruct uncertainty. Short clear digit groups are retained privately
+                  by update_conversation_state across consecutive turns, so call it for every group and follow its
+                  partialPhoneDigits instruction. Read a completed number digit by digit only in the final review.
                 - Persist each clear new or corrected workflow fact through update_conversation_state. Do not call that
                   tool for greetings, repetition requests, or static questions. Follow its returned next step exactly.
                 - If one caller utterance clearly supplies several workflow facts, persist all of them together in one
