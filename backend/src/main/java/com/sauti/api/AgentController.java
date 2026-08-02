@@ -160,7 +160,8 @@ public class AgentController {
                 user.tenantId(),
                 id,
                 request == null ? null : request.phoneNumber(),
-                request != null && request.replaceExisting()
+                request != null && request.replaceExisting(),
+                request != null && request.providerChargesConfirmed()
         ));
     }
 
@@ -257,5 +258,5 @@ public class AgentController {
     }
 }
 
-record ProvisionNumberRequest(String phoneNumber, boolean replaceExisting) {
+record ProvisionNumberRequest(String phoneNumber, boolean replaceExisting, boolean providerChargesConfirmed) {
 }

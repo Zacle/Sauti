@@ -351,7 +351,7 @@ function mapStoredTemplate(template: StoredAgentTemplate): Template {
 
 const studioSections = [
   { id: "main", label: "Main settings", description: "Name, purpose, voice & more", icon: Settings2 },
-  { id: "behavior", label: "Behavior & prompt", description: "Persona and instructions", icon: MessageSquareText },
+  { id: "behavior", label: "Prompt", description: "Instructions and conversation rules", icon: MessageSquareText },
   { id: "speech", label: "Speech & transcription", description: "Voice and recognition", icon: Languages },
   { id: "calls", label: "Call behaviour", description: "Silence, voicemail & DTMF", icon: PhoneCall },
   { id: "routing", label: "Routing", description: "Transfers and operating hours", icon: Route },
@@ -878,13 +878,15 @@ export function AgentCreator({
                 <i aria-hidden="true"><span style={{ width: `${setupProgress}%` }} /></i>
                 <small>{setupProgress === 100 ? "Ready to activate" : "Complete the remaining setup requirements"}</small>
               </div>
-              {studioSections.map(({ id, label, description: sectionDescription, icon: Icon }) => (
-                <button className={activeSection === id ? "active" : ""} type="button" key={id} onClick={() => setActiveSection(id)}>
-                  <Icon size={18} />
-                  <span><strong>{label}</strong><small>{sectionDescription}</small></span>
-                  {completedStudioSections.has(id) && <Check className="studio-nav-check" size={14} aria-label="Configured" />}
-                </button>
-              ))}
+              <div className="studio-nav-sections" aria-label="Agent setup sections">
+                {studioSections.map(({ id, label, description: sectionDescription, icon: Icon }) => (
+                  <button className={activeSection === id ? "active" : ""} type="button" key={id} onClick={() => setActiveSection(id)}>
+                    <Icon size={18} />
+                    <span><strong>{label}</strong><small>{sectionDescription}</small></span>
+                    {completedStudioSections.has(id) && <Check className="studio-nav-check" size={14} aria-label="Configured" />}
+                  </button>
+                ))}
+              </div>
               <div className="studio-template-note">
                 <Sparkles size={17} />
                 <div><small>{editing ? "Business details" : "Template"}</small><strong>{editing ? `${agentVariables.length} prompt variables` : selectedTemplate.name}</strong></div>
@@ -974,8 +976,6 @@ export function AgentCreator({
                   prompt={prompt}
                   onPrompt={setPrompt}
                   template={selectedTemplate.name}
-                  llmTier={llmTier}
-                  onLlmTier={setLlmTier}
                   variables={agentVariables}
                   values={{ ...variableValues, agent_name: name, timezone }}
                 />
@@ -1195,6 +1195,7 @@ function PhoneNumberPicker({
   const [loading, setLoading] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [error, setError] = useState("");
+  const [providerChargesConfirmed, setProviderChargesConfirmed] = useState(false);
   const [warningDismissed, setWarningDismissed] = useState(false);
   const [countryMenuOpen, setCountryMenuOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
@@ -1210,6 +1211,7 @@ function PhoneNumberPicker({
     setLoading(true);
     setError("");
     setSelectedNumber("");
+    setProviderChargesConfirmed(false);
     try {
       const availableNumbers = await listAvailableAgentNumbers(agentId, countryCode, 12);
       setNumbers(availableNumbers);
@@ -1233,7 +1235,12 @@ function PhoneNumberPicker({
     setOrdering(true);
     setError("");
     try {
-      onAssigned(await provisionAgentNumber(agentId, phoneNumber, Boolean(existingNumber)));
+      onAssigned(await provisionAgentNumber(
+        agentId,
+        phoneNumber ?? "",
+        Boolean(existingNumber),
+        providerChargesConfirmed,
+      ));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to assign this number.");
       setOrdering(false);
@@ -1352,7 +1359,10 @@ function PhoneNumberPicker({
                   aria-pressed={selected}
                   className={selected ? "selected" : ""}
                   key={number.phoneNumber}
-                  onClick={() => setSelectedNumber(number.phoneNumber)}
+                  onClick={() => {
+                    setSelectedNumber(number.phoneNumber);
+                    setProviderChargesConfirmed(false);
+                  }}
                   type="button"
                 >
                   <span className="number-picker-radio">{selected && <span className="number-picker-radio-dot" />}</span>
@@ -1385,6 +1395,25 @@ function PhoneNumberPicker({
         </div>
 
         {error && numbers.length > 0 && <div className="number-picker-error"><CircleAlert size={15} /> {error}</div>}
+        {selectedNumber && (
+          <label className="number-cost-confirmation">
+            <input
+              checked={providerChargesConfirmed}
+              disabled={ordering}
+              onChange={(event) => setProviderChargesConfirmed(event.target.checked)}
+              type="checkbox"
+            />
+            <span>
+              <strong>I authorize this provider purchase</strong>
+              <small>
+                I understand this number creates the displayed recurring monthly charge
+                {numbers.find((number) => number.phoneNumber === selectedNumber)?.upfrontCost
+                  ? " and may include the displayed upfront charge"
+                  : ""}. SMS, calls, taxes, and carrier fees are billed separately.
+              </small>
+            </span>
+          </label>
+        )}
         <footer>
           <div className="number-picker-footer-notice">
             <ShieldCheck className="number-picker-shield" size={36} />
@@ -1393,13 +1422,16 @@ function PhoneNumberPicker({
           <div className="number-picker-footer-actions">
             <button className="number-picker-cancel" disabled={ordering} onClick={onClose} type="button">Cancel</button>
             {numbers.length > 0 && (
-              <button className="number-picker-select-rec" disabled={ordering} onClick={() => setSelectedNumber(numbers[0].phoneNumber)} type="button">
+              <button className="number-picker-select-rec" disabled={ordering} onClick={() => {
+                setSelectedNumber(numbers[0].phoneNumber);
+                setProviderChargesConfirmed(false);
+              }} type="button">
                 <Sparkles size={14} /> Select recommended
               </button>
             )}
             <button
               className="number-picker-assign"
-              disabled={!selectedNumber || ordering}
+              disabled={!selectedNumber || !providerChargesConfirmed || ordering}
               onClick={() => void assignNumber(selectedNumber)}
               type="button"
             >
@@ -2025,34 +2057,19 @@ function BehaviorSettings({
   prompt,
   onPrompt,
   template,
-  llmTier,
-  onLlmTier,
   variables,
   values,
 }: {
   prompt: string;
   onPrompt: (value: string) => void;
   template: string;
-  llmTier: "standard" | "advanced";
-  onLlmTier: (value: "standard" | "advanced") => void;
   variables: AgentVariableDefinition[];
   values: Record<string, string>;
 }) {
   const [preview, setPreview] = useState(variables.length > 0);
   return (
     <>
-      <StudioHeading eyebrow="Behavior" title="Prompt and conversation rules" description="Define what the agent should accomplish and the boundaries it must follow." />
-      <div className="llm-tier-section">
-        <div><h3>Conversation intelligence</h3><p>Choose based on call complexity. Sauti manages the underlying model.</p></div>
-        <div className="llm-tier-options">
-          <button className={llmTier === "standard" ? "selected" : ""} type="button" onClick={() => onLlmTier("standard")}>
-            <span>{llmTier === "standard" && <Check size={14} />}</span><div><strong>Standard</strong><small>Bookings, FAQs, and simple routing</small></div><i>Faster · Lower cost</i>
-          </button>
-          <button className={llmTier === "advanced" ? "selected" : ""} type="button" onClick={() => onLlmTier("advanced")}>
-            <span>{llmTier === "advanced" && <Check size={14} />}</span><div><strong>Advanced</strong><small>Complex intake and sensitive conversations</small></div><i>Higher reasoning quality</i>
-          </button>
-        </div>
-      </div>
+      <StudioHeading eyebrow="Prompt" title="Agent prompt" description="Define what the agent should accomplish and the boundaries it must follow." />
       <div className="prompt-toolbar">
         <button type="button"><Sparkles size={15} /> {template}</button>
         {variables.length > 0 && (

@@ -85,6 +85,73 @@ final result: passed
 
 ---
 
+# Agent Setup Visibility and Billing Navigation QA
+
+- Source visual truth:
+  `D:\Documents\Sauti\design-qa\agent-setup-hidden-reference.png`
+  (371 x 793 pixels; setup rail with the lower card clipped).
+- Rendered implementation:
+  `D:\Documents\Sauti\design-qa\agent-setup-rail-fixed-1280x720.png`
+  (1280 x 720 CSS pixels at device scale 1).
+- Focused same-input comparison:
+  `D:\Documents\Sauti\design-qa\agent-setup-visibility-comparison.png`.
+- Billing evidence:
+  `D:\Documents\Sauti\design-qa\billing-navigation-restored-1280x720.png`.
+- State: new Appointment Booker draft, Main settings selected, personalisation
+  dialog closed; billing Overview with preview-only fallback usage data.
+
+## Findings and comparison history
+
+- [P1 fixed] The setup rail used `overflow: hidden`, which clipped the lower
+  personalisation card and could make setup destinations unreachable at short
+  viewport heights.
+  - Fix: separated the rail into readiness, bounded section navigation, and a
+    persistent personalisation footer. At 1280 x 720 all eight setup buttons
+    and the footer are simultaneously visible.
+  - Post-fix evidence: the section region measures 319 px client and scroll
+    height, every button bottom is within the region, and the footer bottom is
+    702 px inside the 720 px viewport.
+- [P1 fixed] Opening Usage & billing replaced the authenticated product shell,
+  removing the main workspace navigation.
+  - Fix: removed the route-specific standalone return and restored billing to
+    the shared console shell with an active sidebar state.
+  - Post-fix evidence: the billing capture shows the 252 px sidebar, workspace
+    switcher, top bar, and highlighted `Usage & billing` destination.
+- [P1 fixed] Restoring the sidebar exposed a billing hero width assumption that
+  clipped the remaining-minutes column at 1280 px.
+  - Fix: added a console-width hero grid for 1181-1500 px viewports.
+  - Post-fix evidence: the hero client and scroll width both measure 951 px;
+    the remaining column ends at x=1234 inside the 1280 px viewport.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing Sauti type scale and weights are retained;
+  short-height rows remove secondary descriptions instead of truncating titles.
+- Spacing and layout rhythm: compact 38 px short-height rows preserve all eight
+  destinations and the full personalisation card without crowding the readiness
+  summary.
+- Colors and visual tokens: existing navy surfaces, cyan active state, muted
+  secondary labels, and green completion checks are unchanged.
+- Image quality and asset fidelity: no raster or brand assets were replaced;
+  the existing icon library and generated test-call orb remain intact.
+- Copy and content: all setup labels, readiness guidance, billing labels, and
+  preview-only language remain unchanged and readable.
+
+## Interaction and regression checks
+
+- Every setup destination remains a working button inside the new navigation
+  region; the mobile horizontal-strip behavior is preserved.
+- The personalisation action remains visible and functional beneath the list.
+- Billing renders inside the normal expanded and collapsible dashboard shell.
+- Billing has no page-level horizontal overflow at 1280 x 720.
+- Browser console inspection returned no warnings or errors.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed.
+- No actionable P0/P1/P2 findings remain.
+
+final result: passed
+
+---
+
 # Billing Preview Dashboard Design QA
 
 - Source visual truth:

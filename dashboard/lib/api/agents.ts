@@ -21,10 +21,15 @@ export function activateAgent(agentId: string) {
   return apiRequest<Agent>(`/agents/${agentId}/activate`, { method: "POST" });
 }
 
-export function provisionAgentNumber(agentId: string, phoneNumber?: string, replaceExisting = false) {
+export function provisionAgentNumber(
+  agentId: string,
+  phoneNumber: string,
+  replaceExisting = false,
+  providerChargesConfirmed = false,
+) {
   return apiRequest<Agent>(`/agents/${agentId}/provision-number`, {
     method: "POST",
-    ...((phoneNumber || replaceExisting) ? { body: JSON.stringify({ phoneNumber, replaceExisting }) } : {}),
+    body: JSON.stringify({ phoneNumber, replaceExisting, providerChargesConfirmed }),
   });
 }
 

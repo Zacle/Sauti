@@ -4082,6 +4082,43 @@
   opacity: 0.58;
 }
 
+.number-cost-confirmation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 11px;
+  margin: 0 28px 18px;
+  padding: 13px 15px;
+  border: 1px solid rgba(68, 202, 190, 0.3);
+  border-radius: 12px;
+  color: #b8cbd8;
+  background: rgba(10, 84, 87, 0.13);
+  cursor: pointer;
+}
+
+.number-cost-confirmation input {
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+  accent-color: #25d8ca;
+}
+
+.number-cost-confirmation span {
+  display: grid;
+  gap: 4px;
+}
+
+.number-cost-confirmation strong {
+  color: #e4f4f5;
+  font-size: 0.76rem;
+}
+
+.number-cost-confirmation small {
+  color: #8299aa;
+  font-size: 0.66rem;
+  line-height: 1.5;
+}
+
 .test-runtime-picker {
   display: grid;
   width: min(100%, 360px);

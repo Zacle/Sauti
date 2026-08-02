@@ -34,6 +34,52 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-08-02: Simplify Agent Studio to a prompt-only section
+
+- Renamed the `Behavior & prompt` navigation destination to `Prompt` and
+  updated its description to `Instructions and conversation rules`.
+- Removed the visible Conversation intelligence tier selector from the section,
+  leaving the prompt heading, template toolbar, raw/preview modes, editor, and
+  prompt guidance.
+- Preserved the existing `llmTier` load/save field internally so editing an
+  existing agent does not silently change its persisted configuration.
+- File touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+- Verification: dashboard typecheck and lint passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+
+### 2026-08-02: Keep Agent Studio controls and billing navigation visible
+
+- Split the Agent Studio setup rail into a fixed readiness summary, a bounded
+  setup-section region, and a persistent personalisation card so lower controls
+  can no longer be clipped by the rail's previous `overflow: hidden` behavior.
+- Added a short-height layout that fits all eight setup destinations and the
+  personalisation card together at 1280 x 720; the section region remains
+  independently scrollable as a fallback for smaller heights.
+- Preserved the mobile horizontal section strip after introducing the nested
+  setup-section container.
+- Returned `/billing` to the shared authenticated Sauti shell so the workspace
+  sidebar, top bar, sidebar collapse control, and active `Usage & billing`
+  navigation state remain available.
+- Rebalanced the billing usage hero at console-width desktop breakpoints so its
+  remaining-minutes column fits beside the restored 252 px sidebar.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `dashboard/features/billing/presentation/BillingPage.module.css`
+  - `design-qa.md`
+  - `design-qa/agent-setup-*`
+  - `design-qa/billing-navigation-restored-1280x720.png`
+- Verification: dashboard typecheck, lint, and production build passed. Browser
+  QA at 1280 x 720 confirmed all eight setup buttons and the personalisation
+  card are visible, the billing sidebar is present and active, the usage hero
+  has no internal overflow, and the browser console is clean.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+
 ### 2026-08-02: Resolve billing meter custom-property warnings
 
 - Declared safe local defaults for `--usage-width` and `--forecast-left` on the
@@ -748,6 +794,37 @@ Release policy:
     availability tests - passed;
   - `\.\gradlew.bat :backend:test --console=plain` - passed;
   - `git diff --check` - passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-08-02 - Production readiness step 1: paid number purchase confirmation
+
+- Closed the first provider-cost control gap around Telnyx phone-number orders.
+  The backend now rejects number provisioning unless the authenticated owner
+  explicitly confirms the provider's upfront and recurring charges; omitting
+  or falsifying the flag fails before any provider request is made.
+- Added an explicit authorization checkbox to the existing number picker. It
+  explains that monthly number rental is separate from SMS, calls, taxes, and
+  carrier fees. Selecting another number or market clears the authorization,
+  and the purchase action remains disabled until the owner confirms again.
+- Updated existing API integration fixtures to use the new confirmation
+  contract and added focused coverage proving both fail-closed and confirmed
+  provisioning behavior.
+- Files touched:
+  - `backend/src/main/java/com/sauti/agent/AgentService.java`;
+  - `backend/src/main/java/com/sauti/api/AgentController.java`;
+  - `backend/src/test/java/com/sauti/agent/AgentNumberProvisioningCostControlTest.java`;
+  - `backend/src/test/java/com/sauti/AgentTemplateApiTest.java`;
+  - `backend/src/test/java/com/sauti/AuthAgentFlowTest.java`;
+  - `dashboard/lib/api/agents.ts`;
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`;
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - focused number-provisioning backend tests passed;
+  - `./gradlew.bat :backend:test` passed all 383 tests;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed.
 - Deployment status remains unchanged: not deployed and uncommitted.
 
 #### Follow-up: repair the agent-template API test fixture

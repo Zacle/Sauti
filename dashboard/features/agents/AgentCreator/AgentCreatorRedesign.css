@@ -40,6 +40,8 @@ body:has(.agent-studio) {
   }
 
   .agent-studio-nav {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     height: 100%;
     min-height: 0;
     padding: 20px 12px 18px;
@@ -120,28 +122,68 @@ body:has(.agent-studio) {
   font-size: 0.66rem;
 }
 
-.agent-studio .agent-studio-nav > button {
+.studio-nav-sections {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 2px 2px 10px;
+  overscroll-behavior: contain;
+  scrollbar-color: #31546c transparent;
+  scrollbar-width: thin;
+}
+
+.studio-nav-sections::-webkit-scrollbar {
+  width: 6px;
+}
+
+.studio-nav-sections::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #31546c;
+  background-clip: padding-box;
+}
+
+.agent-studio .studio-nav-sections > button {
   display: grid;
+  width: 100%;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   min-height: 58px;
   align-items: center;
   gap: 9px;
   padding: 7px 10px;
+  border: 1px solid transparent;
   border-radius: 12px;
+  color: #91a6ba;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.agent-studio .agent-studio-nav > button > svg:first-child {
+.agent-studio .studio-nav-sections > button:hover {
+  color: #e4f3fb;
+  background: rgba(15, 72, 98, 0.3);
+}
+
+.agent-studio .studio-nav-sections > button.active {
+  border-color: rgba(29, 220, 208, 0.34);
+  color: #2de4d7;
+  background: linear-gradient(90deg, rgba(11, 127, 123, 0.32), rgba(10, 55, 81, 0.36));
+  box-shadow: inset 2px 0 #25dfd2, 0 10px 26px rgba(0, 0, 0, 0.12);
+}
+
+.agent-studio .studio-nav-sections > button > svg:first-child {
   justify-self: center;
   color: #7f98ad;
 }
 
-.agent-studio .agent-studio-nav > button > span {
+.agent-studio .studio-nav-sections > button > span {
   display: grid;
   min-width: 0;
   gap: 3px;
 }
 
-.agent-studio .agent-studio-nav > button strong {
+.agent-studio .studio-nav-sections > button strong {
   overflow: hidden;
   color: #b9c9d5;
   font-size: 0.76rem;
@@ -150,7 +192,7 @@ body:has(.agent-studio) {
   white-space: nowrap;
 }
 
-.agent-studio .agent-studio-nav > button small {
+.agent-studio .studio-nav-sections > button small {
   overflow: hidden;
   color: #688198;
   font-size: 0.61rem;
@@ -158,12 +200,12 @@ body:has(.agent-studio) {
   white-space: nowrap;
 }
 
-.agent-studio .agent-studio-nav > button.active strong {
+.agent-studio .studio-nav-sections > button.active strong {
   color: #ecfffd;
 }
 
-.agent-studio .agent-studio-nav > button.active small,
-.agent-studio .agent-studio-nav > button.active > svg:first-child {
+.agent-studio .studio-nav-sections > button.active small,
+.agent-studio .studio-nav-sections > button.active > svg:first-child {
   color: #47e7dc;
 }
 
@@ -172,7 +214,7 @@ body:has(.agent-studio) {
 }
 
 .studio-template-note {
-  margin: auto 2px 0;
+  margin: 10px 2px 0;
   padding: 14px;
   border-radius: 15px;
 }
@@ -408,11 +450,11 @@ body:has(.agent-studio) {
     grid-template-columns: 250px minmax(470px, 1fr) 340px;
   }
 
-  .agent-studio .agent-studio-nav > button {
+  .agent-studio .studio-nav-sections > button {
     min-height: 53px;
   }
 
-  .agent-studio .agent-studio-nav > button small {
+  .agent-studio .studio-nav-sections > button small {
     display: none;
   }
 
@@ -435,11 +477,11 @@ body:has(.agent-studio) {
     padding: 12px;
   }
 
-  .agent-studio .agent-studio-nav > button {
+  .agent-studio .studio-nav-sections > button {
     min-height: 51px;
   }
 
-  .agent-studio .agent-studio-nav > button small {
+  .agent-studio .studio-nav-sections > button small {
     display: none;
   }
 }
@@ -451,11 +493,15 @@ body:has(.agent-studio) {
     padding: 10px 12px;
   }
 
-  .agent-studio .agent-studio-nav > button {
-    min-height: 45px;
+  .agent-studio .studio-nav-sections > button {
+    min-height: 38px;
   }
 
-  .agent-studio .agent-studio-nav > button small {
+  .studio-nav-sections {
+    padding-bottom: 4px;
+  }
+
+  .agent-studio .studio-nav-sections > button small {
     display: none;
   }
 
@@ -471,19 +517,41 @@ body:has(.agent-studio) {
     display: none;
   }
 
-  .agent-studio .agent-studio-nav > button {
+  .agent-studio .studio-nav-sections > button {
     display: flex;
     min-height: 43px;
     padding: 0 12px;
   }
 
-  .agent-studio .agent-studio-nav > button > span {
+  .agent-studio .studio-nav-sections > button > span {
     display: block;
   }
 
-  .agent-studio .agent-studio-nav > button small,
+  .agent-studio .studio-nav-sections > button small,
   .studio-nav-check {
     display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .studio-nav-sections {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0;
+    scrollbar-width: none;
+  }
+
+  .studio-nav-sections::-webkit-scrollbar {
+    display: none;
+  }
+
+  .agent-studio .studio-nav-sections > button {
+    width: auto;
+    flex: 0 0 auto;
   }
 }
 

@@ -220,11 +220,6 @@ public class AgentService {
         agentRepository.delete(agent);
     }
 
-    @Transactional
-    public Agent provisionNumber(UUID tenantId, UUID agentId) {
-        return provisionNumber(tenantId, agentId, null, false);
-    }
-
     @Transactional(readOnly = true)
     public List<TelephonyProvider.AvailablePhoneNumber> searchAvailableNumbers(
             UUID tenantId,
@@ -244,8 +239,14 @@ public class AgentService {
             UUID tenantId,
             UUID agentId,
             String requestedPhoneNumber,
-            boolean replaceExisting
+            boolean replaceExisting,
+            boolean providerChargesConfirmed
     ) {
+        if (!providerChargesConfirmed) {
+            throw new IllegalArgumentException(
+                    "Confirm the provider's upfront and recurring phone-number charges before purchasing"
+            );
+        }
         var agent = get(tenantId, agentId);
         if (agent.getTwilioPhoneNumber() != null && !agent.getTwilioPhoneNumber().isBlank()) {
             if (!replaceExisting) {

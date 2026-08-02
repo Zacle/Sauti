@@ -575,7 +575,22 @@
   }
 }
 
-@media (min-width: 1181px) and (max-width: 1370px) {
+@media (min-width: 1181px) and (max-width: 1500px) {
+  .usageHero {
+    grid-template-columns: 240px minmax(0, 1fr) 190px;
+    min-height: 220px;
+  }
+
+  .planSummary,
+  .meterSummary,
+  .remainingSummary {
+    padding: 22px;
+  }
+
+  .meterSummary footer {
+    gap: 12px;
+  }
+
   .planStudio {
     grid-template-columns: minmax(300px, .82fr) minmax(430px, 1.18fr);
   }

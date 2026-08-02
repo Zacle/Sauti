@@ -148,7 +148,9 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.connectionStatus").value("connected"));
 
         var provisionedAgentJson = mvc.perform(post("/api/v1/agents/" + agentId + "/provision-number")
-                        .header("Authorization", "Bearer " + token))
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"providerChargesConfirmed\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.twilioPhoneNumber").isString())
                 .andReturn()
