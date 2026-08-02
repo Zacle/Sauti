@@ -107,6 +107,15 @@ sauti:
     allowed-origins: ${SAUTI_CORS_ALLOWED_ORIGINS:http://localhost:8088,http://127.0.0.1:8088}
   providers:
     mode: ${PROVIDER_MODE:fake}
+  billing:
+    reconciliation:
+      max-attempts: ${SAUTI_BILLING_RECONCILIATION_MAX_ATTEMPTS:8}
+      poll-delay-ms: ${SAUTI_BILLING_RECONCILIATION_POLL_DELAY_MS:30000}
+    fallback:
+      currency: ${SAUTI_BILLING_FALLBACK_CURRENCY:USD}
+      voice-minute: ${SAUTI_BILLING_FALLBACK_VOICE_PER_MINUTE:0}
+      sms-message: ${SAUTI_BILLING_FALLBACK_SMS_PER_MESSAGE:0}
+      whatsapp-message: ${SAUTI_BILLING_FALLBACK_WHATSAPP_PER_MESSAGE:0}
   llm:
     provider: ${SAUTI_LLM_PROVIDER:heuristic}
     default-model: ${SAUTI_LLM_DEFAULT_MODEL:gemini-3.1-flash-lite}

@@ -25,13 +25,16 @@ public class CommunicationUsageMeteringService {
     private final CallRepository calls;
     private final AgentRepository agents;
     private final ObjectMapper objectMapper;
+    private final ProviderCostReconciliationService reconciliation;
 
     public CommunicationUsageMeteringService(BillingLedgerService ledger, CallRepository calls,
-                                              AgentRepository agents, ObjectMapper objectMapper) {
+                                              AgentRepository agents, ObjectMapper objectMapper,
+                                              ProviderCostReconciliationService reconciliation) {
         this.ledger = ledger;
         this.calls = calls;
         this.agents = agents;
         this.objectMapper = objectMapper;
+        this.reconciliation = reconciliation;
     }
 
     public void meterCompletedCall(UUID tenantId, UUID callId) {
@@ -62,7 +65,7 @@ public class CommunicationUsageMeteringService {
                 ledger.recordDebit(tenantId, "voice_call", adjustment, "minute", null, null,
                         idempotencyKey, reference, "Completed voice call usage adjustment", metadata);
             } else {
-                ledger.recordCredit(tenantId, "voice_call", adjustment.abs(), "minute", null, null,
+                ledger.recordUnpricedCredit(tenantId, "voice_call", adjustment.abs(), "minute",
                         idempotencyKey, reference, "Authoritative voice call usage correction", metadata);
             }
         } catch (RuntimeException exception) {
@@ -96,6 +99,11 @@ public class CommunicationUsageMeteringService {
                             "providerMessageId", providerReference
                     )
             );
+            if ("sms".equals(normalizedChannel) && !providerReference.isBlank()) {
+                reconciliation.enqueueTelnyxMessage(tenantId, providerReference);
+            } else {
+                reconciliation.recordMessageRateCardEstimate(tenantId, normalizedChannel, reference);
+            }
         } catch (RuntimeException exception) {
             LOGGER.warn("Could not meter outbound message tenantId={} channel={} reference={}",
                     tenantId, channel, fallbackReference, exception);

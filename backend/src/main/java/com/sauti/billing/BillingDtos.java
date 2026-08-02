@@ -46,9 +46,15 @@ public final class BillingDtos {
             BigDecimal lowBalanceThreshold,
             Map<String, BigDecimal> communicationBalances,
             boolean paidResourcesAllowed,
+            List<CostTotalResponse> costTotals,
+            List<UnpricedUsageResponse> unpricedUsage,
+            ReconciliationHealthResponse reconciliation,
             List<LedgerEntryResponse> recentEntries
     ) {
         static BillingAccountResponse from(BillingAccount account, Map<String, BigDecimal> balances,
+                                           List<CostTotalResponse> costTotals,
+                                           List<UnpricedUsageResponse> unpricedUsage,
+                                           ReconciliationHealthResponse reconciliation,
                                            List<CommunicationLedgerEntry> recentEntries) {
             var blocked = List.of("suspended", "cancelled").contains(account.getStatus());
             var entitledStatus = List.of("active", "trialing").contains(account.getStatus());
@@ -58,10 +64,23 @@ public final class BillingDtos {
                     account.getId(), account.getStatus(), account.getEnforcementMode(),
                     account.getBillingCurrency(), account.getMonthlySpendingLimit(),
                     account.getLowBalanceThreshold(), balances, paidResourcesAllowed,
+                    costTotals, unpricedUsage, reconciliation,
                     recentEntries.stream().map(LedgerEntryResponse::from).toList()
             );
         }
     }
+
+    public record CostTotalResponse(String costBasis, String currency, BigDecimal amount) { }
+
+    public record UnpricedUsageResponse(String category, String unit, BigDecimal quantity) { }
+
+    public record ReconciliationHealthResponse(
+            long pending,
+            long retrying,
+            long reconciled,
+            long estimated,
+            long unavailable
+    ) { }
 
     public record LedgerEntryResponse(
             UUID id,
@@ -71,6 +90,7 @@ public final class BillingDtos {
             String unit,
             BigDecimal amount,
             String currency,
+            String costBasis,
             String externalReference,
             String description,
             OffsetDateTime createdAt
@@ -78,7 +98,7 @@ public final class BillingDtos {
         static LedgerEntryResponse from(CommunicationLedgerEntry entry) {
             return new LedgerEntryResponse(
                     entry.getId(), entry.getDirection(), entry.getCategory(), entry.getQuantity(), entry.getUnit(),
-                    entry.getAmount(), entry.getCurrency(), entry.getExternalReference(), entry.getDescription(),
+                    entry.getAmount(), entry.getCurrency(), entry.getCostBasis(), entry.getExternalReference(), entry.getDescription(),
                     entry.getCreatedAt()
             );
         }

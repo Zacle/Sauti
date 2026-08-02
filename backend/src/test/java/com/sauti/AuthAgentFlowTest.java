@@ -164,6 +164,10 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.status").value("preview"))
                 .andExpect(jsonPath("$.enforcementMode").value("observe"))
                 .andExpect(jsonPath("$.paidResourcesAllowed").value(true))
+                .andExpect(jsonPath("$.costTotals[0].costBasis").value("provider_quote"))
+                .andExpect(jsonPath("$.costTotals[0].currency").value("USD"))
+                .andExpect(jsonPath("$.unpricedUsage").isArray())
+                .andExpect(jsonPath("$.reconciliation.pending").value(0))
                 .andExpect(jsonPath("$.recentEntries[0].category").value("phone_number_purchase"))
                 .andExpect(jsonPath("$.recentEntries[0].direction").value("debit"));
 

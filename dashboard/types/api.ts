@@ -499,6 +499,7 @@ export type BillingLedgerEntry = {
   unit: string;
   amount: number | null;
   currency: string | null;
+  costBasis: "unpriced" | "rate_card" | "provider_quote" | "provider_confirmed" | "credit";
   externalReference: string | null;
   description: string | null;
   createdAt: string;
@@ -513,6 +514,23 @@ export type BillingAccount = {
   lowBalanceThreshold: number;
   communicationBalances: Record<string, number>;
   paidResourcesAllowed: boolean;
+  costTotals: Array<{
+    costBasis: BillingLedgerEntry["costBasis"];
+    currency: string;
+    amount: number;
+  }>;
+  unpricedUsage: Array<{
+    category: string;
+    unit: string;
+    quantity: number;
+  }>;
+  reconciliation: {
+    pending: number;
+    retrying: number;
+    reconciled: number;
+    estimated: number;
+    unavailable: number;
+  };
   recentEntries: BillingLedgerEntry[];
 };
 

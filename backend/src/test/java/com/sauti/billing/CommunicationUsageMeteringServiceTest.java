@@ -80,9 +80,9 @@ class CommunicationUsageMeteringServiceTest {
 
         fixture.service.meterCompletedCall(tenantId, callId);
 
-        verify(fixture.ledger).recordCredit(
+        verify(fixture.ledger).recordUnpricedCredit(
                 eq(tenantId), eq("voice_call"), eq(new BigDecimal("0.5000")), eq("minute"),
-                eq(null), eq(null), eq("voice-call:" + callId + ":snapshot:seconds-90"), eq(callId.toString()),
+                eq("voice-call:" + callId + ":snapshot:seconds-90"), eq(callId.toString()),
                 eq("Authoritative voice call usage correction"), anyMap());
     }
 
@@ -117,7 +117,8 @@ class CommunicationUsageMeteringServiceTest {
         var calls = mock(CallRepository.class);
         var agents = mock(AgentRepository.class);
         return new Fixture(ledger, calls, agents,
-                new CommunicationUsageMeteringService(ledger, calls, agents, new ObjectMapper()));
+                new CommunicationUsageMeteringService(
+                        ledger, calls, agents, new ObjectMapper(), mock(ProviderCostReconciliationService.class)));
     }
 
     private record Fixture(BillingLedgerService ledger, CallRepository calls, AgentRepository agents,

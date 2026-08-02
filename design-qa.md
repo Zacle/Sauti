@@ -85,6 +85,87 @@ final result: passed
 
 ---
 
+# Circular AI Voice Animation QA — 2026-08-03
+
+- Source visual truth: the user-supplied voice-animation screenshots and
+  `C:\Users\Zacle\Downloads\screen-capture.webm`, used only as visual direction.
+- Implementation: `http://127.0.0.1:8088/agents/new`.
+- Intended viewport: desktop Agent Studio, 1280 x 720 CSS pixels at device scale 1.
+- Source pixels: supplied references vary; no source pixels are included in the implementation.
+- Implementation pixels: browser screenshot unavailable.
+- State: blank Amina agent, idle voice-test panel.
+
+## Full-view comparison evidence
+
+Blocked. The in-app browser rendered and exposed the component DOM, but every
+full-page screenshot request timed out or closed the tab, including a fresh
+production-build tab before the animation was mounted.
+
+## Focused-region evidence
+
+Browser inspection confirmed a 1:1 animation wrapper, a square high-density
+canvas, and zero image, video, or SVG descendants. The canvas uses equal radial
+geometry around one center and changes shape over time, but a focused pixel
+capture could not be obtained from the browser.
+
+## Findings
+
+- [P2] Final visual polish cannot be certified without rendered image evidence.
+  - Evidence: DOM geometry and runtime checks pass, but browser capture fails.
+  - Fix: inspect the live preview or repeat screenshot comparison when the
+    in-app browser capture surface is available.
+
+## Required fidelity surfaces
+
+- Fonts and typography: unchanged from the previously verified Agent Studio.
+- Spacing and layout rhythm: wrapper is square and responsive; surrounding panel layout is unchanged.
+- Colors and visual tokens: teal strands and cobalt panel field retain Sauti's established palette.
+- Image quality and asset fidelity: no reference image/video is present; final raster quality is not screenshot-certified.
+- Copy and content: unchanged.
+
+## Comparison history
+
+- Earlier implementation was visibly oval because it used a 220 x 172 view box
+  and unequal X/Y radii. The new implementation uses a square canvas and one
+  radius for both axes.
+- The copied-media implementation and all extracted reference assets were
+  removed before this pass.
+
+final result: blocked
+
+---
+
+# Original Test-call AI Ribbon QA (supersedes copied-media implementation)
+
+- Design reference only: `C:\Users\Zacle\Downloads\screen-capture.webm` and the two supplied test-panel screenshots.
+- Browser-rendered implementation: `D:\Documents\Sauti\design-qa\test-call-original-ai-ribbon-1600x900.png`.
+- Viewport: 1600 x 900 CSS pixels at device scale 1.
+- State: blank Amina agent, idle voice-test panel.
+
+## Correction and visual comparison
+
+The recording is now treated only as visual direction. The implementation contains no pixels, crop, cursor, browser chrome, or corner from the reference. It draws five original teal ribbon paths over the existing cobalt Sauti field. The animation wrapper is transparent and overflow-visible, so the artwork is not enclosed in a circular image container.
+
+All earlier copied recordings, extracted frames, reference crops, comparisons,
+and product captures that rendered those assets were removed from `design-qa`.
+Only the independently drawn implementation capture remains as current evidence.
+
+## Interaction and regression checks
+
+- Two samples taken 500 ms apart produced different path geometry, confirming continuous organic morphing.
+- Browser inspection found five SVG paths and zero image or video elements inside the animation.
+- Repository inspection found no remaining copied recording, extracted frame, or reference-derived test-call asset.
+- The wrapper computed to a transparent background with visible overflow.
+- A fresh production-preview tab reported no console warnings or errors.
+- The animation respects `prefers-reduced-motion` by holding its initial frame.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed.
+
+No actionable P0, P1, or P2 findings remain.
+
+final result: passed
+
+---
+
 # Test-call missing-animation recovery QA
 
 - Source failure states:

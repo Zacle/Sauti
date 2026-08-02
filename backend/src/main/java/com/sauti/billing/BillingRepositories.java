@@ -37,4 +37,17 @@ interface CommunicationLedgerRepository extends JpaRepository<CommunicationLedge
     java.math.BigDecimal netQuantity(@Param("tenantId") UUID tenantId,
                                      @Param("category") String category,
                                      @Param("externalReference") String externalReference);
+
+    @Query("""
+            select coalesce(sum(case when entry.direction = 'credit' then -entry.amount else entry.amount end), 0)
+            from CommunicationLedgerEntry entry
+            where entry.tenantId = :tenantId
+              and entry.category = :category
+              and entry.externalReference = :externalReference
+              and entry.currency = :currency
+            """)
+    java.math.BigDecimal netAmount(@Param("tenantId") UUID tenantId,
+                                   @Param("category") String category,
+                                   @Param("externalReference") String externalReference,
+                                   @Param("currency") String currency);
 }

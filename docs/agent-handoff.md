@@ -34,6 +34,64 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-08-03: Refine the original test-call animation into a true circle
+
+- Replaced the earlier oval SVG composition with a square, procedural canvas
+  animation. The component still contains no copied image, video, source frame,
+  mouse pointer, browser corner, or other pixels from the supplied reference.
+- Built the waveform from seven independently moving teal strands plus a fine
+  highlight. All points use one radial value from a shared center, so the base
+  silhouette is circular rather than horizontally or vertically stretched.
+- Preserved distinct calm, listening, thinking, and speaking energy levels,
+  reduced-motion behavior, and responsive sizing. Rendering is capped at 30 FPS
+  to keep the glow smooth without unnecessary Agent Studio repaint work.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AiVoiceAnimation.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
+  - `design-qa.md`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed;
+  - browser DOM inspection confirmed a 1:1 wrapper, square canvas, and zero
+    image, video, or SVG descendants;
+  - browser console was clean.
+- Visual-QA risk: the in-app browser repeatedly timed out or closed its tab when
+  asked to capture a screenshot, including on the pre-template page. The live
+  preview is available, but final screenshot-to-reference comparison remains
+  blocked and is recorded in `design-qa.md`.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and the normal CI/CD workflow.
+
+### 2026-08-02: Replace copied test-call media with an original AI ribbon
+
+- Removed the reference-derived WebM and still image from the dashboard. The
+  user's recording is now treated as design direction only, so captured mouse,
+  browser chrome, and corner artifacts cannot appear in the product.
+- Removed the old copied recording, extracted source frames, crops, comparisons,
+  and captures that rendered the copied media from `design-qa`; the only current
+  test-call evidence is a capture of the independently drawn implementation.
+- Added an original procedural teal-ribbon animation with five independently
+  morphing paths. Motion intensity follows calm, listening, thinking, and
+  speaking call states, and reduced-motion users receive a still initial frame.
+- Removed the circular crop/background from the animation wrapper; it is
+  transparent with visible overflow on the existing cobalt test-call field.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/AiVoiceAnimation.tsx`
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
+  - removed `dashboard/public/images/agents/ai-voice-orb-motion.webm`
+  - removed `dashboard/public/images/agents/ai-voice-orb.png`
+  - `design-qa.md`
+  - `design-qa/test-call-original-ai-ribbon-1600x900.png`
+- Verification: dashboard typecheck, lint, and production build passed. Browser
+  QA at 1600 x 900 confirmed five SVG ribbon paths, zero image/video elements,
+  transparent visible-overflow containment, changing geometry between frames,
+  and a clean console.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and the normal CI/CD workflow.
+
 ### 2026-08-02: Remove short-height Agent Studio gaps
 
 - Replaced the Agent Studio's fragile percentage-height chain with an explicit
@@ -9812,3 +9870,98 @@ Expected:
 - Follow-up: ingest provider delivery/cost events and invoices to reconcile
   quantity entries to exact monetary cost, then connect Lemon Squeezy checkout,
   signed idempotent webhooks, credits, subscription state, and enforcement.
+
+### 2026-08-02 - Provider cost reconciliation and explicit fallback rates
+
+- Added durable provider-cost reconciliation jobs with tenant scoping,
+  provider/resource identity uniqueness, retry scheduling, terminal states, and
+  immutable ledger adjustments.
+- Added signed `POST /webhooks/telnyx/messaging` handling. Sauti-originated SMS
+  requests now set this per-message callback URL, and `message.finalized`
+  events record Telnyx's final cost and carrier/rate breakdown without storing
+  message text or customer phone numbers in billing metadata.
+- Added Telnyx Session Analysis reconciliation for completed voice calls. The
+  `call_session_id` from the signed hangup event is used to retrieve the full
+  cumulative AI/voice cost tree, including related inference, STT/TTS, Call
+  Control, and carrier products represented by Telnyx.
+- Both webhook and polling paths are idempotent. Missed or not-yet-finalized
+  costs retry with capped exponential delay; later provider corrections post
+  only the monetary difference instead of rewriting history.
+- Added `costBasis` to ledger entries and the billing API:
+  - `provider_confirmed` for finalized Telnyx costs;
+  - `provider_quote` for trusted number quotes/rental estimates;
+  - `rate_card` for explicitly configured safety-net estimates;
+  - `unpriced` for measured quantities without an approved monetary rate;
+  - `credit` for funding or cost corrections.
+- Added optional fallback environment settings for voice minutes, SMS, and
+  WhatsApp. Every fallback defaults to zero, so Sauti cannot silently invent
+  costs. Once retries are exhausted, a positive configured rate creates a
+  clearly labeled estimate; otherwise the job becomes `unavailable` and the
+  quantity remains unpriced.
+- Added Flyway migration `V49__provider_cost_reconciliation.sql` and documented
+  the production messaging webhook in `AGENTS.md`.
+- Files touched:
+  - billing ledger DTO/entity/service/repositories and dashboard API type;
+  - provider rate card, reconciliation job/service/repository;
+  - Telnyx Call Control and new messaging webhook services/controller;
+  - SMS fulfillment and usage-metering linkage;
+  - `application.yml`, `.env.example`, and production environment example;
+  - focused reconciliation/webhook tests;
+  - `docs/agent-handoff.md` and `AGENTS.md`.
+- Verification:
+  - focused reconciliation, signed messaging event, metering, and ledger tests passed;
+  - complete `:backend:test` suite passed;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `git diff --check` passed (line-ending notices only);
+  - production dashboard compilation succeeded, but the final build could not
+    be independently completed because another active Next.js process held
+    `.next` files open; cache removal was refused by Windows and the isolated
+    build timed out during page-data generation. No user process was stopped.
+- Deployment status remains unchanged: not deployed and uncommitted.
+- Follow-up: expose reconciliation health/estimated-versus-confirmed totals on
+  the billing screen, validate fallback rates for the first launch countries,
+  then connect Lemon Squeezy checkout, signed webhooks, credits, subscription
+  state, and enforcement.
+
+### 2026-08-02 - Billing reconciliation visibility
+
+- Extended the tenant-scoped billing account response with current-cycle net monetary totals
+  grouped by evidence basis and currency, net unpriced quantities grouped by
+  category/unit, and reconciliation health counts for pending, retrying,
+  reconciled, estimated, and unavailable jobs.
+- Added a communication-cost section to the billing overview. It keeps
+  provider-confirmed costs, rate-card/quote estimates, unpriced usage, and
+  reconciliation warnings visibly separate from plan forecasts and invoices.
+  The section also states whether Sauti is observing costs or enforcing
+  payment controls; the current default remains `observe` with charging
+  disabled.
+- Kept every aggregation tenant-scoped and computed immutable debit/credit
+  evidence as net totals. Provider cost refunds now retain the
+  `provider_confirmed` basis, and voice-duration corrections retain the
+  `unpriced` basis, preventing generic credit entries from distorting the
+  displayed evidence totals. Current-cycle aggregation uses the existing
+  tenant-and-timestamp repository query instead of loading all ledger history.
+- Added focused service coverage for net confirmed cost, net unpriced usage,
+  and reconciliation counts, plus API flow assertions for the new response.
+- Files touched for this step:
+  - billing DTO, service, ledger service, usage metering, and reconciliation
+    service/repository;
+  - `backend/src/test/java/com/sauti/billing/BillingServiceTest.java`;
+  - billing-related existing backend tests;
+  - `dashboard/types/api.ts`;
+  - `dashboard/features/billing/presentation/BillingPage.tsx`;
+  - `dashboard/features/billing/presentation/BillingPage.module.css`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - focused billing, reconciliation, usage-metering, and authenticated API
+    tests passed;
+  - complete `:backend:test` suite passed;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed, including all 51 static pages;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+- Follow-up: validate non-zero fallback rates for the intended launch
+  countries, then connect Lemon Squeezy checkout and signed subscription/
+  credit webhooks before switching any workspace from observe to enforce.

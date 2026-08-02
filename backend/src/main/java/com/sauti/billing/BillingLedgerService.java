@@ -74,7 +74,7 @@ public class BillingLedgerService {
                                                 String externalReference, String description,
                                                 Map<String, Object> metadata) {
         return record(tenantId, "debit", category, quantity, unit, amount, currency, idempotencyKey,
-                externalReference, description, metadata);
+                externalReference, description, amount == null ? "unpriced" : "provider_quote", metadata);
     }
 
     @Transactional
@@ -83,7 +83,43 @@ public class BillingLedgerService {
                                                  String externalReference, String description,
                                                  Map<String, Object> metadata) {
         return record(tenantId, "credit", category, quantity, unit, amount, currency, idempotencyKey,
-                externalReference, description, metadata);
+                externalReference, description, "credit", metadata);
+    }
+
+    @Transactional
+    public CommunicationLedgerEntry recordProviderCost(UUID tenantId, String category, BigDecimal amount,
+                                                       String currency, String idempotencyKey,
+                                                       String externalReference, String description,
+                                                       Map<String, Object> metadata) {
+        return record(tenantId, "debit", category, BigDecimal.ONE, "provider_charge", amount, currency,
+                idempotencyKey, externalReference, description, "provider_confirmed", metadata);
+    }
+
+    @Transactional
+    public CommunicationLedgerEntry recordProviderCostCredit(UUID tenantId, String category, BigDecimal amount,
+                                                             String currency, String idempotencyKey,
+                                                             String externalReference, String description,
+                                                             Map<String, Object> metadata) {
+        return record(tenantId, "credit", category, BigDecimal.ONE, "provider_charge", amount, currency,
+                idempotencyKey, externalReference, description, "provider_confirmed", metadata);
+    }
+
+    @Transactional
+    public CommunicationLedgerEntry recordUnpricedCredit(UUID tenantId, String category, BigDecimal quantity,
+                                                         String unit, String idempotencyKey,
+                                                         String externalReference, String description,
+                                                         Map<String, Object> metadata) {
+        return record(tenantId, "credit", category, quantity, unit, null, null,
+                idempotencyKey, externalReference, description, "unpriced", metadata);
+    }
+
+    @Transactional
+    public CommunicationLedgerEntry recordRateCardCost(UUID tenantId, String category, BigDecimal quantity,
+                                                       String unit, BigDecimal amount, String currency,
+                                                       String idempotencyKey, String externalReference,
+                                                       String description, Map<String, Object> metadata) {
+        return record(tenantId, "debit", category, quantity, unit, amount, currency, idempotencyKey,
+                externalReference, description, "rate_card", metadata);
     }
 
     @Transactional(readOnly = true)
@@ -103,8 +139,21 @@ public class BillingLedgerService {
     }
 
     @Transactional(readOnly = true)
+    public List<CommunicationLedgerEntry> currentCycle(UUID tenantId) {
+        var start = OffsetDateTime.now(ZoneOffset.UTC)
+                .with(TemporalAdjusters.firstDayOfMonth())
+                .toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC);
+        return ledger.findAllByTenantIdAndCreatedAtGreaterThanEqual(tenantId, start);
+    }
+
+    @Transactional(readOnly = true)
     public BigDecimal quantityTotal(UUID tenantId, String category, String externalReference) {
         return ledger.netQuantity(tenantId, category, externalReference);
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal amountTotal(UUID tenantId, String category, String externalReference, String currency) {
+        return ledger.netAmount(tenantId, category, externalReference, currency(currency));
     }
 
     @Transactional(readOnly = true)
@@ -120,14 +169,14 @@ public class BillingLedgerService {
     private CommunicationLedgerEntry record(UUID tenantId, String direction, String category,
                                              BigDecimal quantity, String unit, BigDecimal amount, String currency,
                                              String idempotencyKey, String externalReference, String description,
-                                             Map<String, Object> metadata) {
+                                             String costBasis, Map<String, Object> metadata) {
         var existing = ledger.findByTenantIdAndIdempotencyKey(tenantId, idempotencyKey);
         if (existing.isPresent()) return existing.get();
         var account = lockedAccount(tenantId);
         var entry = new CommunicationLedgerEntry(
                 tenantId, account.getId(), direction, category, quantity, unit, amount,
                 amount == null ? null : currency(currency), idempotencyKey, externalReference, description,
-                json(metadata)
+                costBasis, json(metadata)
         );
         try {
             return ledger.saveAndFlush(entry);

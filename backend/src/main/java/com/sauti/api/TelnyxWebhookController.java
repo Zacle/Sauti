@@ -3,6 +3,7 @@ package com.sauti.api;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sauti.call.ManagedVoiceToolService;
 import com.sauti.telnyx.TelnyxCallControlService;
+import com.sauti.telnyx.TelnyxMessagingWebhookService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Map;
@@ -24,18 +25,34 @@ public class TelnyxWebhookController {
     private final TelnyxSignatureValidator signatureValidator;
     private final TelnyxCallControlService callControlService;
     private final ManagedVoiceToolService toolService;
+    private final TelnyxMessagingWebhookService messagingWebhookService;
     private final String toolWebhookSecret;
 
     public TelnyxWebhookController(
             TelnyxSignatureValidator signatureValidator,
             TelnyxCallControlService callControlService,
             ManagedVoiceToolService toolService,
+            TelnyxMessagingWebhookService messagingWebhookService,
             @Value("${sauti.telnyx.tool-webhook-secret:}") String toolWebhookSecret
     ) {
         this.signatureValidator = signatureValidator;
         this.callControlService = callControlService;
         this.toolService = toolService;
+        this.messagingWebhookService = messagingWebhookService;
         this.toolWebhookSecret = toolWebhookSecret == null ? "" : toolWebhookSecret.trim();
+    }
+
+    @PostMapping("/messaging")
+    @ResponseStatus(HttpStatus.OK)
+    void messaging(
+            @RequestBody String payload,
+            @RequestHeader(name = "telnyx-timestamp", required = false) String timestamp,
+            @RequestHeader(name = "telnyx-signature-ed25519", required = false) String signature
+    ) {
+        if (!signatureValidator.isValid(payload, timestamp, signature)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid Telnyx webhook signature");
+        }
+        messagingWebhookService.accept(payload);
     }
 
     @PostMapping("/call-control")

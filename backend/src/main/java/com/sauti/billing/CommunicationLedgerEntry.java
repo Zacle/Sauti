@@ -39,6 +39,9 @@ public class CommunicationLedgerEntry extends Auditable {
     @Column(length = 3)
     private String currency;
 
+    @Column(nullable = false, length = 24)
+    private String costBasis;
+
     @Column(nullable = false, length = 160)
     private String idempotencyKey;
 
@@ -56,7 +59,7 @@ public class CommunicationLedgerEntry extends Auditable {
     public CommunicationLedgerEntry(UUID tenantId, UUID billingAccountId, String direction, String category,
                                     BigDecimal quantity, String unit, BigDecimal amount, String currency,
                                     String idempotencyKey, String externalReference, String description,
-                                    String metadataJson) {
+                                    String costBasis, String metadataJson) {
         this.id = UUID.randomUUID();
         this.tenantId = tenantId;
         this.billingAccountId = billingAccountId;
@@ -66,6 +69,11 @@ public class CommunicationLedgerEntry extends Auditable {
         this.unit = required(unit).toLowerCase(Locale.ROOT);
         this.amount = amount == null ? null : nonNegative(amount, "Ledger amount");
         this.currency = currency == null || currency.isBlank() ? null : currency.trim().toUpperCase(Locale.ROOT);
+        this.costBasis = required(costBasis).toLowerCase(Locale.ROOT);
+        if (!java.util.Set.of("unpriced", "rate_card", "provider_quote", "provider_confirmed", "credit")
+                .contains(this.costBasis)) {
+            throw new IllegalArgumentException("Unsupported ledger cost basis");
+        }
         if (this.amount != null && (this.currency == null || !this.currency.matches("[A-Z]{3}"))) {
             throw new IllegalArgumentException("A three-letter currency is required for monetary ledger entries");
         }
@@ -87,6 +95,7 @@ public class CommunicationLedgerEntry extends Auditable {
     public String getUnit() { return unit; }
     public BigDecimal getAmount() { return amount; }
     public String getCurrency() { return currency; }
+    public String getCostBasis() { return costBasis; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public String getExternalReference() { return externalReference; }
     public String getDescription() { return description; }

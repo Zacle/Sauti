@@ -124,6 +124,7 @@ OAuth/callback URLs:
 Telnyx:
 
 - Call Control webhook URL: `https://sauti.uk/webhooks/telnyx/call-control`
+- Messaging delivery/cost webhook URL: `https://sauti.uk/webhooks/telnyx/messaging`
 - Managed assistant tools use Sauti endpoints under
   `https://sauti.uk/webhooks/telnyx/tools/{toolName}` and must send the
   server-only `TELNYX_TOOL_WEBHOOK_SECRET`.

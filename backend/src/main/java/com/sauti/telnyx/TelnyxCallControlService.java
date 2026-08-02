@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.TelnyxTelephonyProvider;
 import com.sauti.call.CallPipelineService;
 import com.sauti.call.CallQueryService;
+import com.sauti.billing.ProviderCostReconciliationService;
 import jakarta.annotation.PreDestroy;
 import java.time.OffsetDateTime;
 import java.util.concurrent.ExecutorService;
@@ -24,6 +25,7 @@ public class TelnyxCallControlService {
     private final CallPipelineService callPipelineService;
     private final TelnyxTelephonyProvider telephonyProvider;
     private final CallQueryService callQueryService;
+    private final ProviderCostReconciliationService costReconciliation;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         var thread = new Thread(runnable, "telnyx-call-control");
         thread.setDaemon(true);
@@ -35,13 +37,15 @@ public class TelnyxCallControlService {
             TelnyxWebhookEventRepository eventRepository,
             CallPipelineService callPipelineService,
             TelnyxTelephonyProvider telephonyProvider,
-            CallQueryService callQueryService
+            CallQueryService callQueryService,
+            ProviderCostReconciliationService costReconciliation
     ) {
         this.objectMapper = objectMapper;
         this.eventRepository = eventRepository;
         this.callPipelineService = callPipelineService;
         this.telephonyProvider = telephonyProvider;
         this.callQueryService = callQueryService;
+        this.costReconciliation = costReconciliation;
     }
 
     public void accept(String rawPayload) {
@@ -54,10 +58,11 @@ public class TelnyxCallControlService {
             if (eventId.isBlank() || eventType.isBlank()) {
                 throw new IllegalArgumentException("Telnyx webhook is missing its event identity");
             }
-            if (!claim(eventId, eventType, callControlId, parseTime(data.path("occurred_at").asText("")))) {
+            var occurredAt = parseTime(data.path("occurred_at").asText(""));
+            if (!claim(eventId, eventType, callControlId, occurredAt)) {
                 return;
             }
-            executor.execute(() -> process(eventId, eventType, payload));
+            executor.execute(() -> process(eventId, eventType, payload, occurredAt));
         } catch (IllegalArgumentException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -65,7 +70,7 @@ public class TelnyxCallControlService {
         }
     }
 
-    private void process(String eventId, String eventType, JsonNode payload) {
+    private void process(String eventId, String eventType, JsonNode payload, OffsetDateTime occurredAt) {
         var event = eventRepository.findByProviderEventId(eventId).orElseThrow();
         event.markProcessing();
         eventRepository.save(event);
@@ -73,7 +78,7 @@ public class TelnyxCallControlService {
             switch (eventType) {
                 case "call.initiated" -> handleInitiated(payload);
                 case "call.answered" -> handleAnswered(payload);
-                case "call.hangup" -> handleHangup(payload);
+                case "call.hangup" -> handleHangup(payload, occurredAt);
                 case "call.recording.saved" -> handleRecording(payload);
                 case "call.conversation.ended" -> handleConversationEnded(payload);
                 case "streaming.failed" -> handleStreamingFailed(payload);
@@ -103,9 +108,11 @@ public class TelnyxCallControlService {
         telephonyProvider.answerInboundCall(call, callControlId, greeting);
     }
 
-    private void handleHangup(JsonNode payload) {
+    private void handleHangup(JsonNode payload, OffsetDateTime occurredAt) {
         var callControlId = required(payload, "call_control_id");
         callPipelineService.completeActiveCall(callControlId, outcome(payload.path("hangup_cause").asText("")));
+        costReconciliation.enqueueTelnyxVoiceByCallControlId(
+                callControlId, payload.path("call_session_id").asText(""), occurredAt);
     }
 
     private void handleAnswered(JsonNode payload) {

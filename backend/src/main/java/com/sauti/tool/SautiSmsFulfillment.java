@@ -29,6 +29,7 @@ public class SautiSmsFulfillment implements ToolFulfillment {
     private final MessagingRecipientResolver recipients;
     private final String telnyxApiKey;
     private final String messagingProfileId;
+    private final String publicBaseUrl;
     private final CommunicationUsageMeteringService usageMetering;
 
     public SautiSmsFulfillment(
@@ -36,13 +37,15 @@ public class SautiSmsFulfillment implements ToolFulfillment {
             MessagingRecipientResolver recipients,
             CommunicationUsageMeteringService usageMetering,
             @Value("${sauti.telnyx.api-key:}") String telnyxApiKey,
-            @Value("${sauti.telnyx.messaging-profile-id:}") String messagingProfileId
+            @Value("${sauti.telnyx.messaging-profile-id:}") String messagingProfileId,
+            @Value("${sauti.telnyx.public-base-url}") String publicBaseUrl
     ) {
         this.objectMapper = objectMapper;
         this.recipients = recipients;
         this.usageMetering = usageMetering;
         this.telnyxApiKey = telnyxApiKey;
         this.messagingProfileId = messagingProfileId == null ? "" : messagingProfileId.trim();
+        this.publicBaseUrl = publicBaseUrl.replaceFirst("/+$", "");
     }
 
     @Override
@@ -74,6 +77,7 @@ public class SautiSmsFulfillment implements ToolFulfillment {
             payload.put("from", from);
             payload.put("to", recipient.e164());
             payload.put("text", text);
+            payload.put("webhook_url", publicBaseUrl + "/webhooks/telnyx/messaging");
             if (!messagingProfileId.isBlank()) payload.put("messaging_profile_id", messagingProfileId);
             var body = objectMapper.writeValueAsString(payload);
             var request = HttpRequest.newBuilder(URI.create(TELNYX_MESSAGES_URL))

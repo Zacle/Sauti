@@ -39,8 +39,8 @@ import {
   YAxis,
 } from "recharts";
 import { pricingPlans, type PricingPlanId } from "@/features/marketing/Pricing/domain/pricing-model";
-import { loadBillingUsage } from "@/lib/api/billing";
-import type { BillingUsage } from "@/types/api";
+import { loadBillingAccount, loadBillingUsage } from "@/lib/api/billing";
+import type { BillingAccount, BillingUsage } from "@/types/api";
 import {
   billingAddOns,
   billingTabs,
@@ -71,6 +71,7 @@ type LimitPolicy = "cap" | "pause" | "approval";
 export function BillingPage() {
   const [activeTab, setActiveTab] = useState<BillingTab>("overview");
   const [usage, setUsage] = useState<BillingUsage>(emptyUsage);
+  const [account, setAccount] = useState<BillingAccount | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -91,10 +92,11 @@ export function BillingPage() {
     let cancelled = false;
     setLoading(true);
     setError("");
-    loadBillingUsage()
-      .then((response) => {
+    Promise.all([loadBillingUsage(), loadBillingAccount()])
+      .then(([response, billingAccount]) => {
         if (cancelled) return;
         setUsage(response);
+        setAccount(billingAccount);
         const current = resolvePlan(response);
         setSelectedPlanId(current.id);
         setProjectedMinutes(Math.max(Math.round(current.includedMinutes * 1.2), estimateForecast(response.minutesUsedThisCycle, response.monthlyMinutesLimit)));
@@ -196,6 +198,7 @@ export function BillingPage() {
             <OverviewTab
               currentPlanName={currentPlan.name}
               currentPlanPrice={currentPlan.monthlyPrice}
+              account={account}
               forecast={forecast}
               forecastPercent={forecastPercent}
               includedMinutes={includedMinutes}
@@ -260,6 +263,7 @@ export function BillingPage() {
 }
 
 function OverviewTab({
+  account,
   currentPlanName,
   currentPlanPrice,
   forecast,
@@ -274,6 +278,7 @@ function OverviewTab({
   usedMinutes,
   usedPercent,
 }: {
+  account: BillingAccount | null;
   currentPlanName: string;
   currentPlanPrice: number;
   forecast: number;
@@ -309,6 +314,8 @@ function OverviewTab({
         </div>
       </article>
 
+      {account && <CommunicationCostOverview account={account} />}
+
       <div className={styles.overviewGrid}>
         <article className={styles.costLedger}>
           <header><div className={styles.cardTitle}><CircleDollarSign size={18} /><h2>Projected cost breakdown</h2></div><Info size={18} /></header>
@@ -338,6 +345,95 @@ function OverviewTab({
       </article>
     </section>
   );
+}
+
+function CommunicationCostOverview({ account }: { account: BillingAccount }) {
+  const confirmed = account.costTotals.filter((total) => total.costBasis === "provider_confirmed");
+  const estimated = account.costTotals.filter((total) => total.costBasis === "rate_card" || total.costBasis === "provider_quote");
+  const awaiting = account.reconciliation.pending + account.reconciliation.retrying;
+  const hasWarning = account.reconciliation.unavailable > 0 || account.unpricedUsage.length > 0;
+
+  return (
+    <article className={styles.communicationCosts} aria-label="Communication cost tracking">
+      <header>
+        <div>
+          <small>Provider cost evidence</small>
+          <h2>Communication costs</h2>
+          <p>This cycle&apos;s provider costs are tracked separately from customer invoices and plan forecasts.</p>
+        </div>
+        <span className={account.enforcementMode === "observe" ? styles.observeBadge : styles.enforceBadge}>
+          {account.enforcementMode === "observe" ? "Observe only" : "Enforcement active"}
+        </span>
+      </header>
+
+      <div className={styles.costEvidenceGrid}>
+        <CostEvidenceCard label="Provider confirmed" totals={confirmed} empty="No confirmed costs yet" />
+        <CostEvidenceCard label="Estimated or quoted" totals={estimated} empty="No estimates recorded" />
+        <div className={styles.evidenceCard}>
+          <span>Reconciliation</span>
+          <strong>{awaiting.toLocaleString()}</strong>
+          <small>awaiting provider evidence</small>
+        </div>
+        <div className={hasWarning ? `${styles.evidenceCard} ${styles.warningEvidence}` : styles.evidenceCard}>
+          <span>Needs attention</span>
+          <strong>{(account.reconciliation.unavailable + account.unpricedUsage.length).toLocaleString()}</strong>
+          <small>unavailable prices or unpriced usage groups</small>
+        </div>
+      </div>
+
+      {(account.unpricedUsage.length > 0 || account.reconciliation.unavailable > 0) && (
+        <div className={styles.costWarning} role="status">
+          <AlertTriangle size={17} />
+          <div>
+            <strong>Some usage does not have a final provider price yet</strong>
+            <span>
+              {account.unpricedUsage.map((item) => `${usageCategory(item.category)}: ${formatQuantity(item.quantity)} ${item.unit}${item.quantity === 1 ? "" : "s"}`).join(" · ")}
+              {account.reconciliation.unavailable > 0 ? ` · ${account.reconciliation.unavailable} reconciliation ${account.reconciliation.unavailable === 1 ? "job" : "jobs"} unavailable` : ""}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <footer>
+        <span><Check size={15} /> {account.reconciliation.reconciled.toLocaleString()} provider-confirmed</span>
+        <span><Clock3 size={15} /> {account.reconciliation.estimated.toLocaleString()} rate-card estimates</span>
+        <span><Info size={15} /> Charging remains {account.enforcementMode === "observe" ? "disabled" : "enabled"}</span>
+      </footer>
+    </article>
+  );
+}
+
+function CostEvidenceCard({ label, totals, empty }: {
+  label: string;
+  totals: BillingAccount["costTotals"];
+  empty: string;
+}) {
+  return (
+    <div className={styles.evidenceCard}>
+      <span>{label}</span>
+      {totals.length === 0 ? <strong>—</strong> : totals.map((total) => (
+        <strong key={`${total.costBasis}-${total.currency}`}>{providerMoney(total.amount, total.currency)}</strong>
+      ))}
+      <small>{totals.length === 0 ? empty : "net provider cost this cycle"}</small>
+    </div>
+  );
+}
+
+function providerMoney(amount: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(4)}`;
+  }
+}
+
+function usageCategory(category: string) {
+  return ({ voice_call: "Voice calls", sms_message: "SMS", whatsapp_message: "WhatsApp" } as Record<string, string>)[category]
+    ?? category.replaceAll("_", " ");
+}
+
+function formatQuantity(quantity: number) {
+  return new Intl.NumberFormat("en", { maximumFractionDigits: 4 }).format(quantity);
 }
 
 function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab }: { forecast: number; includedMinutes: number; resetDate: string; usedMinutes: number; switchTab: (tab: BillingTab) => void }) {
