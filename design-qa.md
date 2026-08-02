@@ -108,6 +108,12 @@ canvas, and zero image, video, or SVG descendants. The canvas uses equal radial
 geometry around one center and changes shape over time, but a focused pixel
 capture could not be obtained from the browser.
 
+The pre-call `calm` state was sampled independently from call activity. Its
+motion marker advanced eight steps over 2.2 seconds at approximately 30 FPS,
+confirming continuous idle animation before a call begins. The calm perimeter
+cycle was shortened from roughly 18 seconds to roughly four seconds so the
+movement is visibly readable rather than technically active but imperceptible.
+
 ## Findings
 
 - [P2] Final visual polish cannot be certified without rendered image evidence.

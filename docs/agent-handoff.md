@@ -45,6 +45,11 @@ Release policy:
 - Preserved distinct calm, listening, thinking, and speaking energy levels,
   reduced-motion behavior, and responsive sizing. Rendering is capped at 30 FPS
   to keep the glow smooth without unnecessary Agent Studio repaint work.
+- Follow-up correction: the original calm profile took roughly 18 seconds to
+  complete a motion cycle and appeared still before a call. Calm now completes
+  a visible morph in roughly four seconds, with progressively faster listening,
+  thinking, and speaking profiles. Reduced-motion mode retains a slow, gentle
+  animation instead of freezing the pre-call ring.
 - Files touched:
   - `dashboard/features/agents/AgentCreator/AiVoiceAnimation.tsx`
   - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
@@ -56,6 +61,8 @@ Release policy:
   - `npm.cmd run build` passed;
   - browser DOM inspection confirmed a 1:1 wrapper, square canvas, and zero
     image, video, or SVG descendants;
+  - production-browser verification sampled the idle `calm` state before any
+    call and observed eight advancing motion ticks over 2.2 seconds;
   - browser console was clean.
 - Visual-QA risk: the in-app browser repeatedly timed out or closed its tab when
   asked to capture a screenshot, including on the pre-template page. The live

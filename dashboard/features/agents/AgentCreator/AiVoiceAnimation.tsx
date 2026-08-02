@@ -16,10 +16,10 @@ const ACTIVITY_MOTION: Record<
   VoiceAnimationActivity,
   { amplitude: number; speed: number; energy: number }
 > = {
-  calm: { amplitude: 3.8, speed: 0.34, energy: 0.72 },
-  listening: { amplitude: 6.2, speed: 0.52, energy: 0.82 },
-  thinking: { amplitude: 8.2, speed: 0.68, energy: 0.9 },
-  speaking: { amplitude: 11.5, speed: 0.9, energy: 1 },
+  calm: { amplitude: 7.2, speed: 0.95, energy: 0.82 },
+  listening: { amplitude: 9.2, speed: 1.08, energy: 0.88 },
+  thinking: { amplitude: 11.5, speed: 1.22, energy: 0.94 },
+  speaking: { amplitude: 14.5, speed: 1.42, energy: 1 },
 };
 
 function drawClosedCurve(
@@ -51,7 +51,7 @@ function drawVoiceRing(
   activity: VoiceAnimationActivity,
 ) {
   const { amplitude, speed, energy } = ACTIVITY_MOTION[activity];
-  const time = frame * 0.035 * speed;
+  const time = frame * 0.06 * speed;
   context.clearRect(0, 0, SIZE, SIZE);
   context.globalCompositeOperation = "lighter";
 
@@ -126,23 +126,33 @@ export function AiVoiceAnimation({ activity }: AiVoiceAnimationProps) {
     let animationFrame = 0;
     let startedAt = 0;
     let lastDrawnAt = 0;
+    let lastMotionTick = -1;
 
     const draw = (timestamp: number) => {
       if (!startedAt) startedAt = timestamp;
-      if (!motionPreference.matches && timestamp - lastDrawnAt < 1000 / 30) {
+      const reducedMotion = motionPreference.matches;
+      const targetFps = reducedMotion ? 12 : 30;
+      if (timestamp - lastDrawnAt < 1000 / targetFps) {
         animationFrame = window.requestAnimationFrame(draw);
         return;
       }
       lastDrawnAt = timestamp;
-      const frame = motionPreference.matches ? 0 : ((timestamp - startedAt) / 1000) * 30;
+      const elapsedFrames = ((timestamp - startedAt) / 1000) * 30;
+      const frame = reducedMotion ? elapsedFrames * 0.24 : elapsedFrames;
       drawVoiceRing(context, frame, activity);
-      if (!motionPreference.matches) animationFrame = window.requestAnimationFrame(draw);
+      const motionTick = Math.floor(frame / 8);
+      if (motionTick !== lastMotionTick) {
+        canvas.dataset.motionTick = String(motionTick);
+        lastMotionTick = motionTick;
+      }
+      animationFrame = window.requestAnimationFrame(draw);
     };
 
     const restart = () => {
       window.cancelAnimationFrame(animationFrame);
       startedAt = 0;
       lastDrawnAt = 0;
+      lastMotionTick = -1;
       animationFrame = window.requestAnimationFrame(draw);
     };
 
