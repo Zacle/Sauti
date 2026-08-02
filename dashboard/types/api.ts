@@ -534,6 +534,12 @@ export type BillingAccount = {
   recentEntries: BillingLedgerEntry[];
 };
 
+export type BillingCheckout = {
+  url: string;
+  plan: "launch" | "growth" | "scale";
+  interval: "monthly" | "annual";
+};
+
 export type DashboardData = {
   onboarding: OnboardingStatus;
   agents: Agent[];

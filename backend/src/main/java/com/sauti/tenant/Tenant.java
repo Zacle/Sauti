@@ -106,4 +106,14 @@ public class Tenant extends Auditable {
     public void adjustMinutesUsed(int minutesDelta) {
         this.minutesUsedThisCycle = Math.max(0, this.minutesUsedThisCycle + minutesDelta);
     }
+
+    public void applyBillingSubscription(String plan, int monthlyMinutesLimit,
+                                         OffsetDateTime planExpiresAt, String customerId) {
+        if (plan == null || plan.isBlank()) throw new IllegalArgumentException("Subscription plan is required");
+        if (monthlyMinutesLimit <= 0) throw new IllegalArgumentException("Subscription minutes must be positive");
+        this.plan = plan.trim().toLowerCase(java.util.Locale.ROOT);
+        this.monthlyMinutesLimit = monthlyMinutesLimit;
+        this.planExpiresAt = planExpiresAt;
+        this.lemonSqueezyCustomerId = customerId == null || customerId.isBlank() ? null : customerId.trim();
+    }
 }

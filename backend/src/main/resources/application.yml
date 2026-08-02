@@ -108,6 +108,20 @@ sauti:
   providers:
     mode: ${PROVIDER_MODE:fake}
   billing:
+    lemon-squeezy:
+      api-key: ${LEMON_SQUEEZY_API_KEY:}
+      store-id: ${LEMON_SQUEEZY_STORE_ID:}
+      webhook-secret: ${LEMON_SQUEEZY_WEBHOOK_SECRET:}
+      api-base-url: ${LEMON_SQUEEZY_API_BASE_URL:https://api.lemonsqueezy.com/v1}
+      checkout-redirect-url: ${LEMON_SQUEEZY_CHECKOUT_REDIRECT_URL:${DASHBOARD_BASE_URL:http://localhost:8088}/billing?checkout=success}
+      worker-delay-ms: ${LEMON_SQUEEZY_WORKER_DELAY_MS:5000}
+      variants:
+        launch-monthly: ${LEMON_SQUEEZY_VARIANT_LAUNCH_MONTHLY:}
+        launch-annual: ${LEMON_SQUEEZY_VARIANT_LAUNCH_ANNUAL:}
+        growth-monthly: ${LEMON_SQUEEZY_VARIANT_GROWTH_MONTHLY:}
+        growth-annual: ${LEMON_SQUEEZY_VARIANT_GROWTH_ANNUAL:}
+        scale-monthly: ${LEMON_SQUEEZY_VARIANT_SCALE_MONTHLY:}
+        scale-annual: ${LEMON_SQUEEZY_VARIANT_SCALE_ANNUAL:}
     reconciliation:
       max-attempts: ${SAUTI_BILLING_RECONCILIATION_MAX_ATTEMPTS:8}
       poll-delay-ms: ${SAUTI_BILLING_RECONCILIATION_POLL_DELAY_MS:30000}

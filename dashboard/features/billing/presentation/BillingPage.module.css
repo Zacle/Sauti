@@ -609,6 +609,41 @@
   --forecast-left: 0%;
 }
 
+.dialog > .checkoutError {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(249, 137, 66, .28);
+  border-radius: 10px;
+  color: #ffc07b;
+  background: rgba(111, 52, 20, .16);
+  font-size: .68rem;
+  line-height: 1.45;
+}
+
+.dialogDone:disabled,
+.checkoutCancel:disabled {
+  cursor: wait;
+  opacity: .68;
+}
+
+.checkoutCancel {
+  display: block;
+  margin: 12px auto 0;
+  border: 0;
+  color: #8ca4b8;
+  background: transparent;
+  font: inherit;
+  font-size: .7rem;
+  cursor: pointer;
+}
+
+.checkoutCancel:hover {
+  color: #dceaf4;
+}
+
 .communicationCosts {
   padding: 20px;
   border: 1px solid rgba(96, 154, 201, .17);

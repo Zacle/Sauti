@@ -39,7 +39,7 @@ import {
   YAxis,
 } from "recharts";
 import { pricingPlans, type PricingPlanId } from "@/features/marketing/Pricing/domain/pricing-model";
-import { loadBillingAccount, loadBillingUsage } from "@/lib/api/billing";
+import { createBillingCheckout, loadBillingAccount, loadBillingUsage } from "@/lib/api/billing";
 import type { BillingAccount, BillingUsage } from "@/types/api";
 import {
   billingAddOns,
@@ -81,6 +81,8 @@ export function BillingPage() {
   const [quantities, setQuantities] = useState<Partial<Record<BillingAddOnId, number>>>({ agent: 1 });
   const [policy, setPolicy] = useState<LimitPolicy>("cap");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -113,7 +115,11 @@ export function BillingPage() {
   }, [reloadKey]);
 
   useEffect(() => {
-    if (previewOpen) closeButtonRef.current?.focus();
+    if (previewOpen) {
+      setCheckoutError("");
+      setCheckoutLoading(false);
+      closeButtonRef.current?.focus();
+    }
   }, [previewOpen]);
 
   const currentPlan = useMemo(() => resolvePlan(usage), [usage]);
@@ -155,6 +161,18 @@ export function BillingPage() {
     setInterval("monthly");
     setProjectedMinutes(Math.max(currentPlan.includedMinutes, forecast));
     setQuantities({ agent: 1 });
+  }
+
+  async function startCheckout() {
+    setCheckoutLoading(true);
+    setCheckoutError("");
+    try {
+      const checkout = await createBillingCheckout(selectedPlan.id, interval);
+      window.location.assign(checkout.url);
+    } catch (caught) {
+      setCheckoutError(caught instanceof Error ? caught.message : "Secure checkout is temporarily unavailable.");
+      setCheckoutLoading(false);
+    }
   }
 
   return (
@@ -246,15 +264,20 @@ export function BillingPage() {
           <section aria-describedby="preview-description" aria-labelledby="preview-title" aria-modal="true" className={styles.dialog} role="dialog">
             <button aria-label="Close preview" className={styles.dialogClose} onClick={() => setPreviewOpen(false)} ref={closeButtonRef} type="button"><X size={18} /></button>
             <span className={styles.dialogIcon}><ShieldCheck size={23} /></span>
-            <small>Read-only confirmation</small>
-            <h2 id="preview-title">Preview this setup</h2>
-            <p id="preview-description">This model will not change your current plan, activate add-ons, or charge a payment method.</p>
+            <small>Secure hosted checkout</small>
+            <h2 id="preview-title">Review before checkout</h2>
+            <p id="preview-description">Continuing opens Lemon Squeezy. Your plan changes only after you confirm payment there and Sauti receives a signed subscription event.</p>
             <div className={styles.dialogRows}>
               <span><em>Plan</em><strong>{selectedPlan.name}</strong></span>
               <span><em>Projected usage</em><strong>{projectedMinutes.toLocaleString()} minutes</strong></span>
               <span><em>Estimated monthly total</em><strong>{money(modelProjection.total)}</strong></span>
             </div>
-            <button className={styles.dialogDone} onClick={() => setPreviewOpen(false)} type="button"><Check size={16} /> Keep exploring</button>
+            {checkoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {checkoutError}</p>}
+            <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
+              {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
+              {checkoutLoading ? "Opening secure checkout…" : "Continue to secure checkout"}
+            </button>
+            <button className={styles.checkoutCancel} disabled={checkoutLoading} onClick={() => setPreviewOpen(false)} type="button">Keep exploring</button>
           </section>
         </div>
       )}

@@ -131,6 +131,14 @@ Telnyx:
 - Telnyx owns live media, speech recognition, synthesis, and interruption
   handling. Sauti does not expose a telephony media WebSocket.
 
+Billing:
+
+- Lemon Squeezy webhook URL: `https://sauti.uk/webhooks/lemon-squeezy`
+- Lemon Squeezy checkout redirects to `https://sauti.uk/billing?checkout=success`.
+- Subscription webhooks update local plan state but must keep billing
+  enforcement in `observe` until a later reviewed rollout explicitly enables
+  enforcement.
+
 Other public base URLs:
 
 - `PUBLIC_BASE_URL=https://sauti.uk`

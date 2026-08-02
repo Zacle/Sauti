@@ -9972,3 +9972,66 @@ Expected:
 - Follow-up: validate non-zero fallback rates for the intended launch
   countries, then connect Lemon Squeezy checkout and signed subscription/
   credit webhooks before switching any workspace from observe to enforce.
+
+### 2026-08-03 - Lemon Squeezy checkout and durable subscription sync
+
+- Added authenticated, tenant-scoped `POST /api/v1/billing/checkout` support.
+  Sauti creates a Lemon Squeezy hosted checkout using only server-configured
+  store/variant IDs, pre-fills the workspace email/country, and passes only the
+  tenant UUID as checkout custom data. Plan and interval are derived again
+  from the trusted variant ID when the webhook arrives.
+- Connected the existing billing plan-review dialog to the hosted checkout.
+  Card details never enter the Sauti dashboard or backend. The dialog explains
+  that a plan changes only after payment confirmation and a signed provider
+  event.
+- Added public `POST /webhooks/lemon-squeezy` with timing-safe HMAC-SHA256
+  verification against the raw request body. Missing configuration fails
+  closed, invalid signatures return unauthorized, and duplicate payloads are
+  idempotently ignored.
+- Added a durable billing-provider inbox. Valid events are persisted before a
+  fast HTTP 200 response, then processed by a retrying scheduled worker. The
+  inbox stores the signed payload but never stores the webhook signature or API
+  key.
+- Added tenant-owned subscription persistence with Lemon Squeezy customer,
+  order, product, variant, status, renewal/end/trial dates, test-mode marker,
+  masked card metadata, and payment-method update URL. Older provider updates
+  cannot overwrite newer local subscription state, and a provider subscription
+  cannot move between tenants.
+- Subscription statuses update the local plan/minute allowance and billing
+  status. Cancellation remains active through its provider grace period.
+  Unpaid/expired subscriptions are recorded as `past_due` while enforcement is
+  in observe mode, so this step cannot unexpectedly block number purchases or
+  calls. The exact provider status remains on the subscription record for a
+  later reviewed enforcement rollout.
+- Added Flyway migration `V50__lemon_squeezy_subscriptions.sql`, production
+  callback documentation, and placeholder-only environment settings for the
+  API key, store, webhook secret, six monthly/annual plan variants, redirect,
+  API base URL, and worker delay.
+- Files touched for this step:
+  - billing checkout, plan catalog, webhook inbox, subscription processor,
+    subscription/event entities and repositories;
+  - billing and Lemon Squeezy webhook controllers;
+  - tenant subscription update support and security allow-list;
+  - Flyway V50, application/environment examples, and `AGENTS.md`;
+  - billing dashboard API/types, plan-review UI, and CSS module;
+  - focused checkout, signature/idempotency, and subscription tests;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - focused Lemon Squeezy and authenticated application-flow tests passed;
+  - complete `:backend:test` suite passed;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed, including all 51 static pages.
+- Deployment status remains unchanged: not deployed and uncommitted.
+- Required provider setup before live checkout testing:
+  - create monthly and annual variants for Launch, Growth, and Scale;
+  - configure the six variant IDs, store ID, API key, and a random webhook
+    secret in the production environment;
+  - create a Lemon Squeezy webhook pointing to
+    `https://sauti.uk/webhooks/lemon-squeezy` and select subscription events;
+  - start in Lemon Squeezy test mode and verify created, updated, cancelled,
+    resumed, paused, unpaused, and expired lifecycle events.
+- Follow-up: expose the synchronized subscription details and payment-method
+  management URL on the billing page, handle subscription-payment events as
+  immutable credit/funding ledger entries, then perform a test-mode lifecycle
+  run before considering enforcement.
