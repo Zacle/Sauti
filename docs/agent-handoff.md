@@ -750,6 +750,21 @@ Release policy:
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status remains unchanged: not deployed and uncommitted.
 
+#### Follow-up: repair the agent-template API test fixture
+
+- Fixed `AgentTemplateApiTest.managesTenantTemplatesAndCreatesIndependentAgentCopy`
+  after phone normalization made its generic required-variable fixture invalid.
+- The test now supplies a valid Kenyan E.164 value for `business_phone` while
+  retaining generic values for unrestricted template variables. Production
+  phone validation was intentionally preserved.
+- Files touched:
+  - `backend/src/test/java/com/sauti/AgentTemplateApiTest.java`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - `./gradlew.bat :backend:test --tests com.sauti.AgentTemplateApiTest` passed;
+  - `./gradlew.bat :backend:test` passed all 381 tests.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
 ### 2026-08-02 - WhatsApp confirmations restricted to WhatsApp conversations
 
 - Restricted the `send_whatsapp_message` action to customer-started WhatsApp

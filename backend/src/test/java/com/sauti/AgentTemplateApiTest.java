@@ -153,6 +153,7 @@ class AgentTemplateApiTest {
             var configuredValue = switch (key) {
                 case "business_hours" -> "Mon-Fri 09:00-17:00";
                 case "after_hours_behavior" -> "take_message";
+                case "business_phone" -> "+254712345678";
                 default -> "Configured test value";
             };
             mvc.perform(patch("/api/v1/agents/" + agentId + "/variables/" + key)
