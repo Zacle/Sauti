@@ -23,4 +23,18 @@ interface CommunicationLedgerRepository extends JpaRepository<CommunicationLedge
     List<CommunicationLedgerEntry> findTop50ByTenantIdOrderByCreatedAtDesc(UUID tenantId);
     List<CommunicationLedgerEntry> findAllByTenantId(UUID tenantId);
     List<CommunicationLedgerEntry> findAllByTenantIdAndCreatedAtGreaterThanEqual(UUID tenantId, OffsetDateTime from);
+    Optional<CommunicationLedgerEntry> findFirstByTenantIdAndCategoryAndExternalReferenceOrderByCreatedAtDesc(
+            UUID tenantId, String category, String externalReference);
+    List<CommunicationLedgerEntry> findTop20ByTenantIdAndCategoryOrderByCreatedAtDesc(UUID tenantId, String category);
+
+    @Query("""
+            select coalesce(sum(case when entry.direction = 'credit' then -entry.quantity else entry.quantity end), 0)
+            from CommunicationLedgerEntry entry
+            where entry.tenantId = :tenantId
+              and entry.category = :category
+              and entry.externalReference = :externalReference
+            """)
+    java.math.BigDecimal netQuantity(@Param("tenantId") UUID tenantId,
+                                     @Param("category") String category,
+                                     @Param("externalReference") String externalReference);
 }

@@ -1,6 +1,7 @@
 package com.sauti.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sauti.billing.CommunicationUsageMeteringService;
 import com.sauti.call.Call;
 import com.sauti.integration.MessagingRecipientResolver;
 import com.sauti.llm.LlmToolCall;
@@ -28,15 +29,18 @@ public class SautiSmsFulfillment implements ToolFulfillment {
     private final MessagingRecipientResolver recipients;
     private final String telnyxApiKey;
     private final String messagingProfileId;
+    private final CommunicationUsageMeteringService usageMetering;
 
     public SautiSmsFulfillment(
             ObjectMapper objectMapper,
             MessagingRecipientResolver recipients,
+            CommunicationUsageMeteringService usageMetering,
             @Value("${sauti.telnyx.api-key:}") String telnyxApiKey,
             @Value("${sauti.telnyx.messaging-profile-id:}") String messagingProfileId
     ) {
         this.objectMapper = objectMapper;
         this.recipients = recipients;
+        this.usageMetering = usageMetering;
         this.telnyxApiKey = telnyxApiKey;
         this.messagingProfileId = messagingProfileId == null ? "" : messagingProfileId.trim();
     }
@@ -81,6 +85,9 @@ public class SautiSmsFulfillment implements ToolFulfillment {
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
                 var providerMessageId = objectMapper.readTree(response.body()).path("data").path("id").asText("");
+                usageMetering.meterOutboundMessage(
+                        call.getTenant().getId(), call.getAgent().getId(), "sms", providerMessageId,
+                        call.getId() + ":" + toolCall.id(), "text");
                 LOGGER.info("SMS queued via Telnyx recipient={} callId={}", recipient.masked(), call.getId());
                 return LlmToolResult.success(toolCall, Map.of(
                         "queued", true, "destination", recipient.masked(), "recipientSource", recipient.source(),

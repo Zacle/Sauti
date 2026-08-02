@@ -335,6 +335,11 @@ body:has(.agent-studio) {
   background: #01176d;
 }
 
+.test-voice-orb-fallback {
+  object-fit: cover;
+  transform: scale(0.84);
+}
+
 .test-voice-orb-video {
   position: absolute;
   top: -47.5%;
@@ -342,7 +347,13 @@ body:has(.agent-studio) {
   width: 365.8%;
   max-width: none;
   height: auto;
+  opacity: 0;
   pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.test-voice-orb-video.is-playing {
+  opacity: 1;
 }
 
 .agent-test-canvas > button {

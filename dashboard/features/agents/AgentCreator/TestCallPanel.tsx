@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Download, Languages, LoaderCircle, Phone, PhoneOff, ShieldCheck } from "lucide-react";
 import {
@@ -54,6 +55,7 @@ function testErrorMessage(value: unknown, fallback: string) {
 
 function TestCallOrb({ status }: { status: CallStatus }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoPlaying, setVideoPlaying] = useState(false);
   const activity = status === "idle" || status === "connecting" || status === "ending"
     ? "calm"
     : status === "speaking"
@@ -64,29 +66,50 @@ function TestCallOrb({ status }: { status: CallStatus }) {
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let mounted = true;
     const syncPlayback = () => {
       const video = videoRef.current;
       if (!video) return;
       if (media.matches) {
         video.pause();
         video.currentTime = 0;
+        setVideoPlaying(false);
         return;
       }
-      void video.play().catch(() => undefined);
+      void video.play()
+        .then(() => {
+          if (mounted) setVideoPlaying(true);
+        })
+        .catch(() => {
+          if (mounted) setVideoPlaying(false);
+        });
     };
     syncPlayback();
     media.addEventListener("change", syncPlayback);
-    return () => media.removeEventListener("change", syncPlayback);
+    return () => {
+      mounted = false;
+      media.removeEventListener("change", syncPlayback);
+    };
   }, []);
 
   return (
     <div className={`test-voice-orb ${activity}`} aria-hidden="true">
+      <Image
+        alt=""
+        className="test-voice-orb-fallback"
+        fill
+        priority
+        sizes="(max-width: 820px) 176px, 260px"
+        src="/images/agents/ai-voice-orb.png"
+      />
       <video
         ref={videoRef}
-        className="test-voice-orb-video"
+        className={`test-voice-orb-video ${videoPlaying ? "is-playing" : ""}`}
         autoPlay
         loop
         muted
+        onError={() => setVideoPlaying(false)}
+        onPlaying={() => setVideoPlaying(true)}
         playsInline
         poster="/images/agents/ai-voice-orb.png"
         preload="auto"

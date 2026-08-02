@@ -26,4 +26,6 @@ public interface AgentRepository extends JpaRepository<Agent, UUID> {
     Optional<Agent> findByWebVoicePublicId(String webVoicePublicId);
 
     Optional<Agent> findByWhatsappPhoneNumberId(String whatsappPhoneNumberId);
+
+    List<Agent> findAllByTwilioPhoneNumberIsNotNull();
 }

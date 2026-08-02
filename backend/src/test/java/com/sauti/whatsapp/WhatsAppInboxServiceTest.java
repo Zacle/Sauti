@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.sauti.integration.IntegrationService;
+import com.sauti.billing.CommunicationUsageMeteringService;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -57,7 +58,8 @@ class WhatsAppInboxServiceTest {
         when(messages.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         return new Fixture(tenantId, conversation, conversations, messages,
                 new WhatsAppInboxService(conversations, messages,
-                        mock(IntegrationService.class), mock(WhatsAppMessageSender.class)));
+                        mock(IntegrationService.class), mock(WhatsAppMessageSender.class),
+                        mock(CommunicationUsageMeteringService.class)));
     }
 
     private record Fixture(UUID tenantId, WhatsAppConversation conversation,

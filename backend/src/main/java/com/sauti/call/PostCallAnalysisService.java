@@ -2,6 +2,7 @@ package com.sauti.call;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.genai.Client;
+import com.sauti.billing.CommunicationUsageMeteringService;
 import com.sauti.integration.PostCallIntegrationService;
 import java.util.Set;
 import java.util.UUID;
@@ -26,6 +27,7 @@ public class PostCallAnalysisService {
     private final ObjectMapper objectMapper;
     private final CallAnalysisPersistenceService persistenceService;
     private final PostCallIntegrationService integrationService;
+    private final CommunicationUsageMeteringService usageMetering;
     private final ChatModel analysisModel;
     private final ExecutorService executor = Executors.newFixedThreadPool(2, runnable -> {
         var thread = new Thread(runnable, "post-call-analysis");
@@ -37,12 +39,14 @@ public class PostCallAnalysisService {
             ObjectMapper objectMapper,
             CallAnalysisPersistenceService persistenceService,
             PostCallIntegrationService integrationService,
+            CommunicationUsageMeteringService usageMetering,
             @Value("${spring.ai.google.genai.api-key:}") String googleApiKey,
             @Value("${sauti.llm.default-model:gemini-2.5-flash}") String modelName
     ) {
         this.objectMapper = objectMapper;
         this.persistenceService = persistenceService;
         this.integrationService = integrationService;
+        this.usageMetering = usageMetering;
         this.analysisModel = googleApiKey == null || googleApiKey.isBlank()
                 ? null
                 : GoogleGenAiChatModel.builder()
@@ -64,6 +68,7 @@ public class PostCallAnalysisService {
         var needsAnalysis = analysisModel != null && !fields.isEmpty() && !transcript.isBlank()
                 && call.getAgent().isSaveTranscript();
         var enqueue = (Runnable) () -> {
+            usageMetering.meterCompletedCall(tenantId, callId);
             integrationService.enqueue(tenantId, callId, test);
             if (!needsAnalysis) integrationService.analysisCompleted(callId);
         };

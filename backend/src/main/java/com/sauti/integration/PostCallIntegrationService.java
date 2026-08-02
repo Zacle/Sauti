@@ -2,6 +2,7 @@ package com.sauti.integration;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sauti.billing.CommunicationUsageMeteringService;
 import com.sauti.call.Call;
 import com.sauti.call.CallRepository;
 import com.sauti.call.CallIntakeNoteService;
@@ -58,6 +59,7 @@ public class PostCallIntegrationService {
     private final TemplateEngine templateEngine;
     private final WebhookDestinationValidator destinationValidator;
     private final WebhookDeliveryService tenantWebhooks;
+    private final CommunicationUsageMeteringService usageMetering;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final String emailFrom;
     private final String graphApiBaseUrl;
@@ -80,6 +82,7 @@ public class PostCallIntegrationService {
                                       TemplateEngine templateEngine,
                                       WebhookDestinationValidator destinationValidator,
                                       WebhookDeliveryService tenantWebhooks,
+                                      CommunicationUsageMeteringService usageMetering,
                                       @Value("${sauti.email.from}") String emailFrom,
                                       @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBaseUrl,
                                       @Value("${sauti.dashboard.base-url}") String dashboardBaseUrl) {
@@ -100,6 +103,7 @@ public class PostCallIntegrationService {
         this.templateEngine = templateEngine;
         this.destinationValidator = destinationValidator;
         this.tenantWebhooks = tenantWebhooks;
+        this.usageMetering = usageMetering;
         this.emailFrom = emailFrom;
         this.graphApiBaseUrl = graphApiBaseUrl.replaceFirst("/+$", "");
         this.dashboardBaseUrl = dashboardBaseUrl.replaceFirst("/+$", "");
@@ -176,6 +180,11 @@ public class PostCallIntegrationService {
                 default -> throw new IllegalStateException(
                         delivery.getProvider() + " delivery requires its OAuth provider adapter");
             };
+            if ("whatsapp".equals(delivery.getProvider())) {
+                usageMetering.meterOutboundMessage(
+                        call.getTenant().getId(), call.getAgent().getId(), "whatsapp", "",
+                        "post-call-delivery:" + delivery.getId(), "template");
+            }
             delivery.delivered(responseCode);
         } catch (ProviderException exception) {
             delivery.retry(exception.statusCode, exception.getMessage());

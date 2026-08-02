@@ -1,5 +1,6 @@
 package com.sauti.whatsapp;
 
+import com.sauti.billing.CommunicationUsageMeteringService;
 import com.sauti.call.Call;
 import com.sauti.integration.IntegrationService;
 import com.sauti.whatsapp.WhatsAppInboxDtos.ConversationResponse;
@@ -20,15 +21,18 @@ public class WhatsAppInboxService {
     private final WhatsAppMessageRepository messages;
     private final IntegrationService integrations;
     private final WhatsAppMessageSender sender;
+    private final CommunicationUsageMeteringService usageMetering;
 
     public WhatsAppInboxService(WhatsAppConversationRepository conversations,
                                 WhatsAppMessageRepository messages,
                                 IntegrationService integrations,
-                                WhatsAppMessageSender sender) {
+                                WhatsAppMessageSender sender,
+                                CommunicationUsageMeteringService usageMetering) {
         this.conversations = conversations;
         this.messages = messages;
         this.integrations = integrations;
         this.sender = sender;
+        this.usageMetering = usageMetering;
     }
 
     @Transactional(readOnly = true)
@@ -85,6 +89,9 @@ public class WhatsAppInboxService {
             var result = sender.sendVoiceNoteTracked(conversation.getPhoneNumberId(),
                     conversation.getCustomerNumber(), oggOpus, token(conversation));
             pending.providerAccepted(result.providerMessageId());
+            usageMetering.meterOutboundMessage(
+                    call.getTenant().getId(), call.getAgent().getId(), "whatsapp",
+                    result.providerMessageId(), pending.getId().toString(), "audio");
             conversation.sent("Voice reply", OffsetDateTime.now());
             markProviderRead(conversation);
             return MessageResponse.from(messages.save(pending));
@@ -120,6 +127,9 @@ public class WhatsAppInboxService {
             var result = sender.sendTextTracked(conversation.getPhoneNumberId(),
                     conversation.getCustomerNumber(), text.trim(), token(conversation));
             pending.providerAccepted(result.providerMessageId());
+            usageMetering.meterOutboundMessage(
+                    tenantId, conversation.getAgentId(), "whatsapp", result.providerMessageId(),
+                    pending.getId().toString(), type);
             conversation.sent(text, OffsetDateTime.now());
             if (markRead) markProviderRead(conversation);
             return MessageResponse.from(messages.save(pending));

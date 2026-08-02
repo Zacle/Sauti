@@ -277,11 +277,12 @@ public class AgentService {
                 quote.initialEstimatedCost(),
                 quote.currency(),
                 "phone-number-order:" + reference,
-                reference,
+                requestedPhoneNumber,
                 "Phone number purchase and first estimated monthly rental",
                 java.util.Map.of(
                         "phoneNumber", requestedPhoneNumber,
                         "provider", provisioning.provider(),
+                        "providerReference", reference,
                         "upfrontCost", quote.upfrontCost(),
                         "monthlyCost", quote.monthlyCost()
                 )

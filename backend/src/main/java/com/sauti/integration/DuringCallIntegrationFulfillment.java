@@ -2,6 +2,7 @@ package com.sauti.integration;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sauti.billing.CommunicationUsageMeteringService;
 import com.sauti.call.Call;
 import com.sauti.calendar.BookingRepository;
 import com.sauti.llm.LlmToolCall;
@@ -38,6 +39,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     private final MessagingRecipientResolver recipients;
     private final BookingRepository bookings;
     private final WhatsAppTemplateParameterMapper whatsappTemplateParameters;
+    private final CommunicationUsageMeteringService usageMetering;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final String graphApiBase;
     private final String publicBaseUrl;
@@ -49,12 +51,14 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
                                             MessagingRecipientResolver recipients,
                                             BookingRepository bookings,
                                             WhatsAppTemplateParameterMapper whatsappTemplateParameters,
+                                            CommunicationUsageMeteringService usageMetering,
                                             @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBase,
                                             @Value("${sauti.telnyx.public-base-url}") String publicBaseUrl) {
         this.integrations = integrations; this.googleSheets = googleSheets; this.payments = payments; this.objectMapper = objectMapper;
         this.recipients = recipients;
         this.bookings = bookings;
         this.whatsappTemplateParameters = whatsappTemplateParameters;
+        this.usageMetering = usageMetering;
         this.graphApiBase = graphApiBase.replaceFirst("/+$", "");
         this.publicBaseUrl = publicBaseUrl.replaceFirst("/+$", "");
     }
@@ -103,6 +107,9 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(body))).build());
         var providerMessageId = objectMapper.readTree(response.body()).path("messages").path(0).path("id").asText("");
+        usageMetering.meterOutboundMessage(
+                call.getTenant().getId(), call.getAgent().getId(), "whatsapp", providerMessageId,
+                call.getId() + ":" + toolCall.id(), "template");
         return LlmToolResult.success(toolCall, Map.of(
                 "queued", true, "destination", recipient.masked(), "recipientSource", recipient.source(),
                 "providerMessageId", providerMessageId));

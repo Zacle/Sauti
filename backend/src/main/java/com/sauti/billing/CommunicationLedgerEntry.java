@@ -90,6 +90,7 @@ public class CommunicationLedgerEntry extends Auditable {
     public String getIdempotencyKey() { return idempotencyKey; }
     public String getExternalReference() { return externalReference; }
     public String getDescription() { return description; }
+    public String getMetadataJson() { return metadataJson; }
 
     private static String required(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Ledger value is required");

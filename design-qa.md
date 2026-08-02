@@ -85,6 +85,60 @@ final result: passed
 
 ---
 
+# Test-call missing-animation recovery QA
+
+- Source failure states:
+  - `C:\Users\Zacle\AppData\Local\Temp\codex-clipboard-fb3bf755-b885-4ce2-baec-4f2441000813.png` (517 x 786 pixels, idle preparation);
+  - `C:\Users\Zacle\AppData\Local\Temp\codex-clipboard-5bcf6968-e7ba-4bd3-be49-463c89f04d2d.png` (517 x 709 pixels, live speaking).
+- Browser-rendered implementation evidence:
+  - `D:\Documents\Sauti\design-qa\test-call-screenshots-fixed-a.png`;
+  - `D:\Documents\Sauti\design-qa\test-call-screenshots-fixed-b.png`.
+- Combined comparison: `D:\Documents\Sauti\design-qa\test-call-missing-vs-restored-comparison.png`.
+- Viewport: 1280 x 786 CSS pixels at device scale 1.
+- States: real idle `TestCallPanel` playback plus an active speaking fallback with an intentionally unavailable WebM.
+
+## Full-view comparison evidence
+
+The supplied screenshots preserve the correct test-panel layout but show a completely empty cobalt animation field. The corrected browser render keeps the same Sauti typography, controls, panel surfaces, and status treatment while restoring the teal waveform in both the idle and speaking regions.
+
+## Focused comparison evidence
+
+The combined comparison places each supplied blank animation region beside the corrected browser-rendered region. The idle state displays the live WebM waveform; the speaking failure simulation displays the real still waveform asset even though its video source is deliberately unavailable.
+
+## Findings and comparison history
+
+- [P1 fixed] Both production states could render an empty cobalt field when the animation files were absent from a reviewed checkout.
+  - Fix: removed the two production animation assets from `dashboard/.gitignore` so the WebM and PNG are visible members of the uncommitted deliverable.
+  - Post-fix evidence: `git status --short --untracked-files=all` reports both public assets for maintainer review.
+- [P1 fixed] The video element was the only visible waveform source, so autoplay delay, decode failure, reduced motion, or a missing WebM could leave the panel blank.
+  - Fix: mounted the real PNG waveform beneath the WebM and kept the video transparent until playback is confirmed. Playback failure and reduced motion retain the visible still asset.
+  - Post-fix evidence: the intentionally missing-video speaking state shows the waveform with video opacity `0`.
+- [P2 fixed] A muted autoplay could begin before React received the `playing` event, leaving healthy playback transparent.
+  - Fix: the component now marks video playback visible when its explicit `play()` promise resolves, while retaining the event handler as an additional signal.
+  - Post-fix evidence: the idle video reported `readyState: 4`, `paused: false`, `playingClass: true`, and opacity `1`; its time advanced from approximately 0.83 to 1.63 seconds across captures.
+
+## Required fidelity surfaces
+
+- Fonts and typography: unchanged from the supplied states; no wrapping or hierarchy behavior was changed in production code.
+- Spacing and layout rhythm: the existing fixed animation wrappers and surrounding controls are unchanged.
+- Colors and visual tokens: the fallback uses the exact cobalt/teal source asset already selected for the animation.
+- Image quality and asset fidelity: both the fallback and motion layers use the supplied real raster/WebM assets; no CSS-drawn substitute is introduced.
+- Copy and content: idle, language-detection, privacy, and live speaking copy remain unchanged.
+
+## Interaction and accessibility checks
+
+- Normal playback becomes visible after hydration and advances continuously.
+- A deliberately unavailable video keeps a visible still waveform instead of a blank field.
+- Reduced-motion behavior now displays the still waveform while suppressing playback.
+- Browser console contained no warnings or errors.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed.
+
+No actionable P0, P1, or P2 findings remain.
+
+final result: passed
+
+---
+
 # Freeform test-call animation follow-up QA
 
 - Source visual truth: `C:\Users\Zacle\Downloads\screen-capture.webm` (1920 x 1078, approximately five seconds).

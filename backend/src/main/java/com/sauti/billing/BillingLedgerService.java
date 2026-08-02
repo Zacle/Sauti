@@ -102,6 +102,21 @@ public class BillingLedgerService {
         return ledger.findTop50ByTenantIdOrderByCreatedAtDesc(tenantId);
     }
 
+    @Transactional(readOnly = true)
+    public BigDecimal quantityTotal(UUID tenantId, String category, String externalReference) {
+        return ledger.netQuantity(tenantId, category, externalReference);
+    }
+
+    @Transactional(readOnly = true)
+    CommunicationLedgerEntry latestPhoneNumberPurchase(UUID tenantId, String phoneNumber) {
+        var exact = ledger.findFirstByTenantIdAndCategoryAndExternalReferenceOrderByCreatedAtDesc(
+                tenantId, "phone_number_purchase", phoneNumber);
+        if (exact.isPresent()) return exact.get();
+        return ledger.findTop20ByTenantIdAndCategoryOrderByCreatedAtDesc(tenantId, "phone_number_purchase").stream()
+                .filter(entry -> metadataValue(entry.getMetadataJson(), "phoneNumber").equals(phoneNumber))
+                .findFirst().orElse(null);
+    }
+
     private CommunicationLedgerEntry record(UUID tenantId, String direction, String category,
                                              BigDecimal quantity, String unit, BigDecimal amount, String currency,
                                              String idempotencyKey, String externalReference, String description,
@@ -147,6 +162,14 @@ public class BillingLedgerService {
             return objectMapper.writeValueAsString(metadata == null ? Map.of() : metadata);
         } catch (Exception exception) {
             throw new IllegalArgumentException("Billing metadata could not be serialized", exception);
+        }
+    }
+
+    private String metadataValue(String metadataJson, String field) {
+        try {
+            return objectMapper.readTree(metadataJson == null ? "{}" : metadataJson).path(field).asText("");
+        } catch (Exception ignored) {
+            return "";
         }
     }
 

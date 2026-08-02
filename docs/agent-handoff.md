@@ -9748,3 +9748,67 @@ Expected:
   - `npm.cmd run build` passed;
   - `git diff --check` passed.
 - Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: guarantee a visible test-call waveform
+
+- Investigated two supplied screenshots where the idle and live-speaking cobalt fields rendered without any waveform.
+- Removed the PNG and WebM test-call assets from `dashboard/.gitignore`; they now appear as untracked production assets that must be included in maintainer review rather than silently disappearing from a checkout or deployment.
+- Added the real PNG waveform as an always-mounted fallback beneath the WebM. The video remains transparent until playback is confirmed, while failed playback and reduced-motion mode keep the still waveform visible.
+- Removed a hydration race by setting the playing state from the resolved `video.play()` promise as well as the media event.
+- Files additionally touched:
+  - `dashboard/.gitignore`;
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`;
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`;
+  - `dashboard/public/images/agents/ai-voice-orb.png`;
+  - `dashboard/public/images/agents/ai-voice-orb-motion.webm`;
+  - `design-qa.md` and ignored local QA evidence;
+  - `docs/agent-handoff.md`.
+- Browser verification at 1280 x 786 covered the real idle component and an active speaking state with an intentionally unavailable video. The live WebM advanced with opacity `1`; the failed-video state retained the visible PNG; and the console was clean.
+- Verification:
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-08-02 - Durable communication usage metering
+
+- Wired the provider-neutral communication ledger into durable, non-live-media
+  completion paths. The live voice response loop does not wait for billing
+  calculations or provider-price lookups.
+- Completed inbound, outbound, browser-test, and public-web voice sessions now
+  produce exact minute-quantity ledger entries after the call transaction
+  commits. WhatsApp conversations are excluded from voice minutes.
+- Added immutable duration reconciliation: later authoritative provider
+  durations create only a debit or credit adjustment for the difference,
+  keyed by the persisted call snapshot, instead of overwriting usage or
+  double-counting terminal webhooks.
+- Telnyx SMS and Meta WhatsApp sends now record one quantity entry only after
+  the provider accepts the message. Provider message IDs are the primary
+  idempotency key; deterministic internal delivery IDs are used when a provider
+  omits its ID. AI text/audio replies, human inbox replies, during-call
+  templates, and post-call WhatsApp deliveries are covered.
+- Added a daily UTC number-rental accrual. It uses the monthly cost from the
+  original server-verified number quote, skips the purchase month already
+  included in the initial debit, and posts at most one `number_month` entry per
+  phone number and calendar month.
+- Message and voice entries intentionally store exact quantities with nullable
+  monetary amounts. Sauti does not invent regional SMS, WhatsApp, carrier, or
+  AI inference prices; payment enforcement remains in `observe` mode until a
+  verified rate/reconciliation layer is connected.
+- Files touched:
+  - `backend/src/main/java/com/sauti/billing/CommunicationUsageMeteringService.java`;
+  - billing ledger/repository/entity support;
+  - agent repository and trusted number-purchase metadata;
+  - post-call analysis, SMS fulfillment, WhatsApp inbox, during-call, and
+    post-call integration services;
+  - metering and WhatsApp inbox tests;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - focused usage-metering, ledger, and WhatsApp inbox tests passed;
+  - complete `:backend:test` suite passed;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+- Follow-up: ingest provider delivery/cost events and invoices to reconcile
+  quantity entries to exact monetary cost, then connect Lemon Squeezy checkout,
+  signed idempotent webhooks, credits, subscription state, and enforcement.

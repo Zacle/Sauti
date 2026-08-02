@@ -31,5 +31,3 @@ out/
 .env.local
 .env.*.local
 npm-debug.log*
-/public/images/agents/ai-voice-orb-motion.webm
-/public/images/agents/ai-voice-orb.png
