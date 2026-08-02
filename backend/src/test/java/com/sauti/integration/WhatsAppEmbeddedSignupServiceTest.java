@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.Agent;
 import com.sauti.agent.AgentRepository;
 import com.sauti.integration.WhatsAppEmbeddedSignupService.CompleteRequest;
+import com.sauti.phone.InternationalPhoneNumberService;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -35,7 +36,10 @@ class WhatsAppEmbeddedSignupServiceTest {
                         """;
                 case "/v23.0/waba-1/message_templates" -> """
                         {"data":[
-                          {"id":"tpl-1","name":"appointment_reminder","language":"en_US","status":"APPROVED","category":"UTILITY"},
+                          {"id":"tpl-1","name":"appointment_reminder","language":"en_US","status":"APPROVED","category":"UTILITY",
+                           "parameter_format":"POSITIONAL","components":[
+                             {"type":"BODY","text":"Hello {{1}}, your booking {{2}} is confirmed."}
+                           ]},
                           {"id":"tpl-2","name":"draft_template","language":"en_US","status":"PENDING","category":"UTILITY"}
                         ]}
                         """;
@@ -67,16 +71,21 @@ class WhatsAppEmbeddedSignupServiceTest {
 
             var service = new WhatsAppEmbeddedSignupService(
                     new ObjectMapper(), integrations, connections, agents,
+                    new InternationalPhoneNumberService(),
                     "app-1", "app-secret", "config-1",
                     "http://127.0.0.1:" + server.getAddress().getPort() + "/v23.0");
             var result = service.complete(tenantId,
-                    new CompleteRequest(agentId, "temporary-code", "waba-1", "phone-1"));
+                    new CompleteRequest(agentId, "temporary-code", "waba-1", "phone-1",
+                            "ZA", "011 555 0100"));
 
             assertThat(result.phoneNumberId()).isEqualTo("phone-1");
             assertThat(result.verifiedName()).isEqualTo("Demo Clinic");
             assertThat(result.templates()).singleElement().satisfies(template -> {
                 assertThat(template.name()).isEqualTo("appointment_reminder");
                 assertThat(template.language()).isEqualTo("en_US");
+                assertThat(template.parameterFormat()).isEqualTo("POSITIONAL");
+                assertThat(template.parameters()).extracting(parameter -> parameter.key())
+                        .containsExactly("body.1", "body.2");
             });
             assertThat(subscribed).isTrue();
             @SuppressWarnings("unchecked")
@@ -89,8 +98,9 @@ class WhatsAppEmbeddedSignupServiceTest {
             assertThat(configuration.getValue())
                     .containsEntry("wabaId", "waba-1")
                     .containsEntry("phoneNumberId", "phone-1")
-                    .containsEntry("templateName", "appointment_reminder")
-                    .containsEntry("templateLanguage", "en_US");
+                    .containsEntry("businessPhoneNumber", "+27115550100")
+                    .containsEntry("businessCountryCode", "ZA")
+                    .doesNotContainKeys("templateName", "templateLanguage");
             verify(agent).configureWhatsApp(true, "phone-1");
             verify(agents).save(agent);
         } finally {

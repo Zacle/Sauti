@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.call.Call;
@@ -18,10 +19,31 @@ import org.junit.jupiter.api.Test;
 
 class WhatsAppChannelServiceTest {
     @Test
+    void mapsMetaDeliveryStatusesIntoTheInbox() {
+        var inbox = mock(WhatsAppInboxService.class);
+        var service = new WhatsAppChannelService(
+                new ObjectMapper(), mock(WhatsAppInboundMessageRepository.class),
+                mock(CallPipelineService.class), mock(WhatsAppMessageSender.class), inbox,
+                mock(BrowserSpeechToTextService.class), mock(VoiceCatalogService.class),
+                mock(OggOpusAudioConverter.class), mock(IntegrationService.class));
+        try {
+            service.accept("""
+                    {"entry":[{"changes":[{"value":{"statuses":[{
+                      "id":"wamid-out","status":"delivered"
+                    }]}}]}]}
+                    """);
+            verify(inbox).providerStatus("wamid-out", "delivered", "");
+        } finally {
+            service.stop();
+        }
+    }
+
+    @Test
     void persistsFailedStateWhenSendingReplyFails() throws Exception {
         var repository = mock(WhatsAppInboundMessageRepository.class);
         var pipeline = mock(CallPipelineService.class);
         var sender = mock(WhatsAppMessageSender.class);
+        var inbox = mock(WhatsAppInboxService.class);
         var speech = mock(BrowserSpeechToTextService.class);
         var voices = mock(VoiceCatalogService.class);
         var converter = mock(OggOpusAudioConverter.class);
@@ -38,6 +60,8 @@ class WhatsAppChannelServiceTest {
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(repository.findByProviderMessageId("wamid-1")).thenReturn(Optional.of(inbound));
         when(pipeline.startWhatsAppConversation("phone-1", "254700000000")).thenReturn(call);
+        when(inbox.recordInbound(call, "wamid-1", "", "audio", "Hello", "media-1", "audio/ogg"))
+                .thenReturn(new WhatsAppInboxService.InboundResult(java.util.UUID.randomUUID(), "ai", true));
         when(call.getAgent()).thenReturn(agent);
         when(call.getTenant()).thenReturn(tenant);
         when(tenant.getId()).thenReturn(tenantId);
@@ -54,14 +78,14 @@ class WhatsAppChannelServiceTest {
         when(voices.synthesize("voice-1", "en", "Reply")).thenReturn(new byte[]{2});
         when(converter.fromMp3(any())).thenReturn(new byte[]{3});
         org.mockito.Mockito.doThrow(new IllegalStateException("Meta unavailable"))
-                .when(sender).sendVoiceNote(
-                        org.mockito.ArgumentMatchers.eq("phone-1"),
-                        org.mockito.ArgumentMatchers.eq("254700000000"),
-                        org.mockito.ArgumentMatchers.any(byte[].class),
-                        org.mockito.ArgumentMatchers.eq("workspace-token"));
+                .when(inbox).sendAiVoice(
+                        org.mockito.ArgumentMatchers.eq(call),
+                        org.mockito.ArgumentMatchers.any(java.util.UUID.class),
+                        org.mockito.ArgumentMatchers.eq("Reply"),
+                        org.mockito.ArgumentMatchers.any(byte[].class));
 
         var service = new WhatsAppChannelService(
-                new ObjectMapper(), repository, pipeline, sender,
+                new ObjectMapper(), repository, pipeline, sender, inbox,
                 speech,
                 voices, converter, integrations);
         try {

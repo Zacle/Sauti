@@ -4,12 +4,31 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.sauti.phone.InternationalPhoneNumberService;
 import com.sauti.tenant.Tenant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class AgentVariableServiceTest {
+    @Test
+    void normalizesBusinessPhoneVariablesBeforeSaving() {
+        var repository = mock(AgentVariableRepository.class);
+        var agents = mock(AgentRepository.class);
+        var tenantId = UUID.randomUUID();
+        var agentId = UUID.randomUUID();
+        var agent = new Agent(new Tenant("Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");
+        var phone = new AgentVariable(agent, "business_phone", "Business phone", null, true);
+        when(agents.findByIdAndTenantId(agentId, tenantId)).thenReturn(Optional.of(agent));
+        when(repository.findByAgentIdAndKey(agentId, "business_phone")).thenReturn(Optional.of(phone));
+        var service = new AgentVariableService(repository, agents, new InternationalPhoneNumberService());
+
+        var result = service.updateOne(tenantId, agentId, "business_phone", "+254 0712 345 678");
+
+        assertThat(result.value()).isEqualTo("+254712345678");
+    }
+
     @Test
     void resolvesAutomaticAndBusinessVariablesWithoutLeakingEmptyPlaceholders() {
         var repository = mock(AgentVariableRepository.class);
@@ -23,7 +42,7 @@ class AgentVariableServiceTest {
         var insurance = new AgentVariable(agent, "accepted_insurance", "Accepted insurance", null, false);
         when(repository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
                 .thenReturn(List.of(clinicName, insurance));
-        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+        var service = service(repository);
 
         var resolved = service.resolvePrompt(
                 agent,
@@ -49,7 +68,7 @@ class AgentVariableServiceTest {
         routing.updateValue("Set up later");
         when(repository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
                 .thenReturn(List.of(calendar, routing));
-        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+        var service = service(repository);
 
         var resolved = service.resolvePrompt(
                 agent,
@@ -69,7 +88,7 @@ class AgentVariableServiceTest {
         calendar.updateValue("Set up later");
         when(repository.findByAgentIdAndKey(agent.getId(), "calendar_provider"))
                 .thenReturn(Optional.of(calendar));
-        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+        var service = service(repository);
 
         service.updateIfPresent(agent.getId(), "calendar_provider", "Google Calendar");
 
@@ -83,7 +102,7 @@ class AgentVariableServiceTest {
         var agent = new Agent(new Tenant("Hairy", "owner@example.com", "KE"), "Ailsa", "Hello", "Prompt");
         var hours = new AgentVariable(agent, "business_hours", "Business hours", null, true);
         when(repository.findByAgentIdAndKey(agent.getId(), "business_hours")).thenReturn(Optional.of(hours));
-        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+        var service = service(repository);
         var schedule = "Mon 09:00-17:00; Tue 09:00-17:00; Wed 09:00-17:00; Thu 09:00-17:00; Fri 09:00-17:00";
 
         service.updateIfPresent(agent.getId(), "business_hours", schedule);
@@ -100,7 +119,7 @@ class AgentVariableServiceTest {
         var agent = new Agent(new Tenant("Hairy", "owner@example.com", "KE"), "Ailsa", "Hello", "Prompt");
         var behavior = new AgentVariable(agent, "after_hours_behavior", "After-hours behavior", null, true);
         when(repository.findByAgentIdAndKey(agent.getId(), "after_hours_behavior")).thenReturn(Optional.of(behavior));
-        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+        var service = service(repository);
 
         service.updateIfPresent(agent.getId(), "after_hours_behavior", "take_message");
 
@@ -130,7 +149,7 @@ class AgentVariableServiceTest {
         staleFields.updateValue("name, phone");
         when(repository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
                 .thenReturn(List.of(staleTimezone, staleCalendar, staleFields));
-        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+        var service = service(repository);
 
         assertThat(service.missingRequired(agent.getId())).isEmpty();
         assertThat(service.resolvePrompt(agent, "Hours use {{business_timezone}} with {{calendar_system}}."))
@@ -149,7 +168,7 @@ class AgentVariableServiceTest {
                 "You are Alec, the virtual assistant for X-Fit."
         );
         when(repository.findByAgentIdAndKey(agent.getId(), "business_name")).thenReturn(Optional.empty());
-        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+        var service = service(repository);
 
         assertThat(service.businessName(agent)).isEqualTo("X-Fit");
     }
@@ -169,7 +188,7 @@ class AgentVariableServiceTest {
         var emptyOptional = new AgentVariable(agent, "booking_link", "Booking link", null, false);
         when(repository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()))
                 .thenReturn(List.of(required, services, optional, transfer, emptyOptional));
-        var service = new AgentVariableService(repository, mock(AgentRepository.class));
+        var service = service(repository);
 
         assertThat(service.conversationContext(agent))
                 .contains("CUSTOMER-FACING BUSINESS FACTS")
@@ -180,5 +199,10 @@ class AgentVariableServiceTest {
                 .contains("PRIVATE OPERATING RULES")
                 .contains("- transfer_number (Transfer number): +20 111 000 0001")
                 .doesNotContain("Booking link");
+    }
+
+    private static AgentVariableService service(AgentVariableRepository repository) {
+        return new AgentVariableService(repository, mock(AgentRepository.class),
+                new InternationalPhoneNumberService());
     }
 }

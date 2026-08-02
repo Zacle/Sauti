@@ -162,6 +162,11 @@ export type WhatsAppSignupConfiguration = {
   appId: string;
   configurationId: string;
   graphVersion: string;
+  countries: Array<{
+    region: string;
+    name: string;
+    dialingCode: string;
+  }>;
 };
 
 export type WhatsAppTemplate = {
@@ -169,6 +174,16 @@ export type WhatsAppTemplate = {
   name: string;
   language: string;
   category: string;
+  parameterFormat: "POSITIONAL" | "NAMED";
+  parameters: WhatsAppTemplateParameter[];
+};
+
+export type WhatsAppTemplateParameter = {
+  key: string;
+  component: "header" | "body";
+  position: number;
+  name: string;
+  placeholder: string;
 };
 
 export type WhatsAppSignupResult = {
@@ -189,6 +204,8 @@ export function completeWhatsAppSignup(body: {
   code: string;
   wabaId: string;
   phoneNumberId: string;
+  businessCountryCode: string;
+  businessPhoneNumber: string;
 }) {
   return apiRequest<WhatsAppSignupResult>("/integrations/whatsapp/embedded-signup/complete", {
     method: "POST",

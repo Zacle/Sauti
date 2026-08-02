@@ -17,6 +17,39 @@ import org.junit.jupiter.api.Test;
 
 class TelnyxTelephonyProviderTest {
     @Test
+    void assignsAnActiveNumberToTheConfiguredMessagingProfile() throws Exception {
+        var requests = new ArrayList<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            var body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getRawPath() + " " + body);
+            var response = ("GET".equals(exchange.getRequestMethod())
+                    ? "{\"data\":{\"id\":\"order-1\",\"status\":\"success\",\"phone_numbers\":[{\"phone_number\":\"+447911123456\",\"requirements_met\":true}]}}"
+                    : "{}").getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var provider = new TelnyxTelephonyProvider(
+                    new ObjectMapper(), "test-key", "connection-1",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "", "profile-1",
+                    "Telnyx.NaturalHD.astra", mock(ManagedVoiceAgentProvisioningService.class));
+
+            var result = provider.refreshPhoneNumber("order-1");
+
+            assertThat(result.status()).isEqualTo("active");
+            assertThat(requests).containsExactly(
+                    "GET /number_orders/order-1 ",
+                    "PATCH /messaging_phone_numbers/%2B447911123456 {\"messaging_profile_id\":\"profile-1\"}"
+            );
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void preparesInboundAssistantBeforeAnsweringTheCaller() throws Exception {
         var order = new ArrayList<String>();
         var requestBodies = new ArrayList<String>();
@@ -58,6 +91,7 @@ class TelnyxTelephonyProviderTest {
                     "test-key",
                     "connection-1",
                     "http://127.0.0.1:" + server.getAddress().getPort(),
+                    "",
                     "",
                     "Telnyx.NaturalHD.astra",
                     provisioning

@@ -88,6 +88,7 @@ import { getAgentIntegrations, type AgentIntegration } from "@/lib/api/integrati
 import { DeleteAgentDialog } from "@/features/agents/DeleteAgentDialog/DeleteAgentDialog";
 import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
 import { structuredAgentSetting, type StructuredAgentSetting } from "@/features/agents/domain/structured-agent-settings";
+import { listCountryCallingCodes, type CountryCallingCode } from "@/lib/api/phone-numbers";
 
 type Template = {
   id: string;
@@ -425,6 +426,7 @@ export function AgentCreator({
   const [bookingNotificationChannels, setBookingNotificationChannels] = useState<string[]>(DEFAULT_BOOKING_NOTIFICATIONS);
   const [bookingNotificationRecipient, setBookingNotificationRecipient] = useState("");
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [phoneCountries, setPhoneCountries] = useState<CountryCallingCode[]>([]);
   const [customVariables, setCustomVariables] = useState<AgentVariableDefinition[]>([]);
   const [existingVariableKeys, setExistingVariableKeys] = useState<string[]>([]);
   const [showPersonalisation, setShowPersonalisation] = useState(openPersonalisation);
@@ -440,6 +442,10 @@ export function AgentCreator({
   const [error, setError] = useState("");
   const studioFormRef = useRef<HTMLFormElement>(null);
   const openPhoneAfterSaveRef = useRef(false);
+
+  useEffect(() => {
+    listCountryCallingCodes().then(setPhoneCountries).catch(() => setPhoneCountries([]));
+  }, []);
 
   useEffect(() => {
     listAgentTemplates()
@@ -1057,6 +1063,8 @@ export function AgentCreator({
             <PersonalisationDrawer
               agentSaved={Boolean(agentId)}
               countryName={countryName}
+              defaultPhoneRegion={session?.tenant.countryCode || ""}
+              phoneCountries={phoneCountries}
               timezone={timezone}
               bookingEnabled={bookingEnabled}
               defaultBookingDurationMinutes={defaultBookingDurationMinutes}
@@ -2508,6 +2516,8 @@ function PersonalisationDrawer({
   variables,
   values,
   countryName,
+  defaultPhoneRegion,
+  phoneCountries,
   timezone,
   bookingEnabled,
   defaultBookingDurationMinutes,
@@ -2522,6 +2532,8 @@ function PersonalisationDrawer({
   variables: AgentVariableDefinition[];
   values: Record<string, string>;
   countryName: string;
+  defaultPhoneRegion: string;
+  phoneCountries: CountryCallingCode[];
   timezone: string;
   bookingEnabled: boolean;
   defaultBookingDurationMinutes: number;
@@ -2608,6 +2620,8 @@ function PersonalisationDrawer({
                     {requiredVariables.map((variable) => (
                       <VariableValueField
                         countryName={countryName}
+                        defaultPhoneRegion={defaultPhoneRegion}
+                        phoneCountries={phoneCountries}
                         key={variable.key}
                         variable={variable}
                         value={values[variable.key] ?? ""}
@@ -2622,6 +2636,8 @@ function PersonalisationDrawer({
                     {optionalVariables.map((variable) => (
                       <VariableValueField
                         countryName={countryName}
+                        defaultPhoneRegion={defaultPhoneRegion}
+                        phoneCountries={phoneCountries}
                         key={variable.key}
                         variable={variable}
                         value={values[variable.key] ?? ""}
@@ -2715,11 +2731,15 @@ function VariableValueField({
   variable,
   value,
   countryName,
+  defaultPhoneRegion,
+  phoneCountries,
   onChange,
 }: {
   variable: AgentVariableDefinition;
   value: string;
   countryName: string;
+  defaultPhoneRegion: string;
+  phoneCountries: CountryCallingCode[];
   onChange: (value: string) => void;
 }) {
   const kind = variableKind(variable.key);
@@ -2739,16 +2759,78 @@ function VariableValueField({
         <ServiceChipInput value={value} onChange={onChange} />
       ) : kind === "hours" ? (
         <WeeklyHoursInput value={value} onChange={onChange} />
+      ) : kind === "phone" ? (
+        <InternationalPhoneField
+          countries={phoneCountries}
+          defaultRegion={defaultPhoneRegion}
+          value={value}
+          onChange={onChange}
+        />
       ) : (
         <input
-          inputMode={kind === "phone" ? "tel" : undefined}
-          type={kind === "phone" ? "tel" : "text"}
+          type="text"
           value={value}
           placeholder={variablePlaceholder(variable, kind, countryName)}
-          onChange={(event) => onChange(kind === "phone" ? sanitizePhone(event.target.value) : event.target.value)}
+          onChange={(event) => onChange(event.target.value)}
         />
       )}
       <small className={error ? "field-error" : ""}>{error || variable.description}</small>
+    </div>
+  );
+}
+
+function InternationalPhoneField({ countries, defaultRegion, value, onChange }: {
+  countries: CountryCallingCode[];
+  defaultRegion: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [region, setRegion] = useState(defaultRegion);
+
+  useEffect(() => {
+    if (!countries.length) return;
+    const digits = value.replace(/\D/g, "");
+    const preferredRegion = region || defaultRegion;
+    const preferred = countries.find((country) => country.region === preferredRegion);
+    const matched = preferred && digits.startsWith(preferred.dialingCode.slice(1))
+      ? preferred
+      : [...countries]
+        .sort((left, right) => right.dialingCode.length - left.dialingCode.length)
+        .find((country) => digits.startsWith(country.dialingCode.slice(1)));
+    setRegion(matched?.region || preferred?.region || countries[0].region);
+  }, [countries, defaultRegion, region, value]);
+
+  const selected = countries.find((country) => country.region === region)
+    || countries.find((country) => country.region === defaultRegion)
+    || countries[0];
+  const digits = value.replace(/\D/g, "");
+  const prefixDigits = selected?.dialingCode.slice(1) || "";
+  const nationalNumber = prefixDigits && digits.startsWith(prefixDigits)
+    ? digits.slice(prefixDigits.length)
+    : digits;
+
+  function updateNationalNumber(next: string) {
+    const national = next.replace(/\D/g, "");
+    onChange(national && selected ? `${selected.dialingCode} ${national}` : "");
+  }
+
+  function updateRegion(nextRegion: string) {
+    const country = countries.find((item) => item.region === nextRegion);
+    setRegion(nextRegion);
+    onChange(nationalNumber && country ? `${country.dialingCode} ${nationalNumber}` : "");
+  }
+
+  return (
+    <div className="international-phone-field">
+      <select aria-label="Country calling code" disabled={!countries.length}
+        value={selected?.region || ""} onChange={(event) => updateRegion(event.target.value)}>
+        {countries.map((country) => <option key={country.region} value={country.region}>
+          {country.name} ({country.dialingCode})
+        </option>)}
+      </select>
+      <input aria-label="National phone number" inputMode="tel" type="tel"
+        value={nationalNumber} placeholder="712 345 678"
+        onChange={(event) => updateNationalNumber(event.target.value)} />
     </div>
   );
 }
@@ -2921,7 +3003,7 @@ function formatScheduleTime(value: string) {
 function variableKind(key: string) {
   if (SERVICE_VARIABLE_KEYS.has(key)) return "services";
   if (key === "business_hours") return "hours";
-  if (key.includes("phone") || key.endsWith("_number")) return "phone";
+  if (key.includes("phone") || key === "transfer_number") return "phone";
   if (key.includes("address") || key.includes("location")) return "address";
   return "text";
 }
@@ -2954,12 +3036,6 @@ function variableValueError(variable: AgentVariableDefinition, value: string) {
     if (invalidDay) return "Closing time must be later than opening time.";
   }
   return "";
-}
-
-function sanitizePhone(value: string) {
-  const startsWithPlus = value.trimStart().startsWith("+");
-  const digitsAndSpaces = value.replace(/[^\d ]/g, "").replace(/\s+/g, " ").trimStart();
-  return `${startsWithPlus ? "+" : ""}${digitsAndSpaces}`;
 }
 
 function emptySchedule(): WeeklySchedule {

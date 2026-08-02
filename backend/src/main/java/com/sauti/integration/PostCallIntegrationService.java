@@ -36,7 +36,7 @@ import org.thymeleaf.context.Context;
 @Service
 public class PostCallIntegrationService {
     private static final List<String> POST_CALL_PROVIDERS = List.of(
-            "custom_webhook", "whatsapp", "email", "slack", "google_sheets", "hubspot", "salesforce");
+            "custom_webhook", "email", "slack", "google_sheets", "hubspot", "salesforce");
     private static final DateTimeFormatter EMAIL_TIME = DateTimeFormatter.ofPattern(
             "d MMM uuuu 'at' h:mm a '·' VV '(UTC'xxx')'",
             Locale.ENGLISH
@@ -47,6 +47,7 @@ public class PostCallIntegrationService {
     private final IntegrationConnectionRepository connections;
     private final CallRepository calls;
     private final BookingRepository bookings;
+    private final WhatsAppTemplateParameterMapper whatsappTemplateParameters;
     private final CallIntakeNoteService intakeNotes;
     private final IntegrationService integrationService;
     private final ProviderOAuthService oauth;
@@ -68,6 +69,7 @@ public class PostCallIntegrationService {
                                       IntegrationConnectionRepository connections,
                                       CallRepository calls,
                                       BookingRepository bookings,
+                                      WhatsAppTemplateParameterMapper whatsappTemplateParameters,
                                       CallIntakeNoteService intakeNotes,
                                       IntegrationService integrationService,
                                       ProviderOAuthService oauth,
@@ -87,6 +89,7 @@ public class PostCallIntegrationService {
         this.connections = connections;
         this.calls = calls;
         this.bookings = bookings;
+        this.whatsappTemplateParameters = whatsappTemplateParameters;
         this.intakeNotes = intakeNotes;
         this.integrationService = integrationService;
         this.oauth = oauth;
@@ -210,27 +213,27 @@ public class PostCallIntegrationService {
     }
 
     private int sendWhatsApp(Call call, IntegrationConnection connection) {
+        if (!"whatsapp".equalsIgnoreCase(call.getDirection())) {
+            throw new IllegalArgumentException(
+                    "WhatsApp confirmations can only be sent in a customer-started WhatsApp conversation");
+        }
         if (call.getCallerNumber() == null || call.getCallerNumber().isBlank()) {
             throw new IllegalArgumentException("Call has no recipient phone number");
         }
         var config = map(connection.getConfiguration());
         var credentials = integrationService.credentials(connection);
-        Map<String, Object> message;
-        if ("whatsapp".equals(call.getDirection())) {
-            var text = call.getCallSummary() == null || call.getCallSummary().isBlank()
-                    ? "Thank you for contacting " + call.getTenant().getBusinessName() + "."
-                    : call.getCallSummary();
-            message = Map.of(
-                    "messaging_product", "whatsapp", "to", call.getCallerNumber(),
-                    "type", "text", "text", Map.of("preview_url", false, "body", text));
-        } else {
-            var template = Map.of(
-                    "name", required(config, "templateName"),
-                    "language", Map.of("code", required(config, "templateLanguage")));
-            message = Map.of(
-                    "messaging_product", "whatsapp", "to", call.getCallerNumber(),
-                    "type", "template", "template", template);
-        }
+        var booking = bookings.findFirstByTenantIdAndCall_IdAndAgent_IdOrderByCreatedAtDesc(
+                        call.getTenant().getId(), call.getId(), call.getAgent().getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No booking created by this WhatsApp conversation is available for confirmation"));
+        var template = new LinkedHashMap<String, Object>();
+        template.put("name", required(config, "templateName"));
+        template.put("language", Map.of("code", required(config, "templateLanguage")));
+        var components = whatsappTemplateParameters.components(config, booking);
+        if (!components.isEmpty()) template.put("components", components);
+        var message = Map.of(
+                "messaging_product", "whatsapp", "to", call.getCallerNumber(),
+                "type", "template", "template", template);
         return post(graphApiBaseUrl + "/" + required(config, "phoneNumberId") + "/messages", message,
                 Map.of("Authorization", "Bearer " + credentials.get("accessToken")));
     }

@@ -319,6 +319,7 @@ public class IntegrationService {
 
     private List<String> toolNamesFor(String provider) {
         return switch (provider) {
+            case "telnyx_sms" -> List.of("send_confirmation_sms");
             case "whatsapp" -> List.of("send_whatsapp_message");
             case "google_calendar" -> List.of(
                     "check_availability", "lookup_booking", "book_slot",

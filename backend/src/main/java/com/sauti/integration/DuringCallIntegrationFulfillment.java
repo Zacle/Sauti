@@ -3,6 +3,7 @@ package com.sauti.integration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.call.Call;
+import com.sauti.calendar.BookingRepository;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
 import com.sauti.tool.AgentTool;
@@ -34,6 +35,9 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     private final GoogleSheetsApiClient googleSheets;
     private final MpesaPaymentRequestRepository payments;
     private final ObjectMapper objectMapper;
+    private final MessagingRecipientResolver recipients;
+    private final BookingRepository bookings;
+    private final WhatsAppTemplateParameterMapper whatsappTemplateParameters;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final String graphApiBase;
     private final String publicBaseUrl;
@@ -42,9 +46,15 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
                                             GoogleSheetsApiClient googleSheets,
                                             MpesaPaymentRequestRepository payments,
                                             ObjectMapper objectMapper,
+                                            MessagingRecipientResolver recipients,
+                                            BookingRepository bookings,
+                                            WhatsAppTemplateParameterMapper whatsappTemplateParameters,
                                             @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBase,
                                             @Value("${sauti.telnyx.public-base-url}") String publicBaseUrl) {
         this.integrations = integrations; this.googleSheets = googleSheets; this.payments = payments; this.objectMapper = objectMapper;
+        this.recipients = recipients;
+        this.bookings = bookings;
+        this.whatsappTemplateParameters = whatsappTemplateParameters;
         this.graphApiBase = graphApiBase.replaceFirst("/+$", "");
         this.publicBaseUrl = publicBaseUrl.replaceFirst("/+$", "");
     }
@@ -69,17 +79,33 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     }
 
     private LlmToolResult whatsapp(Call call, LlmToolCall toolCall) throws Exception {
+        if (!"whatsapp".equalsIgnoreCase(string(call.getDirection()))) {
+            return LlmToolResult.error(toolCall,
+                    "WhatsApp confirmations can only be sent in a customer-started WhatsApp conversation");
+        }
         var runtime = integrations.runtime(call.getTenant().getId(), call.getAgent().getId(), "whatsapp");
         var config = runtime.configuration();
-        var to = string(toolCall.arguments().getOrDefault("phone", call.getCallerNumber()));
-        var body = Map.of("messaging_product", "whatsapp", "to", to, "type", "template",
-                "template", Map.of("name", string(config.get("templateName")),
-                        "language", Map.of("code", string(config.get("templateLanguage")))));
-        send(HttpRequest.newBuilder(URI.create(graphApiBase + "/" + config.get("phoneNumberId") + "/messages"))
+        var recipient = recipients.resolve(call, null);
+        var booking = bookings.findFirstByTenantIdAndCall_IdAndAgent_IdOrderByCreatedAtDesc(
+                        call.getTenant().getId(), call.getId(), call.getAgent().getId())
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "No booking created by this WhatsApp conversation is available for confirmation"));
+        var template = new java.util.LinkedHashMap<String, Object>();
+        template.put("name", required(config, "templateName"));
+        template.put("language", Map.of("code", required(config, "templateLanguage")));
+        var components = whatsappTemplateParameters.components(config, booking);
+        if (!components.isEmpty()) template.put("components", components);
+        var body = Map.of("messaging_product", "whatsapp", "to", recipient.e164(), "type", "template",
+                "template", template);
+        var response = send(HttpRequest.newBuilder(URI.create(graphApiBase + "/" + required(config, "phoneNumberId") + "/messages"))
+                .timeout(Duration.ofSeconds(15))
                 .header("Authorization", "Bearer " + runtime.credentials().get("accessToken"))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(body))).build());
-        return LlmToolResult.success(toolCall, Map.of("sent", true, "to", to));
+        var providerMessageId = objectMapper.readTree(response.body()).path("messages").path(0).path("id").asText("");
+        return LlmToolResult.success(toolCall, Map.of(
+                "queued", true, "destination", recipient.masked(), "recipientSource", recipient.source(),
+                "providerMessageId", providerMessageId));
     }
 
     private LlmToolResult sheets(Call call, LlmToolCall toolCall) throws Exception {

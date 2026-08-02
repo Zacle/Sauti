@@ -1,6 +1,5 @@
-import { CreditCard } from "lucide-react";
-import { ConsolePlaceholder } from "@/features/console/ConsolePlaceholder/ConsolePlaceholder";
+import { BillingPage as BillingFeaturePage } from "@/features/billing/presentation/BillingPage";
 
 export default function BillingPage() {
-  return <ConsolePlaceholder icon={CreditCard} eyebrow="Account" title="Usage and billing" description="Track plan minutes, usage thresholds, and billing history." />;
+  return <BillingFeaturePage />;
 }

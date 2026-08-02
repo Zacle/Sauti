@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   PhoneCall,
   PanelLeftClose,
   PanelLeftOpen,
@@ -32,6 +33,7 @@ const navigation = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { label: "Agents", href: "/agents", icon: Bot },
   { label: "Calls", href: "/calls", icon: PhoneCall },
+  { label: "Inbox", href: "/inbox", icon: MessageCircle },
   { label: "Bookings", href: "/bookings", icon: CalendarDays },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
   { label: "Integrations", href: "/dashboard/integrations", icon: Plug },
@@ -65,8 +67,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.replace("/login");
   }
 
+  if (pathname === "/billing") {
+    return (
+      <main className="billing-standalone-shell">
+        <header className="billing-standalone-header">
+          <Link className="billing-standalone-brand" href="/dashboard" aria-label="Return to Sauti dashboard">
+            <BrandLogo size={34} />
+            <strong>Sauti</strong>
+          </Link>
+        </header>
+        <div className="billing-standalone-content">{children}</div>
+      </main>
+    );
+  }
+
   return (
-    <main className={`console-shell ${["/agents", "/dashboard", "/calls", "/bookings", "/analytics", "/dashboard/integrations"].includes(pathname) || pathname.startsWith("/agents/") ? "agents-console-shell" : ""} ${isAgentStudio ? "agent-studio-console-shell" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${pathname === "/dashboard" ? "dashboard-console-shell" : ""} ${pathname === "/calls" ? "calls-console-shell" : ""} ${pathname === "/bookings" ? "bookings-console-shell" : ""} ${pathname === "/analytics" ? "analytics-console-shell" : ""} ${pathname === "/dashboard/integrations" ? "integrations-console-shell" : ""}`}>
+    <main className={`console-shell ${["/agents", "/dashboard", "/calls", "/inbox", "/bookings", "/analytics", "/dashboard/integrations", "/billing"].includes(pathname) || pathname.startsWith("/agents/") ? "agents-console-shell" : ""} ${isAgentStudio ? "agent-studio-console-shell" : ""} ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${pathname === "/dashboard" ? "dashboard-console-shell" : ""} ${pathname === "/calls" ? "calls-console-shell" : ""} ${pathname === "/inbox" ? "inbox-console-shell" : ""} ${pathname === "/bookings" ? "bookings-console-shell" : ""} ${pathname === "/analytics" ? "analytics-console-shell" : ""} ${pathname === "/dashboard/integrations" ? "integrations-console-shell" : ""} ${pathname === "/billing" ? "billing-console-shell" : ""}`}>
       <aside className={`console-sidebar ${mobileOpen ? "open" : ""}`}>
         <div className="console-sidebar-head">
           <Link className="console-brand" href="/dashboard">
@@ -97,7 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="console-sidebar-footer">
-          <Link href="/billing"><CreditCard size={18} /> Usage & billing</Link>
+          <Link className={pathname === "/billing" ? "active" : ""} href="/billing"><CreditCard size={18} /> Usage & billing</Link>
           <Link href="/settings"><Settings size={18} /> Settings</Link>
           <Link href="/help"><CircleHelp size={18} /> Help center</Link>
           <button type="button" onClick={handleLogout}><LogOut size={18} /> Log out</button>

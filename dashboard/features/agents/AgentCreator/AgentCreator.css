@@ -4519,6 +4519,34 @@
   color: #b43e35;
 }
 
+.international-phone-field {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) minmax(0, 1.1fr);
+  gap: 9px;
+}
+
+.international-phone-field select {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 12px;
+  border: 1px solid rgba(91, 151, 199, 0.24);
+  border-radius: 13px;
+  outline: none;
+  color: #e2edf5;
+  background: #081d32;
+  font: inherit;
+  color-scheme: dark;
+}
+
+.international-phone-field select:focus {
+  border-color: #27ded1;
+  box-shadow: 0 0 0 3px rgba(39, 222, 209, 0.09);
+}
+
+@media (max-width: 620px) {
+  .international-phone-field { grid-template-columns: 1fr; }
+}
+
 .service-chip-editor {
   overflow: hidden;
   border: 1px solid #d8e2eb;

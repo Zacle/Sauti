@@ -112,7 +112,7 @@ class AuthAgentFlowTest {
         mvc.perform(get("/api/v1/integrations/catalog")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[?(@.provider == 'whatsapp')].postCall").value(true))
+                .andExpect(jsonPath("$[?(@.provider == 'whatsapp')].postCall").value(false))
                 .andExpect(jsonPath("$[?(@.provider == 'mpesa')].duringCall").value(true));
 
         var connectionJson = mvc.perform(post("/api/v1/integrations/connections")

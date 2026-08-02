@@ -24,6 +24,7 @@ public class WhatsAppChannelService {
     private final WhatsAppInboundMessageRepository messageRepository;
     private final CallPipelineService callPipelineService;
     private final WhatsAppMessageSender messageSender;
+    private final WhatsAppInboxService inbox;
     private final BrowserSpeechToTextService speechToTextService;
     private final VoiceCatalogService voiceCatalogService;
     private final OggOpusAudioConverter audioConverter;
@@ -51,6 +52,7 @@ public class WhatsAppChannelService {
             WhatsAppInboundMessageRepository messageRepository,
             CallPipelineService callPipelineService,
             WhatsAppMessageSender messageSender,
+            WhatsAppInboxService inbox,
             BrowserSpeechToTextService speechToTextService,
             VoiceCatalogService voiceCatalogService,
             OggOpusAudioConverter audioConverter,
@@ -60,6 +62,7 @@ public class WhatsAppChannelService {
         this.messageRepository = messageRepository;
         this.callPipelineService = callPipelineService;
         this.messageSender = messageSender;
+        this.inbox = inbox;
         this.speechToTextService = speechToTextService;
         this.voiceCatalogService = voiceCatalogService;
         this.audioConverter = audioConverter;
@@ -80,10 +83,16 @@ public class WhatsAppChannelService {
     }
 
     private void acceptValue(JsonNode value) {
+        for (var status : value.withArray("statuses")) {
+            var error = status.path("errors").path(0);
+            inbox.providerStatus(status.path("id").asText(""), status.path("status").asText(""),
+                    error.path("title").asText(error.path("message").asText("")));
+        }
         var phoneNumberId = value.path("metadata").path("phone_number_id").asText("");
         if (phoneNumberId.isBlank()) {
             return;
         }
+        var customerName = value.path("contacts").path(0).path("profile").path("name").asText("");
         for (var message : value.withArray("messages")) {
             var messageId = message.path("id").asText("");
             var customerNumber = message.path("from").asText("");
@@ -92,34 +101,45 @@ public class WhatsAppChannelService {
                 continue;
             }
             if ("text".equals(type)) {
-                scheduleText(messageId, phoneNumberId, customerNumber, message.path("text").path("body").asText(""));
+                scheduleText(messageId, phoneNumberId, customerNumber, customerName,
+                        message.path("text").path("body").asText(""));
             } else if ("audio".equals(type)) {
                 scheduleAudio(
                         messageId,
                         phoneNumberId,
                         customerNumber,
+                        customerName,
                         message.path("audio").path("id").asText("")
                 );
+            } else {
+                scheduleRichMessage(messageId, phoneNumberId, customerNumber, customerName, type, message);
             }
         }
     }
 
-    private void scheduleText(String messageId, String phoneNumberId, String customerNumber, String text) {
+    private void scheduleText(String messageId, String phoneNumberId, String customerNumber,
+                              String customerName, String text) {
         if (text.isBlank() || !claim(messageId, phoneNumberId, customerNumber, "text")) {
             return;
         }
-        executor.execute(() -> processText(messageId, phoneNumberId, customerNumber, text));
+        executor.execute(() -> processText(messageId, phoneNumberId, customerNumber, customerName, text));
     }
 
-    private void processText(String messageId, String phoneNumberId, String customerNumber, String text) {
+    private void processText(String messageId, String phoneNumberId, String customerNumber,
+                             String customerName, String text) {
         var inbound = messageRepository.findByProviderMessageId(messageId).orElseThrow();
         try {
             inbound.markProcessing();
             messageRepository.save(inbound);
             var call = callPipelineService.startWhatsAppConversation(phoneNumberId, customerNumber);
+            var recorded = inbox.recordInbound(call, messageId, customerName, "text", text, null, null);
+            if ("human".equals(recorded.mode())) {
+                inbound.markCompleted();
+                return;
+            }
             var turn = callPipelineService.processLiveTranscriptTurn(call, text);
             if (!turn.text().isBlank()) {
-                messageSender.sendText(phoneNumberId, customerNumber, turn.text(), workspaceToken(call));
+                inbox.sendAiText(call, recorded.conversationId(), turn.text());
             }
             inbound.markCompleted();
         } catch (Exception exception) {
@@ -130,14 +150,16 @@ public class WhatsAppChannelService {
         }
     }
 
-    private void scheduleAudio(String messageId, String phoneNumberId, String customerNumber, String mediaId) {
+    private void scheduleAudio(String messageId, String phoneNumberId, String customerNumber,
+                               String customerName, String mediaId) {
         if (mediaId.isBlank() || !claim(messageId, phoneNumberId, customerNumber, "audio")) {
             return;
         }
-        executor.execute(() -> processAudio(messageId, phoneNumberId, customerNumber, mediaId));
+        executor.execute(() -> processAudio(messageId, phoneNumberId, customerNumber, customerName, mediaId));
     }
 
-    private void processAudio(String messageId, String phoneNumberId, String customerNumber, String mediaId) {
+    private void processAudio(String messageId, String phoneNumberId, String customerNumber,
+                              String customerName, String mediaId) {
         var inbound = messageRepository.findByProviderMessageId(messageId).orElseThrow();
         try {
             inbound.markProcessing();
@@ -146,15 +168,20 @@ public class WhatsAppChannelService {
             var token = workspaceToken(call);
             var media = messageSender.downloadMedia(mediaId, token);
             var transcript = speechToTextService.transcribe(call.getAgent(), media.bytes(), media.contentType());
+            var recorded = inbox.recordInbound(call, messageId, customerName, "audio", transcript,
+                    mediaId, media.contentType());
+            if ("human".equals(recorded.mode())) {
+                inbound.markCompleted();
+                return;
+            }
             var turn = callPipelineService.processLiveTranscriptTurn(call, transcript);
             if (!turn.text().isBlank()) {
                 var voiceId = resolveVoiceId(call.getAgent().getTtsVoiceId(), turn.language());
                 if (voiceId == null) {
-                    messageSender.sendText(phoneNumberId, customerNumber, turn.text(), token);
+                    inbox.sendAiText(call, recorded.conversationId(), turn.text());
                 } else {
                     var mp3 = voiceCatalogService.synthesize(voiceId, turn.language(), turn.text());
-                    messageSender.sendVoiceNote(
-                            phoneNumberId, customerNumber, audioConverter.fromMp3(mp3), token);
+                    inbox.sendAiVoice(call, recorded.conversationId(), turn.text(), audioConverter.fromMp3(mp3));
                 }
             }
             inbound.markCompleted();
@@ -164,6 +191,56 @@ public class WhatsAppChannelService {
         } finally {
             saveFinalState(inbound, messageId);
         }
+    }
+
+    private void scheduleRichMessage(String messageId, String phoneNumberId, String customerNumber,
+                                     String customerName, String type, JsonNode message) {
+        if (!claim(messageId, phoneNumberId, customerNumber, type)) return;
+        var body = richBody(type, message);
+        var mediaId = message.path(type).path("id").asText("");
+        var mime = message.path(type).path("mime_type").asText("");
+        executor.execute(() -> processRichMessage(messageId, phoneNumberId, customerNumber,
+                customerName, type, body, mediaId, mime));
+    }
+
+    private void processRichMessage(String messageId, String phoneNumberId, String customerNumber,
+                                    String customerName, String type, String body,
+                                    String mediaId, String mime) {
+        var inbound = messageRepository.findByProviderMessageId(messageId).orElseThrow();
+        try {
+            inbound.markProcessing();
+            messageRepository.save(inbound);
+            var call = callPipelineService.startWhatsAppConversation(phoneNumberId, customerNumber);
+            var recorded = inbox.recordInbound(call, messageId, customerName, type, body, mediaId, mime);
+            if (!"human".equals(recorded.mode())) {
+                var prompt = body.isBlank() ? "[The customer sent a WhatsApp " + type + "]" : body;
+                var turn = callPipelineService.processLiveTranscriptTurn(call, prompt);
+                if (!turn.text().isBlank()) inbox.sendAiText(call, recorded.conversationId(), turn.text());
+            }
+            inbound.markCompleted();
+        } catch (Exception exception) {
+            LOGGER.warn("WhatsApp rich-message processing failed messageId={}", messageId, exception);
+            inbound.markFailed(exception.getMessage());
+        } finally {
+            saveFinalState(inbound, messageId);
+        }
+    }
+
+    private String richBody(String type, JsonNode message) {
+        return switch (type) {
+            case "image", "video", "document" -> message.path(type).path("caption").asText("");
+            case "button" -> message.path("button").path("text").asText("");
+            case "interactive" -> {
+                var interactive = message.path("interactive");
+                var value = interactive.path("button_reply").path("title").asText("");
+                if (value.isBlank()) value = interactive.path("list_reply").path("title").asText("");
+                yield value;
+            }
+            case "location" -> "Location: " + message.path("location").path("latitude").asText("")
+                    + ", " + message.path("location").path("longitude").asText("");
+            case "contacts" -> message.path("contacts").path(0).path("name").path("formatted_name").asText("");
+            default -> "";
+        };
     }
 
     private void saveFinalState(WhatsAppInboundMessage inbound, String messageId) {

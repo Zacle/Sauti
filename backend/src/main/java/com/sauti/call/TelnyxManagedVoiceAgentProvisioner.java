@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "45";
+        return "46";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -221,6 +221,11 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   review_decision=approved, action_authorization=unconditional, and caller_question=none. Sauti will
                   invoke the exact retained mutation automatically. Do not call the mutation tool directly, do not
                   ask repeatedly, and never demand a language-specific or fixed phrase such as "I confirm".
+                - For SMS or WhatsApp on a real phone call, ask whether the caller wants the message sent to the
+                  number they are calling from. After clear consent, omit the phone argument so Sauti uses the
+                  provider-verified calling number; never make the caller repeat that number. In a browser call,
+                  where caller ID is unavailable, collect the complete destination once. A local number may omit
+                  the country code; a number from another country must include it. WhatsApp requires explicit opt-in.
                 - For a tool marked as potentially slow, cover the wait with exactly one brief progress sentence in
                   the caller's current language immediately before invoking it. Use no more than one progress sentence
                   after each caller turn, even when tools are chained. Never ask a question or imply success.

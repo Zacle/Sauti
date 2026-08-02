@@ -35,6 +35,7 @@ import {
 } from "@/lib/api/integrations";
 import type { Agent } from "@/types/api";
 import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
+import { readSession } from "@/lib/session";
 import styles from "./IntegrationsPage.module.css";
 
 type Filter = "all" | "calendar" | "messaging" | "crm" | "data" | "notifications" | "payments" | "developer" | "during" | "post" | "connected";
@@ -236,7 +237,7 @@ export function IntegrationsPage() {
       {searchParams.get("calendar") === "connected" && <div className={styles.success}><Check size={17} /> Google Calendar connected.</div>}
       {searchParams.get("oauth") === "connected" && <div className={styles.success}><Check size={17} />
         {searchParams.get("provider") === "google_sheets"
-          ? "Google account connected. Configure and test the spreadsheet to finish setup."
+          ? "Google account connected. Configure the spreadsheet to finish setup."
           : "Provider account connected."}
       </div>}
       {searchParams.get("oauth") === "cancelled" && <div className={styles.error}><CircleAlert size={17} /> Provider authorization was cancelled.</div>}
@@ -461,9 +462,19 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
   const [selection, setSelection] = useState(
     `${String(connection?.configuration.templateName ?? "")}::${String(connection?.configuration.templateLanguage ?? "")}`,
   );
+  const [parameterMappings, setParameterMappings] = useState<Record<string, string>>(() => {
+    const saved = connection?.configuration.templateParameterMappings;
+    return saved && typeof saved === "object" && !Array.isArray(saved)
+      ? Object.fromEntries(Object.entries(saved).map(([key, value]) => [key, String(value)]))
+      : {};
+  });
   const [connecting, setConnecting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [businessCountryCode, setBusinessCountryCode] = useState(
+    () => readSession()?.tenant.countryCode || "KE",
+  );
+  const [businessPhoneNumber, setBusinessPhoneNumber] = useState("");
 
   useEffect(() => {
     Promise.all([
@@ -472,6 +483,28 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
     ]).then(([loadedConfiguration, loadedTemplates]) => {
       setConfiguration(loadedConfiguration);
       setTemplates(loadedTemplates);
+      const savedNumber = String(connection?.configuration.businessPhoneNumber
+        || connection?.configuration.displayPhoneNumber || "").replace(/\D/g, "");
+      if (savedNumber) {
+        const savedCountry = String(connection?.configuration.businessCountryCode || "");
+        const preferred = loadedConfiguration.countries.find(
+          (country) => country.region === (savedCountry || readSession()?.tenant.countryCode || ""),
+        );
+        const matchedCountry = preferred && savedNumber.startsWith(preferred.dialingCode.slice(1))
+          ? preferred
+          : [...loadedConfiguration.countries]
+            .sort((left, right) => right.dialingCode.length - left.dialingCode.length)
+            .find((country) => savedNumber.startsWith(country.dialingCode.slice(1)));
+        if (matchedCountry) {
+          setBusinessCountryCode(matchedCountry.region);
+          setBusinessPhoneNumber(savedNumber.slice(matchedCountry.dialingCode.length - 1));
+        }
+      } else {
+        const tenantCountry = readSession()?.tenant.countryCode || "";
+        setBusinessCountryCode(loadedConfiguration.countries.find(
+          (country) => country.region === tenantCountry,
+        )?.region || loadedConfiguration.countries[0]?.region || "");
+      }
       if (loadedConfiguration.configured) void loadFacebookSdk(loadedConfiguration).catch(() => undefined);
     }).catch((caught) => {
       setError(caught instanceof Error ? caught.message : "Unable to load WhatsApp configuration.");
@@ -480,6 +513,10 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
 
   async function connect() {
     if (!configuration?.configured) return;
+    if (!businessCountryCode || !businessPhoneNumber.trim()) {
+      setError("Select the business country code and enter the WhatsApp number.");
+      return;
+    }
     setConnecting(true);
     setError("");
     try {
@@ -506,6 +543,8 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
         code,
         wabaId: session.wabaId,
         phoneNumberId: session.phoneNumberId,
+        businessCountryCode,
+        businessPhoneNumber,
       });
       await onSaved();
     } catch (caught) {
@@ -517,13 +556,31 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
   async function saveTemplate() {
     if (!connection || !selection) return;
     const [templateName, templateLanguage] = selection.split("::", 2);
+    const selectedTemplate = templates.find(
+      (template) => template.name === templateName && template.language === templateLanguage,
+    );
+    if (!selectedTemplate) {
+      setError("The selected Meta template is no longer available.");
+      return;
+    }
+    const missing = selectedTemplate.parameters.find((parameter) => !parameterMappings[parameter.key]);
+    if (missing) {
+      setError(`Choose a Sauti booking field for ${missing.component} placeholder ${missing.placeholder}.`);
+      return;
+    }
     setConnecting(true);
+    setError("");
     try {
       await updateIntegrationConnection(connection.id, {
         configuration: {
           ...connection.configuration,
           templateName,
           templateLanguage,
+          templateParameterFormat: selectedTemplate.parameterFormat,
+          templateParameters: selectedTemplate.parameters,
+          templateParameterMappings: Object.fromEntries(
+            selectedTemplate.parameters.map((parameter) => [parameter.key, parameterMappings[parameter.key]]),
+          ),
         },
       });
       await onSaved();
@@ -532,6 +589,10 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
       setConnecting(false);
     }
   }
+
+  const selectedTemplate = templates.find(
+    (template) => `${template.name}::${template.language}` === selection,
+  );
 
   return <div className={styles.backdrop} onMouseDown={onClose}>
     <section className={`${styles.dialog} ${styles.whatsappDialog}`} onMouseDown={(event) => event.stopPropagation()}>
@@ -548,7 +609,28 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
           <div><span>Phone number</span><strong>{String(connection.configuration.displayPhoneNumber || "Connected")}</strong></div>
           <span className={styles.secureBadge}><ShieldCheck size={14} /> Connected through Meta</span>
         </div>}
-        <button className={styles.metaConnect} disabled={connecting || !configuration?.configured}
+        <div className={styles.businessPhoneSection}>
+          <label htmlFor="whatsapp-business-country">Business WhatsApp number</label>
+          <div className={styles.businessPhoneEntry}>
+            <div className={styles.selectControl}>
+              <select id="whatsapp-business-country" aria-label="Business country calling code"
+                value={businessCountryCode}
+                onChange={(event) => setBusinessCountryCode(event.target.value)}>
+                {configuration?.countries.map((country) => <option key={country.region} value={country.region}>
+                  {country.name} ({country.dialingCode})
+                </option>)}
+              </select>
+              <ChevronDown aria-hidden="true" size={17} />
+            </div>
+            <input aria-label="Business WhatsApp national number" inputMode="tel" required
+              value={businessPhoneNumber}
+              onChange={(event) => setBusinessPhoneNumber(event.target.value.replace(/[^\d\s()-]/g, ""))}
+              placeholder="712 345 678" />
+          </div>
+          <small>Choose the country prefix, then enter the business number. It must match the number selected in Meta.</small>
+        </div>
+        <button className={styles.metaConnect}
+          disabled={connecting || !configuration?.configured || !businessCountryCode || !businessPhoneNumber.trim()}
           onClick={() => void connect()} type="button">
           {connecting ? <LoaderCircle className="spin" size={17} /> : <span className={styles.metaLogo}>f</span>}
           {connecting ? "Connecting…" : connection ? "Reconnect with Meta" : "Continue with Facebook"}
@@ -556,7 +638,11 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
         {connection && <div className={styles.templateSection}>
           <label><span>Outbound message template</span>
             {templates.length ? <div className={styles.selectControl}>
-              <select value={selection} onChange={(event) => setSelection(event.target.value)}>
+              <select value={selection} onChange={(event) => {
+                setSelection(event.target.value);
+                setParameterMappings({});
+                setError("");
+              }}>
                 <option value="">Select an approved template</option>
                 {templates.map((template) => <option key={`${template.id}-${template.language}`}
                   value={`${template.name}::${template.language}`}>
@@ -565,6 +651,28 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
               </select><ChevronDown aria-hidden="true" size={17} />
             </div> : <p>No approved templates found. Incoming WhatsApp conversations can still receive free-form replies.</p>}
           </label>
+          {selectedTemplate && selectedTemplate.parameters.length > 0 && <div className={styles.parameterMappings}>
+            <div className={styles.mappingIntro}>
+              <strong>Populate template placeholders</strong>
+              <span>Map every Meta placeholder to trusted data from the booking created in this conversation.</span>
+            </div>
+            {selectedTemplate.parameters.map((parameter) => <label key={parameter.key}>
+              <span>{parameter.component === "header" ? "Header" : "Message"} {parameter.placeholder}</span>
+              <div className={styles.selectControl}>
+                <select value={parameterMappings[parameter.key] || ""}
+                  onChange={(event) => setParameterMappings((current) => ({
+                    ...current,
+                    [parameter.key]: event.target.value,
+                  }))}>
+                  <option value="">Select booking field</option>
+                  {WHATSAPP_TEMPLATE_FIELDS.map((field) => <option key={field.value} value={field.value}>
+                    {field.label}
+                  </option>)}
+                </select>
+                <ChevronDown aria-hidden="true" size={17} />
+              </div>
+            </label>)}
+          </div>}
         </div>}
       </>}
       {error && <div className={styles.formError}>{error}</div>}
@@ -575,6 +683,20 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
     </section>
   </div>;
 }
+
+const WHATSAPP_TEMPLATE_FIELDS = [
+  { value: "customer_name", label: "Customer name" },
+  { value: "customer_phone", label: "Customer phone" },
+  { value: "customer_email", label: "Customer email" },
+  { value: "service", label: "Booked service" },
+  { value: "appointment_date", label: "Appointment date" },
+  { value: "appointment_time", label: "Appointment time" },
+  { value: "appointment_datetime", label: "Appointment date and time" },
+  { value: "booking_reference", label: "Booking confirmation reference" },
+  { value: "business_name", label: "Business name" },
+  { value: "agent_name", label: "Agent name" },
+  { value: "duration_minutes", label: "Duration in minutes" },
+] as const;
 
 function waitForMetaSignupSession() {
   return new Promise<MetaSignupSession>((resolve, reject) => {
@@ -667,9 +789,11 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
         await putAgentIntegration(agentId, {
           provider: entry.provider, enabled: true, connectionId: connection.id, configuration,
         });
-        const tested = await testIntegrationConnection(connection.id, agentId);
-        if (tested.status === "error") {
-          throw new Error(tested.lastError || `${entry.name} could not access the configured resource.`);
+        if (entry.provider !== "google_sheets") {
+          const tested = await testIntegrationConnection(connection.id, agentId);
+          if (tested.status === "error") {
+            throw new Error(tested.lastError || `${entry.name} could not access the configured resource.`);
+          }
         }
       } else if (connection) {
         await updateIntegrationConnection(connection.id, {
@@ -771,7 +895,7 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
       {error && <div className={styles.formError}>{error}</div>}
       <footer><button type="button" onClick={onClose}>Cancel</button>
         <button className={styles.primary} disabled={saving || initializing || fields.length === 0}>
-          {saving ? "Saving…" : entry.provider === "google_sheets" ? "Save and test" : "Save connection"}
+          {saving ? "Saving…" : entry.provider === "google_sheets" ? "Save" : "Save connection"}
         </button></footer>
     </form>
   </div>;

@@ -68,12 +68,13 @@ public class DefaultToolSeeder {
                         Map.entry("service_type", property("string", "Replacement configured service", "")),
                         Map.entry("customer_details", property("object", "Additional booking details to merge", ""))
                 ), List.of("booking_number", "caller_phone")), "sauti_calendar", "noop_calendar", 23);
-        seed(agent, "send_confirmation_sms", "Send a booking confirmation SMS. If SMS is unavailable, explain that "
-                        + "to the caller and offer WhatsApp when that tool is available.",
+        seed(agent, "send_confirmation_sms", "After explicit consent, send a booking confirmation SMS. Omit phone to use "
+                        + "the verified number for a real call. Browser calls must collect a complete number; local numbers "
+                        + "use the business country and foreign numbers need a country code.",
                 schema(Map.of(
                         "phone", property("string", "Destination phone number", "phone"),
                         "message", property("string", "SMS body", "")
-                ), List.of("phone", "message")), "sauti_sms", null, 30);
+                ), List.of("message")), "sauti_sms", null, 30);
         seed(agent, "transfer_to_human", "Transfer the call to a human agent.",
                 schema(Map.of("reason", property("string", "Reason for escalation", "")), List.of("reason")), "call_transfer", null, 40);
         seed(agent, "end_call", "Authorize a respectful call ending only after the caller clearly indicates they are finished, or after a configured terminal transfer, voicemail, or silence workflow. Never use this merely because one answer or booking step is complete.",
@@ -81,9 +82,9 @@ public class DefaultToolSeeder {
                         "outcome", property("string", "Final outcome code", ""),
                         "summary", property("string", "Short call summary", "")
                 ), List.of("outcome")), "noop", null, 50);
-        seed(agent, "send_whatsapp_message", "Send an approved WhatsApp template to the caller.",
-                schema(Map.of("phone", property("string", "Recipient phone number", "phone")),
-                        List.of("phone")), "sauti_integration", null, 60);
+        seed(agent, "send_whatsapp_message", "After explicit confirmation, send the configured approved template "
+                        + "only to the customer in the current WhatsApp conversation.",
+                schema(Map.of(), List.of()), "sauti_integration", null, 60);
         seed(agent, "lookup_google_sheet_row", "Look up a configured Google Sheets row.",
                 schema(Map.of("lookup_value", property("string", "Value in the configured lookup column", "")),
                         List.of("lookup_value")), "sauti_integration", null, 70);
@@ -157,8 +158,6 @@ public class DefaultToolSeeder {
                 // Preserve an attached Google credential. Draft tools already
                 // carry noop_calendar from seeding and remain locally testable.
                 tool.configureForDraft(agent.isBookingEnabled(), null);
-            } else if ("send_confirmation_sms".equals(tool.getToolName())) {
-                tool.configureForDraft(agent.isBookingEnabled(), null);
             } else if ("transfer_to_human".equals(tool.getToolName())) {
                 tool.configureForDraft(agent.getHumanTransferNumber() != null
                         && !agent.getHumanTransferNumber().isBlank(), null);
@@ -188,7 +187,7 @@ public class DefaultToolSeeder {
                     "update_google_sheet_row", "call_custom_webhook" ->
                     new ActionPolicy(ToolActionEffect.DATA_WRITE, ToolConfirmationPolicy.EXPLICIT);
             case "send_confirmation_sms" ->
-                    new ActionPolicy(ToolActionEffect.EXTERNAL_COMMUNICATION, ToolConfirmationPolicy.NONE);
+                    new ActionPolicy(ToolActionEffect.EXTERNAL_COMMUNICATION, ToolConfirmationPolicy.EXPLICIT);
             case "send_whatsapp_message" ->
                     new ActionPolicy(ToolActionEffect.EXTERNAL_COMMUNICATION, ToolConfirmationPolicy.EXPLICIT);
             case "request_mpesa_payment" ->

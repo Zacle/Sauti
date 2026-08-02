@@ -2,6 +2,7 @@ package com.sauti.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.call.Call;
+import com.sauti.integration.MessagingRecipientResolver;
 import com.sauti.llm.LlmToolCall;
 import com.sauti.llm.LlmToolResult;
 import java.net.URI;
@@ -9,6 +10,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,16 +23,22 @@ public class SautiSmsFulfillment implements ToolFulfillment {
     private static final Logger LOGGER = LoggerFactory.getLogger(SautiSmsFulfillment.class);
     private static final String TELNYX_MESSAGES_URL = "https://api.telnyx.com/v2/messages";
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final ObjectMapper objectMapper;
+    private final MessagingRecipientResolver recipients;
     private final String telnyxApiKey;
+    private final String messagingProfileId;
 
     public SautiSmsFulfillment(
             ObjectMapper objectMapper,
-            @Value("${sauti.telnyx.api-key:}") String telnyxApiKey
+            MessagingRecipientResolver recipients,
+            @Value("${sauti.telnyx.api-key:}") String telnyxApiKey,
+            @Value("${sauti.telnyx.messaging-profile-id:}") String messagingProfileId
     ) {
         this.objectMapper = objectMapper;
+        this.recipients = recipients;
         this.telnyxApiKey = telnyxApiKey;
+        this.messagingProfileId = messagingProfileId == null ? "" : messagingProfileId.trim();
     }
 
     @Override
@@ -39,7 +48,12 @@ public class SautiSmsFulfillment implements ToolFulfillment {
             return LlmToolResult.success(toolCall, Map.of("sent", false, "reason", "sms_provider_not_configured"));
         }
 
-        var to = toolCall.arguments().getOrDefault("phone", call.getCallerNumber()).toString();
+        MessagingRecipientResolver.Recipient recipient;
+        try {
+            recipient = recipients.resolve(call, toolCall.arguments().get("phone"));
+        } catch (IllegalArgumentException exception) {
+            return LlmToolResult.error(toolCall, exception.getMessage());
+        }
         var text = toolCall.arguments().getOrDefault("message", "").toString();
         var from = call.getAgent().getTwilioPhoneNumber();
 
@@ -52,29 +66,34 @@ public class SautiSmsFulfillment implements ToolFulfillment {
         }
 
         try {
-            var body = objectMapper.writeValueAsString(Map.of(
-                    "from", from,
-                    "to", to,
-                    "text", text
-            ));
+            var payload = new LinkedHashMap<String, Object>();
+            payload.put("from", from);
+            payload.put("to", recipient.e164());
+            payload.put("text", text);
+            if (!messagingProfileId.isBlank()) payload.put("messaging_profile_id", messagingProfileId);
+            var body = objectMapper.writeValueAsString(payload);
             var request = HttpRequest.newBuilder(URI.create(TELNYX_MESSAGES_URL))
+                    .timeout(Duration.ofSeconds(15))
                     .header("Authorization", "Bearer " + telnyxApiKey)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                     .build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                LOGGER.info("SMS sent via Telnyx to={} callId={}", to, call.getId());
-                return LlmToolResult.success(toolCall, Map.of("sent", true, "to", to));
+                var providerMessageId = objectMapper.readTree(response.body()).path("data").path("id").asText("");
+                LOGGER.info("SMS queued via Telnyx recipient={} callId={}", recipient.masked(), call.getId());
+                return LlmToolResult.success(toolCall, Map.of(
+                        "queued", true, "destination", recipient.masked(), "recipientSource", recipient.source(),
+                        "providerMessageId", providerMessageId));
             }
-            LOGGER.error("Telnyx SMS failed status={} body={}", response.statusCode(), response.body());
+            LOGGER.error("Telnyx SMS failed status={} callId={}", response.statusCode(), call.getId());
             return LlmToolResult.error(toolCall, "SMS delivery failed (HTTP " + response.statusCode() + ")");
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             return LlmToolResult.error(toolCall, "SMS request interrupted");
         } catch (Exception exception) {
             LOGGER.error("SMS send exception callId={}", call.getId(), exception);
-            return LlmToolResult.error(toolCall, "SMS send error: " + exception.getMessage());
+            return LlmToolResult.error(toolCall, "SMS could not be queued");
         }
     }
 }

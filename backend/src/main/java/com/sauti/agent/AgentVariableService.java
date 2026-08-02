@@ -3,6 +3,7 @@ package com.sauti.agent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sauti.agent.AgentVariableDtos.AgentVariableResponse;
 import com.sauti.agent.AgentVariableDtos.AgentVariableValue;
+import com.sauti.phone.InternationalPhoneNumberService;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,10 +50,13 @@ public class AgentVariableService {
 
     private final AgentVariableRepository variableRepository;
     private final AgentRepository agentRepository;
+    private final InternationalPhoneNumberService phoneNumbers;
 
-    public AgentVariableService(AgentVariableRepository variableRepository, AgentRepository agentRepository) {
+    public AgentVariableService(AgentVariableRepository variableRepository, AgentRepository agentRepository,
+                                InternationalPhoneNumberService phoneNumbers) {
         this.variableRepository = variableRepository;
         this.agentRepository = agentRepository;
+        this.phoneNumbers = phoneNumbers;
     }
 
     @Transactional(readOnly = true)
@@ -81,8 +85,9 @@ public class AgentVariableService {
             if (variable == null) {
                 throw new IllegalArgumentException("Unknown agent variable: " + value.key());
             }
-            variable.updateValue(value.value());
-            syncStructuredSetting(agent, value.key(), value.value());
+            var normalizedValue = normalizeValue(agent, value.key(), value.value());
+            variable.updateValue(normalizedValue);
+            syncStructuredSetting(agent, value.key(), normalizedValue);
         }
         return variables.stream().map(AgentVariableResponse::from).toList();
     }
@@ -93,16 +98,18 @@ public class AgentVariableService {
         requireOwnerManaged(key);
         var variable = variableRepository.findByAgentIdAndKey(agentId, key)
                 .orElseThrow(() -> new EntityNotFoundException("Agent variable not found"));
-        variable.updateValue(value);
-        syncStructuredSetting(agent, key, value);
+        var normalizedValue = normalizeValue(agent, key, value);
+        variable.updateValue(normalizedValue);
+        syncStructuredSetting(agent, key, normalizedValue);
         return AgentVariableResponse.from(variable);
     }
 
     @Transactional
     public void updateIfPresent(UUID agentId, String key, String value) {
         variableRepository.findByAgentIdAndKey(agentId, key).ifPresent(variable -> {
-            variable.updateValue(value);
-            syncStructuredSetting(variable.getAgent(), key, value);
+            var normalizedValue = normalizeValue(variable.getAgent(), key, value);
+            variable.updateValue(normalizedValue);
+            syncStructuredSetting(variable.getAgent(), key, normalizedValue);
         });
     }
 
@@ -136,7 +143,7 @@ public class AgentVariableService {
                 description == null || description.isBlank() ? null : description.trim(),
                 required
         );
-        variable.updateValue(value);
+        variable.updateValue(normalizeValue(agent, normalizedKey, value));
         return AgentVariableResponse.from(variableRepository.save(variable));
     }
 
@@ -277,6 +284,17 @@ public class AgentVariableService {
             case "after_hours_behavior" -> describeAfterHoursBehavior(agent.getAfterHoursBehavior());
             default -> variable.getValue().trim();
         };
+    }
+
+    private String normalizeValue(Agent agent, String key, String value) {
+        if (value == null || value.isBlank() || !isPhoneNumberKey(key)) {
+            return value;
+        }
+        return phoneNumbers.normalize(value, agent.getTenant().getCountryCode());
+    }
+
+    private static boolean isPhoneNumberKey(String key) {
+        return key != null && (key.contains("phone") || "transfer_number".equals(key));
     }
 
     private Agent requireOwnedAgent(UUID tenantId, UUID agentId) {

@@ -35,6 +35,7 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
     private final String connectionId;
     private final String apiBaseUrl;
     private final String requirementGroupId;
+    private final String messagingProfileId;
     private final ManagedVoiceAgentProvisioningService provisioningService;
     private final String defaultVoiceId;
 
@@ -44,6 +45,7 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
             @Value("${sauti.telnyx.connection-id:}") String connectionId,
             @Value("${sauti.telnyx.api-base-url:https://api.telnyx.com/v2}") String apiBaseUrl,
             @Value("${sauti.telnyx.requirement-group-id:}") String requirementGroupId,
+            @Value("${sauti.telnyx.messaging-profile-id:}") String messagingProfileId,
             @Value("${sauti.telnyx.default-voice-id:Telnyx.NaturalHD.astra}") String defaultVoiceId,
             ManagedVoiceAgentProvisioningService provisioningService
     ) {
@@ -52,6 +54,7 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         this.connectionId = blank(connectionId);
         this.apiBaseUrl = apiBaseUrl.replaceFirst("/+$", "");
         this.requirementGroupId = blank(requirementGroupId);
+        this.messagingProfileId = blank(messagingProfileId);
         this.provisioningService = provisioningService;
         this.defaultVoiceId = blank(defaultVoiceId);
     }
@@ -94,13 +97,18 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
     public List<TelephonyProvider.AvailablePhoneNumber> searchAvailableNumbers(String countryCode, int limit) {
         requireConfigured();
         var country = countryCode == null || countryCode.isBlank() ? "US" : countryCode.toUpperCase();
+        var requestedLimit = Math.max(1, Math.min(20, limit));
+        var providerLimit = messagingProfileId.isBlank() ? requestedLimit : 20;
         var uri = apiBaseUrl + "/available_phone_numbers"
                 + "?filter%5Bcountry_code%5D=" + encode(country)
-                + "&filter%5Bfeatures%5D=voice"
-                + "&filter%5Blimit%5D=" + Math.max(1, Math.min(20, limit));
+                + "&filter%5Bfeatures%5D=" + (messagingProfileId.isBlank() ? "voice" : "sms")
+                + "&filter%5Blimit%5D=" + providerLimit;
         var response = send("GET", uri, null);
         var result = new ArrayList<TelephonyProvider.AvailablePhoneNumber>();
         for (var number : response.withArray("data")) {
+            if (!hasFeature(number, "voice") || (!messagingProfileId.isBlank() && !hasFeature(number, "sms"))) {
+                continue;
+            }
             result.add(new TelephonyProvider.AvailablePhoneNumber(
                     number.path("phone_number").asText(""),
                     number.path("phone_number_type").asText("local"),
@@ -112,8 +120,16 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
                     number.path("cost_information").path("monthly_cost").asText(""),
                     number.path("cost_information").path("currency").asText("")
             ));
+            if (result.size() == requestedLimit) break;
         }
         return List.copyOf(result);
+    }
+
+    private boolean hasFeature(JsonNode number, String feature) {
+        for (var item : number.withArray("features")) {
+            if (feature.equalsIgnoreCase(item.path("name").asText())) return true;
+        }
+        return false;
     }
 
     public NumberOrder createNumberOrder(String phoneNumber) {
@@ -156,6 +172,9 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         var status = "success".equalsIgnoreCase(order.status()) ? "active"
                 : "failure".equalsIgnoreCase(order.status()) ? "failed"
                 : order.status().toLowerCase(java.util.Locale.ROOT);
+        if ("active".equals(status) && !messagingProfileId.isBlank() && !order.phoneNumber().isBlank()) {
+            configureMessaging(order.phoneNumber());
+        }
         return new TelephonyProvider.PhoneNumberProvisioning(
                 order.phoneNumber(),
                 "telnyx",
@@ -163,6 +182,11 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
                 status,
                 order.requirementsMet()
         );
+    }
+
+    private void configureMessaging(String phoneNumber) {
+        send("PATCH", apiBaseUrl + "/messaging_phone_numbers/" + encodePath(phoneNumber),
+                Map.of("messaging_profile_id", messagingProfileId));
     }
 
     public void answerInboundCall(Call call, String callControlId, String greeting) {
@@ -332,6 +356,9 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
             if ("POST".equals(method)) {
                 builder.header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
+            } else if ("PATCH".equals(method)) {
+                builder.header("Content-Type", "application/json")
+                        .method("PATCH", HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)));
             } else {
                 builder.GET();
             }

@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { PricingScreen } from "@/features/marketing/DestinationScreen/DestinationScreen";
-import { pricingPage } from "@/features/marketing/site-map";
+import { MarketingPricingPage } from "@/features/marketing/Pricing/presentation/MarketingPricingPage";
 
 export const metadata: Metadata = {
-  title: `${pricingPage.label} | Sauti`,
-  description: pricingPage.description,
+  title: "Pricing | Sauti",
+  description: "Estimate your AI call workload, compare transparent Sauti plans, and keep usage, overages, and regional voice costs under control.",
 };
 
 export default function PricingPage() {
-  return <PricingScreen />;
+  return <MarketingPricingPage />;
 }

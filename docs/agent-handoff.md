@@ -34,6 +34,256 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-08-02: Resolve billing meter custom-property warnings
+
+- Declared safe local defaults for `--usage-width` and `--forecast-left` on the
+  billing usage meter so CSS tooling can resolve both custom properties.
+- React still overrides those defaults with the live usage and forecast
+  percentages; the visual and runtime behavior are unchanged.
+- File touched:
+  - `dashboard/features/billing/presentation/BillingPage.module.css`
+- Verification: dashboard typecheck, lint, and production build passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+
+### 2026-08-02: Align billing UI with the supplied visual references
+
+- Reworked `/billing` into the focused, full-width navy billing canvas shown in
+  the supplied overview and plan-modeller references, with a slim Sauti return
+  header instead of the general dashboard navigation on this route only.
+- Tightened typography, borders, spacing, tabs, the preview notice, the
+  three-part usage hero, cost ledger, circular cycle alerts, policy cards, and
+  the desktop three-column plan modeller to match the reference density and
+  proportions.
+- Updated the conservative preview forecast for the supplied 486-of-750 state
+  to 600 minutes, and matched the reference annual Growth scenario at $134.10
+  base + $25.50 overage + $58 modelled add-ons = $217.60/month.
+- Kept all billing controls preview-only and non-enforcing. No subscription,
+  payment, plan, invoice, usage-limit, or call-state mutation was added.
+- Files touched:
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `dashboard/features/billing/domain/billing-preview.ts`
+  - `dashboard/features/billing/presentation/BillingPage.tsx`
+  - `dashboard/features/billing/presentation/BillingPage.module.css`
+  - `design-qa.md`
+  - `design-qa/billing-reference-*-v2.png`
+  - `design-qa/billing-v2-*`
+- Verification: dashboard typecheck, lint, and production build passed. Browser
+  QA covered the 600-minute overview state, the exact annual plan arithmetic,
+  tab interaction, and 390 x 844 responsive layouts without page-level
+  horizontal overflow.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+- Follow-up: connect the approved preview experience to the future shadow
+  metering and sandbox billing backend before enabling enforcement.
+
+### 2026-08-02: Implement the non-enforcing billing preview dashboard
+
+- Replaced the placeholder `/billing` route with a responsive four-tab billing
+  experience: Overview, Usage, Plans & add-ons, and Invoices.
+- Kept billing deliberately non-enforcing. The UI performs no subscription,
+  payment, invoice, plan-change, add-on, call-pausing, or usage-limit mutation.
+- Connected the overview to the existing tenant-scoped
+  `/api/v1/billing/usage` aggregate and clearly labels forecast curves, daily
+  distribution, add-on selections, and monetary totals as modelled estimates.
+- Added URL-addressable tabs, a preview-only future limit-policy simulator,
+  monthly/annual plan modelling, projected-minute input, add-on controls,
+  transparent total arithmetic, a read-only confirmation dialog, and an honest
+  invoice empty state.
+- Reused the public pricing catalog so Launch, Growth, Scale, annual savings,
+  included minutes, overage rates, and add-on estimates stay aligned with the
+  pricing page.
+- Files touched:
+  - `dashboard/app/(console)/billing/page.tsx`
+  - `dashboard/features/billing/domain/billing-preview.ts`
+  - `dashboard/features/billing/presentation/BillingPage.tsx`
+  - `dashboard/features/billing/presentation/BillingPage.module.css`
+  - `dashboard/lib/api/billing.ts`
+  - `dashboard/components/AppShell/AppShell.tsx`
+  - `dashboard/styles/console.css`
+  - `docs/billing-dashboard-plan.md`
+  - `design-qa.md`
+  - `design-qa/billing-*`
+- Verification: `npm.cmd run typecheck`, `npm.cmd run lint`, and
+  `npm.cmd run build` passed. Browser QA covered all four tabs, monthly/annual
+  pricing, add-on arithmetic, the read-only confirmation dialog, mobile layout,
+  URL state, and a clean console. Combined source/implementation comparisons
+  have no remaining actionable P0/P1/P2 findings.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+- Follow-up: implement the backend shadow-metering ledger and read-only billing
+  projection API before connecting a sandbox payment provider.
+
+### 2026-08-02: Plan the preview-only billing dashboard
+
+- Added a product and implementation plan for the authenticated billing area,
+  grounded in the current Next.js console, pricing proposal, existing
+  `/api/v1/billing/usage` endpoint, and billing requirements in `Sauti_SRS.pdf`.
+- Chose a hybrid model: fixed plan plus transparent overage and activated
+  add-ons, with a persistent `Billing preview` state while testing.
+- Planned Overview, Usage, Plans & add-ons, and Invoices tabs; explicit actual
+  versus estimated labelling; a non-enforcing spend-control simulator; usage
+  alerts; forecast states; responsive/RTL/accessibility behaviour; and honest
+  invoice empty/sample states.
+- Defined a phased path from frontend preview to read-only projections, shadow
+  metering, sandbox payments, and separately approved controlled activation.
+- Explicitly excluded checkout, subscription mutations, charges, real invoices,
+  agent pausing, call rejection, concurrency enforcement, and production
+  billing webhooks from the current testing phase.
+- Files touched:
+  - `docs/billing-dashboard-plan.md`
+  - `docs/agent-handoff.md`
+- Verification: documentation reviewed against the current pricing catalog,
+  billing DTO/service/controller, dashboard usage surface, console shell, and
+  SRS billing sections. `git diff --check` passed.
+- Deployment status: documentation only; not deployed. Changes remain
+  uncommitted for maintainer review.
+- Follow-up: approve the preview information architecture before implementing
+  the non-enforcing dashboard UI.
+
+### 2026-08-01: Make pricing entry-friendly and expose add-on costs
+
+- Reworked the public pricing proposal around three scalable tiers: Launch at
+  $49/month with 100 included AI minutes, Growth at $149/month with 750
+  minutes, and Scale at $399/month with 2,500 minutes. Annual billing now shows
+  a 10% discount.
+- Corrected the workload calculator so its estimate includes minute overage
+  above the recommended plan's allowance. The recommendation now shows the
+  estimated monthly total, effective handled-minute cost, and remaining
+  headroom.
+- Added a dedicated add-on section that explains the expected bill as plan plus
+  overage plus activated add-ons. It previews regional calling, extra agents,
+  concurrent lines, business numbers, premium voices, and SMS/WhatsApp charges,
+  together with activation confirmation, usage alerts, and spend caps.
+- Reduced the free pilot allowance to 10 browser test minutes so evaluation is
+  useful without subsidizing production telephony.
+- Files touched:
+  - `dashboard/app/(marketing)/pricing/page.tsx`
+  - `dashboard/features/marketing/Pricing/domain/pricing-model.ts`
+  - `dashboard/features/marketing/Pricing/presentation/MarketingPricingPage.tsx`
+  - `dashboard/features/marketing/Pricing/presentation/MarketingPricingPage.module.css`
+  - `design-qa.md`
+  - `design-qa/pricing-addons-final-desktop.png`
+  - `design-qa/pricing-addons-final-mobile.png`
+- Verification:
+  - `npm.cmd run typecheck` passed.
+  - `npm.cmd run lint` passed with zero warnings.
+  - `npm.cmd run build` passed (50 routes; `/pricing` 8.84 kB, 115 kB first load).
+  - Browser QA passed at 1440 x 1024 and 390 x 844 with no horizontal overflow
+    or console warnings/errors. The high-usage calculator case correctly showed
+    8,667 estimated minutes, 6,167 overage minutes, and a $1,262 estimate.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD flow.
+- Follow-up: this is the public pricing proposal only. Align backend billing,
+  entitlements, metering, provider-specific regional rates, and checkout before
+  publishing these prices as enforceable commercial terms.
+
+### 2026-08-01: Add consent-safe SMS and WhatsApp delivery
+
+- Added one international recipient resolver for SMS and WhatsApp using Google
+  libphonenumber. Provider-verified caller ID is reused for inbound, outbound,
+  and WhatsApp calls; browser/test calls collect a destination and normalize a
+  local number with the tenant's ISO country code. Foreign numbers must include
+  their country code.
+- Made both messaging actions explicit-confirmation operations. Managed Telnyx
+  agents now ask whether the caller wants the message sent to the number they
+  are calling from and omit the phone argument after consent, avoiding needless
+  number dictation. Browser callers provide the complete destination once.
+- Connected the built-in SMS marketplace switch to the agent's
+  `send_confirmation_sms` tool instead of activating SMS implicitly whenever
+  booking is enabled. Migration V45 updates existing tool schemas, confirmation
+  policy, and SMS enablement from each agent's saved integration binding.
+- Added bounded provider request timeouts, masked phone numbers in tool results
+  and logs, and provider message IDs. A successful API response is described as
+  queued, not delivered.
+- Added `TELNYX_MESSAGING_PROFILE_ID`. Newly activated provisioned Telnyx
+  numbers are selected with both SMS and voice support, assigned to this profile
+  automatically, and SMS requests include it when configured. Existing numbers
+  must be assigned to the same profile in Telnyx once if they are not already
+  messaging-enabled.
+- Limited WhatsApp to caller-approved during-call templates. Unconsented
+  automatic WhatsApp delivery after unrelated voice calls is no longer queued;
+  normal replies to inbound WhatsApp conversations remain handled by the
+  WhatsApp channel.
+- Advanced the managed Telnyx configuration version from 45 to 46 so existing
+  assistants receive the recipient and consent instructions after deployment.
+- Files touched:
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `backend/build.gradle`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/resources/db/migration/V45__safe_messaging_recipients.sql`
+  - `backend/src/main/java/com/sauti/agent/TelnyxTelephonyProvider.java`
+  - `backend/src/main/java/com/sauti/call/TelnyxManagedVoiceAgentProvisioner.java`
+  - `backend/src/main/java/com/sauti/integration/MessagingRecipientResolver.java`
+  - `backend/src/main/java/com/sauti/integration/DuringCallIntegrationFulfillment.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationCatalog.java`
+  - `backend/src/main/java/com/sauti/integration/IntegrationService.java`
+  - `backend/src/main/java/com/sauti/integration/PostCallIntegrationService.java`
+  - `backend/src/main/java/com/sauti/tool/DefaultToolSeeder.java`
+  - `backend/src/main/java/com/sauti/tool/SautiSmsFulfillment.java`
+  - relevant backend tests.
+- Verification:
+  - focused recipient/seeder tests passed;
+  - `.\gradlew.bat :backend:test` passed (368 tests).
+  - focused Telnyx messaging-profile assignment test passed after the full run;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD flow.
+- Follow-up: add a durable outbound-message record and signed Telnyx/Meta status
+  webhooks before showing delivered/read status in the dashboard. API acceptance
+  currently proves only that the provider queued the message.
+
+### 2026-08-01: Simplify Google Sheets configuration saving
+
+- Renamed the Google Sheets dialog action from `Save and test` to `Save`.
+- Saving an existing OAuth-backed Sheets connection now persists the selected
+  agent configuration and dismisses the dialog immediately after that write
+  succeeds. A failed save keeps the dialog open and shows the existing error.
+- Removed the redundant live access test from this Save path. Customers can use
+  the dedicated Test action on the integration card; `Create tabs and headers`
+  continues to verify access because it performs a spreadsheet mutation.
+- Updated the OAuth return notice to ask the customer to configure the
+  spreadsheet, without implying that testing is part of saving.
+- Files touched:
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed and generated 50 routes.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD flow.
+
+### 2026-08-01: Redesign public pricing around margin-safe outcome tiers
+
+- Replaced the static public pricing cards with an outcome-led pricing guide. Prospects can now model calls per week, average call length, and the job the agent should perform before seeing a live plan recommendation.
+- Proposed three commercially safer bundles: Launch at $79/month for 250 AI minutes, Growth at $199/month for 1,000 AI minutes, and Scale at $449/month for 2,500 AI minutes. Overage rates are $0.24, $0.19, and $0.16 per minute respectively, with a 15% annual discount.
+- Added clear guardrails for cost control: usage alerts, spend caps, separate previews for regional carrier/number/messaging/premium-voice charges, and lower concurrency limits of 1/2/5 so capacity is not promised ahead of proven unit economics.
+- Added a 14-day no-card pilot with 30 browser test minutes. The public copy makes clear that live calling requires a paid plan.
+- Used current planning assumptions from official provider pricing: Telnyx lists the Voice AI engine at $0.05/minute and gives a representative production estimate near $0.056/minute before variable regional/add-on costs; Lemon Squeezy lists a base platform fee of 5% + $0.50 per transaction. These assumptions must be revalidated for Sauti's target countries before launch and do not guarantee margin.
+- Added a lightweight Remotion recommendation layer with reduced-motion support so plan changes feel responsive without making the calculator depend on animation.
+- Files touched:
+  - `dashboard/app/(marketing)/pricing/page.tsx`
+  - `dashboard/features/marketing/Pricing/domain/pricing-model.ts`
+  - `dashboard/features/marketing/Pricing/presentation/MarketingPricingPage.tsx`
+  - `dashboard/features/marketing/Pricing/presentation/MarketingPricingPage.module.css`
+  - `dashboard/features/marketing/Pricing/presentation/PricingRecommendationMotion.tsx`
+  - `design-qa.md`
+  - `design-qa/pricing-option3-*.png`
+  - `docs/agent-handoff.md`
+- Verification:
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed and generated 50 routes;
+  - calculator presets, outcome selection, monthly/annual pricing, recommendation changes, and the comparison anchor were exercised in the in-app browser;
+  - desktop and mobile layouts have no horizontal overflow, reduced-motion is supported, and the final browser console check was clean;
+  - normalized source/implementation comparisons are recorded in `design-qa.md`, with no remaining actionable P0/P1/P2 finding.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer review and the normal GitHub Actions CI/CD flow.
+- Important scope note: this is a pricing proposal and public-page implementation. Checkout, subscriptions, usage metering, alerts, invoices, and backend entitlement enforcement are not wired by this change.
+- Follow-up: validate carrier/voice/number costs for the first launch countries, approve the tier economics, then align backend billing plan definitions and implement Lemon Squeezy checkout/webhooks, metering, alerts, spend caps, and invoice access before publishing these offers.
+
 ### 2026-08-01: Hide browser activation latency and cover tool waits naturally
 
 - Kept the browser test on its pre-call canvas after Start while Telnyx activates
@@ -498,6 +748,163 @@ Release policy:
     availability tests - passed;
   - `\.\gradlew.bat :backend:test --console=plain` - passed;
   - `git diff --check` - passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-08-02 - WhatsApp confirmations restricted to WhatsApp conversations
+
+- Restricted the `send_whatsapp_message` action to customer-started WhatsApp
+  conversations. Voice calls and browser voice tests can no longer use the
+  WhatsApp integration as a fallback confirmation channel.
+- Removed the recipient phone argument from the tool. The destination is now
+  always the verified sender of the current WhatsApp conversation, preventing
+  the model from selecting or inventing another recipient.
+- Require a configured approved template name, template language, and WhatsApp
+  phone-number ID before sending. The post-call compatibility path now follows
+  the same conversation-only, template-only rule.
+- Added Flyway migration
+  `V47__whatsapp_conversation_only_confirmation.sql` so existing agent tools
+  receive the safer description and empty input schema.
+- Files touched:
+  - `backend/src/main/java/com/sauti/integration/DuringCallIntegrationFulfillment.java`;
+  - `backend/src/main/java/com/sauti/integration/PostCallIntegrationService.java`;
+  - `backend/src/main/java/com/sauti/tool/DefaultToolSeeder.java`;
+  - `backend/src/main/resources/db/migration/V47__whatsapp_conversation_only_confirmation.sql`;
+  - `backend/src/test/java/com/sauti/tool/DefaultToolSeederTest.java`;
+  - `docs/agent-handoff.md`.
+- Verification: focused backend tests were run for the integration fulfillment
+  helpers and default tool seeding.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-08-02 - Durable WhatsApp inbox and AI/human messaging handoff
+
+- Replaced the temporary call-record-only WhatsApp behavior with a durable,
+  tenant-scoped messaging domain:
+  - conversations are isolated by workspace and agent;
+  - inbound and outbound messages retain provider IDs, direction, type,
+    delivery state, failure details, timestamps, and media metadata;
+  - unread counts, customer profile names, and conversation previews are
+    persisted;
+  - webhook redelivery remains idempotent.
+- Extended Cloud API webhook handling to ingest delivery/read/failure status
+  updates and common inbound message types, including text, voice notes,
+  images, video, documents, locations, contacts, buttons, and interactive
+  replies.
+- Routed AI text and voice-note replies through the inbox service so provider
+  acceptance and later delivery status are visible instead of being fire-and-
+  forget operations.
+- Added explicit AI/human ownership. Human takeover stops automated replies;
+  returning a conversation to AI resumes automation. Human replies are allowed
+  only after takeover and inside WhatsApp's 24-hour customer-service window.
+- Added tenant-authorized attachment downloads and best-effort provider read
+  receipts. Provider failures do not incorrectly erase local unread state or
+  hide failed outbound messages.
+- Added authenticated inbox APIs for conversation listing, history, assignment,
+  read state, human replies, and media downloads.
+- Added the `/inbox` dashboard experience with customer search, per-agent
+  context, unread badges, message history, outbound delivery states, media
+  access, AI/human assignment controls, and a human reply composer.
+- WhatsApp is intentionally a messaging-only channel in Sauti. Live WhatsApp
+  calling is outside the requested product scope; normal telephone calls remain
+  on the separate Telnyx channel.
+- Files added or materially changed for this work:
+  - `backend/src/main/resources/db/migration/V46__whatsapp_inbox.sql`;
+  - `backend/src/main/java/com/sauti/whatsapp/WhatsAppConversation.java`;
+  - `backend/src/main/java/com/sauti/whatsapp/WhatsAppMessage.java`;
+  - `backend/src/main/java/com/sauti/whatsapp/WhatsAppInboxRepositories.java`;
+  - `backend/src/main/java/com/sauti/whatsapp/WhatsAppInboxDtos.java`;
+  - `backend/src/main/java/com/sauti/whatsapp/WhatsAppInboxService.java`;
+  - `backend/src/main/java/com/sauti/whatsapp/WhatsAppChannelService.java`;
+  - `backend/src/main/java/com/sauti/whatsapp/WhatsAppMessageSender.java`;
+  - `backend/src/main/java/com/sauti/api/WhatsAppInboxController.java`;
+  - `backend/src/test/java/com/sauti/whatsapp/WhatsAppInboxServiceTest.java`;
+  - `backend/src/test/java/com/sauti/whatsapp/WhatsAppChannelServiceTest.java`;
+  - `dashboard/lib/api/whatsapp.ts`;
+  - `dashboard/app/(console)/inbox/page.tsx`;
+  - `dashboard/features/whatsapp/WhatsAppInboxPage.tsx`;
+  - `dashboard/features/whatsapp/WhatsAppInboxPage.module.css`;
+  - `dashboard/components/AppShell/AppShell.tsx`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - `./gradlew.bat :backend:test --tests com.sauti.whatsapp.WhatsAppChannelServiceTest --tests com.sauti.whatsapp.WhatsAppInboxServiceTest` - passed;
+  - `./gradlew.bat :backend:test --no-daemon` - passed from the normal Gradle
+    lifecycle; a subsequent `--rerun-tasks` run produced all 73 XML result
+    suites with zero failures, but a lingering test JVM prevented
+    Gradle from exiting before the six-minute command timeout;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed, including static generation of `/inbox`.
+- Deployment status: not deployed; all changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+
+#### Follow-up: verify the business WhatsApp number with an international prefix
+
+- Added a country calling-code selector to the Meta Embedded Signup dialog.
+  The selector is generated from libphonenumber's supported regions so the
+  frontend does not maintain a second, incomplete country-code table.
+- The workspace owner must now select the business country prefix and enter the
+  national WhatsApp number before starting Meta authorization. The workspace's
+  registered country is selected by default when available.
+- Added backend enforcement rather than relying on browser validation:
+  - the selected region and national number are normalized to E.164;
+  - invalid or incomplete numbers are rejected;
+  - after Meta returns the selected WhatsApp Business number, Sauti normalizes
+    that number independently and refuses to connect when the two numbers do
+    not match;
+  - the verified E.164 number is retained as non-secret connection metadata.
+- Existing connections are prefilled from their stored Meta display number,
+  including connections created before the new normalized metadata existed.
+- Confirmed that WhatsApp remains messaging-only; no live-call UI or transport
+  was added.
+- Files added or changed:
+  - `backend/src/main/java/com/sauti/integration/InternationalPhoneNumberService.java`;
+  - `backend/src/main/java/com/sauti/integration/WhatsAppEmbeddedSignupService.java`;
+  - `backend/src/test/java/com/sauti/integration/InternationalPhoneNumberServiceTest.java`;
+  - `backend/src/test/java/com/sauti/integration/WhatsAppEmbeddedSignupServiceTest.java`;
+  - `dashboard/lib/api/integrations.ts`;
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`;
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.module.css`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - focused international-number and Embedded Signup backend tests - passed;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed, including `/dashboard/integrations`.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: use the international selector for agent-template phone fields
+
+- Corrected the remaining inconsistency in agent template personalisation.
+  `business_phone`, `transfer_number`, and custom keys containing `phone` now
+  render as a country calling-code selector plus a national-number input.
+- The selector defaults to the workspace country and recognizes the prefix of
+  existing E.164 values, so saved template values remain editable without
+  losing their country.
+- Moved international phone handling out of the WhatsApp integration package
+  into the reusable `com.sauti.phone` boundary and exposed an authenticated
+  country metadata endpoint for dashboard consumers.
+- Agent-variable writes now normalize phone values with libphonenumber on the
+  backend before persistence. Direct API requests therefore cannot bypass the
+  browser control or store a malformed business phone number.
+- Narrowed phone-field detection so unrelated identifiers such as account or
+  license numbers are not mistakenly interpreted as telephone numbers.
+- Files added or changed:
+  - `backend/src/main/java/com/sauti/phone/InternationalPhoneNumberService.java`;
+  - `backend/src/main/java/com/sauti/api/PhoneNumberController.java`;
+  - `backend/src/main/java/com/sauti/agent/AgentVariableService.java`;
+  - `backend/src/main/java/com/sauti/integration/WhatsAppEmbeddedSignupService.java`;
+  - `backend/src/test/java/com/sauti/phone/InternationalPhoneNumberServiceTest.java`;
+  - `backend/src/test/java/com/sauti/agent/AgentVariableServiceTest.java`;
+  - `backend/src/test/java/com/sauti/integration/WhatsAppEmbeddedSignupServiceTest.java`;
+  - `dashboard/lib/api/phone-numbers.ts`;
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`;
+  - `dashboard/features/agents/AgentCreator/AgentCreator.css`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - focused phone, agent-variable, and WhatsApp Embedded Signup tests - passed;
+  - `npm.cmd run typecheck` - passed;
+  - `npm.cmd run lint` - passed with zero warnings;
+  - `npm.cmd run build` - passed;
+  - `git diff --check` - passed with line-ending notices only.
 - Deployment status remains unchanged: not deployed and uncommitted.
 
 ### 2026-07-31: Prepare Google Calendar for OAuth verification
@@ -9081,4 +9488,46 @@ Expected:
   - `npm.cmd run typecheck` - passed;
   - `npm.cmd run lint` - passed with zero warnings;
   - `npm.cmd run build` - passed.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-08-02 - Parameterized WhatsApp booking templates
+
+- Expanded approved Meta template discovery to load `parameter_format` and
+  template components, then identify text placeholders in BODY and text HEADER
+  components.
+- Added configuration UI that maps every selected Meta placeholder to a trusted
+  Sauti booking field. Supported sources are customer name/phone/email, service,
+  localized appointment date/time, booking reference, business name, agent
+  name, and duration.
+- Persisted the selected template's parameter metadata and field mappings on
+  the encrypted workspace connection metadata. Parameterized templates are not
+  auto-selected during Embedded Signup; the owner must review and save every
+  required mapping first.
+- Built Meta `components[].parameters[]` deterministically from the newest
+  booking created by the same tenant, agent, and WhatsApp conversation. The
+  model cannot provide or override confirmation values.
+- Added support for positional and named text parameters. Values are formatted
+  using the template locale and the agent's configured timezone. Sending fails
+  safely when a mapping or booking value is missing.
+- Files touched:
+  - `backend/src/main/java/com/sauti/calendar/BookingRepository.java`;
+  - `backend/src/main/java/com/sauti/integration/DuringCallIntegrationFulfillment.java`;
+  - `backend/src/main/java/com/sauti/integration/IntegrationCatalog.java`;
+  - `backend/src/main/java/com/sauti/integration/PostCallIntegrationService.java`;
+  - `backend/src/main/java/com/sauti/integration/WhatsAppEmbeddedSignupService.java`;
+  - `backend/src/main/java/com/sauti/integration/WhatsAppTemplateParameterMapper.java`;
+  - `backend/src/test/java/com/sauti/integration/WhatsAppEmbeddedSignupServiceTest.java`;
+  - `backend/src/test/java/com/sauti/integration/WhatsAppTemplateParameterMapperTest.java`;
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.module.css`;
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`;
+  - `dashboard/lib/api/integrations.ts`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - focused WhatsApp integration and tool-seeding backend tests passed;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed;
+  - the complete backend suite ran 381 tests; 380 passed and the unrelated
+    `AgentTemplateApiTest.managesTenantTemplatesAndCreatesIndependentAgentCopy`
+    failed because an agent-variable PATCH returned HTTP 400 instead of 200.
 - Deployment status remains unchanged: not deployed and uncommitted.

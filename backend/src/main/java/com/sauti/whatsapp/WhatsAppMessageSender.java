@@ -36,9 +36,14 @@ public class WhatsAppMessageSender {
     }
 
     public void sendText(String phoneNumberId, String customerNumber, String text, String workspaceAccessToken) {
+        sendTextTracked(phoneNumberId, customerNumber, text, workspaceAccessToken);
+    }
+
+    public SendResult sendTextTracked(String phoneNumberId, String customerNumber, String text,
+                                      String workspaceAccessToken) {
         var token = resolveToken(workspaceAccessToken);
         if (text == null || text.isBlank()) {
-            return;
+            throw new IllegalArgumentException("WhatsApp message text is required");
         }
         try {
             var payload = objectMapper.writeValueAsBytes(Map.of(
@@ -58,6 +63,7 @@ public class WhatsAppMessageSender {
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("WhatsApp send failed with HTTP " + response.statusCode());
             }
+            return result(response.body());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("WhatsApp send was interrupted", exception);
@@ -127,9 +133,18 @@ public class WhatsAppMessageSender {
             byte[] oggOpusAudio,
             String workspaceAccessToken
     ) {
+        sendVoiceNoteTracked(phoneNumberId, customerNumber, oggOpusAudio, workspaceAccessToken);
+    }
+
+    public SendResult sendVoiceNoteTracked(
+            String phoneNumberId,
+            String customerNumber,
+            byte[] oggOpusAudio,
+            String workspaceAccessToken
+    ) {
         var token = resolveToken(workspaceAccessToken);
         var mediaId = uploadAudio(phoneNumberId, oggOpusAudio, token);
-        sendMessage(phoneNumberId, Map.of(
+        return sendMessage(phoneNumberId, Map.of(
                 "messaging_product", "whatsapp",
                 "recipient_type", "individual",
                 "to", customerNumber,
@@ -183,7 +198,17 @@ public class WhatsAppMessageSender {
         }
     }
 
-    private void sendMessage(String phoneNumberId, Map<String, ?> payload, String token) {
+    public void markRead(String phoneNumberId, String providerMessageId, String workspaceAccessToken) {
+        if (providerMessageId == null || providerMessageId.isBlank()) return;
+        var token = resolveToken(workspaceAccessToken);
+        sendMessage(phoneNumberId, Map.of(
+                "messaging_product", "whatsapp",
+                "status", "read",
+                "message_id", providerMessageId
+        ), token);
+    }
+
+    private SendResult sendMessage(String phoneNumberId, Map<String, ?> payload, String token) {
         try {
             var body = objectMapper.writeValueAsBytes(payload);
             var request = HttpRequest.newBuilder(URI.create(graphApiBaseUrl + "/" + phoneNumberId + "/messages"))
@@ -196,6 +221,7 @@ public class WhatsAppMessageSender {
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("WhatsApp send failed with HTTP " + response.statusCode());
             }
+            return result(response.body());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("WhatsApp send was interrupted", exception);
@@ -215,6 +241,17 @@ public class WhatsAppMessageSender {
         return token;
     }
 
+    private SendResult result(String body) {
+        try {
+            var messageId = objectMapper.readTree(body == null || body.isBlank() ? "{}" : body)
+                    .path("messages").path(0).path("id").asText("");
+            return new SendResult(messageId, "sent");
+        } catch (Exception exception) {
+            throw new IllegalStateException("WhatsApp returned an invalid response", exception);
+        }
+    }
+
     public record DownloadedMedia(byte[] bytes, String contentType) {
     }
+    public record SendResult(String providerMessageId, String status) { }
 }

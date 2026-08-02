@@ -3,6 +3,7 @@ package com.sauti.integration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.agent.AgentRepository;
+import com.sauti.phone.InternationalPhoneNumberService;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -14,16 +15,19 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class WhatsAppEmbeddedSignupService {
+    private static final Pattern TEMPLATE_PARAMETER = Pattern.compile("\\{\\{\\s*([^{}]+?)\\s*}}");
     private final ObjectMapper objectMapper;
     private final IntegrationService integrations;
     private final IntegrationConnectionRepository connections;
     private final AgentRepository agents;
+    private final InternationalPhoneNumberService phoneNumbers;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final String appId;
     private final String appSecret;
@@ -36,6 +40,7 @@ public class WhatsAppEmbeddedSignupService {
             IntegrationService integrations,
             IntegrationConnectionRepository connections,
             AgentRepository agents,
+            InternationalPhoneNumberService phoneNumbers,
             @Value("${sauti.integrations.whatsapp.app-id:}") String appId,
             @Value("${sauti.integrations.whatsapp.app-secret:}") String appSecret,
             @Value("${sauti.integrations.whatsapp.configuration-id:}") String configurationId,
@@ -45,6 +50,7 @@ public class WhatsAppEmbeddedSignupService {
         this.integrations = integrations;
         this.connections = connections;
         this.agents = agents;
+        this.phoneNumbers = phoneNumbers;
         this.appId = trim(appId);
         this.appSecret = trim(appSecret);
         this.configurationId = trim(configurationId);
@@ -54,7 +60,8 @@ public class WhatsAppEmbeddedSignupService {
     }
 
     public SignupConfiguration configuration() {
-        return new SignupConfiguration(configured(), appId, configurationId, graphVersion);
+        return new SignupConfiguration(configured(), appId, configurationId, graphVersion,
+                phoneNumbers.countries());
     }
 
     public boolean configured() {
@@ -76,20 +83,28 @@ public class WhatsAppEmbeddedSignupService {
             throw new IllegalArgumentException("Meta returned an unexpected WhatsApp Business Account");
         }
         var phone = selectPhone(request.wabaId(), request.phoneNumberId(), accessToken);
+        var metaBusinessNumber = phoneNumbers.normalizeAndRequireMatch(
+                request.businessPhoneNumber(), request.businessCountryCode(), phone.displayPhoneNumber());
         subscribeApp(request.wabaId(), accessToken);
         var templates = templates(request.wabaId(), accessToken);
-        var selectedTemplate = templates.isEmpty() ? null : templates.get(0);
+        var selectedTemplate = templates.stream().filter(template -> template.parameters().isEmpty())
+                .findFirst().orElse(null);
 
         var configuration = new LinkedHashMap<String, Object>();
         configuration.put("wabaId", request.wabaId());
         configuration.put("wabaName", waba.path("name").asText(""));
         configuration.put("phoneNumberId", phone.id());
         configuration.put("displayPhoneNumber", phone.displayPhoneNumber());
+        configuration.put("businessPhoneNumber", metaBusinessNumber);
+        configuration.put("businessCountryCode", request.businessCountryCode().trim().toUpperCase());
         configuration.put("verifiedName", phone.verifiedName());
         configuration.put("qualityRating", phone.qualityRating());
         if (selectedTemplate != null) {
             configuration.put("templateName", selectedTemplate.name());
             configuration.put("templateLanguage", selectedTemplate.language());
+            configuration.put("templateParameterFormat", selectedTemplate.parameterFormat());
+            configuration.put("templateParameters", selectedTemplate.parameters());
+            configuration.put("templateParameterMappings", Map.of());
         }
         integrations.connectOAuth(
                 tenantId,
@@ -154,15 +169,19 @@ public class WhatsAppEmbeddedSignupService {
 
     private List<TemplateOption> templates(String wabaId, String accessToken) {
         var response = get("/" + encodePath(wabaId)
-                + "/message_templates?fields=id,name,language,status,category&limit=100", accessToken);
+                + "/message_templates?fields=id,name,language,status,category,parameter_format,components&limit=100",
+                accessToken);
         var templates = new java.util.ArrayList<TemplateOption>();
         response.withArray("data").forEach(node -> {
             if ("APPROVED".equalsIgnoreCase(node.path("status").asText())) {
+                var parameterFormat = node.path("parameter_format").asText("POSITIONAL").toUpperCase();
                 templates.add(new TemplateOption(
                         node.path("id").asText(""),
                         node.path("name").asText(""),
                         node.path("language").asText(""),
-                        node.path("category").asText("")
+                        node.path("category").asText(""),
+                        parameterFormat,
+                        templateParameters(node.path("components"), parameterFormat)
                 ));
             }
         });
@@ -239,12 +258,54 @@ public class WhatsAppEmbeddedSignupService {
     private static boolean blank(String value) { return value == null || value.isBlank(); }
     private static String trim(String value) { return value == null ? "" : value.trim(); }
 
-    public record SignupConfiguration(boolean configured, String appId, String configurationId, String graphVersion) {}
-    public record CompleteRequest(UUID agentId, String code, String wabaId, String phoneNumberId) {}
+    static List<TemplateParameter> templateParameters(JsonNode components, String parameterFormat) {
+        var parameters = new java.util.ArrayList<TemplateParameter>();
+        if (!components.isArray()) return List.of();
+        for (var component : components) {
+            var type = component.path("type").asText("").toLowerCase();
+            if (!("header".equals(type) || "body".equals(type))) continue;
+            if ("header".equals(type) && !"TEXT".equalsIgnoreCase(component.path("format").asText("TEXT"))) {
+                continue;
+            }
+            var text = component.path("text").asText("");
+            var matcher = TEMPLATE_PARAMETER.matcher(text);
+            var ordinal = 0;
+            while (matcher.find()) {
+                ordinal++;
+                var name = matcher.group(1).trim();
+                var position = "NAMED".equalsIgnoreCase(parameterFormat) ? ordinal : positiveInteger(name, ordinal);
+                parameters.add(new TemplateParameter(
+                        type + "." + name,
+                        type,
+                        position,
+                        name,
+                        matcher.group()
+                ));
+            }
+        }
+        return List.copyOf(parameters);
+    }
+
+    private static int positiveInteger(String value, int fallback) {
+        try {
+            var parsed = Integer.parseInt(value);
+            return parsed > 0 ? parsed : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    public record SignupConfiguration(boolean configured, String appId, String configurationId,
+                                      String graphVersion,
+                                      List<InternationalPhoneNumberService.CountryCallingCode> countries) {}
+    public record CompleteRequest(UUID agentId, String code, String wabaId, String phoneNumberId,
+                                  String businessCountryCode, String businessPhoneNumber) {}
     public record ConnectionResult(UUID connectionId, String wabaId, String phoneNumberId,
                                    String displayPhoneNumber, String verifiedName,
                                    List<TemplateOption> templates) {}
-    public record TemplateOption(String id, String name, String language, String category) {}
+    public record TemplateOption(String id, String name, String language, String category,
+                                 String parameterFormat, List<TemplateParameter> parameters) {}
+    public record TemplateParameter(String key, String component, int position, String name, String placeholder) {}
     private record PhoneOption(String id, String displayPhoneNumber, String verifiedName,
                                String qualityRating, String status) {}
 }

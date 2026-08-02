@@ -194,6 +194,7 @@ sauti:
     default-voice-id: ${TELNYX_DEFAULT_VOICE_ID:Telnyx.NaturalHD.astra}
     api-base-url: ${TELNYX_API_BASE_URL:https://api.telnyx.com/v2}
     requirement-group-id: ${TELNYX_REQUIREMENT_GROUP_ID:}
+    messaging-profile-id: ${TELNYX_MESSAGING_PROFILE_ID:}
     validate-signature: ${TELNYX_VALIDATE_SIGNATURE:true}
     webhook-tolerance-seconds: ${TELNYX_WEBHOOK_TOLERANCE_SECONDS:300}
     tool-webhook-secret: ${TELNYX_TOOL_WEBHOOK_SECRET:}

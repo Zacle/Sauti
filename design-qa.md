@@ -85,6 +85,226 @@ final result: passed
 
 ---
 
+# Billing Preview Dashboard Design QA
+
+- Source visual truth:
+  - `D:\Documents\Sauti\design-qa\billing-source-overview.png`
+  - `D:\Documents\Sauti\design-qa\billing-source-usage.png`
+  - `D:\Documents\Sauti\design-qa\billing-source-plans.png`
+- Rendered implementation:
+  - `D:\Documents\Sauti\design-qa\billing-implementation-overview.png`
+  - `D:\Documents\Sauti\design-qa\billing-implementation-usage.png`
+  - `D:\Documents\Sauti\design-qa\billing-implementation-plans.png`
+  - `D:\Documents\Sauti\design-qa\billing-implementation-invoices.png`
+  - `D:\Documents\Sauti\design-qa\billing-implementation-preview-dialog.png`
+  - `D:\Documents\Sauti\design-qa\billing-implementation-mobile.png`
+- Combined same-state comparisons:
+  - `D:\Documents\Sauti\design-qa\billing-comparison-overview.png`
+  - `D:\Documents\Sauti\design-qa\billing-comparison-usage.png`
+  - `D:\Documents\Sauti\design-qa\billing-comparison-plans.png`
+- Desktop viewport: 1440 x 1024 CSS pixels.
+- Mobile viewport: 390 x 844 CSS pixels.
+- State: Growth plan, 486 of 750 aggregate AI minutes used, 690-minute
+  conservative forecast, and billing preview enabled.
+
+## Findings and comparison history
+
+- [P2 fixed] The initial forecast scale produced a floating-point Y-axis label
+  and did not match the selected 690-minute forecast state.
+  - Fix: rounded the chart ceiling to 50-minute increments and used the
+    conservative 1.42x preview forecast, capped to prevent runaway estimates.
+- [P2 fixed] The first QA mock used field names that did not match the existing
+  `BillingUsage` contract and triggered a client error.
+  - Fix: corrected the test payload to the real DTO shape and repeated browser
+    QA in a fresh tab; the final warning/error console is empty.
+- Intentional fidelity difference: the implementation does not reproduce the
+  source's invented per-agent usage rows or pretend that add-ons are active.
+  It shows the live aggregate and an explicit shadow-metering unavailable state
+  until the durable tenant ledger can support truthful detail.
+- Intentional fidelity difference: cycle dates are derived from the current
+  preview month rather than frozen to the dates in the generated source.
+
+## Required fidelity surfaces
+
+- Layout and hierarchy: the dark console shell, compact tab strip, persistent
+  preview notice, three-part usage hero, chart-plus-ledger usage view, and
+  three-column plan modeller preserve the selected visual direction.
+- Typography and spacing: headings, labels, dense card spacing, dividers, and
+  responsive stacking use the established Sauti console scale and tokens.
+- Color and assets: navy surfaces, cyan state accents, amber thresholds, and
+  Lucide icons stay consistent with the existing dashboard without handmade
+  SVG or placeholder assets.
+- Content truthfulness: live aggregate usage, modelled forecasts, preview
+  prices, unavailable detailed metering, and nonexistent invoices are visibly
+  distinguished.
+- Responsive behavior: at 390 x 844 there is no page-level horizontal
+  overflow; the tab strip scrolls intentionally, cards stack, and the dialog
+  remains fully inside the viewport.
+
+## Interaction and regression checks
+
+- Overview, Usage, Plans & add-ons, and Invoices tabs work and persist their
+  state in the URL.
+- Monthly/annual pricing, projected minutes, extra-agent quantity, optional
+  add-ons, reset, and transparent total arithmetic update correctly.
+- The read-only preview dialog opens, receives focus, fits mobile, and closes.
+- The future limit-policy choices are explicitly test-only and make no API
+  mutation; calls continue at 100% during preview.
+- An 810-of-750-minute edge state showed zero remaining, marked the 100%
+  threshold reached, and explicitly confirmed that calls continue in preview;
+  the normal 486-of-750 state was restored afterward.
+- The invoice tab contains no fabricated invoice IDs, payment methods, charges,
+  or receipts.
+- Final fresh-tab console inspection returned no warnings or errors.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed.
+- No remaining actionable P0/P1/P2 findings.
+
+final result: passed
+
+---
+
+# Billing Supplied-Reference Follow-up QA
+
+- Source visual truth:
+  - `D:\Documents\Sauti\design-qa\billing-reference-overview-v2.png`
+    (1448 x 1086, billing content canvas)
+  - `D:\Documents\Sauti\design-qa\billing-reference-plans-v2.png`
+    (1619 x 971, full page with the Sauti header)
+- Rendered overview evidence:
+  - `D:\Documents\Sauti\design-qa\billing-v2-overview-1448x1086.png`
+  - `D:\Documents\Sauti\design-qa\billing-v2-comparison-overview.png`
+- Desktop states checked: Growth plan, 486 of 750 minutes used, 600-minute
+  forecast; annual Growth plan, 900 projected minutes, and two additional
+  agents producing the reference $217.60 estimate.
+- Mobile viewport checked: 390 x 844 CSS pixels.
+- Overview normalization: the overview source begins at the billing content
+  canvas, while the implemented product retains the 60 px Sauti return header.
+  The combined comparison therefore aligns the implementation below that
+  header with the source at the same 1448 px width.
+
+## Findings and comparison history
+
+- [P2 fixed] The first implementation capture forecasted 690 minutes, placing
+  the marker too far right of the supplied 600-minute state.
+  - Fix: recalibrated the conservative preview multiplier so 486 used forecasts
+    600 minutes while retaining the existing allowance cap.
+- [P2 fixed] The initial usage hero underweighted the current-plan column and
+  left too much width in the remainder column.
+  - Fix: rebalanced the desktop grid to the supplied plan / usage / remaining
+    proportions.
+- [P2 fixed] The cost and alert cards were visibly taller than the reference.
+  - Fix: tightened card padding, ledger rows, total row, and alert-row height.
+- [P2 fixed] The current-plan and selected-policy icons did not match the
+  reference semantics.
+  - Fix: used the established Lucide bar-chart and check icons.
+
+## Required fidelity surfaces
+
+- Layout and hierarchy: the focused full-width billing canvas, slim branded
+  header, tab treatment, preview banner, hero, lower grid, and modeller match
+  the supplied desktop compositions.
+- Typography and spacing: large page and usage numerals, compact uppercase
+  labels, sharp card borders, and dense financial rows follow the references.
+- Colors and assets: the implementation stays within Sauti's deep navy and cyan
+  system and uses the existing brand asset and Lucide icon set.
+- Copy and content: the modelled forecast, dates, cost arithmetic, testing
+  notice, and non-enforcement language remain explicit and truthful.
+- Responsive behavior: at 390 x 844, both Overview and Plans & add-ons render
+  all sections with no page-level horizontal overflow.
+
+## Interaction and regression checks
+
+- All four billing tabs remain available and the overview/plans controls switch
+  state correctly.
+- Annual selection and additional-agent quantity produce $134.10 base,
+  $25.50 overage, $58 add-ons, and $217.60 estimated total.
+- The supplied 486-of-750 state exposes 264 remaining and a 600-minute forecast.
+- Billing remains preview-only; no control mutates the workspace or pauses calls.
+- Browser DOM and responsive checks found no missing core sections or overflow.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed.
+- No actionable P0/P1/P2 findings remain.
+
+final result: passed
+
+---
+
+# Pricing Add-ons and Scalable Tier Follow-up QA
+
+- Implemented surface: `dashboard/features/marketing/Pricing/presentation/MarketingPricingPage.tsx`
+- Desktop evidence: `D:\Documents\Sauti\design-qa\pricing-addons-final-desktop.png`
+- Mobile evidence: `D:\Documents\Sauti\design-qa\pricing-addons-final-mobile.png`
+- Viewports: 1440 x 1024 and 390 x 844 CSS pixels.
+
+## Intentional design extension
+
+- Preserved the selected pricing direction's navy calculator, editorial hierarchy,
+  rounded controls, comparison table, and restrained console tokens.
+- Extended the experience with an explicit monthly-bill formula and six optional
+  add-on cards. This is an intentional content addition to answer buyer anxiety
+  about variable telephony and messaging costs without changing the visual system.
+- Lowered the entry plan to $49/month and made annual savings 10%, while retaining
+  enough tier and overage separation to support infrastructure growth.
+
+## Interaction and regression checks
+
+- Default workload (50 calls/week at 3 minutes) recommends Growth at $149/month
+  with 650 estimated minutes and 100 minutes of headroom.
+- High workload (200 calls/week at 10 minutes) recommends Scale and correctly
+  includes 6,167 overage minutes in the $1,262 monthly estimate.
+- Annual billing displays $44, $134, and $359 monthly equivalents.
+- All six add-ons and the `Plan + overage + activated add-ons` formula render on
+  desktop and mobile.
+- Desktop and 390 px mobile layouts have no horizontal overflow.
+- Browser console inspection returned no warnings or errors.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed.
+- No actionable P0/P1/P2 findings remain.
+
+final result: passed
+
+---
+
+# Pricing Guide Option 3 Design QA
+
+- Selected visual source: `C:\Users\Zacle\.codex\generated_images\019fbc15-294f-7ad2-b6f6-0ec7de9f162e\exec-d7fdef00-552d-4b3d-846a-c223a1ee9899.png` (1024 x 1536).
+- Rendered implementation evidence:
+  - `D:\Documents\Sauti\design-qa\pricing-option3-final-top.png` (1009 x 979)
+  - `D:\Documents\Sauti\design-qa\pricing-option3-final-table.png` (1009 x 979)
+  - `D:\Documents\Sauti\design-qa\pricing-option3-final-mobile.png` (375 x 810 rendered content within a 390 x 844 CSS viewport)
+- Combined source/implementation evidence:
+  - `D:\Documents\Sauti\design-qa\pricing-option3-comparison-top.png`
+  - `D:\Documents\Sauti\design-qa\pricing-option3-comparison-table.png`
+- Comparison state: 50 calls/week, 3-minute average, Book appointments, monthly billing, Growth recommendation.
+- Density normalization: the 1024-pixel-wide source was cropped into top and lower regions at the implementation screenshot aspect ratio, then resized with high-quality interpolation to 1009 x 979. The implementation was not rescaled. The lower implementation capture is aligned near 502 CSS pixels of page scroll; the sticky marketing header remains intentionally visible.
+
+## Findings and correction history
+
+- [P1 fixed] The initial Remotion Player root participated in layout and pushed recommendation content toward the bottom of the card.
+  - Fix: placed the Player inside an explicit absolute motion layer, keeping animation decorative while normal HTML owns the content layout.
+- [P2 fixed] Unselected outcome circles used the accent fill and appeared active.
+  - Fix: made inactive circles transparent and reserved the cyan fill/check for the selected outcome.
+- [P2 fixed] The mobile hero removed a line-break node without preserving whitespace, producing `againstthe`.
+  - Fix: preserved explicit whitespace before the responsive break and reverified the final heading text in the browser.
+- Intentional product difference: the selected concept's 2/5/15 concurrent-call limits became 1/2/5. The lower limits are a deliberate margin and capacity safeguard until production concurrency cost is validated.
+- Intentional product difference: free-form Custom inputs from the visual concept were omitted from this first public calculator. Realistic presets keep the recommendation deterministic and avoid implying arbitrary-volume underwriting before backend billing supports it.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the implementation uses Sauti's existing marketing type system and preserves the source's large outcome-led headline, compact labels, restrained metadata, and clear recommendation hierarchy. No truncation or broken wrapping remains at desktop or mobile widths.
+- Spacing and layout: the selected two-column estimator/recommendation composition, nested input panels, highlighted recommendation border, comparison matrix, protection strip, and support CTA are reproduced with consistent radii and vertical rhythm.
+- Colors and tokens: deep navy surfaces, cyan recommendation states, muted blue-gray borders, and violet support accents match the selected direction while using the existing Sauti token language. Active and inactive states remain distinguishable with adequate contrast.
+- Image quality and assets: the design does not call for raster imagery. The existing Sauti brand mark and Lucide icon family are used consistently; no placeholder asset, handcrafted SVG, emoji, or CSS illustration substitutes the source.
+- Copy and content: copy explains the calculator assumptions, variable pass-through costs, no-card browser trial, paid live-calling boundary, usage alerts, and spend controls without promising guaranteed business return.
+- States and interactions: all call-volume, duration, and outcome options work; recommendations and economics update; monthly/annual pricing switches correctly; the comparison anchor scrolls to the plan table; reduced-motion users receive a static recommendation state.
+- Accessibility: controls use semantic buttons with visible selected states, keyboard focus styling, practical mobile tap targets, readable contrast, and reduced-motion handling.
+- Viewport resilience: 1440 x 1024, 1024 x 1536, and 390 x 844 checks found no horizontal overflow, clipping, overlap, or unusable controls.
+- Browser integrity: the final console check returned no warnings or errors.
+
+No actionable P0/P1/P2 findings remain.
+
+final result: passed
+
+---
+
 # Resources Console Option 2 Design QA
 
 - Source visual truth: `C:\Users\Zacle\.codex\generated_images\019fbc15-294f-7ad2-b6f6-0ec7de9f162e\exec-17f4f212-1d22-4065-b71d-920a4cf47435.png` (1487 x 1058)

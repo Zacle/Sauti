@@ -88,6 +88,10 @@
 .sheetsInitializer p { margin:0; color:#718096; font-size:.68rem; line-height:1.45; }
 .dialogLoading { display: flex; min-height: 120px; align-items: center; justify-content: center; gap: 9px; color: #64748b; font-size: .8rem; }
 .whatsappDialog { width: min(590px, 100%); }
+.businessPhoneSection { display:grid; gap:8px; margin-bottom:18px; }
+.businessPhoneSection > label { color:#475569; font-size:.84rem; font-weight:600; }
+.businessPhoneSection > small { color:#718096; font-size:.7rem; line-height:1.45; }
+.businessPhoneEntry { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:10px; }
 .connectionSummary { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; padding: 18px; border: 1px solid #d9e9e6; border-radius: 15px; background: linear-gradient(135deg, #f4fcfa, #fff); }
 .connectionSummary > div { display: grid; gap: 4px; }
 .connectionSummary span { color: #718096; font-size: .68rem; }
@@ -102,6 +106,11 @@
 .templateSection select { width: 100%; min-height: 54px; padding: 0 48px 0 18px; appearance: none; border: 1.5px solid #d1dae4; border-radius: 14px; outline: none; color: #1e293b; background: #fff; font: inherit; font-size: .82rem; cursor: pointer; }
 .templateSection select:focus { border-color: #0ea5a0; box-shadow: 0 0 0 3px rgba(14, 165, 160, .1); }
 .templateSection p { margin: 0; padding: 12px 14px; border-radius: 11px; color: #68768a; background: #f8fafc; font-size: .72rem; font-weight: 450; line-height: 1.5; }
+.parameterMappings { display:grid; gap:12px; margin-top:16px; padding:16px; border:1px solid rgba(90,146,190,.15); border-radius:14px; background:rgba(255,255,255,.025); }
+.parameterMappings label { display:grid; gap:7px; }
+.mappingIntro { display:grid; gap:4px; }
+.mappingIntro strong { color:#dbe8f2; font-size:.84rem; }
+.mappingIntro span { color:#8da2b5; font-size:.72rem; line-height:1.45; }
 @media (max-width: 980px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) {
   .heading { align-items: stretch; flex-direction: column; }
@@ -111,6 +120,7 @@
   .filters button { flex: 0 0 auto; }
   .connectionSummary { grid-template-columns: 1fr; }
   .connectionSummary .secureBadge { grid-column: auto; }
+  .businessPhoneEntry { grid-template-columns:1fr; }
 }
 
 /* Dark integration marketplace */
@@ -180,7 +190,8 @@
 .dialog { border-color:rgba(83,143,190,.25); color:#dce9f3; background:linear-gradient(145deg,#081c30,#051524); box-shadow:0 30px 100px rgba(0,0,0,.55); }
 .dialog h2 { color:#f2f8fc; }.dialog header p,.oauthNote { color:#8298ab; }
 .dialog header button { color:#91a6b9; background:rgba(255,255,255,.04); }
-.formFields > label,.templateSection label { color:#a5b7c7; }
+.formFields > label,.templateSection label,.businessPhoneSection > label { color:#a5b7c7; }
+.businessPhoneSection > small { color:#8298ac; }
 .dialog input,.dialog select,.templateSection select { border-color:rgba(91,150,198,.25); color:#e6eff6; background:#07192b; }
 .dialog input:focus,.dialog select:focus,.templateSection select:focus { border-color:#20d4c8; box-shadow:0 0 0 3px rgba(23,210,198,.09); }
 .dialog > footer,.templateSection { border-color:rgba(90,146,190,.15); }

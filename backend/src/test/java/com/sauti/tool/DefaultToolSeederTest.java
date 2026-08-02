@@ -39,6 +39,9 @@ class DefaultToolSeederTest {
         assertThat(tools.get("update_booking").confirmationPolicy()).isEqualTo(ToolConfirmationPolicy.EXPLICIT);
         assertThat(tools.get("update_google_sheet_row").actionEffect()).isEqualTo(ToolActionEffect.DATA_WRITE);
         assertThat(tools.get("send_whatsapp_message").actionEffect()).isEqualTo(ToolActionEffect.EXTERNAL_COMMUNICATION);
+        assertThat(tools.get("send_whatsapp_message").getParametersSchema())
+                .isEqualTo(Map.of("type", "object", "properties", Map.of(), "required", List.of()));
+        assertThat(tools.get("send_confirmation_sms").confirmationPolicy()).isEqualTo(ToolConfirmationPolicy.EXPLICIT);
         assertThat(tools.get("request_mpesa_payment").actionEffect()).isEqualTo(ToolActionEffect.FINANCIAL);
         assertThat(tools.get("transfer_to_human").actionEffect()).isEqualTo(ToolActionEffect.TRANSFER);
         assertThat(tools.get("end_call").actionEffect()).isEqualTo(ToolActionEffect.TERMINAL);
