@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.sauti.calendar.BookingRepository;
+import com.sauti.billing.BillingLedgerService;
 import com.sauti.call.CallRepository;
 import com.sauti.outbound.ScheduledCallRepository;
 import com.sauti.tenant.Tenant;
@@ -22,6 +23,7 @@ import org.springframework.context.ApplicationEventPublisher;
 class AgentNumberProvisioningCostControlTest {
     private final AgentRepository agents = mock(AgentRepository.class);
     private final TelephonyProvider telephony = mock(TelephonyProvider.class);
+    private final BillingLedgerService billing = mock(BillingLedgerService.class);
     private final AgentService service = new AgentService(
             agents,
             mock(TenantRepository.class),
@@ -33,7 +35,8 @@ class AgentNumberProvisioningCostControlTest {
             mock(BookingRepository.class),
             mock(ScheduledCallRepository.class),
             mock(KnowledgeBaseService.class),
-            mock(ApplicationEventPublisher.class)
+            mock(ApplicationEventPublisher.class),
+            billing
     );
 
     @Test
@@ -56,11 +59,16 @@ class AgentNumberProvisioningCostControlTest {
         when(telephony.provisionPhoneNumber("KE", "+254700000001"))
                 .thenReturn(new TelephonyProvider.PhoneNumberProvisioning(
                         "+254700000001", "telnyx", "order-1", "pending", true));
+        when(telephony.quotePhoneNumber("KE", "+254700000001"))
+                .thenReturn(new TelephonyProvider.PhoneNumberCostQuote(
+                        "+254700000001", new java.math.BigDecimal("1.00"),
+                        new java.math.BigDecimal("2.00"), "USD"));
 
         var result = service.provisionNumber(
                 tenantId, agentId, "+254700000001", false, true);
 
         assertThat(result.getTwilioPhoneNumber()).isEqualTo("+254700000001");
         verify(telephony).provisionPhoneNumber("KE", "+254700000001");
+        verify(billing).authorizePaidResource(tenantId, new java.math.BigDecimal("3.00"), "USD");
     }
 }

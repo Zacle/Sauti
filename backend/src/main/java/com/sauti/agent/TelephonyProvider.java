@@ -1,5 +1,6 @@
 package com.sauti.agent;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -29,6 +30,10 @@ public interface TelephonyProvider {
 
     default PhoneNumberProvisioning refreshPhoneNumber(String providerReference) {
         return null;
+    }
+
+    default PhoneNumberCostQuote quotePhoneNumber(String tenantCountryCode, String phoneNumber) {
+        return new PhoneNumberCostQuote(phoneNumber, BigDecimal.ZERO, BigDecimal.ZERO, "USD");
     }
 
     default String createOutboundCall(String to, String from, String clientState) {
@@ -76,5 +81,16 @@ public interface TelephonyProvider {
             String status,
             boolean requirementsMet
     ) {
+    }
+
+    record PhoneNumberCostQuote(
+            String phoneNumber,
+            BigDecimal upfrontCost,
+            BigDecimal monthlyCost,
+            String currency
+    ) {
+        public BigDecimal initialEstimatedCost() {
+            return upfrontCost.add(monthlyCost);
+        }
     }
 }

@@ -17,6 +17,40 @@ import org.junit.jupiter.api.Test;
 
 class TelnyxTelephonyProviderTest {
     @Test
+    void quotesTheSelectedNumberUsingCurrentProviderPricing() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/available_phone_numbers", exchange -> {
+            var response = """
+                    {"data":[{
+                      "phone_number":"+447911123456",
+                      "phone_number_type":"mobile",
+                      "features":[{"name":"voice"}],
+                      "cost_information":{"upfront_cost":"1.25","monthly_cost":"2.50","currency":"USD"}
+                    }]}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var provider = new TelnyxTelephonyProvider(
+                    new ObjectMapper(), "test-key", "connection-1",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "", "",
+                    "Telnyx.NaturalHD.astra", mock(ManagedVoiceAgentProvisioningService.class));
+
+            var quote = provider.quotePhoneNumber("GB", "+447911123456");
+
+            assertThat(quote.upfrontCost()).isEqualByComparingTo("1.25");
+            assertThat(quote.monthlyCost()).isEqualByComparingTo("2.50");
+            assertThat(quote.initialEstimatedCost()).isEqualByComparingTo("3.75");
+            assertThat(quote.currency()).isEqualTo("USD");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void assignsAnActiveNumberToTheConfiguredMessagingProfile() throws Exception {
         var requests = new ArrayList<String>();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

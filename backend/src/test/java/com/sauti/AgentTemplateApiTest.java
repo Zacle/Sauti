@@ -203,7 +203,7 @@ class AgentTemplateApiTest {
         mvc.perform(post("/api/v1/agents/" + agentId + "/provision-number")
                         .header("Authorization", bearer(ownerToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"providerChargesConfirmed\":true}"))
+                        .content("{\"phoneNumber\":\"+254712345679\",\"providerChargesConfirmed\":true}"))
                 .andExpect(status().isOk());
 
         mvc.perform(post("/api/v1/agents/" + agentId + "/activate")

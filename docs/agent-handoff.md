@@ -34,6 +34,23 @@ Release policy:
 - Coding agents must not commit, push, open PRs, manually dispatch/bypass deployment, SSH to production to release code, run `deploy/deploy.sh` directly, run production Docker Compose commands, or copy application files to the server.
 - When asked to deploy, a coding agent verifies the change and hands the uncommitted working tree to the maintainer. After an external push, the agent may perform read-only CI/CD monitoring and public health verification.
 
+### 2026-08-02: Remove short-height Agent Studio gaps
+
+- Replaced the Agent Studio's fragile percentage-height chain with an explicit
+  flex-stretch contract between the console content slot and editor frame.
+- The editor now fills the complete available viewport even after the center
+  form and sidebar have been independently scrolled to their lower positions.
+- Files touched:
+  - `dashboard/styles/console.css`
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`
+  - `design-qa/agent-studio-short-height-filled-1916x447.png`
+- Verification: production build passed. Browser QA reproduced the supplied
+  1916 x 447 viewport, scrolled the editor to the bottom, and confirmed the
+  studio, layout, form, and test panel all end at the 447 px viewport boundary
+  with no page-level scroll or exposed background. Browser console was clean.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+
 ### 2026-08-02: Simplify Agent Studio to a prompt-only section
 
 - Renamed the `Behavior & prompt` navigation destination to `Prompt` and
@@ -795,6 +812,91 @@ Release policy:
   - `\.\gradlew.bat :backend:test --console=plain` - passed;
   - `git diff --check` - passed (line-ending notices only).
 - Deployment status remains unchanged: not deployed and uncommitted.
+
+#### Follow-up: remove the imposed circle from the test-call animation
+
+- Removed the circular mask, circular outline, inset ring, and round shadows from the user-supplied test-call WebM crop. The waveform now reads from its own irregular animated perimeter rather than as content inside a badge.
+- Removed call-state brightness and saturation filters that exposed the rectangular WebM crop after the mask was removed.
+- Sampled the recording's cobalt background (`rgb(1, 23, 109)`) and expanded the matching solid radial field around both idle and active responsive sizes so the video crop blends into the panel without a visible square edge.
+- Files additionally touched:
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`;
+  - `design-qa.md` and ignored local visual-QA evidence;
+  - `docs/agent-handoff.md`.
+- Browser verification at 1280 x 720 covered idle and active speaking sizes. Computed styles reported no border radius or box shadow; playback advanced from approximately 0.97 seconds to 1.91 seconds; captures showed different freeform silhouettes; and the browser console was clean.
+- Verification:
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-08-02 - Provider-neutral animated voice testing
+
+- Reframed the agent-test experience as a Sauti-owned `Voice test` rather than exposing the underlying telephony provider.
+- Removed visible provider branding from the idle and live test panel, voice library, business-number guidance, DTMF guidance, configuration errors, and downloaded diagnostics filename. Provider identifiers remain internal for runtime compatibility and diagnostics.
+- Replaced the active live transcript and typed-message controls with the user-supplied teal AI ring, a concise listening/thinking/speaking status, and the existing End action.
+- Reused the same real raster asset in two independently animated layers to create organic breathing motion. Motion speeds respond to call state while the wrapper remains fixed, and reduced-motion preferences disable the animation.
+- Preserved private transcript recording for call review and analytics; only the live transcript display was removed.
+- Files touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`;
+  - `dashboard/features/agents/AgentCreator/VoicePicker.tsx`;
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`;
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`;
+  - `dashboard/public/images/agents/ai-voice-orb.png`;
+  - `design-qa.md` and focused local QA artifacts;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed before the local QA-auth preview run;
+  - in-app browser at 1280 x 720 confirmed no visible provider name, no transcript container, stable orb dimensions across animation samples, and no console errors;
+  - a focused browser-rendered active-speaking state confirmed the larger 244 x 244 orb, provider-neutral copy, no transcript, and stable layout across motion samples;
+  - visual comparison is recorded in `design-qa.md` with `final result: passed`.
+- The local active-call provider connection was not initiated during visual QA. Runtime provider identifiers and transcript persistence paths were deliberately retained.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-08-02 - Provider-neutral billing account and communication ledger
+
+- Added a tenant-scoped billing account with explicit subscription status,
+  `observe`/`enforce` entitlement modes, billing currency, low-balance
+  threshold, and optional monthly provider-spend limit.
+- Added an append-only communication ledger for idempotent monetary credits and
+  debits. Entries retain category, quantity/unit, amount/currency, provider
+  reference, description, metadata, and creation time so later payment-provider
+  and usage-metering work does not depend on a specific vendor.
+- Added Flyway migration `V48__billing_accounts_and_communication_ledger.sql`
+  with tenant/idempotency uniqueness and ledger lookup indexes.
+- Made phone-number purchasing obtain a fresh server-side Telnyx quote for the
+  selected number, run the workspace entitlement/spending check, and record the
+  initial upfront plus monthly provider charge exactly once after provisioning.
+  Client-supplied prices remain display-only and are never trusted for billing.
+- Kept new accounts in `observe` mode so pilot/test workspaces are not blocked
+  before checkout and credit funding exist. `enforce` mode already rejects
+  inactive accounts, insufficient balances, and monthly-limit overruns.
+- Exposed authenticated `GET /api/v1/billing/account` metadata, balances, paid
+  resource eligibility, and the 50 most recent ledger entries. Added matching
+  dashboard API types/client support without changing the existing billing UI.
+- Files touched:
+  - `backend/src/main/java/com/sauti/billing/*`;
+  - `backend/src/main/java/com/sauti/agent/{AgentService,FakeTelephonyProvider,TelephonyProvider,TelnyxTelephonyProvider}.java`;
+  - `backend/src/main/java/com/sauti/api/BillingController.java`;
+  - `backend/src/main/resources/db/migration/V48__billing_accounts_and_communication_ledger.sql`;
+  - billing, provisioning, Telnyx, template, and authenticated-flow backend tests;
+  - `dashboard/types/api.ts`;
+  - `dashboard/lib/api/billing.ts`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - focused billing ledger, number cost-control, Telnyx quote, and authenticated
+    API flow tests passed;
+  - complete `:backend:test` suite passed;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status remains unchanged: not deployed and uncommitted.
+- Follow-up: connect a payment provider and verified webhooks to post ledger
+  credits and transition accounts from `observe` to `enforce`; then meter live
+  call, SMS, WhatsApp, and recurring number-rental usage into the same ledger.
 
 ### 2026-08-02 - Production readiness step 1: paid number purchase confirmation
 
@@ -9622,4 +9724,27 @@ Expected:
   - the complete backend suite ran 381 tests; 380 passed and the unrelated
     `AgentTemplateApiTest.managesTenantTemplatesAndCreatesIndependentAgentCopy`
     failed because an agent-variable PATCH returned HTTP 400 instead of 200.
+- Deployment status remains unchanged: not deployed and uncommitted.
+
+### 2026-08-02 - Voice orb corrected to match supplied recording
+
+- Corrected the agent-test animation after the user supplied the actual motion reference in `screen-capture.webm`.
+- Removed the synthetic still-image rotation, translation, scale, blur, and opacity keyframes. The user-supplied WebM is now the visible motion source, cropped to its orb region so the perimeter deforms exactly as recorded.
+- Kept the orb wrapper fixed while the internal silhouette morphs, preventing the surrounding test controls from moving.
+- Added a cobalt radial field around the crop so the source background blends into the existing navy test panel instead of reading as a bordered blue badge.
+- Preserved the still PNG as the loading poster and as the reduced-motion frame. The component pauses and resets the video when `prefers-reduced-motion: reduce` is active.
+- Files additionally touched:
+  - `dashboard/features/agents/AgentCreator/TestCallPanel.tsx`;
+  - `dashboard/features/agents/AgentCreator/AgentCreatorRedesign.css`;
+  - `dashboard/public/images/agents/ai-voice-orb-motion.webm`;
+  - `design-qa.md` and ignored local visual-QA evidence;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - inspected a 12-frame, 300 ms source contact sheet from the supplied 1920 x 1078 recording;
+  - browser captures 650 ms apart showed matching perimeter deformation while the 106 x 106 wrapper remained at identical coordinates;
+  - browser inspection confirmed active playback, no visible provider name, no transcript container, and no console errors;
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run lint` passed with zero warnings;
+  - `npm.cmd run build` passed;
+  - `git diff --check` passed.
 - Deployment status remains unchanged: not deployed and uncommitted.

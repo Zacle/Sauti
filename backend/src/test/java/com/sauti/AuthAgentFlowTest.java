@@ -150,13 +150,22 @@ class AuthAgentFlowTest {
         var provisionedAgentJson = mvc.perform(post("/api/v1/agents/" + agentId + "/provision-number")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"providerChargesConfirmed\":true}"))
+                        .content("{\"phoneNumber\":\"+221770000001\",\"providerChargesConfirmed\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.twilioPhoneNumber").isString())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
         String twilioNumber = objectMapper.readTree(provisionedAgentJson).get("twilioPhoneNumber").asText();
+
+        mvc.perform(get("/api/v1/billing/account")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("preview"))
+                .andExpect(jsonPath("$.enforcementMode").value("observe"))
+                .andExpect(jsonPath("$.paidResourcesAllowed").value(true))
+                .andExpect(jsonPath("$.recentEntries[0].category").value("phone_number_purchase"))
+                .andExpect(jsonPath("$.recentEntries[0].direction").value("debit"));
 
         mvc.perform(post("/api/v1/agents/generate-from-brief")
                         .header("Authorization", "Bearer " + token)

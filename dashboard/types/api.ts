@@ -491,6 +491,31 @@ export type BillingUsage = {
   limitReached: boolean;
 };
 
+export type BillingLedgerEntry = {
+  id: string;
+  direction: "credit" | "debit";
+  category: string;
+  quantity: number;
+  unit: string;
+  amount: number | null;
+  currency: string | null;
+  externalReference: string | null;
+  description: string | null;
+  createdAt: string;
+};
+
+export type BillingAccount = {
+  id: string;
+  status: "preview" | "trialing" | "active" | "past_due" | "suspended" | "cancelled";
+  enforcementMode: "observe" | "enforce";
+  billingCurrency: string;
+  monthlySpendingLimit: number | null;
+  lowBalanceThreshold: number;
+  communicationBalances: Record<string, number>;
+  paidResourcesAllowed: boolean;
+  recentEntries: BillingLedgerEntry[];
+};
+
 export type DashboardData = {
   onboarding: OnboardingStatus;
   agents: Agent[];

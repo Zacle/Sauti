@@ -85,6 +85,106 @@ final result: passed
 
 ---
 
+# Freeform test-call animation follow-up QA
+
+- Source visual truth: `C:\Users\Zacle\Downloads\screen-capture.webm` (1920 x 1078, approximately five seconds).
+- Matched source frame: `D:\Documents\Sauti\design-qa\test-call-reference-matched-frame.png` (1280 x 720 browser-rendered pixels).
+- Rendered implementation frames:
+  - `D:\Documents\Sauti\design-qa\test-call-freeform-final-a.png`;
+  - `D:\Documents\Sauti\design-qa\test-call-freeform-final-b.png`.
+- Combined focused comparison: `D:\Documents\Sauti\design-qa\test-call-freeform-comparison.png`.
+- Viewport: 1280 x 720 CSS pixels at device scale 1.25.
+- State: idle-size and active speaking-size animation crops, playing from the supplied WebM.
+
+## Full-view comparison evidence
+
+The browser-rendered test states preserve the surrounding Sauti panel layout while presenting the waveform as a floating, irregular teal perimeter. The previous circular mask, inset ring, circular outline, and circular shadow are absent. The cobalt field extends beyond the rectangular crop boundary, so neither a round badge nor a visible video tile remains.
+
+## Focused comparison evidence
+
+The combined comparison normalizes the recording crop and the active Sauti crop to equal 350 x 350 regions. Both retain the same open center, overlapping translucent teal lobes, soft edge, and continuously changing non-circular perimeter. The difference between the two silhouettes is an expected difference in playback phase rather than a different visual treatment.
+
+## Findings and comparison history
+
+- [P1 fixed] The prior wrapper used `border-radius: 50%`, forcing every WebM frame into a perfect circular viewport.
+  - Fix: removed the circular radius, inset outline, circular shadows, and isolated round background.
+  - Post-fix evidence: computed styles report `border-radius: 0px` and `box-shadow: none`; both rendered sizes show the waveform's own perimeter.
+- [P2 fixed] Removing the circle initially exposed a saturated rectangular video field because call-state filters recolored the WebM background.
+  - Fix: removed the brightness/saturation filters and matched the surrounding cobalt field to the sampled recording color `rgb(1, 23, 109)`, with a sufficiently large solid core around both responsive sizes.
+  - Post-fix evidence: the final captures show a continuous field around the animation with no visible square edge.
+
+## Required fidelity surfaces
+
+- Fonts and typography: unchanged; the active status remains readable and aligned below the animation.
+- Spacing and layout rhythm: fixed responsive wrappers keep surrounding controls stable while the internal perimeter changes.
+- Colors and visual tokens: the source teal/cobalt colors are unfiltered; the surrounding field uses the sampled source background before fading into the navy panel.
+- Image quality and asset fidelity: the exact supplied WebM remains the visible source; no CSS-drawn replacement or synthetic transform animation is used.
+- Copy and content: existing provider-neutral test-call labels and status copy are unchanged.
+
+## Interaction and accessibility checks
+
+- Playback advanced from approximately 0.97 seconds to 1.91 seconds over the measured interval in both rendered sizes, with `paused: false`, `ended: false`, and `readyState: 4`.
+- The two captures show materially different waveform silhouettes without movement of the wrappers.
+- The existing reduced-motion effect still pauses and resets the video when requested.
+- Browser console contained no warnings or errors.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed.
+
+No actionable P0, P1, or P2 findings remain.
+
+final result: passed
+
+---
+
+# Provider-neutral AI Voice Test QA
+
+- Source visual truth: `C:\Users\Zacle\AppData\Local\Temp\codex-clipboard-f6083687-f635-4a48-b56f-53eda4446322.png` (537 x 481 RGB pixels).
+- Browser-rendered idle implementation: `D:\Documents\Sauti\design-qa\agent-test-orb-idle.png` (1280 x 720 pixels).
+- Browser-rendered active component implementation: `D:\Documents\Sauti\design-qa\agent-test-orb-active.png` (1280 x 720 pixels).
+- Combined source/implementation evidence: `D:\Documents\Sauti\design-qa\ai-orb-comparison.png` (893 x 626 pixels).
+- Viewport: 1280 x 720 CSS pixels at device scale 1.
+- State: configured Amina agent, idle voice-test panel; active speaking state verified in the focused component render because the local API does not create a provider call in QA mode.
+- Density normalization: source and implementation were inspected at native density. The combined comparison preserves the source at 537 x 481 and uses a focused 308 x 572 crop of the rendered panel.
+
+## Full-view comparison evidence
+
+The agent editor preserves its three-column working layout at 1280 x 720. The right panel now uses provider-neutral `Voice test` and `Start test call` language, contains the supplied teal-on-blue ring, and keeps all controls visible. Browser inspection confirmed no visible provider name and no live transcript container.
+
+## Focused region comparison evidence
+
+The combined comparison places the supplied visual and the rendered test panel in one image. The implementation uses the exact raster source rather than a CSS approximation. Its blue field, teal ring, soft edges, and irregular silhouette remain recognizable at the smaller product scale. The focused active component render shows the same source asset at 244 x 244 with only a status and end-call control.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing Sauti family, weights, and hierarchy are preserved; the provider-neutral labels fit without truncation.
+- Spacing and layout rhythm: the idle orb remains fixed at 106 x 106 in the short desktop viewport; the active composition expands it to the intended larger focal treatment while keeping header and status visible.
+- Colors and visual tokens: the asset's deep cobalt and teal palette blends with the existing navy console surface and cyan accent tokens.
+- Image quality and asset fidelity: the implementation uses the exact supplied 537 x 481 PNG in two clipped layers. No custom SVG, CSS drawing, placeholder, or replacement illustration is used.
+- Copy and content: visible provider branding is removed from the test panel, voice library, number guidance, and DTMF guidance. The active transcript and typed-message controls are absent; concise listening/thinking/speaking status copy remains.
+
+## Interaction, motion, and accessibility checks
+
+- Idle browser inspection found `providerVisible: false`, `transcriptVisible: false`, and a visible fixed-size orb.
+- Two samples 700 ms apart changed the image-layer transform while the 106 x 106 wrapper rectangle stayed identical.
+- Active focused-render samples 650 ms apart changed the image-layer transform while the 244 x 244 wrapper rectangle stayed identical.
+- Listening, thinking, and speaking classes use progressively faster motion without changing layout size.
+- `prefers-reduced-motion: reduce` disables the image-layer animations.
+- Browser console checks returned no errors for either the real idle route or focused active render.
+
+## Findings and comparison history
+
+- [P2 fixed] The prior test UI exposed the infrastructure provider in the eyebrow, CTA, active header, voice library, and configuration errors.
+  - Fix: replaced customer-facing provider labels with Sauti-owned voice-test language while retaining provider identifiers only inside runtime checks and diagnostics.
+  - Post-fix evidence: the route DOM and browser-visible text contain no provider name.
+- [P2 fixed] The active state presented a scrolling transcript and typed-message controls instead of maintaining conversational focus.
+  - Fix: replaced the transcript and input controls with the supplied animated orb and one status message.
+  - Post-fix evidence: the focused active render contains only the live-test header, orb, status, and End action.
+
+No actionable P0, P1, or P2 findings remain. The real active call was not placed during QA, so provider connectivity itself was not retested by this visual change.
+
+final result: passed
+
+---
+
 # Agent Setup Visibility and Billing Navigation QA
 
 - Source visual truth:
@@ -545,5 +645,58 @@ final result: passed
 - The shared navigation, top bar, and Main Settings scroll ownership remain unchanged.
 - Focused source/implementation comparisons found no remaining actionable P0/P1/P2 mismatch.
 - `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed.
+
+final result: passed
+
+---
+
+# Recording-matched Voice Orb Motion QA
+
+- Source visual truth: `C:\Users\Zacle\Downloads\screen-capture.webm` (1920 x 1078 video pixels).
+- Source cycle evidence: `D:\Documents\Sauti\design-qa\motion-reference\contact-sheet.png` (12 frames sampled every 300 ms).
+- Focused source cycle: `D:\Documents\Sauti\design-qa\motion-reference\orb-cycle-crops.png`.
+- Browser-rendered implementation:
+  - `D:\Documents\Sauti\design-qa\agent-test-orb-recording-a.png`;
+  - `D:\Documents\Sauti\design-qa\agent-test-orb-recording-b.png`;
+  - `D:\Documents\Sauti\design-qa\agent-test-orb-recording-final.png`.
+- Combined motion comparison: `D:\Documents\Sauti\design-qa\orb-motion-comparison.png`.
+- Viewport: 1280 x 720 CSS pixels at device scale 1.
+- State: configured Amina agent, idle voice-test panel. The same `TestCallOrb` component is used during active listening, thinking, and speaking states.
+- Density normalization: the 1920 x 1078 recording is rendered responsively and cropped to the orb region; source and implementation crops were normalized to equal comparison cells.
+
+## Full-view comparison evidence
+
+The corrected implementation preserves the existing Sauti agent-editor layout and provider-neutral copy. The test panel now plays the supplied motion source inside the orb crop instead of transforming a still image. Two browser captures 650 ms apart show different perimeter silhouettes while the 106 x 106 wrapper remains at the identical coordinates.
+
+## Focused comparison evidence
+
+The focused comparison places two source-video states next to two Sauti-rendered states. Both show the same irregular perimeter deformation: lobes swell, flatten, and exchange prominence while the center remains anchored. The earlier whole-object rotation and scale pulse are absent. A cobalt radial field softens the cropped source boundary against the navy test surface.
+
+## Findings and comparison history
+
+- [P1 fixed] The first implementation animated a still image with rotation, translation, scaling, blur, and opacity. That motion was structurally different from the supplied recording.
+  - Fix: removed the synthetic keyframes and layered still-image animation. The component now uses the supplied WebM as the motion asset and crops its original orb region.
+  - Post-fix evidence: source and Sauti frame pairs show matching perimeter deformation without whole-object rotation.
+- [P2 fixed] The raw recording crop initially read as a hard blue circular badge.
+  - Fix: matched the surrounding radial field to the recording's cobalt background and softened it into the existing panel surface.
+  - Post-fix evidence: `agent-test-orb-recording-final.png` shows a continuous blue field around the floating ring rather than a bordered badge.
+
+## Required fidelity surfaces
+
+- Fonts and typography: unchanged from the verified Sauti test panel; no new text or wrapping drift was introduced.
+- Spacing and layout rhythm: the orb wrapper retains its fixed responsive dimensions and therefore does not move surrounding controls during playback.
+- Colors and visual tokens: the exact teal/cobalt recording is retained and blended into the navy console without recoloring the source motion.
+- Image quality and asset fidelity: the exact user-supplied WebM is used as the visible motion source, with the still PNG retained only as a loading and reduced-motion poster.
+- Copy and content: provider-neutral `Voice test` and `Start test call` copy remains unchanged; no transcript is shown.
+
+## Interaction and accessibility checks
+
+- Browser inspection reported a ready 1920 x 1078 video, active playback, no visible provider name, and no transcript container.
+- Playback advanced and looped between the two measured samples while the wrapper rectangle remained unchanged.
+- Reduced-motion preference pauses the video at its poster frame and resumes playback when the preference changes.
+- Browser console contained no errors.
+- `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd run build`, and `git diff --check` passed.
+
+No actionable P0, P1, or P2 findings remain.
 
 final result: passed

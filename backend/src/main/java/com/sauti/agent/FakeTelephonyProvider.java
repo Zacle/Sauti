@@ -15,6 +15,13 @@ public class FakeTelephonyProvider implements TelephonyProvider {
     }
 
     @Override
+    public String provisionNumber(String tenantCountryCode, String requestedPhoneNumber) {
+        return requestedPhoneNumber == null || requestedPhoneNumber.isBlank()
+                ? provisionNumber(tenantCountryCode)
+                : requestedPhoneNumber;
+    }
+
+    @Override
     public String buildMediaStreamTwiMl(
             String websocketUrl,
             String callSid,

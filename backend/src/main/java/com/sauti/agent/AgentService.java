@@ -2,6 +2,7 @@ package com.sauti.agent;
 
 import com.sauti.agent.AgentDtos.AgentRequest;
 import com.sauti.calendar.BookingRepository;
+import com.sauti.billing.BillingLedgerService;
 import com.sauti.call.CallRepository;
 import com.sauti.outbound.ScheduledCallRepository;
 import com.sauti.tenant.TenantRepository;
@@ -27,6 +28,7 @@ public class AgentService {
     private final ScheduledCallRepository scheduledCallRepository;
     private final KnowledgeBaseService knowledgeBaseService;
     private final ApplicationEventPublisher events;
+    private final BillingLedgerService billingLedger;
 
     public AgentService(
             AgentRepository agentRepository,
@@ -39,7 +41,8 @@ public class AgentService {
             BookingRepository bookingRepository,
             ScheduledCallRepository scheduledCallRepository,
             KnowledgeBaseService knowledgeBaseService,
-            ApplicationEventPublisher events
+            ApplicationEventPublisher events,
+            BillingLedgerService billingLedger
     ) {
         this.agentRepository = agentRepository;
         this.tenantRepository = tenantRepository;
@@ -52,6 +55,7 @@ public class AgentService {
         this.scheduledCallRepository = scheduledCallRepository;
         this.knowledgeBaseService = knowledgeBaseService;
         this.events = events;
+        this.billingLedger = billingLedger;
     }
 
     @Transactional(readOnly = true)
@@ -248,15 +252,40 @@ public class AgentService {
             );
         }
         var agent = get(tenantId, agentId);
+        if (requestedPhoneNumber == null || requestedPhoneNumber.isBlank()) {
+            throw new IllegalArgumentException("Select an available phone number before purchasing");
+        }
         if (agent.getTwilioPhoneNumber() != null && !agent.getTwilioPhoneNumber().isBlank()) {
             if (!replaceExisting) {
                 throw new IllegalArgumentException("This agent already has a phone number");
             }
         }
-        agent.attachPhoneNumber(telephonyProvider.provisionPhoneNumber(
+        var quote = telephonyProvider.quotePhoneNumber(agent.getTenant().getCountryCode(), requestedPhoneNumber);
+        billingLedger.authorizePaidResource(tenantId, quote.initialEstimatedCost(), quote.currency());
+        var provisioning = telephonyProvider.provisionPhoneNumber(
                 agent.getTenant().getCountryCode(),
                 requestedPhoneNumber
-        ));
+        );
+        agent.attachPhoneNumber(provisioning);
+        var reference = provisioning.providerReference() == null || provisioning.providerReference().isBlank()
+                ? requestedPhoneNumber : provisioning.providerReference();
+        billingLedger.recordDebit(
+                tenantId,
+                "phone_number_purchase",
+                java.math.BigDecimal.ONE,
+                "number",
+                quote.initialEstimatedCost(),
+                quote.currency(),
+                "phone-number-order:" + reference,
+                reference,
+                "Phone number purchase and first estimated monthly rental",
+                java.util.Map.of(
+                        "phoneNumber", requestedPhoneNumber,
+                        "provider", provisioning.provider(),
+                        "upfrontCost", quote.upfrontCost(),
+                        "monthlyCost", quote.monthlyCost()
+                )
+        );
         return agent;
     }
 

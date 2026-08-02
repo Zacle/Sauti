@@ -1773,7 +1773,7 @@ function MainSettings(props: {
                 ? `${props.phoneNumber} · ${readableProvider(props.phoneNumberProvider)}`
                 : props.phoneNumber
                   ? `${props.phoneNumber} · ${readablePhoneStatus(props.phoneNumberStatus)}`
-                  : "Browse available Telnyx numbers and confirm before purchasing."}
+                  : "Browse available business numbers and confirm before purchasing."}
             </small>
           </div>
           <div className="channel-status-actions">
@@ -2172,7 +2172,7 @@ function CallBehaviorSettings(props: {
       <div className="studio-setting-group first">
         <ToggleRow icon={PhoneCall} title="Voicemail detection" detail="End the call when the first transcript matches a voicemail greeting." value={props.detectVoicemail} onChange={props.onDetectVoicemail} />
         <ToggleRow icon={ShieldCheck} title="Call-screen handling" detail="Recognize screening prompts such as “Who is calling?”" value={props.handleCallScreening} onChange={props.onHandleCallScreening} />
-        <ToggleRow icon={Settings2} title="DTMF keypad input" detail="Capture keypad sequences when Telnyx call-control support is enabled." value={props.dtmfEnabled} onChange={props.onDtmfEnabled} />
+        <ToggleRow icon={Settings2} title="DTMF keypad input" detail="Capture keypad sequences when call-control support is enabled." value={props.dtmfEnabled} onChange={props.onDtmfEnabled} />
       </div>
       {props.dtmfEnabled && (
         <div className="dtmf-configuration">

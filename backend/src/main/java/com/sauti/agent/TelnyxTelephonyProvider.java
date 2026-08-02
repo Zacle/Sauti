@@ -125,11 +125,31 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         return List.copyOf(result);
     }
 
+    @Override
+    public TelephonyProvider.PhoneNumberCostQuote quotePhoneNumber(String countryCode, String phoneNumber) {
+        return searchAvailableNumbers(countryCode, 20).stream()
+                .filter(number -> number.phoneNumber().equals(phoneNumber))
+                .findFirst()
+                .map(number -> new TelephonyProvider.PhoneNumberCostQuote(
+                        number.phoneNumber(), money(number.upfrontCost()), money(number.monthlyCost()),
+                        number.currency() == null || number.currency().isBlank() ? "USD" : number.currency()))
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "The selected phone number is no longer available; refresh the number list"));
+    }
+
     private boolean hasFeature(JsonNode number, String feature) {
         for (var item : number.withArray("features")) {
             if (feature.equalsIgnoreCase(item.path("name").asText())) return true;
         }
         return false;
+    }
+
+    private java.math.BigDecimal money(String value) {
+        try {
+            return value == null || value.isBlank() ? java.math.BigDecimal.ZERO : new java.math.BigDecimal(value);
+        } catch (NumberFormatException exception) {
+            throw new IllegalStateException("Telnyx returned an invalid phone-number price", exception);
+        }
     }
 
     public NumberOrder createNumberOrder(String phoneNumber) {

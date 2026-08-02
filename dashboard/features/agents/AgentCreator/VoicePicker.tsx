@@ -328,7 +328,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
 
             <div className="voice-engine-summary">
               <span><Mic2 size={17} /></span>
-              <div><strong>Telnyx voice library</strong><small>Choose a language, refine by accent, then listen before saving.</small></div>
+              <div><strong>Voice library</strong><small>Choose a language, refine by accent, then listen before saving.</small></div>
               <i>{voices.length} voices · {availableLanguageCount} languages</i>
             </div>
 
@@ -336,7 +336,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
               {previewError && <div className="voice-preview-error">{previewError}</div>}
               {loading && <div className="voice-picker-state"><LoaderCircle className="spin" size={22} /> Loading available voices...</div>}
               {!loading && error && <div className="voice-picker-state error">{error}<small>Check the configured TTS provider credentials.</small></div>}
-              {!loading && !error && !providerEnabled && <div className="voice-picker-state">No voice provider is enabled.<small>Configure TELNYX_API_KEY in the backend environment.</small></div>}
+              {!loading && !error && !providerEnabled && <div className="voice-picker-state">The voice library is unavailable.<small>Ask a workspace administrator to check the voice service configuration.</small></div>}
               {!loading && !error && providerEnabled && unsupportedLanguage && (
                 <div className="voice-language-unavailable">
                   <CircleAlert aria-hidden="true" size={20} />
@@ -456,9 +456,9 @@ function displayVoiceName(value: string) {
 
 function unsupportedLanguageMessage(language: string, enabledProviders: string[]) {
   if (!enabledProviders.includes("telnyx")) {
-    return "Telnyx is not enabled in the backend environment. Add TELNYX_API_KEY so the native voice catalog can load.";
+    return "The voice service is not enabled. Ask a workspace administrator to check the provider configuration.";
   }
-  return `No ${languageName(language)} voice was returned by Telnyx. Choose a compatible language or voice.`;
+  return `No ${languageName(language)} voice is available yet. Choose a compatible language or voice.`;
 }
 
 function compareVoiceQuality(left: VoiceOption, right: VoiceOption, languages: string[]) {
@@ -490,7 +490,7 @@ function providerRank(provider: string) {
 }
 
 function providerName(provider: string) {
-  return provider === "telnyx" ? "Telnyx" : titleCase(provider);
+  return provider === "telnyx" ? "Sauti Voice" : titleCase(provider);
 }
 
 function categoryRank(category: string) {

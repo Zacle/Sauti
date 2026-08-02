@@ -1614,14 +1614,19 @@
     position: relative;
   }
 
-  .agent-studio-console-shell .console-content,
-  .agent-studio-console-shell .console-content:has(> .agent-studio) {
+  .agent-studio-console-shell .console-content {
     width: 100%;
     height: auto;
     min-height: 0;
     margin: 0;
     padding: 0;
     overflow: hidden;
+  }
+
+  .agent-studio-console-shell .console-content:has(> .agent-studio) {
+    display: flex;
+    height: 100%;
+    align-items: stretch;
   }
 
   /* The new-agent template chooser shares this route-level shell but is a
