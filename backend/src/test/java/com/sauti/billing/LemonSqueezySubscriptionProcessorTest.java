@@ -27,10 +27,13 @@ class LemonSqueezySubscriptionProcessorTest {
         var plans = new LemonSqueezyPlanCatalog("101", "", "", "", "", "");
         var tenant = new Tenant("Clinic", "owner@example.com", "GB");
         var account = new BillingAccount(tenant.getId());
-        var event = new BillingProviderEvent("a".repeat(64), "subscription_created", payload(tenant.getId()));
-        when(events.findTop20ByStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(anyList(), any(OffsetDateTime.class)))
+        var event = new BillingProviderEvent("lemon_squeezy", "a".repeat(64),
+                "subscription_created", payload(tenant.getId()));
+        when(events.findTop20ByProviderAndStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
+                any(), anyList(), any(OffsetDateTime.class)))
                 .thenReturn(List.of(event));
-        when(subscriptions.findByProviderSubscriptionId("sub-1")).thenReturn(Optional.empty());
+        when(subscriptions.findByProviderAndProviderSubscriptionId("lemon_squeezy", "sub-1"))
+                .thenReturn(Optional.empty());
         when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.empty());
         when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
         when(ledger.account(tenant.getId())).thenReturn(account);

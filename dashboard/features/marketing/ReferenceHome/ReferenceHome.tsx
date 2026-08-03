@@ -19,13 +19,13 @@ import {
   Languages,
   LockKeyhole,
   MessageCircleMore,
-  Play,
   ShieldCheck,
   Sparkles,
   UserRoundCheck,
   Workflow,
 } from "lucide-react";
 import styles from "./ReferenceHome.module.css";
+import { PublicDemoVoice } from "../PublicDemoVoice/PublicDemoVoice";
 
 const HeroMotionOverlay = dynamic(
   () => import("./HeroMotionOverlay").then((module) => module.HeroMotionOverlay),
@@ -144,8 +144,8 @@ export default function ReferenceHome() {
           <h1>Your best conversations never go unanswered.</h1>
           <p>AI voice agents that understand naturally, take action safely, and deliver real outcomes—day and night.</p>
           <div className={styles.actions}>
-            <Link href="/register" className={styles.primary}>Get started <ArrowRight size={16} /></Link>
-            <a href="https://cal.com/sauti/demo" target="_blank" rel="noreferrer" className={styles.secondary}><Play size={15} /> Watch the demo</a>
+            <Link href="/request-demo" className={styles.primary}>Request a demo <ArrowRight size={16} /></Link>
+            <PublicDemoVoice />
           </div>
           <div className={styles.heroSignals}>
             <span><i /> Voice online</span>
@@ -342,16 +342,16 @@ export default function ReferenceHome() {
       <section className={styles.plansFaq}>
         <div className={styles.planIntro} data-reveal>
           <span>Simple, transparent pricing</span>
-          <h2>Start free. Scale when you’re ready.</h2>
-          <p>Get started in minutes. No credit card required.</p>
-          <div className={styles.actions}><Link href="/register" className={styles.primary}>Get started <ArrowRight size={15} /></Link><a href="https://cal.com/sauti/demo" target="_blank" rel="noreferrer" className={styles.planLink}>Talk to sales</a></div>
+          <h2>Start with the right customer journey.</h2>
+          <p>We review each business before creating a workspace or provisioning paid services.</p>
+          <div className={styles.actions}><Link href="/request-demo" className={styles.primary}>Request a demo <ArrowRight size={15} /></Link><Link href="/pricing" className={styles.planLink}>View pricing</Link></div>
         </div>
         <div className={styles.planCard} data-reveal>
-          <small>Starter</small><strong>Free</strong>
-          <span><Check size={14} /> 100 conversations / month</span>
-          <span><Check size={14} /> 1 voice agent</span>
-          <span><Check size={14} /> Basic integrations</span>
-          <Link href="/register">Get started</Link>
+          <small>Tailored pilot</small><strong>By review</strong>
+          <span><Check size={14} /> One focused customer journey</span>
+          <span><Check size={14} /> Guided agent configuration</span>
+          <span><Check size={14} /> Cost and integration review</span>
+          <Link href="/request-demo">Request access</Link>
         </div>
         <div className={styles.faq} data-reveal>
           <span>Frequently asked questions</span>
@@ -364,7 +364,7 @@ export default function ReferenceHome() {
           <span>Ready to transform conversations?</span>
           <h2>Let’s build exceptional customer experiences.</h2>
         </div>
-        <Link href="/register">Get started <ArrowRight size={16} /></Link>
+        <Link href="/request-demo">Request a demo <ArrowRight size={16} /></Link>
         <AudioLines size={120} aria-hidden="true" />
       </section>
     </main>

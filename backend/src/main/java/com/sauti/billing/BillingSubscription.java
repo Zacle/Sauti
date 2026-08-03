@@ -13,6 +13,7 @@ import java.util.UUID;
 public class BillingSubscription extends Auditable {
     @Id private UUID id;
     @Column(nullable = false, unique = true) private UUID tenantId;
+    @Column(nullable = false, length = 30) private String provider;
     @Column(nullable = false, unique = true, length = 100) private String providerSubscriptionId;
     @Column(nullable = false, length = 100) private String providerCustomerId;
     @Column(nullable = false, length = 100) private String providerOrderId;
@@ -32,9 +33,10 @@ public class BillingSubscription extends Auditable {
 
     protected BillingSubscription() { }
 
-    public BillingSubscription(UUID tenantId, String providerSubscriptionId) {
+    public BillingSubscription(UUID tenantId, String provider, String providerSubscriptionId) {
         this.id = UUID.randomUUID();
         this.tenantId = tenantId;
+        this.provider = required(provider);
         this.providerSubscriptionId = providerSubscriptionId;
     }
 
@@ -65,6 +67,7 @@ public class BillingSubscription extends Auditable {
     }
 
     public UUID getTenantId() { return tenantId; }
+    public String getProvider() { return provider; }
     public String getProviderSubscriptionId() { return providerSubscriptionId; }
     public String getProviderStatus() { return providerStatus; }
     public OffsetDateTime getProviderUpdatedAt() { return providerUpdatedAt; }

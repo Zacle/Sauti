@@ -47,6 +47,7 @@ dependencies {
 
 tasks.named("test") {
     useJUnitPlatform()
+    systemProperty "sauti.auth.public-registration-enabled", "true"
 }
 
 tasks.named("processResources") {

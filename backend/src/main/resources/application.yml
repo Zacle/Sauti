@@ -90,6 +90,7 @@ sauti:
     refresh-token-rotation-grace-seconds: 30
   auth:
     expose-dev-tokens: ${AUTH_EXPOSE_DEV_TOKENS:true}
+    public-registration-enabled: ${SAUTI_PUBLIC_REGISTRATION_ENABLED:false}
     google:
       client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
       client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
@@ -100,6 +101,18 @@ sauti:
     from: ${EMAIL_FROM:noreply@sauti.local}
     from-name: ${EMAIL_FROM_NAME:Sauti}
     reply-to: ${EMAIL_REPLY_TO:support@sauti.local}
+  demo-request:
+    notification-email: ${SAUTI_DEMO_REQUEST_NOTIFICATION_EMAIL:${EMAIL_REPLY_TO:support@sauti.local}}
+  public-demo:
+    enabled: ${SAUTI_PUBLIC_DEMO_ENABLED:false}
+    telnyx-agent-id: ${SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID:}
+    telnyx-version-id: ${SAUTI_PUBLIC_DEMO_TELNYX_VERSION_ID:}
+    allowed-origins: ${SAUTI_PUBLIC_DEMO_ALLOWED_ORIGINS:${DASHBOARD_BASE_URL:http://localhost:8088}}
+    max-duration-seconds: ${SAUTI_PUBLIC_DEMO_MAX_DURATION_SECONDS:60}
+    sessions-per-ip-per-day: ${SAUTI_PUBLIC_DEMO_SESSIONS_PER_IP_PER_DAY:2}
+    sessions-per-device-per-day: ${SAUTI_PUBLIC_DEMO_SESSIONS_PER_DEVICE_PER_DAY:2}
+    max-concurrent: ${SAUTI_PUBLIC_DEMO_MAX_CONCURRENT:3}
+    daily-seconds: ${SAUTI_PUBLIC_DEMO_DAILY_SECONDS:1800}
   verification:
     code-expiry-minutes: ${SAUTI_VERIFICATION_CODE_EXPIRY_MINUTES:15}
     code-length: ${SAUTI_VERIFICATION_CODE_LENGTH:6}
@@ -108,6 +121,29 @@ sauti:
   providers:
     mode: ${PROVIDER_MODE:fake}
   billing:
+    provider: ${SAUTI_BILLING_PROVIDER:2checkout}
+    2checkout:
+      secret-key: ${TWO_CHECKOUT_SECRET_KEY:}
+      worker-delay-ms: ${TWO_CHECKOUT_WORKER_DELAY_MS:5000}
+      products:
+        launch-monthly:
+          code: ${TWO_CHECKOUT_PRODUCT_LAUNCH_MONTHLY:}
+          buy-link: ${TWO_CHECKOUT_BUY_LINK_LAUNCH_MONTHLY:}
+        launch-annual:
+          code: ${TWO_CHECKOUT_PRODUCT_LAUNCH_ANNUAL:}
+          buy-link: ${TWO_CHECKOUT_BUY_LINK_LAUNCH_ANNUAL:}
+        growth-monthly:
+          code: ${TWO_CHECKOUT_PRODUCT_GROWTH_MONTHLY:}
+          buy-link: ${TWO_CHECKOUT_BUY_LINK_GROWTH_MONTHLY:}
+        growth-annual:
+          code: ${TWO_CHECKOUT_PRODUCT_GROWTH_ANNUAL:}
+          buy-link: ${TWO_CHECKOUT_BUY_LINK_GROWTH_ANNUAL:}
+        scale-monthly:
+          code: ${TWO_CHECKOUT_PRODUCT_SCALE_MONTHLY:}
+          buy-link: ${TWO_CHECKOUT_BUY_LINK_SCALE_MONTHLY:}
+        scale-annual:
+          code: ${TWO_CHECKOUT_PRODUCT_SCALE_ANNUAL:}
+          buy-link: ${TWO_CHECKOUT_BUY_LINK_SCALE_ANNUAL:}
     lemon-squeezy:
       api-key: ${LEMON_SQUEEZY_API_KEY:}
       store-id: ${LEMON_SQUEEZY_STORE_ID:}

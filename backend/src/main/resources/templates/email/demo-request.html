@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><title>New Sauti demo request</title></head>
+<body style="margin:0;padding:28px;background:#020a14;color:#edf7fc;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+    <tr><td align="center">
+        <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0"
+               style="width:100%;max-width:620px;background:#071827;border:1px solid #17384d;border-radius:18px;">
+            <tr><td style="padding:26px 30px;border-bottom:1px solid #17384d;">
+                <strong style="font-size:21px;">Sauti</strong>
+                <span style="float:right;color:#5ee6dc;font-size:11px;font-weight:700;">NEW DEMO REQUEST</span>
+            </td></tr>
+            <tr><td style="padding:30px;line-height:1.6;">
+                <h1 style="margin:0 0 8px;font-size:25px;" th:text="${request.businessName}">Business</h1>
+                <p style="margin:0 0 24px;color:#9bb1c1;">A business requested a tailored Sauti demonstration.</p>
+                <p><strong>Contact:</strong> <span th:text="${request.contactName}">Name</span></p>
+                <p><strong>Email:</strong> <span th:text="${request.email}">Email</span></p>
+                <p><strong>Country:</strong> <span th:text="${request.countryCode}">Country</span></p>
+                <p><strong>Phone:</strong> <span th:text="${request.phone ?: 'Not provided'}">Phone</span></p>
+                <p><strong>Industry:</strong> <span th:text="${request.industry}">Industry</span></p>
+                <p><strong>Monthly calls:</strong> <span th:text="${request.monthlyCallVolume}">Volume</span></p>
+                <p><strong>Channels:</strong> <span th:text="${request.channels}">Channels</span></p>
+                <p><strong>Use case:</strong><br><span th:text="${request.primaryUseCase}">Use case</span></p>
+                <p><strong>Notes:</strong><br><span th:text="${request.notes ?: 'None'}">Notes</span></p>
+            </td></tr>
+        </table>
+    </td></tr>
+</table>
+</body>
+</html>

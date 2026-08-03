@@ -36,8 +36,8 @@ public class LemonSqueezySubscriptionProcessor {
     @Scheduled(fixedDelayString = "${sauti.billing.lemon-squeezy.worker-delay-ms:5000}")
     @Transactional
     public void processDue() {
-        var due = events.findTop20ByStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
-                List.of("pending", "retrying"), OffsetDateTime.now());
+        var due = events.findTop20ByProviderAndStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
+                "lemon_squeezy", List.of("pending", "retrying"), OffsetDateTime.now());
         for (var event : due) {
             try {
                 process(event);
@@ -61,7 +61,8 @@ public class LemonSqueezySubscriptionProcessor {
         var variantId = required(attributes.path("variant_id"), "variant id");
         var selection = plans.byVariant(variantId)
                 .orElseThrow(() -> new IllegalArgumentException("Subscription variant is not configured"));
-        var existingByProvider = subscriptions.findByProviderSubscriptionId(subscriptionId).orElse(null);
+        var existingByProvider = subscriptions
+                .findByProviderAndProviderSubscriptionId("lemon_squeezy", subscriptionId).orElse(null);
         var tenantId = tenantId(root, existingByProvider);
         if (existingByProvider != null && !existingByProvider.getTenantId().equals(tenantId)) {
             throw new SecurityException("Subscription workspace does not match existing ownership");
@@ -70,7 +71,11 @@ public class LemonSqueezySubscriptionProcessor {
                 .orElseThrow(() -> new IllegalArgumentException("Subscription workspace was not found"));
         var subscription = existingByProvider != null
                 ? existingByProvider
-                : subscriptions.findByTenantId(tenantId).orElseGet(() -> new BillingSubscription(tenantId, subscriptionId));
+                : subscriptions.findByTenantId(tenantId)
+                        .orElseGet(() -> new BillingSubscription(tenantId, "lemon_squeezy", subscriptionId));
+        if (!"lemon_squeezy".equals(subscription.getProvider())) {
+            throw new IllegalArgumentException("Workspace subscription belongs to a different billing provider");
+        }
         if (!subscription.getProviderSubscriptionId().equals(subscriptionId)) {
             throw new IllegalArgumentException("Workspace already has a different subscription");
         }

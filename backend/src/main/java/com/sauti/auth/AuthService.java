@@ -41,6 +41,7 @@ public class AuthService {
     private final long refreshTokenDays;
     private final Duration refreshTokenRotationGrace;
     private final boolean exposeDevTokens;
+    private final boolean publicRegistrationEnabled;
 
     public AuthService(
             TenantRepository tenantRepository,
@@ -54,7 +55,8 @@ public class AuthService {
             ApplicationEventPublisher eventPublisher,
             @Value("${sauti.jwt.refresh-token-days}") long refreshTokenDays,
             @Value("${sauti.jwt.refresh-token-rotation-grace-seconds:30}") long refreshTokenRotationGraceSeconds,
-            @Value("${sauti.auth.expose-dev-tokens:true}") boolean exposeDevTokens
+            @Value("${sauti.auth.expose-dev-tokens:true}") boolean exposeDevTokens,
+            @Value("${sauti.auth.public-registration-enabled:false}") boolean publicRegistrationEnabled
     ) {
         this.tenantRepository = tenantRepository;
         this.userRepository = userRepository;
@@ -68,10 +70,12 @@ public class AuthService {
         this.refreshTokenDays = refreshTokenDays;
         this.refreshTokenRotationGrace = Duration.ofSeconds(Math.max(0, refreshTokenRotationGraceSeconds));
         this.exposeDevTokens = exposeDevTokens;
+        this.publicRegistrationEnabled = publicRegistrationEnabled;
     }
 
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
+        requirePublicRegistration();
         var email = request.email().toLowerCase();
         if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email is already registered");
@@ -225,6 +229,7 @@ public class AuthService {
                     return user;
                 })
                 .orElseGet(() -> {
+                    requirePublicRegistration();
                     Tenant tenant = tenantRepository.save(new Tenant(
                             businessName(requestedBusinessName, profile),
                             email,
@@ -236,6 +241,10 @@ public class AuthService {
                     publishWelcome(saved);
                     return saved;
                 });
+    }
+
+    private void requirePublicRegistration() {
+        if (!publicRegistrationEnabled) throw new RegistrationClosedException();
     }
 
     private void publishWelcome(User user) {

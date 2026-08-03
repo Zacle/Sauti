@@ -1,0 +1,75 @@
+.trigger {
+  display: inline-flex;
+  min-height: 52px;
+  padding: 0 24px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #eef8f8;
+  background: rgba(4, 17, 30, 0.42);
+  backdrop-filter: blur(14px);
+  font-size: 0.82rem;
+  font-weight: 850;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.trigger:hover:not(:disabled) { transform: translateY(-2px); }
+.trigger:disabled { cursor: wait; opacity: 0.72; }
+.triggerError { align-self: center; max-width: 220px; color: #ffc0b8; font-size: 0.7rem; }
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 8, 18, 0.76);
+  backdrop-filter: blur(16px);
+}
+
+.dialog {
+  width: min(520px, 100%);
+  min-height: 560px;
+  padding: 22px;
+  border: 1px solid rgba(68, 232, 211, 0.24);
+  border-radius: 30px;
+  color: #edfafa;
+  background: radial-gradient(circle at 50% 32%, rgba(23, 209, 196, 0.14), transparent 34%), #031426;
+  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.55);
+}
+
+.dialog header { display: flex; align-items: center; justify-content: space-between; }
+.dialog header > div { display: flex; align-items: center; gap: 11px; }
+.dialog header svg { color: #49e3d0; }
+.dialog header span { display: grid; gap: 2px; }
+.dialog header small { color: #6f9aa0; font-size: 0.62rem; font-weight: 850; letter-spacing: 0.14em; }
+.dialog header strong { font-size: 1rem; }
+.dialog header button { display: grid; width: 38px; height: 38px; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; place-items: center; color: #b8ced1; background: rgba(255,255,255,.04); cursor: pointer; }
+
+.animation { display: grid; height: 300px; place-items: center; }
+.animation :global(.test-voice-animation) { width: 280px; height: 280px; }
+.animation :global(.test-voice-animation canvas) { display: block; width: 100%; height: 100%; }
+.liveStatus { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.liveStatus strong { font-size: 1.1rem; }
+.liveStatus span { padding: 5px 9px; border-radius: 999px; color: #58e6d4; background: rgba(54, 223, 202, .1); font-size: .7rem; font-weight: 800; }
+.hint { max-width: 420px; margin: 16px auto 18px; color: #91abb0; text-align: center; font-size: .82rem; line-height: 1.55; }
+.end { display: flex; min-height: 44px; margin: 0 auto; padding: 0 18px; border: 1px solid rgba(255, 102, 91, .32); border-radius: 999px; align-items: center; gap: 8px; color: #ffaaa3; background: rgba(255, 83, 72, .08); cursor: pointer; }
+.privacy { display: flex; margin-top: 18px; align-items: center; justify-content: center; gap: 6px; color: #6f9096; font-size: .67rem; }
+.error { margin: 0 auto 14px; padding: 10px 12px; border: 1px solid rgba(255, 103, 92, .28); border-radius: 12px; color: #ffc0b8; background: rgba(255, 76, 64, .08); font-size: .75rem; }
+
+.ended { display: grid; min-height: 465px; place-items: center; align-content: center; text-align: center; }
+.ended > span { display: grid; width: 58px; height: 58px; border-radius: 18px; place-items: center; color: #031426; background: #56e5d2; }
+.ended h2 { margin: 22px 0 10px; font-size: 2rem; letter-spacing: -.04em; }
+.ended p { max-width: 380px; margin: 0; color: #91abb0; line-height: 1.6; }
+.ended a { display: inline-flex; min-height: 48px; margin-top: 24px; padding: 0 20px; border-radius: 999px; align-items: center; gap: 8px; color: #031426; background: #56e5d2; font-weight: 850; }
+
+@media (max-width: 600px) {
+  .dialog { min-height: 520px; padding: 18px; border-radius: 24px; }
+  .animation { height: 260px; }
+  .animation :global(.test-voice-animation) { width: 245px; height: 245px; }
+  .privacy { text-align: center; }
+}

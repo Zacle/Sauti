@@ -15,7 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
-public class LemonSqueezyCheckoutService {
+public class LemonSqueezyCheckoutService implements BillingCheckoutGateway {
     private final TenantRepository tenants;
     private final LemonSqueezyPlanCatalog plans;
     private final ObjectMapper objectMapper;
@@ -52,7 +52,12 @@ public class LemonSqueezyCheckoutService {
         this.redirectUrl = clean(redirectUrl);
     }
 
-    public CheckoutResponse create(UUID tenantId, CheckoutRequest request) {
+    @Override
+    public String provider() { return "lemon_squeezy"; }
+
+    @Override
+    public BillingCheckoutGateway.CheckoutResponse create(
+            UUID tenantId, BillingCheckoutGateway.CheckoutRequest request) {
         if (apiKey.isBlank() || storeId.isBlank()) {
             throw new IllegalStateException("Lemon Squeezy checkout is not configured");
         }
@@ -86,7 +91,8 @@ public class LemonSqueezyCheckoutService {
                 throw new IllegalStateException("Lemon Squeezy could not create a checkout");
             }
             var url = responseUrl(response.body());
-            return new CheckoutResponse(url, selection.plan(), selection.interval());
+            return new BillingCheckoutGateway.CheckoutResponse(
+                    url, selection.plan(), selection.interval(), provider());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Checkout creation was interrupted", exception);
@@ -108,6 +114,4 @@ public class LemonSqueezyCheckoutService {
 
     private static String clean(String value) { return value == null ? "" : value.trim(); }
 
-    public record CheckoutRequest(String plan, String interval) { }
-    public record CheckoutResponse(String url, String plan, String interval) { }
 }

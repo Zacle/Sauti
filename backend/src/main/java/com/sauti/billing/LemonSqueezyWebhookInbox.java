@@ -29,14 +29,14 @@ public class LemonSqueezyWebhookInbox {
         if (secret.length == 0) throw new IllegalStateException("Lemon Squeezy webhooks are not configured");
         if (!valid(payload, signature)) throw new SecurityException("Invalid Lemon Squeezy signature");
         var hash = sha256(payload);
-        if (events.findByPayloadHash(hash).isPresent()) return;
+        if (events.findByProviderAndPayloadHash("lemon_squeezy", hash).isPresent()) return;
         try {
             var root = objectMapper.readTree(payload);
             var eventName = root.path("meta").path("event_name").asText("").trim();
             if (eventName.isBlank()) throw new IllegalArgumentException("Billing event name is required");
-            events.saveAndFlush(new BillingProviderEvent(hash, eventName, payload));
+            events.saveAndFlush(new BillingProviderEvent("lemon_squeezy", hash, eventName, payload));
         } catch (DataIntegrityViolationException duplicate) {
-            if (events.findByPayloadHash(hash).isEmpty()) throw duplicate;
+            if (events.findByProviderAndPayloadHash("lemon_squeezy", hash).isEmpty()) throw duplicate;
         } catch (IllegalArgumentException exception) {
             throw exception;
         } catch (Exception exception) {

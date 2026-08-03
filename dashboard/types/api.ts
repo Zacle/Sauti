@@ -538,6 +538,7 @@ export type BillingCheckout = {
   url: string;
   plan: "launch" | "growth" | "scale";
   interval: "monthly" | "annual";
+  provider: string;
 };
 
 export type DashboardData = {

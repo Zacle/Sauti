@@ -133,6 +133,12 @@ Telnyx:
 
 Billing:
 
+- 2Checkout / 2Monetize LCN webhook:
+  `https://sauti.uk/webhooks/2checkout/lcn`
+- Legacy Lemon Squeezy webhook: `https://sauti.uk/webhooks/lemon-squeezy`
+
+Billing:
+
 - Lemon Squeezy webhook URL: `https://sauti.uk/webhooks/lemon-squeezy`
 - Lemon Squeezy checkout redirects to `https://sauti.uk/billing?checkout=success`.
 - Subscription webhooks update local plan state but must keep billing

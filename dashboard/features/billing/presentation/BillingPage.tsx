@@ -266,7 +266,7 @@ export function BillingPage() {
             <span className={styles.dialogIcon}><ShieldCheck size={23} /></span>
             <small>Secure hosted checkout</small>
             <h2 id="preview-title">Review before checkout</h2>
-            <p id="preview-description">Continuing opens Lemon Squeezy. Your plan changes only after you confirm payment there and Sauti receives a signed subscription event.</p>
+            <p id="preview-description">Continuing opens our secure merchant-of-record checkout. Your plan changes only after you confirm payment there and Sauti receives a signed subscription event.</p>
             <div className={styles.dialogRows}>
               <span><em>Plan</em><strong>{selectedPlan.name}</strong></span>
               <span><em>Projected usage</em><strong>{projectedMinutes.toLocaleString()} minutes</strong></span>

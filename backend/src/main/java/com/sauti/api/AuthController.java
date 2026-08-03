@@ -14,6 +14,7 @@ import com.sauti.auth.AuthDtos.VerifyEmailRequest;
 import com.sauti.auth.AuthRateLimitService;
 import com.sauti.auth.AuthService;
 import com.sauti.auth.GoogleOAuthService;
+import com.sauti.auth.RegistrationClosedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.net.URLEncoder;
@@ -88,11 +89,16 @@ public class AuthController {
             return new RedirectView(dashboardBaseUrl + "/login?google=cancelled");
         }
         var result = googleOAuthService.exchangeCodeWithContext(code, state);
-        var response = authService.loginWithGoogleProfile(
-                result.profile(),
-                result.context().businessName(),
-                result.context().countryCode()
-        );
+        final AuthResponse response;
+        try {
+            response = authService.loginWithGoogleProfile(
+                    result.profile(),
+                    result.context().businessName(),
+                    result.context().countryCode()
+            );
+        } catch (RegistrationClosedException exception) {
+            return new RedirectView(dashboardBaseUrl + "/request-demo?registration=closed");
+        }
         var target = dashboardBaseUrl + "/oauth/callback?next=" + encode(result.context().returnPath())
                 + "#accessToken=" + encode(response.accessToken())
                 + "&refreshToken=" + encode(response.refreshToken())

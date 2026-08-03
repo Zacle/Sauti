@@ -48,6 +48,7 @@ class ProductionSafetyValidatorTest {
                 .withProperty("sauti.llm.provider", "spring-ai")
                 .withProperty("sauti.telephony.provider", "telnyx")
                 .withProperty("sauti.auth.expose-dev-tokens", "false")
+                .withProperty("sauti.auth.public-registration-enabled", "false")
                 .withProperty("spring.h2.console.enabled", "false")
                 .withProperty("spring.datasource.url", "jdbc:postgresql://db/sauti")
                 .withProperty("sauti.dashboard.base-url", "https://sauti.uk")

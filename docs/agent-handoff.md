@@ -15,6 +15,163 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-03: Provision and safely wire the isolated homepage demo assistant
+
+- Created the dedicated Telnyx assistant `Sauti Public Demo` with ID
+  `assistant-5f264a86-90cb-447a-ae41-e201d095cfba` and version
+  `20260803T192200548293`.
+- Re-read the provider configuration and verified the isolation boundary:
+  zero inline/shared tools, zero MCP servers, zero integrations, recording
+  disabled, provider transcript retention disabled, post-conversation
+  processing disabled, unauthenticated browser calls enabled, and a 60-second
+  provider time limit. It uses the existing production-proven Kimi K2.6 model
+  and Telnyx Ultra voice with Deepgram Nova-3 automatic language detection.
+- Added the three non-secret operational values as GitHub Actions repository
+  variables. `SAUTI_PUBLIC_DEMO_ENABLED` remains `false`; no public traffic can
+  start a demo yet.
+- Updated `.github/workflows/deploy.yml` so the normal reviewed CI/CD release
+  synchronizes the enablement flag and assistant ID/version into the production
+  environment. This avoids manual production-host edits and keeps rollout
+  reversible through the feature flag.
+- Added the same values to the ignored local `.env`, still disabled, for later
+  local acceptance without placing them in source control.
+- Attempted a provider-side text acceptance check. Telnyx correctly rejected
+  Assistant Chat because the assistant has data retention disabled. Retention
+  remains disabled; the exact empty temporary conversations were deleted, and
+  behavioral acceptance must use the actual browser voice path.
+- Verification for this operational slice:
+  - re-fetched the assistant from Telnyx and checked its isolation, privacy,
+    browser-call, model, transcription, and duration fields;
+  - re-listed the three GitHub Actions repository variables and confirmed the
+    rollout flag is `false`;
+  - `git diff --check` passed;
+  - `actionlint` and a local YAML parser are not installed, so the workflow
+    will receive its authoritative syntax validation in GitHub Actions.
+- Files touched for this operational slice:
+  - `.github/workflows/deploy.yml`;
+  - `docs/public-voice-demo-setup.md`;
+  - this handoff;
+  - ignored local `.env` (not tracked).
+- Deployment status: not deployed. All repository changes remain uncommitted
+  for maintainer review and the normal CI/CD workflow.
+- Required next step: after maintainer review and CI/CD deployment, run the
+  homepage microphone acceptance checks with the flag still off in public,
+  then set the repository variable to `true` only after validating first-word
+  audio, language following, the no-action boundary, complete closing speech,
+  the 60-second cutoff, and quotas.
+
+### 2026-08-03: Add the isolated, cost-bounded homepage voice demo
+
+- Replaced the homepage's interim secondary CTA with `Talk to Sauti`. The
+  browser preloads and preconnects the Telnyx runtime, keeps the preparation
+  state out of the call dialog, and reveals the dialog only when real agent
+  speech begins. During the call it renders the existing procedural Sauti AI
+  animation with listening, thinking, and speaking states.
+- Added a dedicated public-demo API that accepts only a separately provisioned
+  Telnyx assistant ID/version. It does not resolve a tenant agent, create a call
+  or customer record, write a transcript, expose business tools, or access
+  workspace data.
+- Added signed short-lived session tokens, strict allowed-origin checks, a
+  stable anonymous browser-device identifier, and Redis-backed controls:
+  - two sessions per IP per rolling day by default;
+  - two sessions per browser device per rolling day;
+  - three concurrent active sessions;
+  - 60 seconds maximum per session;
+  - 1,800 reserved seconds per day, conservatively reserving the full maximum
+    for each accepted session;
+  - automatically expiring active leases and idempotent compare-and-delete
+    release when the browser completes.
+- The client asks the assistant for one brief closing sentence with eight
+  seconds remaining and still enforces the provider/runtime maximum. The ended
+  state leads directly to the tailored demo-request form.
+- The feature fails closed. It is disabled unless
+  `SAUTI_PUBLIC_DEMO_ENABLED=true`, the dedicated assistant ID is populated,
+  Telnyx is configured, and the request origin is explicitly allowed.
+  Production safety validation also now refuses to start if public workspace
+  registration is enabled.
+- Added `docs/public-voice-demo-setup.md` with the isolated assistant prompt,
+  no-tools/no-customer-data rules, Telnyx setup, environment variables, and
+  production acceptance checks.
+- Files touched for this slice:
+  - public-demo DTOs, service, controller, quota service/exception, runtime
+    adapter, production safety validation, configuration, and environment
+    examples;
+  - homepage demo API client, interactive component, CSS module, and hero CTA;
+  - focused service/quota/safety tests, setup guide, and this handoff.
+- Verification:
+  - focused public-demo service and quota tests passed;
+  - complete backend test suite passed;
+  - dashboard typecheck and zero-warning lint passed;
+  - dashboard production build passed, including all 52 static pages;
+  - rendered homepage HTML contains the new demo control and revised
+    request-demo acquisition flow;
+  - interactive browser capture was unavailable because the browser-control
+    runtime could not initialize its local assets.
+- Deployment status: not deployed; all changes remain uncommitted for
+  maintainer review and the normal CI/CD workflow.
+- Required operational follow-up: create and review the dedicated Telnyx
+  assistant, configure its production ID/version with the feature still
+  disabled, deploy through CI/CD, then enable it and run the live microphone,
+  one-minute closing, origin, quota, and no-tool acceptance checks. Do not use
+  Gerard, Ailsa, or any tenant-owned assistant for this public demo.
+
+### 2026-08-03: Close self-service registration and add demo-request intake
+
+- Disabled public workspace creation by default. Password registration now
+  fails before any tenant or user is persisted, and Google authentication only
+  signs in an existing user; an unknown Google identity is redirected to the
+  demo-request journey instead of silently creating a workspace.
+- Added `SAUTI_PUBLIC_REGISTRATION_ENABLED`, defaulting to `false`. Tests set it
+  to `true` in the Gradle test process so existing registration-flow coverage
+  remains valid without shadowing the normal Spring application configuration.
+- Replaced the public `/register` page with a server redirect to
+  `/request-demo`, changed acquisition CTAs and free/self-service claims, and
+  retained `/login` for existing businesses.
+- Added a public request-demo page and API. Requests are validated, stored in a
+  dedicated `demo_requests` table, de-duplicated by email for 24 hours, guarded
+  by IP/email rate limits and a honeypot, and followed by an after-commit email
+  notification to the configured Sauti address. Submitting the form never
+  creates a tenant, user, provider resource, or paid service.
+- Added `SAUTI_DEMO_REQUEST_NOTIFICATION_EMAIL` and Flyway migration
+  `V52__demo_requests.sql`.
+- Files touched for this slice:
+  - auth service/controller/exception handling and registration configuration;
+  - demo request entity, repository, DTOs, service, controller, event/listener,
+    migration, and email template;
+  - request-demo API client, feature page, CSS module, and route;
+  - register redirect, login acquisition link, marketing navigation, homepage,
+    and pricing CTAs/copy;
+  - focused auth/demo-request tests, Gradle test configuration, environment
+    examples, and this handoff.
+- Verification:
+  - focused registration-closure and demo-request service tests passed;
+  - full backend suite passed from a forced clean task run;
+  - dashboard typecheck passed;
+  - dashboard lint passed with zero warnings;
+  - dashboard production build passed, including all 52 static pages.
+- Deployment status: not deployed; all changes remain uncommitted for
+  maintainer review and the normal CI/CD workflow.
+- Next Phase 0 slice: replace the homepage's interim demo CTA with a dedicated
+  public, Sauti-only browser voice agent using the existing AI animation. The
+  server must enforce a short session duration, per-IP/device quotas, global
+  concurrency and daily cost ceilings, and must avoid tenant tools and customer
+  data before any public voice session can be issued.
+
+### 2026-08-03: Google API verification audit package
+
+- Audited the repository’s Google OAuth flows, requested scopes, Google Calendar/Sheets data paths, and AI/model-provider references in response to a Google verification request.
+- Added `docs/google-verification-package.md` containing the exact code-level scope inventory, reviewer navigation, demo-video script, AI-provider disclosure table, policy risk note, and reply template.
+- Why: Google requested a new expanded-scope demonstration, active test credentials, navigation instructions, and a complete AI-provider/data-isolation disclosure.
+- Files touched:
+  - `docs/google-verification-package.md`
+  - `docs/agent-handoff.md`
+- Verification: repository source audit with `rg`; no application code changed; `git diff --check` passed.
+- Deployment: not deployed; documentation remains uncommitted for maintainer review.
+- Known follow-ups and risks:
+  - Confirm the exact Google Cloud Console scopes match the code and the video.
+  - Replace every bracketed placeholder with staging-specific credentials, links, provider plans, and retention/training settings through a secure channel.
+  - The Google Sheets lookup result reaches the AI tool/conversation layer; do not claim Workspace data isolation until the deployed data path and provider terms/settings have been verified or the flow is changed.
+
 ## Deployment state
 
 Deployment is automated:
@@ -10035,3 +10192,62 @@ Expected:
   management URL on the billing page, handle subscription-payment events as
   immutable credit/funding ledger entries, then perform a test-mode lifecycle
   run before considering enforcement.
+
+### 2026-08-03 - Provider-neutral billing and 2Checkout / 2Monetize adapter
+
+- Replaced the billing controller's direct Lemon Squeezy dependency with a
+  provider-neutral checkout gateway and runtime selector. The stable dashboard
+  endpoint remains `POST /api/v1/billing/checkout`; the active adapter is now
+  selected with `SAUTI_BILLING_PROVIDER`, defaulting to `2checkout`. The Lemon
+  Squeezy adapter remains available as a rollback option without dashboard
+  changes.
+- Added a 2Checkout hosted-checkout adapter for six server-configured recurring
+  products: Launch, Growth, and Scale, each monthly and annual. It consumes the
+  generated HTTPS buy links from the Merchant Control Panel instead of
+  constructing undocumented cart URLs.
+- Added tamper-evident 2Checkout external customer references. Checkout links
+  receive a server-signed workspace reference in `CUSTOMERID` and `REF`; the
+  subscription worker verifies it before applying any tenant entitlement, so a
+  visible tenant UUID is never trusted as proof of ownership.
+- Added public `POST /webhooks/2checkout/lcn` for form-encoded License Change
+  Notifications. It validates `SIGNATURE_SHA2_256` over the received values in
+  their original order, fails closed without a secret, persists each verified
+  payload idempotently, and returns the signed read receipt required by
+  2Checkout.
+- Made durable billing events and subscription lookups provider-scoped. Added a
+  2Checkout worker that maps configured product codes and LCN status/date/card
+  metadata into the existing tenant subscription and plan allowance. Existing
+  Lemon Squeezy processing is isolated to its own provider events.
+- Kept billing enforcement in `observe`. Active/test lifecycle events can update
+  synchronized subscription state, but this integration cannot unexpectedly
+  block calls before test-mode purchase, renewal, cancellation, past-due, and
+  expiration journeys have been reviewed. IPN-level refund/chargeback ledger
+  evidence is still a follow-up and must be complete before enforcement.
+- Added Flyway migration `V51__provider_neutral_billing.sql`, placeholder-only
+  environment configuration, provider-neutral billing UI copy/API shape, the
+  production callback allow-list, and `docs/2checkout-setup.md` with the exact
+  product, LCN response-tag, test-mode, and rollback checklist.
+- Files touched:
+  - provider-neutral checkout gateway/router and the adapted Lemon Squeezy
+    checkout service;
+  - 2Checkout plan catalog, hosted checkout, signed tenant reference, LCN inbox,
+    subscription worker, and webhook controller;
+  - billing subscription/event entities, repositories, processors, security,
+    migration, application and environment examples;
+  - billing dashboard type/copy, focused provider tests, `AGENTS.md`, setup docs,
+    and this handoff.
+- Verification:
+  - focused Lemon Squeezy and 2Checkout checkout/webhook/subscription tests passed;
+  - complete `:backend:test` suite passed (405 tests before the final focused
+    2Checkout processor test, which also passed afterward);
+  - `npm.cmd run typecheck` passed;
+  - `npm.cmd run build` passed, including all 51 static pages;
+  - `git diff --check` passed before this documentation-only append (line-ending
+    notices only).
+- Deployment status: not deployed and all changes remain uncommitted for
+  maintainer review.
+- Required next step: after 2Checkout account approval, create the six recurring
+  products, configure their codes/generated buy links and the account Secret
+  Key, enable the documented SHA-256 LCN tags/triggers, and run the test-mode
+  lifecycle checklist. Then implement IPN transaction/refund/chargeback evidence
+  and reconciliation before any move from observe to enforce.

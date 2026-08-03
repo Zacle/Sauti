@@ -74,6 +74,9 @@ jobs:
           TELNYX_PUBLIC_KEY: ${{ secrets.TELNYX_PUBLIC_KEY }}
           TELNYX_CONNECTION_ID: ${{ secrets.TELNYX_CONNECTION_ID }}
           TELNYX_TOOL_WEBHOOK_SECRET: ${{ secrets.TELNYX_TOOL_WEBHOOK_SECRET }}
+          SAUTI_PUBLIC_DEMO_ENABLED: ${{ vars.SAUTI_PUBLIC_DEMO_ENABLED }}
+          SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID: ${{ vars.SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID }}
+          SAUTI_PUBLIC_DEMO_TELNYX_VERSION_ID: ${{ vars.SAUTI_PUBLIC_DEMO_TELNYX_VERSION_ID }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
@@ -105,6 +108,9 @@ jobs:
           sync_provider_secret TELNYX_PUBLIC_KEY "$TELNYX_PUBLIC_KEY"
           sync_provider_secret TELNYX_CONNECTION_ID "$TELNYX_CONNECTION_ID"
           sync_provider_secret TELNYX_TOOL_WEBHOOK_SECRET "$TELNYX_TOOL_WEBHOOK_SECRET"
+          sync_provider_secret SAUTI_PUBLIC_DEMO_ENABLED "${SAUTI_PUBLIC_DEMO_ENABLED:-false}"
+          sync_provider_secret SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID "$SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID"
+          sync_provider_secret SAUTI_PUBLIC_DEMO_TELNYX_VERSION_ID "$SAUTI_PUBLIC_DEMO_TELNYX_VERSION_ID"
 
       - name: Deploy verified images
         env:

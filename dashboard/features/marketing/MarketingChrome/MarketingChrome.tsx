@@ -43,8 +43,8 @@ export function MarketingNav() {
       </nav>
       <div className="nav-actions">
         <Link className="login-link" href="/login">Log in</Link>
-        <Link className="solid-button" href="/register">
-          Start free trial <ArrowRight size={15} />
+        <Link className="solid-button" href="/request-demo">
+          Request a demo <ArrowRight size={15} />
         </Link>
       </div>
       <button
@@ -80,8 +80,8 @@ export function MarketingNav() {
           <Link className="mobile-nav-pricing" href="/pricing" onClick={() => setMobileOpen(false)}>
             Pricing <ArrowRight size={16} />
           </Link>
-          <Link className="solid-button large mobile-nav-cta" href="/register" onClick={() => setMobileOpen(false)}>
-            Start free trial <ArrowRight size={17} />
+          <Link className="solid-button large mobile-nav-cta" href="/request-demo" onClick={() => setMobileOpen(false)}>
+            Request a demo <ArrowRight size={17} />
           </Link>
         </div>
       </div>

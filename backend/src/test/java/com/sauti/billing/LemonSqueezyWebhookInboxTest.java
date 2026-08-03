@@ -23,7 +23,8 @@ class LemonSqueezyWebhookInboxTest {
     @Test
     void verifiesSignatureAndStoresEachPayloadOnce() throws Exception {
         var payload = "{\"meta\":{\"event_name\":\"subscription_created\"},\"data\":{}}";
-        when(events.findByPayloadHash(any())).thenReturn(Optional.empty(), Optional.of(mock(BillingProviderEvent.class)));
+        when(events.findByProviderAndPayloadHash(any(), any()))
+                .thenReturn(Optional.empty(), Optional.of(mock(BillingProviderEvent.class)));
 
         inbox.receive(payload, signature(payload));
         inbox.receive(payload, signature(payload));

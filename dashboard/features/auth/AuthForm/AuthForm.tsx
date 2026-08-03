@@ -274,7 +274,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               {isVerify ? (
                 <>Didn&apos;t receive it? <button type="button" onClick={resend}>Resend code</button></>
               ) : isLogin ? (
-                <>New to Sauti? <Link href="/register">Create workspace</Link></>
+                <>Interested in Sauti? <Link href="/request-demo">Request a demo</Link></>
               ) : (
                 <>Already have an account? <Link href="/login">Log in</Link></>
               )}

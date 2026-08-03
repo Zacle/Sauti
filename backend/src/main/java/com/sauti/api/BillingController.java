@@ -4,9 +4,9 @@ import com.sauti.auth.AuthenticatedUser;
 import com.sauti.billing.BillingDtos.BillingUsageResponse;
 import com.sauti.billing.BillingDtos.BillingAccountResponse;
 import com.sauti.billing.BillingService;
-import com.sauti.billing.LemonSqueezyCheckoutService;
-import com.sauti.billing.LemonSqueezyCheckoutService.CheckoutRequest;
-import com.sauti.billing.LemonSqueezyCheckoutService.CheckoutResponse;
+import com.sauti.billing.BillingCheckoutGateway.CheckoutRequest;
+import com.sauti.billing.BillingCheckoutGateway.CheckoutResponse;
+import com.sauti.billing.BillingCheckoutService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,9 +20,9 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/billing")
 public class BillingController {
     private final BillingService billingService;
-    private final LemonSqueezyCheckoutService checkoutService;
+    private final BillingCheckoutService checkoutService;
 
-    public BillingController(BillingService billingService, LemonSqueezyCheckoutService checkoutService) {
+    public BillingController(BillingService billingService, BillingCheckoutService checkoutService) {
         this.billingService = billingService;
         this.checkoutService = checkoutService;
     }

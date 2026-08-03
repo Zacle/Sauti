@@ -12,6 +12,7 @@ import java.util.UUID;
 @Table(name = "billing_provider_events")
 public class BillingProviderEvent extends Auditable {
     @Id private UUID id;
+    @Column(nullable = false, length = 30) private String provider;
     @Column(nullable = false, unique = true, length = 64) private String payloadHash;
     @Column(nullable = false, length = 50) private String eventName;
     @Column(nullable = false, columnDefinition = "TEXT") private String payloadJson;
@@ -22,8 +23,9 @@ public class BillingProviderEvent extends Auditable {
 
     protected BillingProviderEvent() { }
 
-    public BillingProviderEvent(String payloadHash, String eventName, String payloadJson) {
+    public BillingProviderEvent(String provider, String payloadHash, String eventName, String payloadJson) {
         this.id = UUID.randomUUID();
+        this.provider = provider;
         this.payloadHash = payloadHash;
         this.eventName = eventName;
         this.payloadJson = payloadJson;
@@ -41,6 +43,7 @@ public class BillingProviderEvent extends Auditable {
     }
 
     public UUID getId() { return id; }
+    public String getProvider() { return provider; }
     public String getEventName() { return eventName; }
     public String getPayloadJson() { return payloadJson; }
     public String getStatus() { return status; }

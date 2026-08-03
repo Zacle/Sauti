@@ -59,6 +59,24 @@ public class TelnyxAiBrowserVoiceRuntimeService {
         return session(managedAgent, "", agent.getMaxCallDurationSeconds());
     }
 
+    public BrowserVoiceRuntimeSession prepareExternalAgent(
+            String externalAgentId,
+            String externalVersionId,
+            int maxCallDurationSeconds
+    ) {
+        if (!isConfigured()) {
+            throw new VoiceRuntimeUnavailableException("The public voice demo is temporarily unavailable.");
+        }
+        if (externalAgentId == null || externalAgentId.isBlank()) {
+            throw new VoiceRuntimeUnavailableException("The public voice demo is not configured.");
+        }
+        return session(
+                new ManagedVoiceAgentReference(externalAgentId.trim(), trim(externalVersionId), "{}"),
+                "",
+                maxCallDurationSeconds
+        );
+    }
+
     private BrowserVoiceRuntimeSession session(
             ManagedVoiceAgentReference managedAgent,
             String callSid,

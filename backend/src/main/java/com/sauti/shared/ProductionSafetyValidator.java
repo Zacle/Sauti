@@ -34,11 +34,13 @@ public class ProductionSafetyValidator implements ApplicationRunner {
         rejectValue(errors, "sauti.llm.provider", List.of("fake", "heuristic"));
         requireValue(errors, "sauti.telephony.provider", List.of("telnyx"));
         requireFalse(errors, "sauti.auth.expose-dev-tokens");
+        requireFalse(errors, "sauti.auth.public-registration-enabled");
         requireFalse(errors, "spring.h2.console.enabled");
         requirePrefix(errors, "spring.datasource.url", "jdbc:postgresql:");
         requirePrefix(errors, "sauti.dashboard.base-url", "https://");
         validateOrigins(errors);
         validateProviderSignatures(errors);
+        validatePublicDemo(errors);
 
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Unsafe production configuration: " + String.join("; ", errors));
@@ -66,6 +68,23 @@ public class ProductionSafetyValidator implements ApplicationRunner {
         if (!property("sauti.whatsapp.app-secret").isBlank()) {
             requireTrue(errors, "sauti.whatsapp.validate-signature");
         }
+    }
+
+    private void validatePublicDemo(List<String> errors) {
+        if (!environment.getProperty("sauti.public-demo.enabled", Boolean.class, false)) return;
+        if (property("sauti.public-demo.telnyx-agent-id").isBlank()) {
+            errors.add("sauti.public-demo.telnyx-agent-id is required when the public demo is enabled");
+        }
+        var origins = property("sauti.public-demo.allowed-origins");
+        if (origins.isBlank()) {
+            errors.add("sauti.public-demo.allowed-origins is required when the public demo is enabled");
+            return;
+        }
+        Arrays.stream(origins.split(",")).map(String::trim).forEach(origin -> {
+            if (!origin.startsWith("https://") || origin.contains("*") || origin.contains("localhost")) {
+                errors.add("sauti.public-demo.allowed-origins must contain only explicit HTTPS origins");
+            }
+        });
     }
 
     private void requireSecret(List<String> errors, String key, int minimumLength) {

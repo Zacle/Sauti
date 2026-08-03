@@ -247,7 +247,7 @@ export function MarketingPricingPage() {
 
           <p className={styles.caveat}><Info size={17} /> This estimate includes the plan and AI-minute overage. Regional calling, numbers, messaging, and premium voices appear separately before activation.</p>
           <div className={styles.recommendationActions}>
-            <Link href="/register">Start a 14-day pilot <ArrowRight size={15} /></Link>
+            <Link href="/request-demo">Request a tailored demo <ArrowRight size={15} /></Link>
             <a href="#plan-comparison">See the full comparison</a>
           </div>
         </div>

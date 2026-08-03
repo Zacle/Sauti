@@ -8,11 +8,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 interface BillingSubscriptionRepository extends JpaRepository<BillingSubscription, UUID> {
     Optional<BillingSubscription> findByTenantId(UUID tenantId);
-    Optional<BillingSubscription> findByProviderSubscriptionId(String providerSubscriptionId);
+    Optional<BillingSubscription> findByProviderAndProviderSubscriptionId(
+            String provider, String providerSubscriptionId);
 }
 
 interface BillingProviderEventRepository extends JpaRepository<BillingProviderEvent, UUID> {
-    Optional<BillingProviderEvent> findByPayloadHash(String payloadHash);
-    List<BillingProviderEvent> findTop20ByStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
-            List<String> statuses, OffsetDateTime dueAt);
+    Optional<BillingProviderEvent> findByProviderAndPayloadHash(String provider, String payloadHash);
+    List<BillingProviderEvent> findTop20ByProviderAndStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
+            String provider, List<String> statuses, OffsetDateTime dueAt);
 }

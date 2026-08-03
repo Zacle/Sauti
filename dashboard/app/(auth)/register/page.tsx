@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
-import { AuthForm } from "@/features/auth/AuthForm/AuthForm";
+import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
-  title: "Create workspace | Sauti",
+  title: "Request a demo | Sauti",
 };
 
 export default function RegisterPage() {
-  return <Suspense><AuthForm mode="register" /></Suspense>;
+  redirect("/request-demo?registration=closed");
 }

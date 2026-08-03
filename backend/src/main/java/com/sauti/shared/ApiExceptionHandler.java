@@ -2,10 +2,13 @@ package com.sauti.shared;
 
 import jakarta.persistence.EntityNotFoundException;
 import com.sauti.auth.RateLimitExceededException;
+import com.sauti.auth.RegistrationClosedException;
 import com.sauti.auth.UnverifiedEmailException;
 import com.sauti.call.PublicWebVoiceRateLimitExceededException;
 import com.sauti.call.ManagedVoiceProviderException;
 import com.sauti.call.VoiceRuntimeUnavailableException;
+import com.sauti.demo.DemoRequestRateLimitExceededException;
+import com.sauti.demo.PublicDemoVoiceLimitExceededException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -35,6 +38,12 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiError("email_not_verified", exception.getMessage()));
     }
 
+    @ExceptionHandler(RegistrationClosedException.class)
+    ResponseEntity<ApiError> registrationClosed(RegistrationClosedException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ApiError("registration_closed", exception.getMessage()));
+    }
+
     @ExceptionHandler(RateLimitExceededException.class)
     ResponseEntity<ApiError> rateLimited(RateLimitExceededException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(new ApiError("rate_limited", exception.getMessage()));
@@ -44,6 +53,18 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> webVoiceRateLimited(PublicWebVoiceRateLimitExceededException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(new ApiError("rate_limited", exception.getMessage()));
+    }
+
+    @ExceptionHandler(DemoRequestRateLimitExceededException.class)
+    ResponseEntity<ApiError> demoRequestRateLimited(DemoRequestRateLimitExceededException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new ApiError("rate_limited", exception.getMessage()));
+    }
+
+    @ExceptionHandler(PublicDemoVoiceLimitExceededException.class)
+    ResponseEntity<ApiError> publicDemoVoiceLimited(PublicDemoVoiceLimitExceededException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new ApiError("public_demo_limit_reached", exception.getMessage()));
     }
 
     @ExceptionHandler(VoiceRuntimeUnavailableException.class)

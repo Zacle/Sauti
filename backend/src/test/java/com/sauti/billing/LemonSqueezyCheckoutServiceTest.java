@@ -41,7 +41,7 @@ class LemonSqueezyCheckoutServiceTest {
                     "https://sauti.uk/billing?checkout=success");
 
             var response = service.create(tenant.getId(),
-                    new LemonSqueezyCheckoutService.CheckoutRequest("launch", "monthly"));
+                    new BillingCheckoutGateway.CheckoutRequest("launch", "monthly"));
 
             assertThat(response.url()).startsWith("https://store.lemonsqueezy.com/");
             var body = new ObjectMapper().readTree(captured.get());
@@ -61,7 +61,7 @@ class LemonSqueezyCheckoutServiceTest {
                 new ObjectMapper(), HttpClient.newHttpClient(), "", "", "http://localhost", "https://sauti.uk");
 
         assertThatThrownBy(() -> service.create(java.util.UUID.randomUUID(),
-                new LemonSqueezyCheckoutService.CheckoutRequest("launch", "monthly")))
+                new BillingCheckoutGateway.CheckoutRequest("launch", "monthly")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("not configured");
     }
