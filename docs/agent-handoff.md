@@ -15,6 +15,44 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-03: Center the public demo modal and silence teardown-only audio errors
+
+- Moved the public voice-demo overlay into a React portal attached directly to
+  `document.body`. This removes the transformed homepage hero as the fixed
+  positioning container, locks background scrolling, provides viewport-sized
+  backdrop geometry, and keeps the dialog internally scrollable on short
+  screens.
+- Browser QA at 1280 x 720 measured the 520 x 560 dialog at exactly the
+  viewport center (`centerDeltaX=0`, `centerDeltaY=0`) with a full-viewport
+  backdrop and no console errors. Evidence is recorded in `design-qa.md` and
+  the screenshot is stored outside the repository in the Codex visualization
+  workspace.
+- Diagnosed the post-call red error as an expected pending `audio.play()`
+  rejection after normal teardown removed the audio element/source. Added a
+  narrow lifecycle policy that suppresses playback rejection only when the
+  runtime is stopped/ended or media is detached; active playback errors remain
+  visible.
+- The public demo also ignores late provider errors after teardown begins,
+  clears stale errors when completion settles, and resets from `ended` to
+  `idle` when the result dialog closes so the visitor can start another
+  permitted demo instead of seeing a disabled `Starting voice…` trigger.
+- Verification:
+  - focused voice runtime suite passed 32/32 tests;
+  - dashboard typecheck passed;
+  - dashboard zero-warning lint passed;
+  - dashboard production build passed, including all 52 static pages;
+  - in-app browser geometry and console checks passed;
+  - `design-qa.md` reports `final result: passed`.
+- Files touched:
+  - `dashboard/features/marketing/PublicDemoVoice/PublicDemoVoice.tsx`;
+  - `dashboard/features/marketing/PublicDemoVoice/PublicDemoVoice.module.css`;
+  - `dashboard/features/voice-runtime/telnyxRuntime.ts`;
+  - `dashboard/features/voice-runtime/telnyxAudioPolicy.ts` and its tests;
+  - `design-qa.md` and this handoff.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD. Run one real production microphone call after
+  deployment to verify provider teardown remains silent end to end.
+
 ### 2026-08-03: Enable the public demo rollout and replace native form dropdowns
 
 - Diagnosed the production `Voice demo unavailable` state against the public

@@ -4,11 +4,30 @@ import test from "node:test";
 import {
   MAX_DURATION_ERROR_GRACE_MS,
   reachedConfiguredMaxDuration,
+  shouldReportAudioPlaybackError,
   TELNYX_BROWSER_VAD,
   TERMINAL_END_AFTER_DRAIN_MS,
   TERMINAL_END_FALLBACK_MS,
   terminalToolEndDelay,
 } from "./telnyxAudioPolicy.ts";
+
+test("ignores audio play rejection after call teardown removes the media", () => {
+  assert.equal(shouldReportAudioPlaybackError({
+    stopped: false,
+    ended: true,
+    audioConnected: false,
+    hasSource: false,
+  }), false);
+});
+
+test("reports audio play rejection while the active media is still attached", () => {
+  assert.equal(shouldReportAudioPlaybackError({
+    stopped: false,
+    ended: false,
+    audioConnected: true,
+    hasSource: true,
+  }), true);
+});
 
 test("keeps remote agent noise below the speaking threshold", () => {
   assert.equal(TELNYX_BROWSER_VAD.volumeThreshold, 10);

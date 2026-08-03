@@ -18,6 +18,20 @@ export function reachedConfiguredMaxDuration(
     && elapsedMs >= maxDurationSeconds * 1_000 - MAX_DURATION_ERROR_GRACE_MS;
 }
 
+export function shouldReportAudioPlaybackError({
+  stopped,
+  ended,
+  audioConnected,
+  hasSource,
+}: {
+  stopped: boolean;
+  ended: boolean;
+  audioConnected: boolean;
+  hasSource: boolean;
+}) {
+  return !stopped && !ended && audioConnected && hasSource;
+}
+
 export function terminalToolEndDelay({
   agentSpeaking,
 }: {

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowRight, Mic, PhoneOff, ShieldCheck, Sparkles, X } from "lucide-react";
 import { AiVoiceAnimation, type VoiceAnimationActivity } from "@/features/agents/AgentCreator/AiVoiceAnimation";
 import {
@@ -91,6 +92,15 @@ export function PublicDemoVoice() {
     };
   }, [prepare]);
 
+  useEffect(() => {
+    if (!visible) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [visible]);
+
   function startTimer(maxDurationSeconds: number) {
     const startedAt = Date.now();
     setSecondsLeft(maxDurationSeconds);
@@ -147,6 +157,7 @@ export function PublicDemoVoice() {
           setCallState("listening");
         },
         onError(message) {
+          if (endingRef.current) return;
           setError(safeMessage(new Error(message)));
         },
         onEnded() {
@@ -182,9 +193,23 @@ export function PublicDemoVoice() {
       connectionRef.current = null;
       microphoneRef.current = null;
       sessionRef.current = { id: "", token: "" };
+      setError("");
       setCallState("ended");
       setVisible(true);
     }
+  }
+
+  function closeDialog() {
+    setVisible(false);
+    if (callState !== "ended") {
+      void finish(true);
+      return;
+    }
+    endingRef.current = false;
+    closingPromptRef.current = false;
+    setSecondsLeft(configuration?.maxDurationSeconds ?? 60);
+    setError("");
+    setCallState("idle");
   }
 
   const activity: VoiceAnimationActivity = callState === "speaking"
@@ -213,12 +238,12 @@ export function PublicDemoVoice() {
         <Mic size={15} /> {!visible && callState !== "idle" ? "Starting voice…" : readiness === "unavailable" ? "Retry voice demo" : "Talk to Sauti"}
       </button>
       {error && !visible ? <span className={styles.triggerError}>{error}</span> : null}
-      {visible ? (
+      {visible ? createPortal((
         <div className={styles.backdrop} role="dialog" aria-modal="true" aria-label="Talk to Sauti voice demo">
           <section className={styles.dialog}>
             <header>
               <div><Sparkles size={18} /><span><small>LIVE SAUTI DEMO</small><strong>Talk to Sauti</strong></span></div>
-              <button aria-label="Close voice demo" onClick={() => callState === "ended" ? setVisible(false) : void finish(true)} type="button"><X size={19} /></button>
+              <button aria-label="Close voice demo" onClick={closeDialog} type="button"><X size={19} /></button>
             </header>
             {callState === "ended" ? (
               <div className={styles.ended}>
@@ -239,7 +264,7 @@ export function PublicDemoVoice() {
             )}
           </section>
         </div>
-      ) : null}
+      ), document.body) : null}
     </>
   );
 }

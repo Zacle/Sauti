@@ -18,6 +18,7 @@ import {
 } from "./telnyxReadiness";
 import {
   reachedConfiguredMaxDuration,
+  shouldReportAudioPlaybackError,
   TELNYX_BROWSER_VAD,
   TERMINAL_END_AFTER_DRAIN_MS,
   TERMINAL_END_FALLBACK_MS,
@@ -379,9 +380,17 @@ export async function connectTelnyxRuntime(
       if (stream && audio.srcObject !== stream) {
         audio.srcObject = stream;
         callbacks.onStartupStage?.("remote_audio_ready");
-        void audio.play().catch((error) => callbacks.onError(
-          `The browser could not play Telnyx audio: ${providerError("Browser", error)}`,
-        ));
+        void audio.play().catch((error) => {
+          if (!shouldReportAudioPlaybackError({
+            stopped,
+            ended,
+            audioConnected: audio.isConnected,
+            hasSource: audio.srcObject !== null,
+          })) return;
+          callbacks.onError(
+            `The browser could not play Telnyx audio: ${providerError("Browser", error)}`,
+          );
+        });
       }
     });
     target.on("conversation.agent.state", ({
