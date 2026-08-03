@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, Mic, PhoneOff, ShieldCheck, Sparkles, X } from "lucide-react";
 import { AiVoiceAnimation, type VoiceAnimationActivity } from "@/features/agents/AgentCreator/AiVoiceAnimation";
 import {
@@ -52,23 +52,35 @@ export function PublicDemoVoice() {
   const timerRef = useRef<number | undefined>(undefined);
   const closingPromptRef = useRef(false);
   const endingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  const prepare = useCallback(async () => {
+    setReadiness("preparing");
+    setError("");
+    try {
+      await preloadBrowserVoiceRuntime();
+      const loaded = await getPublicDemoVoiceConfiguration(window.location.origin);
+      await preconnectBrowserVoiceRuntime(loaded.runtime);
+      if (!mountedRef.current) {
+        await releasePreconnectedBrowserVoiceRuntime();
+        return;
+      }
+      setConfiguration(loaded);
+      setSecondsLeft(loaded.maxDurationSeconds);
+      setReadiness("ready");
+    } catch (caught) {
+      if (!mountedRef.current) return;
+      setConfiguration(null);
+      setError(safeMessage(caught));
+      setReadiness("unavailable");
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    void preloadBrowserVoiceRuntime()
-      .then(() => getPublicDemoVoiceConfiguration(window.location.origin))
-      .then(async (loaded) => {
-        await preconnectBrowserVoiceRuntime(loaded.runtime);
-        if (cancelled) return;
-        setConfiguration(loaded);
-        setSecondsLeft(loaded.maxDurationSeconds);
-        setReadiness("ready");
-      })
-      .catch(() => {
-        if (!cancelled) setReadiness("unavailable");
-      });
+    mountedRef.current = true;
+    void prepare();
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
       if (timerRef.current !== undefined) window.clearInterval(timerRef.current);
       void connectionRef.current?.stop();
       void microphoneRef.current?.stop();
@@ -77,7 +89,7 @@ export function PublicDemoVoice() {
         void completePublicDemoVoiceSession(sessionRef.current.id, sessionRef.current.token);
       }
     };
-  }, []);
+  }, [prepare]);
 
   function startTimer(maxDurationSeconds: number) {
     const startedAt = Date.now();
@@ -194,11 +206,11 @@ export function PublicDemoVoice() {
     <>
       <button
         className={styles.trigger}
-        disabled={readiness !== "ready" || callState !== "idle"}
-        onClick={() => void start()}
+        disabled={readiness === "preparing" || callState !== "idle"}
+        onClick={() => readiness === "unavailable" ? void prepare() : void start()}
         type="button"
       >
-        <Mic size={15} /> {!visible && callState !== "idle" ? "Starting voice…" : readiness === "unavailable" ? "Voice demo unavailable" : "Talk to Sauti"}
+        <Mic size={15} /> {!visible && callState !== "idle" ? "Starting voice…" : readiness === "unavailable" ? "Retry voice demo" : "Talk to Sauti"}
       </button>
       {error && !visible ? <span className={styles.triggerError}>{error}</span> : null}
       {visible ? (

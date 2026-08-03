@@ -5,6 +5,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { ArrowRight, Check, Globe2, LoaderCircle, MessageCircleMore, Phone, ShieldCheck, Sparkles } from "lucide-react";
 import { COUNTRIES } from "@/lib/countries";
 import { createDemoRequest } from "@/lib/api/demo-requests";
+import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
 import styles from "./DemoRequestPage.module.css";
 
 const CHANNELS = [
@@ -20,6 +21,9 @@ export function DemoRequestPage() {
   const [complete, setComplete] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [countryCode, setCountryCode] = useState("KE");
+  const [industry, setIndustry] = useState("");
+  const [monthlyCallVolume, setMonthlyCallVolume] = useState("not-sure");
   const selectedChannels = useMemo(() => new Set(channels), [channels]);
 
   function toggleChannel(channel: string) {
@@ -90,10 +94,10 @@ export function DemoRequestPage() {
               <label>Your name *<input name="contactName" required maxLength={120} placeholder="Alex Morgan" autoComplete="name" /></label>
               <label>Work email *<input name="email" required maxLength={254} type="email" placeholder="alex@company.com" autoComplete="email" /></label>
               <label>Phone number <input name="phone" maxLength={40} type="tel" placeholder="+254 700 000 000" autoComplete="tel" /></label>
-              <label>Country *<select name="countryCode" required defaultValue="KE">{COUNTRIES.map((country) => <option value={country.code} key={country.code}>{country.name}</option>)}</select></label>
-              <label>Industry *<select name="industry" required defaultValue=""><option value="" disabled>Select an industry</option><option>Healthcare</option><option>Professional services</option><option>Home services</option><option>Retail and ecommerce</option><option>Real estate</option><option>Education</option><option>Hospitality</option><option>Other</option></select></label>
+              <label>Country *<DarkSelect ariaLabel="Country" name="countryCode" required options={COUNTRIES.map((country) => ({ value: country.code, label: country.name }))} value={countryCode} onValueChange={setCountryCode} /></label>
+              <label>Industry *<DarkSelect ariaLabel="Industry" name="industry" placeholder="Select an industry" required options={["Healthcare", "Professional services", "Home services", "Retail and ecommerce", "Real estate", "Education", "Hospitality", "Other"].map((label) => ({ value: label, label }))} value={industry} onValueChange={setIndustry} /></label>
             </div>
-            <label>Expected monthly conversations *<select name="monthlyCallVolume" required defaultValue="not-sure"><option value="under-100">Under 100</option><option value="100-500">100–500</option><option value="500-2000">500–2,000</option><option value="2000-plus">More than 2,000</option><option value="not-sure">Not sure yet</option></select></label>
+            <label>Expected monthly conversations *<DarkSelect ariaLabel="Expected monthly conversations" name="monthlyCallVolume" required options={[{ value: "under-100", label: "Under 100" }, { value: "100-500", label: "100–500" }, { value: "500-2000", label: "500–2,000" }, { value: "2000-plus", label: "More than 2,000" }, { value: "not-sure", label: "Not sure yet" }]} value={monthlyCallVolume} onValueChange={setMonthlyCallVolume} /></label>
             <fieldset><legend>Channels you want to explore *</legend><div className={styles.channels}>{CHANNELS.map(([value, label]) => <button aria-pressed={selectedChannels.has(value)} className={selectedChannels.has(value) ? styles.selected : ""} key={value} onClick={() => toggleChannel(value)} type="button">{value === "voice" ? <Phone size={16} /> : <MessageCircleMore size={16} />}{label}{selectedChannels.has(value) ? <Check size={14} /> : null}</button>)}</div></fieldset>
             <label>What should the agent help customers accomplish? *<textarea name="primaryUseCase" required maxLength={500} rows={4} placeholder="For example: answer common questions, qualify enquiries, and book appointments into our shared calendar." /></label>
             <label>Anything else we should know?<textarea name="notes" maxLength={1000} rows={3} placeholder="Languages, integrations, operating hours, or special requirements." /></label>

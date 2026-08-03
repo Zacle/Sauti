@@ -15,6 +15,46 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-03: Enable the public demo rollout and replace native form dropdowns
+
+- Diagnosed the production `Voice demo unavailable` state against the public
+  configuration endpoint. The endpoint returned `503` because the reviewed
+  GitHub Actions rollout variable was still `false`; the Telnyx assistant was
+  not the failing component.
+- Changed the GitHub Actions repository variable
+  `SAUTI_PUBLIC_DEMO_ENABLED` to `true` for the next normal CI/CD deployment
+  and mirrored it in the ignored local `.env`. Production remains unchanged
+  until reviewed source is committed and the standard CI/deploy chain runs.
+- Made public-demo preparation retryable. A transient configuration/runtime
+  failure now leaves an enabled `Retry voice demo` action instead of a
+  permanently disabled `Voice demo unavailable` control. Async preparation
+  also releases a preconnection safely if the component unmounts.
+- Replaced the demo-request form's native country, industry, and expected-volume
+  selects with the existing Radix-based `DarkSelect`. Extended that shared
+  component with form `name`/`required` support, placeholders, correct iconless
+  grid alignment, trigger-width menus, open-state chevron feedback, selected
+  checkmarks, and scroll affordances for the long country list.
+- Verification:
+  - dashboard typecheck passed;
+  - dashboard zero-warning lint passed;
+  - dashboard production build passed, including all 52 static pages;
+  - in-app browser testing confirmed all three menus open and close, selections
+    update (`Under 100`, `Healthcare`, and `Kenya`), and no console errors were
+    recorded;
+  - the homepage failure path exposes an enabled retry action;
+  - visual comparison is recorded in `design-qa.md` with `final result: passed`.
+- Files touched:
+  - `dashboard/components/DarkSelect/DarkSelect.tsx`;
+  - `dashboard/components/DarkSelect/DarkSelect.module.css`;
+  - `dashboard/features/demo-request/presentation/DemoRequestPage.tsx`;
+  - `dashboard/features/marketing/PublicDemoVoice/PublicDemoVoice.tsx`;
+  - `design-qa.md`, this handoff, and ignored local `.env`; browser QA
+    captures live outside the repository in the Codex visualization workspace.
+- Deployment status: not deployed. Repository changes remain uncommitted for
+  maintainer review and normal CI/CD. After deployment, verify that the public
+  configuration endpoint returns `200` and run a real microphone demo before
+  considering this rollout accepted.
+
 ### 2026-08-03: Provision and safely wire the isolated homepage demo assistant
 
 - Created the dedicated Telnyx assistant `Sauti Public Demo` with ID
