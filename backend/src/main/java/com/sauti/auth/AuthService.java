@@ -189,9 +189,8 @@ public class AuthService {
 
     @Transactional
     public MessageResponse resetPassword(ResetPasswordRequest request) {
-        User user = userRepository.findByEmail(request.email().toLowerCase())
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
-        if (!verificationCodeService.verifyPasswordResetCode(user, request.code())) {
+        User user = userRepository.findByEmail(request.email().toLowerCase()).orElse(null);
+        if (user == null || !verificationCodeService.verifyPasswordResetCode(user, request.code())) {
             throw new IllegalArgumentException("Invalid or expired reset code");
         }
         user.updatePasswordHash(passwordEncoder.encode(request.newPassword()));

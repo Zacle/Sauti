@@ -26,7 +26,7 @@ import {
 } from "@/lib/session";
 import { COUNTRIES } from "@/lib/countries";
 
-type AuthMode = "login" | "register" | "verify" | "invite";
+type AuthMode = "login" | "register" | "verify" | "invite" | "forgot" | "reset";
 
 export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
@@ -43,17 +43,23 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [googleError, setGoogleError] = useState("");
   const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
   const [invitationLoading, setInvitationLoading] = useState(mode === "invite");
-  const isAdminSurface = mode === "login" && searchParams.get("surface") === "admin";
+  const isAdminSurface = searchParams.get("surface") === "admin";
   const businessNameRef = useRef<HTMLInputElement>(null);
   const invitationTokenRef = useRef("");
 
   useEffect(() => {
-    if (mode === "verify") {
+    if (mode === "verify" || mode === "forgot" || mode === "reset") {
       setEmail(searchParams.get("email") ?? readPendingEmail());
+      if (mode === "reset" && searchParams.get("requested") === "1") {
+        setMessage("If the account exists, a six-digit reset code has been sent. The code expires in 15 minutes.");
+      }
     } else if (mode === "login") {
       setEmail(searchParams.get("email") ?? "");
       if (searchParams.get("google") === "cancelled") {
         setError("Google sign-in was cancelled. No account changes were made.");
+      }
+      if (searchParams.get("reset") === "1") {
+        setMessage("Password updated. Sign in with your new password.");
       }
     }
   }, [mode, searchParams]);
@@ -80,7 +86,8 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   }, [mode, searchParams]);
 
   useEffect(() => {
-    if (mode === "verify" || mode === "invite" || isAdminSurface) return;
+    if (mode !== "login" && mode !== "register") return;
+    if (isAdminSurface) return;
     fetch("/api/v1/auth/oauth/google/status")
       .then((response) => response.json())
       .then((body: { configured?: boolean }) => {
@@ -102,7 +109,20 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     setError("");
     setMessage("");
     try {
-      if (mode === "invite") {
+      if (mode === "forgot") {
+        await authApi.forgotPassword(email);
+        writePendingEmail(email);
+        const query = new URLSearchParams({ email, requested: "1" });
+        if (isAdminSurface) query.set("surface", "admin");
+        router.push(`/reset-password?${query.toString()}`);
+      } else if (mode === "reset") {
+        await authApi.resetPassword(email, code, password);
+        clearPendingEmail();
+        clearSession();
+        const query = new URLSearchParams({ email, reset: "1" });
+        if (isAdminSurface) query.set("surface", "admin");
+        router.push(`/login?${query.toString()}`);
+      } else if (mode === "invite") {
         const result = await authApi.acceptInvitation(invitationTokenRef.current, password);
         writePendingEmail(email);
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
@@ -155,6 +175,40 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const isLogin = mode === "login";
   const isVerify = mode === "verify";
   const isInvite = mode === "invite";
+  const isForgot = mode === "forgot";
+  const isReset = mode === "reset";
+  const recoverySurface = isAdminSurface ? "&surface=admin" : "";
+  const isRecovery = isForgot || isReset;
+  const heroTitle = isForgot
+    ? "Recover access without compromising your workspace."
+    : isReset
+      ? "Choose a new password for your Sauti account."
+      : isAdminSurface
+        ? "Operate Sauti from a protected control center."
+        : isInvite
+          ? "Your private Sauti pilot workspace is ready."
+          : isVerify
+            ? "One quick check before your workspace goes live."
+            : isLogin
+              ? "Your AI phone operations are ready when you are."
+              : "AI voice agents. Every language. Any scale.";
+  const cardTitle = isForgot ? "Forgot your password?" : isReset ? "Set a new password" : isVerify
+    ? "Verify your email" : isLogin ? "Welcome back" : "Create your workspace";
+  const cardDescription = isForgot
+    ? "Enter your account email. If it exists, we will send a six-digit reset code."
+    : isReset
+      ? "Enter the reset code from your email and choose a new password."
+      : isAdminSurface
+        ? "Sign in with an authorized Sauti platform administrator account."
+        : isInvite
+          ? `Activate ${businessName || "your approved workspace"} with a secure password.`
+          : isVerify
+            ? "Enter the six-digit code sent to your email."
+            : isLogin
+              ? "Sign in to manage your voice agents."
+              : "Start building your first AI voice agent today.";
+  const submitLabel = isForgot ? "Send reset code" : isReset ? "Update password" : isVerify
+    ? "Verify email" : isLogin ? "Log in" : isInvite ? "Activate workspace" : "Create workspace";
   const googleQuery = new URLSearchParams({
     businessName: mode === "register" ? businessName : "",
     countryCode: mode === "register" ? countryCode : "",
@@ -188,18 +242,8 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       </Link>
       <section className="auth-shell">
         <div className="auth-copy">
-          <span>{isVerify ? "Secure workspace access" : "Sauti voice operations"}</span>
-          <h1>
-            {isAdminSurface
-              ? "Operate Sauti from a protected control center."
-              : isInvite
-              ? "Your private Sauti pilot workspace is ready."
-              : isVerify
-              ? "One quick check before your workspace goes live."
-              : isLogin
-                ? "Your AI phone operations are ready when you are."
-                : "AI voice agents. Every language. Any scale."}
-          </h1>
+          <span>{isVerify || isRecovery ? "Secure workspace access" : "Sauti voice operations"}</span>
+          <h1>{heroTitle}</h1>
           <p>
             Launch natural, multilingual conversations, monitor outcomes, and keep every
             customer interaction moving from one focused workspace.
@@ -223,20 +267,10 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         <div className="auth-form-panel">
           <form className="auth-card" onSubmit={submit}>
             <div className="auth-card-head">
-              <span>{isVerify ? <MailCheck size={22} /> : <UserRound size={22} />}</span>
+              <span>{isVerify || isRecovery ? <MailCheck size={22} /> : <UserRound size={22} />}</span>
               <div>
-                <h2>{isVerify ? "Verify your email" : isLogin ? "Welcome back" : "Create your workspace"}</h2>
-                <p>
-                  {isAdminSurface
-                    ? "Sign in with an authorized Sauti platform administrator account."
-                    : isInvite
-                    ? `Activate ${businessName || "your approved workspace"} with a secure password.`
-                    : isVerify
-                    ? "Enter the six-digit code sent to your email."
-                    : isLogin
-                      ? "Sign in to manage your voice agents."
-                      : "Start building your first AI voice agent today."}
-                </p>
+                <h2>{cardTitle}</h2>
+                <p>{cardDescription}</p>
               </div>
             </div>
 
@@ -270,7 +304,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               </div>
             )}
 
-            {!isVerify && !isInvite && !isAdminSurface && (
+            {!isVerify && !isInvite && !isRecovery && !isAdminSurface && (
               <>
                 <button
                   className="google-auth-button"
@@ -298,28 +332,38 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               Email
               <input required readOnly={isInvite} type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="owner@company.com" />
             </label>
-            {isVerify ? (
+            {(isVerify || isReset) && (
               <label>
-                Verification code
+                {isReset ? "Reset code" : "Verification code"}
                 <input required inputMode="numeric" minLength={6} maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} placeholder="123456" />
               </label>
-            ) : (
+            )}
+            {!isVerify && !isForgot && (
               <label>
-                Password
+                {isReset ? "New password" : "Password"}
                 <input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" />
               </label>
+            )}
+            {isLogin && (
+              <Link className="auth-forgot-link" href={`/forgot-password?email=${encodeURIComponent(email)}${recoverySurface}`}>
+                Forgot password?
+              </Link>
             )}
 
             {error && <div className="form-alert error" role="alert">{error}</div>}
             {message && <div className="form-alert success" role="status">{message}</div>}
             <button className="app-primary-button" disabled={busy || invitationLoading || Boolean(isInvite && error)} type="submit">
               {busy || invitationLoading ? <LoaderCircle className="spin" size={17} /> : null}
-              {isVerify ? "Verify email" : isLogin ? "Log in" : isInvite ? "Activate workspace" : "Create workspace"}
+              {submitLabel}
               {!busy && <ArrowRight size={17} />}
             </button>
 
             <p className="auth-switch">
-              {isVerify ? (
+              {isForgot ? (
+                <>Remembered it? <Link href={`/login?email=${encodeURIComponent(email)}${recoverySurface}`}>Return to login</Link></>
+              ) : isReset ? (
+                <>Need another code? <Link href={`/forgot-password?email=${encodeURIComponent(email)}${recoverySurface}`}>Send a new one</Link></>
+              ) : isVerify ? (
                 <>Didn&apos;t receive it? <button type="button" onClick={resend}>Resend code</button></>
               ) : isInvite ? (
                 <>Already activated? <Link href={`/login?email=${encodeURIComponent(email)}`}>Log in</Link></>

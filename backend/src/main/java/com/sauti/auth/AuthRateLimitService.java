@@ -21,6 +21,10 @@ public class AuthRateLimitService {
         check("auth:forgot", normalize(email), 3, Duration.ofMinutes(5));
     }
 
+    public void checkResetPassword(String email) {
+        check("auth:reset", normalize(email), 10, Duration.ofMinutes(10));
+    }
+
     public void checkVerifyEmail(String email) {
         check("auth:verify", normalize(email), 10, Duration.ofMinutes(10));
     }

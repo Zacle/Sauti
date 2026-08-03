@@ -144,6 +144,7 @@ public class AuthController {
 
     @PostMapping("/reset-password")
     MessageResponse resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        rateLimitService.checkResetPassword(request.email());
         return authService.resetPassword(request);
     }
 

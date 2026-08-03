@@ -15,6 +15,38 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-04: Complete password recovery for workspace and Google-created admin accounts
+
+- Exposed the backend's existing reset-code capability through complete
+  `/forgot-password` and `/reset-password` browser journeys. Login now includes
+  a visible `Forgot password?` action; the request response remains generic so
+  it cannot reveal whether an email exists.
+- The reset screen accepts the six-digit, 15-minute email code and a new
+  password, then returns to login with a success message. Successful resets
+  delete the one-time code and revoke every active refresh session for that
+  user, requiring all devices to authenticate again.
+- Closed backend security gaps: reset-code attempts are now limited to ten per
+  normalized email per ten minutes, and unknown emails receive the same
+  `Invalid or expired reset code` response as invalid codes.
+- Made recovery origin-aware. `admin.sauti.uk` retains forgot/reset routes on
+  the admin host, adds `surface=admin`, hides Google OAuth, and returns the user
+  to the protected admin login. This lets an account originally created with
+  Google establish an independent Sauti password without changing its Google
+  credentials or moving browser sessions across origins.
+- Added focused password-reset and rate-limit tests plus the two auth routes,
+  API client methods, form states, and responsive styling.
+- Verification:
+  - focused password-reset and rate-limit tests passed;
+  - full backend test suite passed;
+  - dashboard lint passed with zero warnings;
+  - dashboard typecheck passed;
+  - dashboard production build passed with all 57 pages;
+  - host-header checks confirmed admin forgot/reset routes gain and retain the
+    admin surface while recovery remains reachable for signed-in apex users;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and normal CI/CD.
+
 ### 2026-08-04: Isolate platform administration on `admin.sauti.uk`
 
 - Added an `admin.sauti.uk` Caddy virtual host that reuses the existing

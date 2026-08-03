@@ -235,6 +235,20 @@
   outline: none;
 }
 
+.auth-forgot-link {
+  justify-self: end;
+  margin-top: -8px;
+  color: #62ddd4;
+  font-size: 0.8rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.auth-forgot-link:hover {
+  color: #a5fff8;
+  text-decoration: underline;
+}
+
 .auth-country-select {
   position: relative;
   display: grid;

@@ -38,6 +38,18 @@ export const authApi = {
       body: JSON.stringify({ email }),
     });
   },
+  forgotPassword(email: string) {
+    return apiRequest<{ status: string; message: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+  resetPassword(email: string, code: string, newPassword: string) {
+    return apiRequest<{ status: string; message: string }>("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ email, code, newPassword }),
+    });
+  },
 };
 
 export function getOnboardingStatus() {

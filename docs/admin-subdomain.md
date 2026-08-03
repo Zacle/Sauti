@@ -41,6 +41,9 @@ non-secret environment value and defaults to `admin.sauti.uk`.
 - `https://sauti.uk/admin` redirects to the admin subdomain.
 - Browser storage and the session-presence cookie are host-isolated, so an
   administrator signs in separately on the admin subdomain.
+- Google-created accounts can use `Forgot password?` on the admin login to set
+  an independent Sauti password. Recovery remains on the admin origin and does
+  not change the account's Google password.
 
 ## Acceptance checks
 

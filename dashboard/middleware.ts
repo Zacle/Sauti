@@ -17,7 +17,7 @@ const CONSOLE_PREFIXES = [
 // These routes are part of completing authentication or are intentionally
 // shared with callers outside the workspace. They must remain reachable even
 // when the browser also has an authenticated Sauti workspace session.
-const SESSION_NEUTRAL_PREFIXES = ["/oauth/callback", "/call"];
+const SESSION_NEUTRAL_PREFIXES = ["/oauth/callback", "/call", "/forgot-password", "/reset-password"];
 
 function requestHostname(request: NextRequest) {
   const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
@@ -49,6 +49,7 @@ export function middleware(request: NextRequest) {
   const hasSession = request.cookies.get("sauti.session.present")?.value === "1";
   const isAdminHost = hostname === adminDomain;
   const isAdminRoute = matchesRoute(pathname, "/admin");
+  const isAdminAuthRoute = ["/login", "/forgot-password", "/reset-password"].includes(pathname);
 
   if (isAdminHost) {
     if (pathname === "/") {
@@ -57,7 +58,7 @@ export function middleware(request: NextRequest) {
       target.search = "";
       return NextResponse.redirect(target);
     }
-    if (pathname === "/login") {
+    if (isAdminAuthRoute) {
       if (request.nextUrl.searchParams.get("surface") === "admin") return NextResponse.next();
       const target = request.nextUrl.clone();
       target.searchParams.set("surface", "admin");
