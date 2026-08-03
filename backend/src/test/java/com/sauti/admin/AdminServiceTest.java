@@ -1,0 +1,37 @@
+package com.sauti.admin;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.sauti.calendar.BookingRepository;
+import com.sauti.call.CallRepository;
+import com.sauti.demo.DemoRequestRepository;
+import com.sauti.demo.PilotInvitationService;
+import com.sauti.tenant.TenantRepository;
+import org.junit.jupiter.api.Test;
+
+class AdminServiceTest {
+    @Test
+    void aggregatesPlatformCountsWithoutTenantScopedEndpoints() {
+        var tenants = mock(TenantRepository.class);
+        var calls = mock(CallRepository.class);
+        var bookings = mock(BookingRepository.class);
+        var requests = mock(DemoRequestRepository.class);
+        when(tenants.count()).thenReturn(4L);
+        when(calls.count()).thenReturn(46L);
+        when(calls.countDistinctCustomerNumbers()).thenReturn(19L);
+        when(bookings.count()).thenReturn(12L);
+        when(requests.countByStatus("new")).thenReturn(3L);
+        when(requests.countByStatus("invited")).thenReturn(2L);
+        when(requests.countByStatus("activated")).thenReturn(1L);
+
+        var overview = new AdminService(tenants, calls, bookings, requests,
+                mock(PilotInvitationService.class)).overview();
+
+        assertThat(overview.workspaces()).isEqualTo(4);
+        assertThat(overview.customers()).isEqualTo(19);
+        assertThat(overview.calls()).isEqualTo(46);
+        assertThat(overview.newDemoRequests()).isEqualTo(3);
+    }
+}

@@ -22,6 +22,7 @@
                 <p><strong>Channels:</strong> <span th:text="${request.channels}">Channels</span></p>
                 <p><strong>Use case:</strong><br><span th:text="${request.primaryUseCase}">Use case</span></p>
                 <p><strong>Notes:</strong><br><span th:text="${request.notes ?: 'None'}">Notes</span></p>
+                <p><strong>Request ID:</strong> <code th:text="${request.id}">request-id</code></p>
             </td></tr>
         </table>
     </td></tr>

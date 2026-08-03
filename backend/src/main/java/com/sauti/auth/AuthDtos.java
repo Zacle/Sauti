@@ -60,6 +60,6 @@ public final class AuthDtos {
     public record MessageResponse(String status, String message, String devCode) {
     }
 
-    public record AuthResponse(String accessToken, String refreshToken, TenantResponse tenant) {
+    public record AuthResponse(String accessToken, String refreshToken, TenantResponse tenant, String role) {
     }
 }

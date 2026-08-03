@@ -15,6 +15,121 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-04: Isolate platform administration on `admin.sauti.uk`
+
+- Added an `admin.sauti.uk` Caddy virtual host that reuses the existing
+  dashboard/backend containers and automatic TLS. It exposes the dashboard and
+  `/api/*`, but blocks `/webhooks/*` and `/ws/*`, disables browser device
+  permissions, sends a no-referrer policy, and prevents search indexing.
+- The apex `/admin` path now redirects permanently to the admin subdomain.
+  Dashboard middleware independently enforces the hostname boundary, routes
+  the admin root to `/admin`, sends unauthenticated visitors to an
+  admin-specific login, and returns tenant/marketing paths to the apex site.
+- Admin browser sessions are origin-isolated. The admin login deliberately
+  offers email/password only; normal owners are rejected without retaining a
+  session, while the backend continues to enforce `ROLE_PLATFORM_ADMIN` on all
+  platform APIs. Google OAuth remains on the apex origin.
+- Added `SAUTI_ADMIN_DOMAIN` to Compose/Caddy/dashboard configuration and added
+  both apex and admin HTTPS origins to backend CORS. Updated the callback-env
+  helper so it preserves this two-origin configuration.
+- Added `docs/admin-subdomain.md`, updated deployment DNS instructions,
+  production examples, the current launch roadmap, `AGENTS.md`, and this
+  handoff.
+- Verification:
+  - dashboard lint and typecheck passed;
+  - dashboard production build passed with all 55 pages;
+  - host-header checks against the isolated production Next build confirmed
+    `admin.sauti.uk/` -> `/admin`, signed-out `/admin` ->
+    `/login?surface=admin&next=%2Fadmin`, apex `/admin` -> the admin origin,
+    and admin-host tenant paths -> the apex origin, without leaking the local
+    test port into cross-origin redirects;
+  - production Compose configuration expansion passed with the example env;
+  - `git diff --check` passed (line-ending notices only).
+- Local Caddy container validation could not run because Docker Desktop was not
+  running. The Caddyfile uses the repository's existing directive patterns and
+  must receive its authoritative validation in the normal deployment job.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and normal CI/CD.
+- External prerequisite: create the `admin.sauti.uk` DNS `A` record pointing
+  to the existing OVH VPS before releasing this Caddy configuration. No new
+  hosting account or application deployment is required.
+
+### 2026-08-04: Start Phase 1 with invite-only pilot activation
+
+- Marked Phase 0 accepted after the user confirmed the deployed homepage voice
+  demo works. Added `docs/production-launch-phases.md` as the current roadmap;
+  it supersedes the obsolete June custom Twilio pipeline sequence.
+- Implemented the first controlled-pilot onboarding slice. A reviewed demo
+  request can now receive a 72-hour, one-time workspace invitation without
+  reopening public registration. Tokens use 256 bits of randomness, only their
+  SHA-256 hashes are persisted, links carry the raw token in a URL fragment to
+  keep it out of server access logs, and acceptance uses a pessimistic database lock.
+- Added an operator-key security boundary for invitation issuance. The endpoint
+  fails closed when `SAUTI_OPERATOR_API_KEY` is absent or wrong, and the normal
+  deploy workflow can sync the secret from GitHub Actions.
+- Added the private `/accept-invite` journey. The reviewed business name,
+  country, and email come from the demo request; the prospect chooses a
+  password and completes the existing email-verification flow. Activation
+  creates only tenant/user data and cannot provision paid provider resources.
+- Added Flyway migration `V53__pilot_invitations.sql`, invitation email and
+  operator documentation, focused domain/security tests, and the request UUID
+  to the operator's demo-request notification.
+- Verification:
+  - focused pilot invitation service test passed;
+  - full backend test suite passed;
+  - dashboard lint passed with zero warnings;
+  - dashboard typecheck passed;
+  - dashboard production build passed, generating all 53 pages including
+    `/accept-invite`;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and normal CI/CD.
+- Required production configuration: create a strong GitHub Actions secret
+  named `SAUTI_OPERATOR_API_KEY` before using the operator endpoint.
+- Next Phase 1 slice: durable lead review and invitation operations—list,
+  approve/reject, delivery status, safe resend/revoke, and audit history.
+
+### 2026-08-04: Add the separate Sauti platform-admin console foundation
+
+- Established a platform administration boundary distinct from tenant owner
+  operations. Emails explicitly configured through
+  `SAUTI_PLATFORM_ADMIN_EMAILS` receive `ROLE_PLATFORM_ADMIN` in signed access
+  tokens; ordinary owners receive `403` from every `/api/v1/admin/**` endpoint.
+  The allowlist is server-side and is synchronized as a GitHub Actions secret,
+  never exposed to the browser.
+- Added cross-tenant admin overview APIs for workspace, distinct customer,
+  call, booking, and pilot-funnel totals. These repositories are accessed only
+  by the platform-admin service; existing tenant endpoints remain tenant-scoped.
+- Added a paginated newest-first demo-request API and an admin-authorized
+  approval action that reuses the one-time pilot invitation service. Demo
+  requests now progress from `new` to `invited` to `activated` as the invited
+  workspace is accepted.
+- Added a separate `/admin` application shell rather than placing platform
+  data in the business console. The first screens provide an operational
+  overview and demo-request queue with approve/invite controls. Workspaces,
+  customers, and deeper analytics are clearly marked as upcoming modules, not
+  represented as complete.
+- Added focused tests for platform-admin allowlisting, owner/admin API
+  separation, platform aggregation, and the existing invitation security.
+- Files include the new `com.sauti.admin` backend module, admin controller and
+  authorization policy, admin dashboard feature/routes/API types, deployment
+  configuration examples, roadmap documentation, and this handoff.
+- Verification:
+  - full backend test suite passed;
+  - focused admin, platform-role, and invitation tests passed;
+  - dashboard lint passed with zero warnings;
+  - dashboard typecheck passed;
+  - dashboard production build passed, generating all 55 pages including
+    `/admin` and `/admin/demo-requests`.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and normal CI/CD.
+- Required production configuration: set `SAUTI_PLATFORM_ADMIN_EMAILS` to the
+  existing verified Sauti account(s) authorized to operate the platform. This
+  does not create another account or provider resource.
+- Next admin slice: implement workspaces and customers with search/detail
+  views, then platform time-series/cost/provider-health analytics; follow with
+  invitation reject/resend/revoke and immutable operator audit history.
+
 ### 2026-08-03: Center the public demo modal and silence teardown-only audio errors
 
 - Moved the public voice-demo overlay into a React portal attached directly to

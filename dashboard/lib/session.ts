@@ -52,10 +52,11 @@ export function consumeOAuthSessionFromHash(): AuthSession | null {
     const payloadPart = accessToken.split(".")[1] ?? "";
     const normalizedPayload = payloadPart.replace(/-/g, "+").replace(/_/g, "/")
       .padEnd(Math.ceil(payloadPart.length / 4) * 4, "=");
-    const payload = JSON.parse(window.atob(normalizedPayload)) as { tenant_id?: string; email?: string };
+    const payload = JSON.parse(window.atob(normalizedPayload)) as { tenant_id?: string; email?: string; role?: string };
     const session: AuthSession = {
       accessToken,
       refreshToken,
+      role: values.get("role") ?? payload.role ?? "OWNER",
       tenant: {
         id: values.get("tenantId") ?? payload.tenant_id ?? "",
         businessName: values.get("businessName") ?? "Sauti workspace",

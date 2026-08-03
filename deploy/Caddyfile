@@ -2,6 +2,40 @@ www.{$SAUTI_DOMAIN:sauti.uk} {
 	redir https://{$SAUTI_DOMAIN:sauti.uk}{uri} permanent
 }
 
+{$SAUTI_ADMIN_DOMAIN:admin.sauti.uk} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		X-Robots-Tag "noindex, nofollow, noarchive"
+		-Server
+	}
+
+	handle /health {
+		rewrite * /actuator/health
+		reverse_proxy backend:8081
+	}
+
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+
+	handle /webhooks/* {
+		respond "Not found" 404
+	}
+
+	handle /ws/* {
+		respond "Not found" 404
+	}
+
+	handle {
+		reverse_proxy dashboard:8088
+	}
+}
+
 {$SAUTI_DOMAIN:sauti.uk} {
 	encode zstd gzip
 
@@ -11,6 +45,9 @@ www.{$SAUTI_DOMAIN:sauti.uk} {
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
+
+	@admin_path path /admin /admin/*
+	redir @admin_path https://{$SAUTI_ADMIN_DOMAIN:admin.sauti.uk}{uri} permanent
 
 	handle /health {
 		rewrite * /actuator/health

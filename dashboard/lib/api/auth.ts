@@ -2,6 +2,18 @@ import type { AuthSession, OnboardingStatus } from "@/types/api";
 import { apiRequest } from "./client";
 
 export const authApi = {
+  previewInvitation(token: string) {
+    return apiRequest<{ businessName: string; contactName: string; email: string; countryCode: string; expiresAt: string }>(
+      "/public/pilot-invitations/preview",
+      { headers: { "X-Sauti-Pilot-Invitation": token } },
+    );
+  },
+  acceptInvitation(token: string, password: string) {
+    return apiRequest<{ status: string; message: string; devVerificationCode?: string }>(
+      "/public/pilot-invitations/accept",
+      { method: "POST", headers: { "X-Sauti-Pilot-Invitation": token }, body: JSON.stringify({ password }) },
+    );
+  },
   register(payload: { businessName: string; email: string; countryCode: string; password: string }) {
     return apiRequest<{ status: string; message: string; devVerificationCode?: string }>(
       "/auth/register",

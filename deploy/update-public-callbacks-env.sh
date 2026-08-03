@@ -3,23 +3,27 @@ set -Eeuo pipefail
 
 env_file="${1:-/opt/sauti/.env.production}"
 domain="${2:-sauti.uk}"
+admin_domain="${3:-admin.${domain}}"
 
 if [[ ! -f "${env_file}" ]]; then
   echo "${env_file} not found"
   exit 1
 fi
 
-python3 - "${env_file}" "${domain}" <<'PY'
+python3 - "${env_file}" "${domain}" "${admin_domain}" <<'PY'
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
 domain = sys.argv[2].strip().strip("/")
+admin_domain = sys.argv[3].strip().strip("/")
 https = f"https://{domain}"
+admin_https = f"https://{admin_domain}"
 
 updates = {
     "DASHBOARD_BASE_URL": https,
-    "SAUTI_CORS_ALLOWED_ORIGINS": https,
+    "SAUTI_ADMIN_DOMAIN": admin_domain,
+    "SAUTI_CORS_ALLOWED_ORIGINS": f"{https},{admin_https}",
     "PUBLIC_BASE_URL": https,
     "GOOGLE_OAUTH_REDIRECT_URI": f"{https}/api/v1/auth/oauth/google/callback",
     "GOOGLE_CALENDAR_REDIRECT_URI": f"{https}/api/v1/integrations/google-calendar/callback",
@@ -54,4 +58,4 @@ path.write_text("\n".join(new_lines).rstrip() + "\n")
 PY
 
 chmod 600 "${env_file}"
-echo "Updated public callback URLs in ${env_file} for ${domain}."
+echo "Updated public callback URLs in ${env_file} for ${domain} and ${admin_domain}."

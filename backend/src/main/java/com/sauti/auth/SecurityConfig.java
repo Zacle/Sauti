@@ -19,7 +19,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SecurityConfig {
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtFilter,
+                                            OperatorApiKeyFilter operatorApiKeyFilter) throws Exception {
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> {
@@ -49,6 +50,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/agent-templates/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/voices/**").permitAll()
                         .requestMatchers("/api/v1/public/**").permitAll()
+                        .requestMatchers("/api/v1/operator/**").hasRole("OPERATOR")
+                        .requestMatchers("/api/v1/admin/**").hasRole("PLATFORM_ADMIN")
                         .requestMatchers("/webhooks/whatsapp", "/webhooks/whatsapp/**").permitAll()
                         .requestMatchers("/webhooks/telnyx", "/webhooks/telnyx/**").permitAll()
                         .requestMatchers("/webhooks/mpesa/**").permitAll()
@@ -58,6 +61,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(operatorApiKeyFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

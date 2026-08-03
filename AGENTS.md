@@ -97,7 +97,9 @@ Production runs on a single Docker host with Caddy in front.
 - CI workflow: `.github/workflows/ci.yml`.
 - Deploy workflow: `.github/workflows/deploy.yml`.
 - Production builds images locally on the VPS from the exact commit that passed CI.
-- Caddy serves `sauti.uk` and redirects `www.sauti.uk` to the apex domain.
+- Caddy serves `sauti.uk`, redirects `www.sauti.uk` to the apex domain, and
+  serves the isolated platform console at `admin.sauti.uk` from the same
+  dashboard/backend deployment.
 - Public health endpoint: `https://sauti.uk/health`.
 
 Managed external services currently used:
@@ -149,7 +151,8 @@ Other public base URLs:
 
 - `PUBLIC_BASE_URL=https://sauti.uk`
 - `DASHBOARD_BASE_URL=https://sauti.uk`
-- `SAUTI_CORS_ALLOWED_ORIGINS=https://sauti.uk`
+- `SAUTI_CORS_ALLOWED_ORIGINS=https://sauti.uk,https://admin.sauti.uk`
+- `SAUTI_ADMIN_DOMAIN=admin.sauti.uk`
 
 ## Environment handling
 

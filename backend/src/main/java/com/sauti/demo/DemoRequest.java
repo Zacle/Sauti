@@ -55,6 +55,16 @@ public class DemoRequest extends Auditable {
     public String getNotes() { return notes; }
     public String getStatus() { return status; }
 
+    public void markInvited() {
+        if (!"new".equals(status)) throw new IllegalStateException("Demo request has already been processed");
+        status = "invited";
+    }
+
+    public void markActivated() {
+        if (!"invited".equals(status)) throw new IllegalStateException("Demo request is not awaiting activation");
+        status = "activated";
+    }
+
     private static String required(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Demo request value is required");
         return value.trim();

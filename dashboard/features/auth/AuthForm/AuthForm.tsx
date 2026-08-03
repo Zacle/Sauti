@@ -19,13 +19,14 @@ import { authApi, getOnboardingStatus } from "@/lib/api/auth";
 import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import {
   clearPendingEmail,
+  clearSession,
   readPendingEmail,
   writePendingEmail,
   writeSession,
 } from "@/lib/session";
 import { COUNTRIES } from "@/lib/countries";
 
-type AuthMode = "login" | "register" | "verify";
+type AuthMode = "login" | "register" | "verify" | "invite";
 
 export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
@@ -41,7 +42,10 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [googleError, setGoogleError] = useState("");
   const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const [invitationLoading, setInvitationLoading] = useState(mode === "invite");
+  const isAdminSurface = mode === "login" && searchParams.get("surface") === "admin";
   const businessNameRef = useRef<HTMLInputElement>(null);
+  const invitationTokenRef = useRef("");
 
   useEffect(() => {
     if (mode === "verify") {
@@ -55,7 +59,28 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   }, [mode, searchParams]);
 
   useEffect(() => {
-    if (mode === "verify") return;
+    if (mode !== "invite") return;
+    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const token = fragment.get("token") ?? "";
+    invitationTokenRef.current = token;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (!token) {
+      setError("This invitation link is invalid.");
+      setInvitationLoading(false);
+      return;
+    }
+    authApi.previewInvitation(token)
+      .then((invitation) => {
+        setBusinessName(invitation.businessName);
+        setCountryCode(invitation.countryCode);
+        setEmail(invitation.email);
+      })
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "This invitation is unavailable."))
+      .finally(() => setInvitationLoading(false));
+  }, [mode, searchParams]);
+
+  useEffect(() => {
+    if (mode === "verify" || mode === "invite" || isAdminSurface) return;
     fetch("/api/v1/auth/oauth/google/status")
       .then((response) => response.json())
       .then((body: { configured?: boolean }) => {
@@ -69,7 +94,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         setGoogleConfigured(false);
         setGoogleError("Google sign-in is temporarily unavailable. Please continue with email.");
       });
-  }, [mode]);
+  }, [isAdminSurface, mode]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,7 +102,12 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     setError("");
     setMessage("");
     try {
-      if (mode === "register") {
+      if (mode === "invite") {
+        const result = await authApi.acceptInvitation(invitationTokenRef.current, password);
+        writePendingEmail(email);
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+        if (result.devVerificationCode) setMessage(`Development code: ${result.devVerificationCode}`);
+      } else if (mode === "register") {
         const result = await authApi.register({ businessName, email, countryCode, password });
         writePendingEmail(email);
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
@@ -89,6 +119,15 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       } else {
         const session = await authApi.login(email, password);
         writeSession(session);
+        if (isAdminSurface) {
+          if (session.role !== "PLATFORM_ADMIN") {
+            clearSession();
+            setError("This account does not have access to Sauti platform administration.");
+            return;
+          }
+          router.replace("/admin");
+          return;
+        }
         const onboarding = await getOnboardingStatus();
         router.replace(onboarding.hasAgent ? "/dashboard" : "/agents");
       }
@@ -115,6 +154,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
   const isLogin = mode === "login";
   const isVerify = mode === "verify";
+  const isInvite = mode === "invite";
   const googleQuery = new URLSearchParams({
     businessName: mode === "register" ? businessName : "",
     countryCode: mode === "register" ? countryCode : "",
@@ -150,7 +190,11 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         <div className="auth-copy">
           <span>{isVerify ? "Secure workspace access" : "Sauti voice operations"}</span>
           <h1>
-            {isVerify
+            {isAdminSurface
+              ? "Operate Sauti from a protected control center."
+              : isInvite
+              ? "Your private Sauti pilot workspace is ready."
+              : isVerify
               ? "One quick check before your workspace goes live."
               : isLogin
                 ? "Your AI phone operations are ready when you are."
@@ -183,7 +227,11 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               <div>
                 <h2>{isVerify ? "Verify your email" : isLogin ? "Welcome back" : "Create your workspace"}</h2>
                 <p>
-                  {isVerify
+                  {isAdminSurface
+                    ? "Sign in with an authorized Sauti platform administrator account."
+                    : isInvite
+                    ? `Activate ${businessName || "your approved workspace"} with a secure password.`
+                    : isVerify
                     ? "Enter the six-digit code sent to your email."
                     : isLogin
                       ? "Sign in to manage your voice agents."
@@ -222,7 +270,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               </div>
             )}
 
-            {!isVerify && (
+            {!isVerify && !isInvite && !isAdminSurface && (
               <>
                 <button
                   className="google-auth-button"
@@ -248,7 +296,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
             <label>
               Email
-              <input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="owner@company.com" />
+              <input required readOnly={isInvite} type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="owner@company.com" />
             </label>
             {isVerify ? (
               <label>
@@ -264,15 +312,19 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
 
             {error && <div className="form-alert error" role="alert">{error}</div>}
             {message && <div className="form-alert success" role="status">{message}</div>}
-            <button className="app-primary-button" disabled={busy} type="submit">
-              {busy ? <LoaderCircle className="spin" size={17} /> : null}
-              {isVerify ? "Verify email" : isLogin ? "Log in" : "Create workspace"}
+            <button className="app-primary-button" disabled={busy || invitationLoading || Boolean(isInvite && error)} type="submit">
+              {busy || invitationLoading ? <LoaderCircle className="spin" size={17} /> : null}
+              {isVerify ? "Verify email" : isLogin ? "Log in" : isInvite ? "Activate workspace" : "Create workspace"}
               {!busy && <ArrowRight size={17} />}
             </button>
 
             <p className="auth-switch">
               {isVerify ? (
                 <>Didn&apos;t receive it? <button type="button" onClick={resend}>Resend code</button></>
+              ) : isInvite ? (
+                <>Already activated? <Link href={`/login?email=${encodeURIComponent(email)}`}>Log in</Link></>
+              ) : isAdminSurface ? (
+                <>Business workspace? <a href="https://sauti.uk/login">Use workspace login</a></>
               ) : isLogin ? (
                 <>Interested in Sauti? <Link href="/request-demo">Request a demo</Link></>
               ) : (

@@ -14,15 +14,18 @@ public class JwtService {
     private final String issuer;
     private final Algorithm algorithm;
     private final long accessTokenMinutes;
+    private final PlatformAdminPolicy platformAdminPolicy;
 
     public JwtService(
             @Value("${sauti.jwt.issuer}") String issuer,
             @Value("${sauti.jwt.secret}") String secret,
-            @Value("${sauti.jwt.access-token-minutes}") long accessTokenMinutes
+            @Value("${sauti.jwt.access-token-minutes}") long accessTokenMinutes,
+            PlatformAdminPolicy platformAdminPolicy
     ) {
         this.issuer = issuer;
         this.algorithm = Algorithm.HMAC256(secret);
         this.accessTokenMinutes = accessTokenMinutes;
+        this.platformAdminPolicy = platformAdminPolicy;
     }
 
     public String issueAccessToken(User user) {
@@ -32,10 +35,14 @@ public class JwtService {
                 .withSubject(user.getId().toString())
                 .withClaim("tenant_id", user.getTenant().getId().toString())
                 .withClaim("email", user.getEmail())
-                .withClaim("role", user.getRole())
+                .withClaim("role", roleFor(user))
                 .withIssuedAt(now)
                 .withExpiresAt(now.plus(accessTokenMinutes, ChronoUnit.MINUTES))
                 .sign(algorithm);
+    }
+
+    public String roleFor(User user) {
+        return platformAdminPolicy.roleFor(user);
     }
 
     public AuthenticatedUser authenticate(String token) {

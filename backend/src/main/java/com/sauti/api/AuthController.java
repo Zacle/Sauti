@@ -110,6 +110,7 @@ public class AuthController {
                 + "&status=" + encode(response.tenant().status())
                 + "&monthlyMinutesLimit=" + response.tenant().monthlyMinutesLimit()
                 + "&minutesUsedThisCycle=" + response.tenant().minutesUsedThisCycle();
+        target += "&role=" + encode(response.role());
         return new RedirectView(target);
     }
 

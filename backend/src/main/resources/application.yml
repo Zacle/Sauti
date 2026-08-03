@@ -65,6 +65,10 @@ spring:
     prefix: classpath:/templates/
 
 sauti:
+  operator:
+    api-key: ${SAUTI_OPERATOR_API_KEY:}
+  admin:
+    emails: ${SAUTI_PLATFORM_ADMIN_EMAILS:}
   recordings:
     directory: ${SAUTI_RECORDINGS_DIR:/data/recordings}
   document-storage:

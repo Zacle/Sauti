@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><title>Your Sauti pilot invitation</title></head>
+<body style="margin:0;padding:28px;background:#020a14;color:#edf7fc;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+<table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:620px;background:#071827;border:1px solid #17384d;border-radius:18px;">
+<tr><td style="padding:26px 30px;border-bottom:1px solid #17384d;"><strong style="font-size:21px;">Sauti</strong><span style="float:right;color:#5ee6dc;font-size:11px;font-weight:700;">PILOT INVITATION</span></td></tr>
+<tr><td style="padding:30px;line-height:1.6;">
+<h1 style="margin:0 0 12px;font-size:25px;">Your workspace is ready to activate</h1>
+<p style="color:#b7c8d5;">Hello <span th:text="${invitation.contactName}">there</span>, your tailored Sauti pilot for <strong th:text="${invitation.businessName}">your business</strong> has been approved.</p>
+<p style="margin:28px 0;"><a th:href="${acceptUrl}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#45dfd4;color:#03131d;text-decoration:none;font-weight:700;">Activate your workspace</a></p>
+<p style="font-size:13px;color:#8199aa;">This private link expires in 72 hours and can be used once. Do not forward it.</p>
+</td></tr></table></td></tr></table>
+</body></html>

@@ -13,6 +13,40 @@ export type AuthSession = {
   accessToken: string;
   refreshToken: string;
   tenant: Tenant;
+  role: "OWNER" | "PLATFORM_ADMIN" | string;
+};
+
+export type AdminOverview = {
+  workspaces: number;
+  calls: number;
+  bookings: number;
+  customers: number;
+  newDemoRequests: number;
+  invitedDemoRequests: number;
+  activatedPilots: number;
+};
+
+export type AdminDemoRequest = {
+  id: string;
+  businessName: string;
+  contactName: string;
+  email: string;
+  countryCode: string;
+  phone: string | null;
+  industry: string;
+  monthlyCallVolume: string;
+  channels: string;
+  primaryUseCase: string;
+  notes: string | null;
+  status: "new" | "invited" | "activated" | string;
+  createdAt: string;
+};
+
+export type AdminDemoRequestPage = {
+  requests: AdminDemoRequest[];
+  total: number;
+  page: number;
+  pageSize: number;
 };
 
 export type WorkspaceNotification = {

@@ -76,12 +76,23 @@ public class AuthService {
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
         requirePublicRegistration();
-        var email = request.email().toLowerCase();
+        return createPasswordAccount(request.businessName(), request.email(), request.countryCode(), request.password());
+    }
+
+    @Transactional
+    public RegisterResponse registerInvited(String businessName, String email, String countryCode, String password) {
+        if (password == null || password.length() < 8) throw new IllegalArgumentException("Password must be at least 8 characters");
+        return createPasswordAccount(businessName, email, countryCode, password);
+    }
+
+    private RegisterResponse createPasswordAccount(String businessName, String requestedEmail,
+                                                   String countryCode, String password) {
+        var email = requestedEmail.trim().toLowerCase();
         if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email is already registered");
         }
-        Tenant tenant = tenantRepository.save(new Tenant(request.businessName(), email, request.countryCode()));
-        User user = userRepository.save(new User(tenant, email, passwordEncoder.encode(request.password())));
+        Tenant tenant = tenantRepository.save(new Tenant(businessName, email, countryCode));
+        User user = userRepository.save(new User(tenant, email, passwordEncoder.encode(password)));
         String verificationCode = verificationCodeService.generateAndStoreEmailVerificationCode(user);
         authEmailService.sendVerificationEmail(user.getEmail(), tenant.getBusinessName(), verificationCode);
         return new RegisterResponse(
@@ -214,7 +225,8 @@ public class AuthService {
                 hash(refreshToken),
                 OffsetDateTime.now().plusDays(refreshTokenDays)
         ));
-        return new AuthResponse(jwtService.issueAccessToken(user), refreshToken, TenantResponse.from(user.getTenant()));
+        return new AuthResponse(jwtService.issueAccessToken(user), refreshToken,
+                TenantResponse.from(user.getTenant()), jwtService.roleFor(user));
     }
 
     private User findOrCreateGoogleUser(GoogleOAuthService.GoogleProfile profile, String requestedBusinessName, String requestedCountryCode) {
