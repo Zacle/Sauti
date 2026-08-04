@@ -10,6 +10,7 @@ import com.sauti.integration.IntegrationService;
 import com.sauti.billing.CommunicationUsageMeteringService;
 import java.util.Optional;
 import java.util.UUID;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 import org.junit.jupiter.api.Test;
 
 class WhatsAppInboxServiceTest {
@@ -59,7 +60,8 @@ class WhatsAppInboxServiceTest {
         return new Fixture(tenantId, conversation, conversations, messages,
                 new WhatsAppInboxService(conversations, messages,
                         mock(IntegrationService.class), mock(WhatsAppMessageSender.class),
-                        mock(CommunicationUsageMeteringService.class)));
+                        mock(CommunicationUsageMeteringService.class),
+                        mock(PilotProvisioningPolicyService.class)));
     }
 
     private record Fixture(UUID tenantId, WhatsAppConversation conversation,

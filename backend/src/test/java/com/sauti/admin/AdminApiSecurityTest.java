@@ -1,6 +1,7 @@
 package com.sauti.admin;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -13,6 +14,8 @@ import com.sauti.call.Call;
 import com.sauti.call.CallRepository;
 import com.sauti.tenant.Tenant;
 import com.sauti.tenant.TenantRepository;
+import com.sauti.demo.DemoRequest;
+import com.sauti.demo.DemoRequestRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -32,6 +35,7 @@ class AdminApiSecurityTest {
     @Autowired JwtService jwt;
     @Autowired AgentRepository agents;
     @Autowired CallRepository calls;
+    @Autowired DemoRequestRepository demoRequests;
 
     @Test
     void separatesPlatformAdminApisFromTenantOwners() throws Exception {
@@ -80,6 +84,61 @@ class AdminApiSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.days").value(7))
                 .andExpect(jsonPath("$.activity.length()").value(7));
+    }
+
+    @Test
+    void recordsAssignmentAndNotesAsAnImmutableAdminAuditEvent() throws Exception {
+        var admin = user("Admin workspace", "platform-admin@sauti.test");
+        var owner = user("Customer workspace", "ordinary-owner@sauti.test");
+        var request = demoRequests.save(new DemoRequest("Acme", "Amina", "lead@example.com", "KE", null,
+                "Healthcare", "under-100", "voice", "Answer calls", null));
+        var payload = "{\"assignedTo\":\"operator@sauti.uk\",\"internalNotes\":\"Qualified for pilot\"}";
+
+        mvc.perform(patch("/api/v1/admin/demo-requests/{id}", request.getId())
+                        .contentType("application/json").content(payload)
+                        .header("Authorization", "Bearer " + jwt.issueAccessToken(owner)))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(patch("/api/v1/admin/demo-requests/{id}", request.getId())
+                        .contentType("application/json").content(payload)
+                        .header("Authorization", "Bearer " + jwt.issueAccessToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assignedTo").value("operator@sauti.uk"))
+                .andExpect(jsonPath("$.internalNotes").value("Qualified for pilot"));
+
+        mvc.perform(get("/api/v1/admin/audit")
+                        .header("Authorization", "Bearer " + jwt.issueAccessToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.events[0].actorEmail").value("platform-admin@sauti.test"))
+                .andExpect(jsonPath("$.events[0].action").value("demo.request.operations_updated"))
+                .andExpect(jsonPath("$.events[0].resourceId").value(request.getId().toString()));
+    }
+
+    @Test
+    void platformAdminControlsPilotBudgetAndPaidCapabilities() throws Exception {
+        var admin = user("Admin workspace", "platform-admin@sauti.test");
+        var pilot = user("Pilot workspace", "pilot-owner@sauti.test");
+        var authorization = "Bearer " + jwt.issueAccessToken(admin);
+
+        mvc.perform(patch("/api/v1/admin/workspaces/{id}/pilot-policy", pilot.getTenant().getId())
+                        .contentType("application/json")
+                        .content("""
+                                {"status":"approved","currency":"USD","monthlyBudget":25.00,
+                                 "phoneNumbersApproved":true,"liveCallingApproved":true,
+                                 "smsApproved":false,"whatsappApproved":false,
+                                 "notes":"Voice-only controlled pilot"}
+                                """)
+                        .header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.pilotPolicy.status").value("approved"))
+                .andExpect(jsonPath("$.pilotPolicy.monthlyBudget").value(25.0))
+                .andExpect(jsonPath("$.pilotPolicy.phoneNumbersApproved").value(true))
+                .andExpect(jsonPath("$.pilotPolicy.smsApproved").value(false))
+                .andExpect(jsonPath("$.pilotPolicy.approvedBy").value("platform-admin@sauti.test"));
+
+        mvc.perform(get("/api/v1/admin/audit").header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.events[0].action").value("pilot.provisioning_policy.updated"));
     }
 
     private User user(String business, String email) {

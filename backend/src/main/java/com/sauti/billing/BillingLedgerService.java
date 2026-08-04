@@ -157,6 +157,14 @@ public class BillingLedgerService {
     }
 
     @Transactional(readOnly = true)
+    public BigDecimal currentMonthDebitTotal(UUID tenantId, String currency) {
+        var start = OffsetDateTime.now(ZoneOffset.UTC).with(TemporalAdjusters.firstDayOfMonth())
+                .toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC);
+        return monetaryTotal(ledger.findAllByTenantIdAndCreatedAtGreaterThanEqual(tenantId, start),
+                currency(currency), "debit");
+    }
+
+    @Transactional(readOnly = true)
     CommunicationLedgerEntry latestPhoneNumberPurchase(UUID tenantId, String phoneNumber) {
         var exact = ledger.findFirstByTenantIdAndCategoryAndExternalReferenceOrderByCreatedAtDesc(
                 tenantId, "phone_number_purchase", phoneNumber);

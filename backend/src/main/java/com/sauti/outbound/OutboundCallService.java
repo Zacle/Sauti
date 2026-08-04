@@ -13,6 +13,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 
 @Service
 public class OutboundCallService {
@@ -22,6 +23,7 @@ public class OutboundCallService {
     private final ObjectProvider<CallPipelineService> callPipelineService;
     private final boolean enabled;
     private final String defaultFromNumber;
+    private final PilotProvisioningPolicyService provisioningPolicies;
 
     public OutboundCallService(
             ScheduledCallRepository scheduledCallRepository,
@@ -29,7 +31,8 @@ public class OutboundCallService {
             ObjectProvider<TelephonyProvider> telephonyProvider,
             ObjectProvider<CallPipelineService> callPipelineService,
             @Value("${sauti.telnyx.outbound.enabled:false}") boolean enabled,
-            @Value("${sauti.telnyx.outbound.from-number:}") String defaultFromNumber
+            @Value("${sauti.telnyx.outbound.from-number:}") String defaultFromNumber,
+            PilotProvisioningPolicyService provisioningPolicies
     ) {
         this.scheduledCallRepository = scheduledCallRepository;
         this.agentRepository = agentRepository;
@@ -37,6 +40,7 @@ public class OutboundCallService {
         this.callPipelineService = callPipelineService;
         this.enabled = enabled;
         this.defaultFromNumber = defaultFromNumber;
+        this.provisioningPolicies = provisioningPolicies;
     }
 
     @Transactional
@@ -79,6 +83,7 @@ public class OutboundCallService {
 
     private void initiate(ScheduledCall scheduledCall) {
         try {
+            provisioningPolicies.authorize(scheduledCall.getAgent().getTenant().getId(), "live_calling");
             var from = scheduledCall.getAgent().getTwilioPhoneNumber();
             if (from == null || from.isBlank()) from = defaultFromNumber;
             var callControlId = telephonyProvider.getObject().createOutboundCall(

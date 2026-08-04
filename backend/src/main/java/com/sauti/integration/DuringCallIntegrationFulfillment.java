@@ -29,6 +29,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 
 @Component
 public class DuringCallIntegrationFulfillment implements ToolFulfillment {
@@ -40,6 +41,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     private final BookingRepository bookings;
     private final WhatsAppTemplateParameterMapper whatsappTemplateParameters;
     private final CommunicationUsageMeteringService usageMetering;
+    private final PilotProvisioningPolicyService provisioningPolicies;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final String graphApiBase;
     private final String publicBaseUrl;
@@ -52,6 +54,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
                                             BookingRepository bookings,
                                             WhatsAppTemplateParameterMapper whatsappTemplateParameters,
                                             CommunicationUsageMeteringService usageMetering,
+                                            PilotProvisioningPolicyService provisioningPolicies,
                                             @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBase,
                                             @Value("${sauti.telnyx.public-base-url}") String publicBaseUrl) {
         this.integrations = integrations; this.googleSheets = googleSheets; this.payments = payments; this.objectMapper = objectMapper;
@@ -59,6 +62,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
         this.bookings = bookings;
         this.whatsappTemplateParameters = whatsappTemplateParameters;
         this.usageMetering = usageMetering;
+        this.provisioningPolicies = provisioningPolicies;
         this.graphApiBase = graphApiBase.replaceFirst("/+$", "");
         this.publicBaseUrl = publicBaseUrl.replaceFirst("/+$", "");
     }
@@ -83,6 +87,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     }
 
     private LlmToolResult whatsapp(Call call, LlmToolCall toolCall) throws Exception {
+        provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
         if (!"whatsapp".equalsIgnoreCase(string(call.getDirection()))) {
             return LlmToolResult.error(toolCall,
                     "WhatsApp confirmations can only be sent in a customer-started WhatsApp conversation");

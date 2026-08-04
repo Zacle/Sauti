@@ -42,20 +42,28 @@ X-Sauti-Operator-Key: <server-configured secret>
 Production requires a strong `SAUTI_OPERATOR_API_KEY` GitHub Actions secret.
 If the secret is absent, operator endpoints fail closed with `401`.
 
-### Remaining Phase 1 slices
+### Completed Phase 1 administration slices
 
-1. Complete the new Sauti Admin console with audit views. Platform totals,
+- The Sauti Admin console includes platform totals,
    the demo-request approval queue, searchable read-only workspace/customer
    directories, platform time-series, provider cost evidence, unpriced usage,
    reconciliation state, and observed provider health are now available on the
    isolated `admin.sauti.uk` origin.
-2. Extend demo operations with explicit rejection, invitation delivery state,
-   safe resend/revoke, assignment, notes, and an audit trail.
-3. Add pilot budgets and provisioning approvals so number purchases, live
-   calling, SMS, and WhatsApp cannot consume funds before operator approval.
-4. Add a pilot readiness checklist covering agent setup, number ownership,
+- Demo operations include explicit rejection, SMTP-provider delivery state,
+  token-rotating resend, revoke, assignment, internal notes, and immutable
+  platform-admin audit history.
+- Invited workspaces now start with a zero-budget, deny-by-default provider
+  policy. Platform administrators explicitly approve phone numbers, live
+  calling, SMS, and WhatsApp within a monthly ledger-backed ceiling.
+- Demo requesters receive request-received, approval/invitation, and rejection
+  lifecycle emails. A verified first-time workspace receives the onboarding
+  welcome email once.
+
+### Remaining Phase 1 slices
+
+1. Add a pilot readiness checklist covering agent setup, number ownership,
    calendar sync, messaging, test calls, and support contacts.
-5. Run one invited-workspace acceptance journey in production and record the
+2. Run one invited-workspace acceptance journey in production and record the
    evidence before Phase 1 is marked complete. The equivalent admin approval,
    invitation preview, one-time activation, and database-persistence journey is
    now covered by an automated integration test.

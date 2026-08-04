@@ -15,6 +15,92 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-04: Add controlled pilot budgets, provider approvals, and lifecycle email
+
+- Added a tenant-scoped pilot provisioning policy for invited workspaces. Every
+  new invited tenant begins `pending` with a zero USD monthly budget and phone
+  numbers, live calling, SMS, and WhatsApp disabled. A platform administrator
+  must approve the policy, set a positive monthly budget, and enable each paid
+  capability independently.
+- Kept the new approval gate independent from billing's current `observe`
+  mode. Managed pilots are blocked before provider operations even while
+  subscription enforcement remains observational. Existing workspaces without
+  a pilot policy retain their current behavior to avoid an unreviewed outage.
+- Applied the hard gate to phone-number provisioning, live-agent activation,
+  inbound and scheduled Telnyx calls, SMS tools, WhatsApp inbound AI handling,
+  template confirmations, and AI/human WhatsApp replies. Browser/Web Voice
+  testing remains available because it does not provision a phone number.
+- The monthly ceiling uses the existing Sauti communication ledger. Provider
+  purchases include their quote in the preflight check; message and call
+  traffic stops once recorded monthly debit reaches the approved ceiling. A
+  zero budget never authorizes paid traffic.
+- Added platform-admin editing to workspace details and
+  `PATCH /api/v1/admin/workspaces/{tenantId}/pilot-policy`. Each change records
+  the authenticated administrator in both the policy approval metadata and
+  immutable platform audit history.
+- Demo requesters now receive a confirmation email after a stored request and
+  a customer-visible decision email after rejection. Approval continues to
+  send the existing one-time pilot invitation, which explicitly says the pilot
+  was approved. The existing welcome email is sent once after first email
+  verification and explains agent creation, customer channels, and testing;
+  invited-account acceptance now explicitly verifies that behavior in tests.
+- Added Flyway migration `V55__pilot_provisioning_policies.sql`, policy/budget
+  tests, admin authorization/audit coverage, invitation-policy acceptance
+  coverage, lifecycle email delivery tests, and template rendering tests.
+- Verification:
+  - focused policy, lifecycle email, invited-account, admin API, provider gate,
+    WhatsApp, welcome-email, and template tests passed;
+  - the full backend suite passed with 442 tests after isolating the acceptance
+    test from its unrelated external Redis rate limiter;
+  - dashboard lint passed with zero warnings;
+  - dashboard typecheck passed;
+  - dashboard production build passed with all 61 routes.
+- Deployment status: not deployed; all changes remain uncommitted for
+  maintainer review and the normal push -> CI -> production chain.
+- Next Phase 1 slice: the pilot readiness checklist for agent setup, number
+  ownership, calendar sync, messaging, test calls, and support contacts.
+
+### 2026-08-04: Complete Phase 1 invitation operations and admin audit history
+
+- Extended the demo-request lifecycle with explicit rejection, assignment,
+  private platform notes, invitation revocation, and safe resend. Resending
+  rotates the SHA-256 token hash and expiry, immediately invalidating the old
+  link; rejected or activated leads cannot be re-invited through direct API
+  calls even if the dashboard controls are bypassed.
+- Added durable invitation email state (`pending`, `sent`, or `failed`), attempt
+  counts, timestamps, and a sanitized failure class. `sent` deliberately means
+  the configured SMTP provider accepted the message; the console does not
+  claim that the recipient mailbox delivered or opened it.
+- Added platform-admin-only APIs for assignment/notes, rejection, resend,
+  revoke, and audit reads. Every privileged mutation records the authenticated
+  administrator, action, resource, safe summary, and UTC timestamp in the new
+  append-only `platform_admin_audit_events` table.
+- Upgraded `/admin/demo-requests` with invitation delivery evidence, resend and
+  revoke controls, rejection reasons, assignment, and internal notes. Added
+  the read-only `/admin/audit` governance page and navigation destination.
+- Added Flyway migration `V54__admin_demo_operations.sql`. No credentials,
+  invitation plaintext tokens, passwords, or provider payloads enter the audit
+  table or admin response.
+- Added focused lifecycle, provider-delivery-state, authorization, and audit
+  attribution tests. Existing approval-to-accept coverage remains intact.
+- Verification:
+  - focused invitation lifecycle/delivery, acceptance, admin API, and admin
+    service tests passed;
+  - the full backend suite passed (the final confirmation was Gradle up-to-date
+    after the same full task completed during the parallel verification run);
+  - dashboard lint passed with zero warnings;
+  - dashboard typecheck passed;
+  - clean dashboard production build passed with all 61 routes, including
+    `/admin/audit` and `/admin/demo-requests`.
+- Local operational note: the `next start -p 8088` process running since August
+  3 was stopped with approval because it held the `.next` build directory. It
+  was not restarted; use `npm.cmd start -- -p 8088` if that local server is
+  still needed.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and the normal push -> CI -> production deployment chain.
+- Next Phase 1 slice: pilot budgets and explicit provisioning approvals for
+  phone numbers, live calling, SMS, and WhatsApp.
+
 ### 2026-08-04: Add Phase 1 platform analytics, provider cost, and observed health
 
 - Enabled `/admin/analytics` in the isolated platform console with 7, 30, and

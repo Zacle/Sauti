@@ -12,24 +12,45 @@ public final class AdminDtos {
     public record Overview(long workspaces, long calls, long bookings, long customers,
                            long newDemoRequests, long invitedDemoRequests, long activatedPilots) { }
 
+    public record InvitationState(UUID id, String deliveryStatus, int deliveryAttempts,
+                                  OffsetDateTime lastDeliveryAttemptAt, OffsetDateTime sentAt,
+                                  String lastDeliveryError, OffsetDateTime expiresAt,
+                                  OffsetDateTime revokedAt, OffsetDateTime acceptedAt) { }
+
     public record DemoRequestItem(UUID id, String businessName, String contactName, String email,
                                   String countryCode, String phone, String industry,
                                   String monthlyCallVolume, String channels, String primaryUseCase,
-                                  String notes, String status, OffsetDateTime createdAt) {
-        static DemoRequestItem from(DemoRequest request) {
+                                  String notes, String status, String assignedTo, String internalNotes,
+                                  OffsetDateTime rejectedAt, String rejectedReason,
+                                  InvitationState invitation, OffsetDateTime createdAt) {
+        static DemoRequestItem from(DemoRequest request, InvitationState invitation) {
             return new DemoRequestItem(request.getId(), request.getBusinessName(), request.getContactName(),
                     request.getEmail(), request.getCountryCode(), request.getPhone(), request.getIndustry(),
                     request.getMonthlyCallVolume(), request.getChannels(), request.getPrimaryUseCase(),
-                    request.getNotes(), request.getStatus(), request.getCreatedAt());
+                    request.getNotes(), request.getStatus(), request.getAssignedTo(), request.getInternalNotes(),
+                    request.getRejectedAt(), request.getRejectedReason(), invitation, request.getCreatedAt());
         }
     }
 
     public record DemoRequestPage(List<DemoRequestItem> requests, long total, int page, int pageSize) { }
+    public record UpdateDemoRequest(String assignedTo, String internalNotes) { }
+    public record RejectDemoRequest(String reason) { }
+    public record AuditItem(UUID id, String actorEmail, String action, String resourceType,
+                            String resourceId, String summary, OffsetDateTime createdAt) { }
+    public record AuditPage(List<AuditItem> events, long total, int page, int pageSize) { }
+
+    public record PilotPolicyItem(String status, String currency, BigDecimal monthlyBudget,
+                                  boolean phoneNumbersApproved, boolean liveCallingApproved,
+                                  boolean smsApproved, boolean whatsappApproved,
+                                  String approvedBy, OffsetDateTime approvedAt, String notes) { }
+    public record ConfigurePilotPolicy(String status, String currency, BigDecimal monthlyBudget,
+                                       boolean phoneNumbersApproved, boolean liveCallingApproved,
+                                       boolean smsApproved, boolean whatsappApproved, String notes) { }
 
     public record WorkspaceItem(UUID id, String businessName, String email, String countryCode,
                                 String plan, String status, int minutesUsed, int minutesLimit,
                                 long agents, long calls, long bookings, long customers,
-                                OffsetDateTime createdAt) { }
+                                PilotPolicyItem pilotPolicy, OffsetDateTime createdAt) { }
 
     public record WorkspacePage(List<WorkspaceItem> workspaces, long total, int page, int pageSize) { }
 

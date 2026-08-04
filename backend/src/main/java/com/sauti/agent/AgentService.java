@@ -3,6 +3,7 @@ package com.sauti.agent;
 import com.sauti.agent.AgentDtos.AgentRequest;
 import com.sauti.calendar.BookingRepository;
 import com.sauti.billing.BillingLedgerService;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 import com.sauti.call.CallRepository;
 import com.sauti.outbound.ScheduledCallRepository;
 import com.sauti.tenant.TenantRepository;
@@ -29,6 +30,7 @@ public class AgentService {
     private final KnowledgeBaseService knowledgeBaseService;
     private final ApplicationEventPublisher events;
     private final BillingLedgerService billingLedger;
+    private final PilotProvisioningPolicyService provisioningPolicies;
 
     public AgentService(
             AgentRepository agentRepository,
@@ -42,7 +44,8 @@ public class AgentService {
             ScheduledCallRepository scheduledCallRepository,
             KnowledgeBaseService knowledgeBaseService,
             ApplicationEventPublisher events,
-            BillingLedgerService billingLedger
+            BillingLedgerService billingLedger,
+            PilotProvisioningPolicyService provisioningPolicies
     ) {
         this.agentRepository = agentRepository;
         this.tenantRepository = tenantRepository;
@@ -56,6 +59,7 @@ public class AgentService {
         this.knowledgeBaseService = knowledgeBaseService;
         this.events = events;
         this.billingLedger = billingLedger;
+        this.provisioningPolicies = provisioningPolicies;
     }
 
     @Transactional(readOnly = true)
@@ -194,6 +198,8 @@ public class AgentService {
         if (!phoneConfigured && !agent.isWebVoiceEnabled() && !whatsappConfigured) {
             throw new IllegalArgumentException("Enable Web Voice, connect WhatsApp, or assign a phone number before activating this agent");
         }
+        if (phoneConfigured) provisioningPolicies.authorize(tenantId, "live_calling");
+        if (whatsappConfigured) provisioningPolicies.authorize(tenantId, "whatsapp");
         var missingVariables = agentVariableService.missingRequired(agentId);
         if (!missingVariables.isEmpty()) {
             throw new IllegalArgumentException(
@@ -261,6 +267,7 @@ public class AgentService {
             }
         }
         var quote = telephonyProvider.quotePhoneNumber(agent.getTenant().getCountryCode(), requestedPhoneNumber);
+        provisioningPolicies.authorize(tenantId, "phone_numbers", quote.initialEstimatedCost(), quote.currency());
         billingLedger.authorizePaidResource(tenantId, quote.initialEstimatedCost(), quote.currency());
         var provisioning = telephonyProvider.provisionPhoneNumber(
                 agent.getTenant().getCountryCode(),

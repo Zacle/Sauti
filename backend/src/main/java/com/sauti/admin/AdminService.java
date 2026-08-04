@@ -22,6 +22,7 @@ import com.sauti.call.CallRepository;
 import com.sauti.demo.DemoRequestRepository;
 import com.sauti.demo.PilotInvitationDtos.InvitationIssued;
 import com.sauti.demo.PilotInvitationService;
+import com.sauti.demo.PilotInvitationRepository;
 import com.sauti.integration.PlatformIntegrationHealthService;
 import com.sauti.tenant.TenantRepository;
 import java.time.LocalDate;
@@ -36,6 +37,9 @@ import java.util.UUID;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
+import org.springframework.context.ApplicationEventPublisher;
+import com.sauti.demo.DemoRequestRejected;
 
 @Service
 public class AdminService {
@@ -47,12 +51,20 @@ public class AdminService {
     private final PilotInvitationService invitations;
     private final PlatformCostInsightsService costInsights;
     private final PlatformIntegrationHealthService integrationHealth;
+    private final PilotInvitationRepository invitationRepository;
+    private final PlatformAdminAuditService audit;
+    private final PilotProvisioningPolicyService provisioningPolicies;
+    private final ApplicationEventPublisher events;
 
     public AdminService(TenantRepository tenants, CallRepository calls, BookingRepository bookings,
                         AgentRepository agents,
                         DemoRequestRepository demoRequests, PilotInvitationService invitations,
                         PlatformCostInsightsService costInsights,
-                        PlatformIntegrationHealthService integrationHealth) {
+                        PlatformIntegrationHealthService integrationHealth,
+                        PilotInvitationRepository invitationRepository,
+                        PlatformAdminAuditService audit,
+                        PilotProvisioningPolicyService provisioningPolicies,
+                        ApplicationEventPublisher events) {
         this.tenants = tenants;
         this.calls = calls;
         this.bookings = bookings;
@@ -61,6 +73,10 @@ public class AdminService {
         this.invitations = invitations;
         this.costInsights = costInsights;
         this.integrationHealth = integrationHealth;
+        this.invitationRepository = invitationRepository;
+        this.audit = audit;
+        this.provisioningPolicies = provisioningPolicies;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -75,12 +91,62 @@ public class AdminService {
         int page = Math.max(0, requestedPage);
         int size = Math.min(100, Math.max(10, requestedPageSize));
         var result = demoRequests.findAllByOrderByCreatedAtDesc(PageRequest.of(page, size));
-        return new DemoRequestPage(result.getContent().stream().map(DemoRequestItem::from).toList(),
+        var ids = result.getContent().stream().map(com.sauti.demo.DemoRequest::getId).toList();
+        var invitationByRequest = invitationRepository.findAllByDemoRequestIdIn(ids).stream()
+                .collect(java.util.stream.Collectors.toMap(com.sauti.demo.PilotInvitation::getDemoRequestId,
+                        invitation -> new AdminDtos.InvitationState(invitation.getId(), invitation.getDeliveryStatus(),
+                                invitation.getDeliveryAttempts(), invitation.getLastDeliveryAttemptAt(),
+                                invitation.getSentAt(), invitation.getLastDeliveryError(), invitation.getExpiresAt(),
+                                invitation.getRevokedAt(), invitation.getAcceptedAt())));
+        return new DemoRequestPage(result.getContent().stream()
+                .map(request -> DemoRequestItem.from(request, invitationByRequest.get(request.getId()))).toList(),
                 result.getTotalElements(), page, size);
     }
 
-    public InvitationIssued invite(UUID requestId) {
-        return invitations.issue(requestId);
+    @Transactional
+    public InvitationIssued invite(UUID requestId, String actor) {
+        var issued = invitations.issue(requestId);
+        audit.record(actor, "demo.invitation.issued", "demo_request", requestId.toString(),
+                "Pilot invitation issued");
+        return issued;
+    }
+
+    @Transactional
+    public InvitationIssued resendInvitation(UUID requestId, String actor) {
+        var issued = invitations.resend(requestId);
+        audit.record(actor, "demo.invitation.resent", "demo_request", requestId.toString(),
+                "Invitation token rotated and email resent");
+        return issued;
+    }
+
+    @Transactional
+    public void revokeInvitation(UUID requestId, String actor) {
+        invitations.revoke(requestId);
+        audit.record(actor, "demo.invitation.revoked", "demo_request", requestId.toString(),
+                "Pilot invitation revoked");
+    }
+
+    @Transactional
+    public DemoRequestItem reject(UUID requestId, String reason, String actor) {
+        var request = demoRequests.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Demo request not found"));
+        invitations.revokeForRejection(requestId);
+        request.reject(reason, OffsetDateTime.now(ZoneOffset.UTC));
+        events.publishEvent(new DemoRequestRejected(request));
+        audit.record(actor, "demo.request.rejected", "demo_request", requestId.toString(),
+                "Demo request rejected: " + safeSummary(reason));
+        return DemoRequestItem.from(request, invitationState(requestId));
+    }
+
+    @Transactional
+    public DemoRequestItem updateDemoOperations(UUID requestId, String assignedTo, String internalNotes,
+                                                 String actor) {
+        var request = demoRequests.findById(requestId)
+                .orElseThrow(() -> new IllegalArgumentException("Demo request not found"));
+        request.updateOperations(assignedTo, internalNotes);
+        audit.record(actor, "demo.request.operations_updated", "demo_request", requestId.toString(),
+                "Assignment and internal notes updated");
+        return DemoRequestItem.from(request, invitationState(requestId));
     }
 
     @Transactional(readOnly = true)
@@ -93,7 +159,7 @@ public class AdminService {
                 tenant.getPlan(), tenant.getStatus(), tenant.getMinutesUsedThisCycle(), tenant.getMonthlyMinutesLimit(),
                 agents.countByTenantId(tenant.getId()), calls.countByTenantId(tenant.getId()),
                 bookings.countByTenantId(tenant.getId()), calls.countDistinctCustomerNumbersByTenantId(tenant.getId()),
-                tenant.getCreatedAt()
+                pilotPolicy(tenant.getId()), tenant.getCreatedAt()
         )).toList();
         return new WorkspacePage(items, result.getTotalElements(), page, size);
     }
@@ -106,7 +172,18 @@ public class AdminService {
                 tenant.getCountryCode(), tenant.getPlan(), tenant.getStatus(), tenant.getMinutesUsedThisCycle(),
                 tenant.getMonthlyMinutesLimit(), agents.countByTenantId(tenantId), calls.countByTenantId(tenantId),
                 bookings.countByTenantId(tenantId), calls.countDistinctCustomerNumbersByTenantId(tenantId),
-                tenant.getCreatedAt());
+                pilotPolicy(tenantId), tenant.getCreatedAt());
+    }
+
+    @Transactional
+    public WorkspaceItem configurePilotPolicy(UUID tenantId, AdminDtos.ConfigurePilotPolicy request, String actor) {
+        tenants.findById(tenantId).orElseThrow(() -> new IllegalArgumentException("Workspace not found"));
+        var policy = provisioningPolicies.configure(tenantId, request.status(), request.currency(),
+                request.monthlyBudget(), request.phoneNumbersApproved(), request.liveCallingApproved(),
+                request.smsApproved(), request.whatsappApproved(), request.notes(), actor);
+        audit.record(actor, "pilot.provisioning_policy.updated", "workspace", tenantId.toString(),
+                "Pilot budget and provider capabilities updated to " + policy.getStatus());
+        return workspace(tenantId);
     }
 
     @Transactional(readOnly = true)
@@ -245,5 +322,26 @@ public class AdminService {
 
     private String query(String requested) {
         return requested == null ? "" : requested.trim();
+    }
+
+    private AdminDtos.InvitationState invitationState(UUID requestId) {
+        return invitationRepository.findByDemoRequestId(requestId).map(invitation ->
+                new AdminDtos.InvitationState(invitation.getId(), invitation.getDeliveryStatus(),
+                        invitation.getDeliveryAttempts(), invitation.getLastDeliveryAttemptAt(),
+                        invitation.getSentAt(), invitation.getLastDeliveryError(), invitation.getExpiresAt(),
+                        invitation.getRevokedAt(), invitation.getAcceptedAt())).orElse(null);
+    }
+
+    private String safeSummary(String value) {
+        var normalized = value == null ? "" : value.trim().replaceAll("[\\r\\n]+", " ");
+        return normalized.substring(0, Math.min(300, normalized.length()));
+    }
+
+    private AdminDtos.PilotPolicyItem pilotPolicy(UUID tenantId) {
+        var policy = provisioningPolicies.find(tenantId);
+        return policy == null ? null : new AdminDtos.PilotPolicyItem(policy.getStatus(), policy.getCurrency(),
+                policy.getMonthlyBudget(), policy.isPhoneNumbersApproved(), policy.isLiveCallingApproved(),
+                policy.isSmsApproved(), policy.isWhatsappApproved(), policy.getApprovedBy(),
+                policy.getApprovedAt(), policy.getNotes());
     }
 }

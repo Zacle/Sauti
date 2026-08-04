@@ -37,9 +37,13 @@ public class DemoRequestEmailListener {
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void notifyOwner(DemoRequestReceived event) {
+    public void notifyParties(DemoRequestReceived event) {
+        sendOwner(event.request());
+        sendRequester(event.request());
+    }
+
+    private void sendOwner(DemoRequest request) {
         try {
-            var request = event.request();
             var context = new Context();
             context.setVariable("request", request);
             var message = mailSender.createMimeMessage();
@@ -54,6 +58,24 @@ public class DemoRequestEmailListener {
             LOGGER.warn("Demo request notification failed exception={}", exception.getClass().getSimpleName());
         } catch (RuntimeException exception) {
             LOGGER.warn("Demo request notification failed exception={}", exception.getClass().getSimpleName());
+        }
+    }
+
+    private void sendRequester(DemoRequest request) {
+        try {
+            var context = new Context();
+            context.setVariable("request", request);
+            var message = mailSender.createMimeMessage();
+            var helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(fromName + " <" + fromEmail + ">");
+            helper.setTo(request.getEmail());
+            helper.setSubject("We received your Sauti demo request");
+            helper.setText(templates.process("email/demo-request-received", context), true);
+            mailSender.send(message);
+        } catch (MessagingException | MailException exception) {
+            LOGGER.warn("Demo request receipt failed exception={}", exception.getClass().getSimpleName());
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Demo request receipt failed exception={}", exception.getClass().getSimpleName());
         }
     }
 }

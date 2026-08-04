@@ -98,6 +98,22 @@ class EmailTemplateRenderingTest {
                 .contains("https://sauti.uk/help");
     }
 
+    @Test
+    void rendersRequesterReceiptAndRejectionEmails() {
+        var request = new com.sauti.demo.DemoRequest("Acme Clinic", "Amina", "owner@example.com", "KE",
+                "+254700000000", "Healthcare", "under-100", "voice", "Answer calls", null);
+        var received = new Context(); received.setVariable("request", request);
+        var receivedHtml = templateEngine().process("email/demo-request-received", received);
+        assertThat(receivedHtml).contains("We received your request").contains("Amina")
+                .contains("No paid phone number or provider resource is created");
+
+        request.reject("Current pilot capacity is full", java.time.OffsetDateTime.now());
+        var rejected = new Context(); rejected.setVariable("request", request);
+        var rejectedHtml = templateEngine().process("email/demo-request-rejected", rejected);
+        assertThat(rejectedHtml).contains("cannot open this pilot right now")
+                .contains("Current pilot capacity is full").contains("reply to this email");
+    }
+
     private Context securityContext(boolean resetRequest) {
         var context = new Context();
         context.setVariable("businessName", "Hairy");

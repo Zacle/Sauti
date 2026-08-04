@@ -15,6 +15,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.ApplicationEventPublisher;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 
 class PilotInvitationServiceTest {
     private final DemoRequestRepository requests = mock(DemoRequestRepository.class);
@@ -22,7 +23,8 @@ class PilotInvitationServiceTest {
     private final UserRepository users = mock(UserRepository.class);
     private final AuthService auth = mock(AuthService.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
-    private final PilotInvitationService service = new PilotInvitationService(requests, invitations, users, auth, events);
+    private final PilotInvitationService service = new PilotInvitationService(requests, invitations, users, auth, events,
+            mock(PilotProvisioningPolicyService.class));
 
     @Test
     void issuesHashedExpiringInvitationForApprovedLead() {
@@ -53,6 +55,39 @@ class PilotInvitationServiceTest {
         assertThatThrownBy(() -> service.accept("secret-token", "password123"))
                 .isInstanceOf(PilotInvitationUnavailableException.class)
                 .hasMessageContaining("expired or already used");
+    }
+
+    @Test
+    void resendRotatesTheSecretAndReactivatesARevokedInvitation() {
+        var request = request();
+        request.markInvited();
+        request.markInvitationRevoked();
+        var invitation = new PilotInvitation(request, "old-hash", java.time.OffsetDateTime.now().plusHours(1));
+        invitation.revoke(java.time.OffsetDateTime.now());
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+        when(invitations.findLockedByDemoRequestId(request.getId())).thenReturn(Optional.of(invitation));
+
+        service.resend(request.getId());
+
+        assertThat(request.getStatus()).isEqualTo("invited");
+        assertThat(invitation.getRevokedAt()).isNull();
+        assertThat(invitation.getTokenHash()).hasSize(64).isNotEqualTo("old-hash");
+        assertThat(invitation.getDeliveryStatus()).isEqualTo("pending");
+        verify(events).publishEvent(any(PilotInvitationIssued.class));
+    }
+
+    @Test
+    void revokeMakesInvitationUnavailable() {
+        var request = request();
+        request.markInvited();
+        var invitation = new PilotInvitation(request, "hash", java.time.OffsetDateTime.now().plusHours(1));
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+        when(invitations.findLockedByDemoRequestId(request.getId())).thenReturn(Optional.of(invitation));
+
+        service.revoke(request.getId());
+
+        assertThat(request.getStatus()).isEqualTo("approved");
+        assertThat(invitation.isAvailableAt(java.time.OffsetDateTime.now())).isFalse();
     }
 
     private DemoRequest request() {

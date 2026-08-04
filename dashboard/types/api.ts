@@ -38,9 +38,24 @@ export type AdminDemoRequest = {
   channels: string;
   primaryUseCase: string;
   notes: string | null;
-  status: "new" | "invited" | "activated" | string;
-  createdAt: string;
-};
+    status: "new" | "approved" | "invited" | "rejected" | "activated" | string;
+    assignedTo: string | null;
+    internalNotes: string | null;
+    rejectedAt: string | null;
+    rejectedReason: string | null;
+    invitation: {
+      id: string;
+      deliveryStatus: "pending" | "sent" | "failed" | string;
+      deliveryAttempts: number;
+      lastDeliveryAttemptAt: string | null;
+      sentAt: string | null;
+      lastDeliveryError: string | null;
+      expiresAt: string;
+      revokedAt: string | null;
+      acceptedAt: string | null;
+    } | null;
+    createdAt: string;
+  };
 
 export type AdminDemoRequestPage = {
   requests: AdminDemoRequest[];
@@ -49,11 +64,28 @@ export type AdminDemoRequestPage = {
   pageSize: number;
 };
 
-export type AdminWorkspace = {
-  id: string; businessName: string; email: string; countryCode: string;
-  plan: string; status: string; minutesUsed: number; minutesLimit: number;
-  agents: number; calls: number; bookings: number; customers: number; createdAt: string;
+export type AdminAuditEvent = {
+  id: string; actorEmail: string; action: string; resourceType: string;
+  resourceId: string; summary: string; createdAt: string;
 };
+
+export type AdminAuditPage = {
+  events: AdminAuditEvent[]; total: number; page: number; pageSize: number;
+};
+
+export type AdminWorkspace = {
+    id: string; businessName: string; email: string; countryCode: string;
+    plan: string; status: string; minutesUsed: number; minutesLimit: number;
+    agents: number; calls: number; bookings: number; customers: number;
+    pilotPolicy: {
+      status: "pending" | "approved" | "suspended" | string;
+      currency: string; monthlyBudget: number;
+      phoneNumbersApproved: boolean; liveCallingApproved: boolean;
+      smsApproved: boolean; whatsappApproved: boolean;
+      approvedBy: string | null; approvedAt: string | null; notes: string | null;
+    } | null;
+    createdAt: string;
+  };
 
 export type AdminWorkspacePage = {
   workspaces: AdminWorkspace[]; total: number; page: number; pageSize: number;
@@ -399,6 +431,7 @@ export type StartTestCallResponse = {
     detectVoicemail: boolean;
     handleCallScreening: boolean;
   };
+
 };
 
 export type AvailablePhoneNumber = {

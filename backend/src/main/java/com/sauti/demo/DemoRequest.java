@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.UUID;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "demo_requests")
@@ -22,6 +23,10 @@ public class DemoRequest extends Auditable {
     @Column(nullable = false, length = 500) private String primaryUseCase;
     @Column(length = 1000) private String notes;
     @Column(nullable = false, length = 20) private String status;
+    @Column(length = 254) private String assignedTo;
+    @Column(length = 4000) private String internalNotes;
+    private OffsetDateTime rejectedAt;
+    @Column(length = 1000) private String rejectedReason;
 
     protected DemoRequest() { }
 
@@ -54,10 +59,34 @@ public class DemoRequest extends Auditable {
     public String getPrimaryUseCase() { return primaryUseCase; }
     public String getNotes() { return notes; }
     public String getStatus() { return status; }
+    public String getAssignedTo() { return assignedTo; }
+    public String getInternalNotes() { return internalNotes; }
+    public OffsetDateTime getRejectedAt() { return rejectedAt; }
+    public String getRejectedReason() { return rejectedReason; }
 
     public void markInvited() {
-        if (!"new".equals(status)) throw new IllegalStateException("Demo request has already been processed");
+        if (!("new".equals(status) || "approved".equals(status))) {
+            throw new IllegalStateException("Demo request cannot be invited in its current state");
+        }
         status = "invited";
+    }
+
+    public void markInvitationRevoked() {
+        if (!"invited".equals(status)) throw new IllegalStateException("Demo request has no active invitation");
+        status = "approved";
+    }
+
+    public void reject(String reason, OffsetDateTime now) {
+        if ("activated".equals(status)) throw new IllegalStateException("An activated pilot cannot be rejected");
+        if ("rejected".equals(status)) throw new IllegalStateException("Demo request has already been rejected");
+        status = "rejected";
+        rejectedReason = required(reason);
+        rejectedAt = now;
+    }
+
+    public void updateOperations(String assignedTo, String internalNotes) {
+        this.assignedTo = optional(assignedTo);
+        this.internalNotes = optional(internalNotes);
     }
 
     public void markActivated() {

@@ -14,6 +14,7 @@ import com.sauti.agent.Agent;
 import com.sauti.tenant.Tenant;
 import com.sauti.voice.VoiceCatalogService;
 import com.sauti.integration.IntegrationService;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +26,8 @@ class WhatsAppChannelServiceTest {
                 new ObjectMapper(), mock(WhatsAppInboundMessageRepository.class),
                 mock(CallPipelineService.class), mock(WhatsAppMessageSender.class), inbox,
                 mock(BrowserSpeechToTextService.class), mock(VoiceCatalogService.class),
-                mock(OggOpusAudioConverter.class), mock(IntegrationService.class));
+                mock(OggOpusAudioConverter.class), mock(IntegrationService.class),
+                mock(PilotProvisioningPolicyService.class));
         try {
             service.accept("""
                     {"entry":[{"changes":[{"value":{"statuses":[{
@@ -87,7 +89,7 @@ class WhatsAppChannelServiceTest {
         var service = new WhatsAppChannelService(
                 new ObjectMapper(), repository, pipeline, sender, inbox,
                 speech,
-                voices, converter, integrations);
+                voices, converter, integrations, mock(PilotProvisioningPolicyService.class));
         try {
             service.accept("""
                     {"entry":[{"changes":[{"value":{

@@ -9,9 +9,12 @@ import com.sauti.call.CallRepository;
 import com.sauti.agent.AgentRepository;
 import com.sauti.demo.DemoRequestRepository;
 import com.sauti.demo.PilotInvitationService;
+import com.sauti.demo.PilotInvitationRepository;
 import com.sauti.tenant.TenantRepository;
 import com.sauti.billing.PlatformCostInsightsService;
 import com.sauti.integration.PlatformIntegrationHealthService;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.Test;
 
 class AdminServiceTest {
@@ -32,7 +35,9 @@ class AdminServiceTest {
         var overview = new AdminService(tenants, calls, bookings, mock(AgentRepository.class),
                 requests,
                 mock(PilotInvitationService.class), mock(PlatformCostInsightsService.class),
-                mock(PlatformIntegrationHealthService.class)).overview();
+                mock(PlatformIntegrationHealthService.class), mock(PilotInvitationRepository.class),
+                mock(PlatformAdminAuditService.class), mock(PilotProvisioningPolicyService.class),
+                mock(ApplicationEventPublisher.class)).overview();
 
         assertThat(overview.workspaces()).isEqualTo(4);
         assertThat(overview.customers()).isEqualTo(19);

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { BarChart3, Building2, LayoutDashboard, LogOut, MessageSquareText, ShieldCheck, Users } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, LayoutDashboard, LogOut, MessageSquareText, ShieldCheck, Users } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./AdminShell.module.css";
@@ -14,6 +14,7 @@ const links = [
   { href: "/admin/workspaces", label: "Workspaces", icon: Building2 },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/admin/audit", label: "Audit history", icon: ClipboardList },
 ];
 
 export function AdminShell({ children }: { children: ReactNode }) {

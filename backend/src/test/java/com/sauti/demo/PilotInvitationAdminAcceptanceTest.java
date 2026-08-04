@@ -5,9 +5,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
 import com.sauti.auth.JwtService;
 import com.sauti.auth.AuthEmailService;
+import com.sauti.auth.AuthRateLimitService;
 import com.sauti.auth.User;
 import com.sauti.auth.UserRepository;
 import com.sauti.auth.VerificationCodeService;
@@ -22,6 +25,7 @@ import org.springframework.test.context.event.ApplicationEvents;
 import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import com.sauti.provisioning.PilotProvisioningPolicyRepository;
 
 @SpringBootTest(properties = {
         "sauti.admin.emails=platform-admin@sauti.test",
@@ -38,8 +42,10 @@ class PilotInvitationAdminAcceptanceTest {
     @Autowired PasswordEncoder passwords;
     @Autowired JwtService jwt;
     @Autowired ApplicationEvents events;
+    @Autowired PilotProvisioningPolicyRepository provisioningPolicies;
     @MockitoBean VerificationCodeService verificationCodes;
     @MockitoBean AuthEmailService authEmailService;
+    @MockitoBean AuthRateLimitService authRateLimits;
 
     @Test
     void adminApprovalProducesInvitationAcceptedByPublicJourneyExactlyOnce() throws Exception {
@@ -78,6 +84,24 @@ class PilotInvitationAdminAcceptanceTest {
 
         assertThat(users.existsByEmail("acceptance-owner@example.com")).isTrue();
         assertThat(tenants.findByEmail("acceptance-owner@example.com")).isPresent();
+        var createdTenant = tenants.findByEmail("acceptance-owner@example.com").orElseThrow();
+        var policy = provisioningPolicies.findByTenantId(createdTenant.getId()).orElseThrow();
+        assertThat(policy.getStatus()).isEqualTo("pending");
+        assertThat(policy.getMonthlyBudget()).isZero();
+        assertThat(policy.isPhoneNumbersApproved()).isFalse();
+
+        org.mockito.Mockito.when(verificationCodes.verifyEmailCode(
+                org.mockito.ArgumentMatchers.any(User.class), org.mockito.ArgumentMatchers.eq("123456")))
+                .thenReturn(true);
+        mvc.perform(post("/api/v1/auth/verify-email")
+                        .contentType("application/json")
+                        .content("{\"email\":\"acceptance-owner@example.com\",\"code\":\"123456\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/auth/verify-email")
+                        .contentType("application/json")
+                        .content("{\"email\":\"acceptance-owner@example.com\",\"code\":\"123456\"}"))
+                .andExpect(status().isOk());
+        verify(authEmailService, times(1)).sendWelcomeEmail("acceptance-owner@example.com", "Acme Health");
 
         mvc.perform(post("/api/v1/public/pilot-invitations/accept")
                         .header("X-Sauti-Pilot-Invitation", token)

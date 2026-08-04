@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 
 @Service
 public class WhatsAppInboxService {
@@ -22,17 +23,20 @@ public class WhatsAppInboxService {
     private final IntegrationService integrations;
     private final WhatsAppMessageSender sender;
     private final CommunicationUsageMeteringService usageMetering;
+    private final PilotProvisioningPolicyService provisioningPolicies;
 
     public WhatsAppInboxService(WhatsAppConversationRepository conversations,
                                 WhatsAppMessageRepository messages,
                                 IntegrationService integrations,
                                 WhatsAppMessageSender sender,
-                                CommunicationUsageMeteringService usageMetering) {
+                                CommunicationUsageMeteringService usageMetering,
+                                PilotProvisioningPolicyService provisioningPolicies) {
         this.conversations = conversations;
         this.messages = messages;
         this.integrations = integrations;
         this.sender = sender;
         this.usageMetering = usageMetering;
+        this.provisioningPolicies = provisioningPolicies;
     }
 
     @Transactional(readOnly = true)
@@ -82,6 +86,7 @@ public class WhatsAppInboxService {
     }
 
     public MessageResponse sendAiVoice(Call call, UUID conversationId, String text, byte[] oggOpus) {
+        provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
         var conversation = requireConversation(call.getTenant().getId(), conversationId);
         var pending = messages.save(new WhatsAppMessage(conversation, null, "outbound", "audio",
                 text, null, "audio/ogg", "sending"));
@@ -119,6 +124,7 @@ public class WhatsAppInboxService {
 
     private MessageResponse send(UUID tenantId, UUID conversationId, String text,
                                  String type, byte[] audio, boolean markRead) {
+        provisioningPolicies.authorize(tenantId, "whatsapp");
         var conversation = requireConversation(tenantId, conversationId);
         if (text == null || text.isBlank()) throw new IllegalArgumentException("Message text is required");
         var pending = messages.save(new WhatsAppMessage(conversation, null, "outbound", type,

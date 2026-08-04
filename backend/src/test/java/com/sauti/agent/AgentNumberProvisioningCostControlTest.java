@@ -19,6 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 
 class AgentNumberProvisioningCostControlTest {
     private final AgentRepository agents = mock(AgentRepository.class);
@@ -36,7 +37,8 @@ class AgentNumberProvisioningCostControlTest {
             mock(ScheduledCallRepository.class),
             mock(KnowledgeBaseService.class),
             mock(ApplicationEventPublisher.class),
-            billing
+            billing,
+            mock(PilotProvisioningPolicyService.class)
     );
 
     @Test

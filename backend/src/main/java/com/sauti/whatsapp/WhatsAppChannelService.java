@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 
 @Service
 public class WhatsAppChannelService {
@@ -29,6 +30,7 @@ public class WhatsAppChannelService {
     private final VoiceCatalogService voiceCatalogService;
     private final OggOpusAudioConverter audioConverter;
     private final IntegrationService integrations;
+    private final PilotProvisioningPolicyService provisioningPolicies;
     private final AtomicInteger workerSequence = new AtomicInteger();
     private final ExecutorService executor = new ThreadPoolExecutor(
             4,
@@ -56,7 +58,8 @@ public class WhatsAppChannelService {
             BrowserSpeechToTextService speechToTextService,
             VoiceCatalogService voiceCatalogService,
             OggOpusAudioConverter audioConverter,
-            IntegrationService integrations
+            IntegrationService integrations,
+            PilotProvisioningPolicyService provisioningPolicies
     ) {
         this.objectMapper = objectMapper;
         this.messageRepository = messageRepository;
@@ -67,6 +70,7 @@ public class WhatsAppChannelService {
         this.voiceCatalogService = voiceCatalogService;
         this.audioConverter = audioConverter;
         this.integrations = integrations;
+        this.provisioningPolicies = provisioningPolicies;
     }
 
     public void accept(String payload) {
@@ -132,6 +136,7 @@ public class WhatsAppChannelService {
             inbound.markProcessing();
             messageRepository.save(inbound);
             var call = callPipelineService.startWhatsAppConversation(phoneNumberId, customerNumber);
+            provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
             var recorded = inbox.recordInbound(call, messageId, customerName, "text", text, null, null);
             if ("human".equals(recorded.mode())) {
                 inbound.markCompleted();
@@ -165,6 +170,7 @@ public class WhatsAppChannelService {
             inbound.markProcessing();
             messageRepository.save(inbound);
             var call = callPipelineService.startWhatsAppConversation(phoneNumberId, customerNumber);
+            provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
             var token = workspaceToken(call);
             var media = messageSender.downloadMedia(mediaId, token);
             var transcript = speechToTextService.transcribe(call.getAgent(), media.bytes(), media.contentType());
@@ -211,6 +217,7 @@ public class WhatsAppChannelService {
             inbound.markProcessing();
             messageRepository.save(inbound);
             var call = callPipelineService.startWhatsAppConversation(phoneNumberId, customerNumber);
+            provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
             var recorded = inbox.recordInbound(call, messageId, customerName, type, body, mediaId, mime);
             if (!"human".equals(recorded.mode())) {
                 var prompt = body.isBlank() ? "[The customer sent a WhatsApp " + type + "]" : body;

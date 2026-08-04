@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import com.sauti.provisioning.PilotProvisioningPolicyService;
 
 @Service
 @ConditionalOnProperty(name = "sauti.telephony.provider", havingValue = "telnyx")
@@ -26,6 +27,7 @@ public class TelnyxCallControlService {
     private final TelnyxTelephonyProvider telephonyProvider;
     private final CallQueryService callQueryService;
     private final ProviderCostReconciliationService costReconciliation;
+    private final PilotProvisioningPolicyService provisioningPolicies;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         var thread = new Thread(runnable, "telnyx-call-control");
         thread.setDaemon(true);
@@ -38,7 +40,8 @@ public class TelnyxCallControlService {
             CallPipelineService callPipelineService,
             TelnyxTelephonyProvider telephonyProvider,
             CallQueryService callQueryService,
-            ProviderCostReconciliationService costReconciliation
+            ProviderCostReconciliationService costReconciliation,
+            PilotProvisioningPolicyService provisioningPolicies
     ) {
         this.objectMapper = objectMapper;
         this.eventRepository = eventRepository;
@@ -46,6 +49,7 @@ public class TelnyxCallControlService {
         this.telephonyProvider = telephonyProvider;
         this.callQueryService = callQueryService;
         this.costReconciliation = costReconciliation;
+        this.provisioningPolicies = provisioningPolicies;
     }
 
     public void accept(String rawPayload) {
@@ -104,6 +108,8 @@ public class TelnyxCallControlService {
             return;
         }
         var call = callPipelineService.startInboundCall(to, callControlId, from);
+        try { provisioningPolicies.authorize(call.getTenant().getId(), "live_calling"); }
+        catch (IllegalStateException blocked) { telephonyProvider.hangup(callControlId); throw blocked; }
         var greeting = callQueryService.firstAgentResponse(call.getTenant().getId(), call.getId());
         telephonyProvider.answerInboundCall(call, callControlId, greeting);
     }

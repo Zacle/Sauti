@@ -22,18 +22,21 @@ public class PilotInvitationEmailListener {
     private final String fromName;
     private final String replyTo;
     private final String dashboardBaseUrl;
+    private final PilotInvitationDeliveryService deliveries;
 
     public PilotInvitationEmailListener(JavaMailSender mailSender, TemplateEngine templates,
             @Value("${sauti.email.from:noreply@sauti.local}") String fromEmail,
             @Value("${sauti.email.from-name:Sauti}") String fromName,
             @Value("${sauti.email.reply-to:support@sauti.local}") String replyTo,
-            @Value("${sauti.dashboard.base-url:https://sauti.uk}") String dashboardBaseUrl) {
+            @Value("${sauti.dashboard.base-url:https://sauti.uk}") String dashboardBaseUrl,
+            PilotInvitationDeliveryService deliveries) {
         this.mailSender = mailSender;
         this.templates = templates;
         this.fromEmail = fromEmail;
         this.fromName = fromName;
         this.replyTo = replyTo;
         this.dashboardBaseUrl = dashboardBaseUrl.replaceAll("/+$", "");
+        this.deliveries = deliveries;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -50,10 +53,13 @@ public class PilotInvitationEmailListener {
             helper.setSubject("Your Sauti pilot invitation");
             helper.setText(templates.process("email/pilot-invitation", context), true);
             mailSender.send(message);
+            deliveries.recordSent(event.invitation().getId());
         } catch (MessagingException | MailException exception) {
             LOGGER.warn("Pilot invitation email failed exception={}", exception.getClass().getSimpleName());
+            deliveries.recordFailure(event.invitation().getId(), exception);
         } catch (RuntimeException exception) {
             LOGGER.warn("Pilot invitation email failed exception={}", exception.getClass().getSimpleName());
+            deliveries.recordFailure(event.invitation().getId(), exception);
         }
     }
 }
