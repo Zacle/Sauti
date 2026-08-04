@@ -9,6 +9,7 @@ import com.sauti.call.ManagedVoiceProviderException;
 import com.sauti.call.VoiceRuntimeUnavailableException;
 import com.sauti.demo.DemoRequestRateLimitExceededException;
 import com.sauti.demo.PublicDemoVoiceLimitExceededException;
+import com.sauti.demo.PilotInvitationUnavailableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -65,6 +66,12 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> publicDemoVoiceLimited(PublicDemoVoiceLimitExceededException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(new ApiError("public_demo_limit_reached", exception.getMessage()));
+    }
+
+    @ExceptionHandler(PilotInvitationUnavailableException.class)
+    ResponseEntity<ApiError> pilotInvitationUnavailable(PilotInvitationUnavailableException exception) {
+        return ResponseEntity.status(HttpStatus.GONE)
+                .body(new ApiError("pilot_invitation_unavailable", exception.getMessage()));
     }
 
     @ExceptionHandler(VoiceRuntimeUnavailableException.class)

@@ -11,9 +11,9 @@ import styles from "./AdminShell.module.css";
 const links = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/demo-requests", label: "Demo requests", icon: MessageSquareText },
-  { href: "/admin/workspaces", label: "Workspaces", icon: Building2, disabled: true },
-  { href: "/admin/customers", label: "Customers", icon: Users, disabled: true },
-  { href: "/admin/analytics", label: "Analytics", icon: BarChart3, disabled: true },
+  { href: "/admin/workspaces", label: "Workspaces", icon: Building2 },
+  { href: "/admin/customers", label: "Customers", icon: Users },
+  { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -45,9 +45,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <div className={styles.operator}><ShieldCheck size={16} /><span><strong>Platform operations</strong><small>Restricted access</small></span></div>
         <nav aria-label="Sauti administration">
           <span>Control center</span>
-          {links.map(({ href, label, icon: Icon, disabled }) => disabled ? (
-            <span className={styles.disabled} key={href} title="Coming in the next Phase 1 slice"><Icon size={18} />{label}<small>Soon</small></span>
-          ) : (
+          {links.map(({ href, label, icon: Icon }) => (
             <Link className={pathname === href ? styles.active : ""} href={href} key={href}><Icon size={18} />{label}</Link>
           ))}
         </nav>

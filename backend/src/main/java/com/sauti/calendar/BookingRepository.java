@@ -8,6 +8,8 @@ import java.util.Collection;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
+    long countByTenantId(UUID tenantId);
+
     boolean existsByAgent_Id(UUID agentId);
 
     List<Booking> findAllByTenantIdOrderByAppointmentAtDesc(UUID tenantId);

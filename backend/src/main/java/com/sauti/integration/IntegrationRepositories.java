@@ -32,6 +32,7 @@ interface IntegrationDeliveryRepository extends JpaRepository<IntegrationDeliver
     boolean existsByAgentIntegrationIdAndCallId(UUID bindingId, UUID callId);
     List<IntegrationDelivery> findTop20ByStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
             List<String> statuses, OffsetDateTime now);
+    List<IntegrationDelivery> findAllByCreatedAtGreaterThanEqual(OffsetDateTime from);
 }
 
 interface MpesaPaymentRequestRepository extends JpaRepository<MpesaPaymentRequest, UUID> {

@@ -78,7 +78,7 @@ public class PilotInvitationService {
 
     private void requireAvailable(PilotInvitation invitation) {
         if (!invitation.isAvailableAt(OffsetDateTime.now())) {
-            throw new IllegalStateException("Invitation is expired or already used");
+            throw new PilotInvitationUnavailableException();
         }
     }
 

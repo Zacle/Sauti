@@ -51,7 +51,8 @@ class PilotInvitationServiceTest {
         assertThat(service.accept("secret-token", "password123")).isSameAs(response);
         assertThat(invitation.getAcceptedAt()).isNotNull();
         assertThatThrownBy(() -> service.accept("secret-token", "password123"))
-                .isInstanceOf(IllegalStateException.class).hasMessageContaining("expired or already used");
+                .isInstanceOf(PilotInvitationUnavailableException.class)
+                .hasMessageContaining("expired or already used");
     }
 
     private DemoRequest request() {

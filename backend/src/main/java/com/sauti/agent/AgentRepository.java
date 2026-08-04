@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 import jakarta.persistence.LockModeType;
 
 public interface AgentRepository extends JpaRepository<Agent, UUID> {
+    long countByTenantId(UUID tenantId);
+
     List<Agent> findAllByTenantIdOrderByCreatedAtDesc(UUID tenantId);
 
     Optional<Agent> findByIdAndTenantId(UUID id, UUID tenantId);

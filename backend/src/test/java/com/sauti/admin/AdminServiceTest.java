@@ -6,9 +6,12 @@ import static org.mockito.Mockito.when;
 
 import com.sauti.calendar.BookingRepository;
 import com.sauti.call.CallRepository;
+import com.sauti.agent.AgentRepository;
 import com.sauti.demo.DemoRequestRepository;
 import com.sauti.demo.PilotInvitationService;
 import com.sauti.tenant.TenantRepository;
+import com.sauti.billing.PlatformCostInsightsService;
+import com.sauti.integration.PlatformIntegrationHealthService;
 import org.junit.jupiter.api.Test;
 
 class AdminServiceTest {
@@ -26,8 +29,10 @@ class AdminServiceTest {
         when(requests.countByStatus("invited")).thenReturn(2L);
         when(requests.countByStatus("activated")).thenReturn(1L);
 
-        var overview = new AdminService(tenants, calls, bookings, requests,
-                mock(PilotInvitationService.class)).overview();
+        var overview = new AdminService(tenants, calls, bookings, mock(AgentRepository.class),
+                requests,
+                mock(PilotInvitationService.class), mock(PlatformCostInsightsService.class),
+                mock(PlatformIntegrationHealthService.class)).overview();
 
         assertThat(overview.workspaces()).isEqualTo(4);
         assertThat(overview.customers()).isEqualTo(19);

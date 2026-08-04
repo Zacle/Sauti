@@ -48,10 +48,30 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
 
     long countByTenantId(UUID tenantId);
 
+    long countByTenantIdAndCallerNumber(UUID tenantId, String callerNumber);
+
+    List<Call> findTop25ByTenantIdAndCallerNumberOrderByStartedAtDesc(UUID tenantId, String callerNumber);
+
+    @Query("""
+            select c.tenant.id as tenantId,
+                   c.tenant.businessName as businessName,
+                   c.callerNumber as phone,
+                   count(c) as callCount,
+                   max(c.startedAt) as lastContactAt
+            from Call c
+            where c.callerNumber is not null and c.callerNumber <> ''
+            group by c.tenant.id, c.tenant.businessName, c.callerNumber
+            order by max(c.startedAt) desc
+            """)
+    List<PlatformCustomerSummary> findPlatformCustomerSummaries();
+
     long countByTenantIdAndOutcome(UUID tenantId, String outcome);
 
     @Query("select count(distinct c.callerNumber) from Call c where c.callerNumber is not null and c.callerNumber <> ''")
     long countDistinctCustomerNumbers();
+
+    @Query("select count(distinct c.callerNumber) from Call c where c.tenant.id = :tenantId and c.callerNumber is not null and c.callerNumber <> ''")
+    long countDistinctCustomerNumbersByTenantId(@Param("tenantId") UUID tenantId);
 
     @Query("select coalesce(avg(c.durationSeconds), 0) from Call c where c.tenant.id = :tenantId and c.durationSeconds is not null")
     double averageDurationSeconds(@Param("tenantId") UUID tenantId);
@@ -112,6 +132,8 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
             OffsetDateTime to
     );
 
+    List<Call> findAllByStartedAtBetweenOrderByStartedAtAsc(OffsetDateTime from, OffsetDateTime to);
+
     List<Call> findAllByTenantIdAndAgent_IdAndStartedAtBetweenOrderByStartedAtAsc(
             UUID tenantId,
             UUID agentId,
@@ -135,5 +157,13 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
         UUID getAgentId();
         Long getTotalCalls();
         Long getBookingCalls();
+    }
+
+    interface PlatformCustomerSummary {
+        UUID getTenantId();
+        String getBusinessName();
+        String getPhone();
+        Long getCallCount();
+        OffsetDateTime getLastContactAt();
     }
 }

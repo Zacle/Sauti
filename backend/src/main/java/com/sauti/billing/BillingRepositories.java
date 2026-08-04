@@ -23,6 +23,7 @@ interface CommunicationLedgerRepository extends JpaRepository<CommunicationLedge
     List<CommunicationLedgerEntry> findTop50ByTenantIdOrderByCreatedAtDesc(UUID tenantId);
     List<CommunicationLedgerEntry> findAllByTenantId(UUID tenantId);
     List<CommunicationLedgerEntry> findAllByTenantIdAndCreatedAtGreaterThanEqual(UUID tenantId, OffsetDateTime from);
+    List<CommunicationLedgerEntry> findAllByCreatedAtGreaterThanEqual(OffsetDateTime from);
     Optional<CommunicationLedgerEntry> findFirstByTenantIdAndCategoryAndExternalReferenceOrderByCreatedAtDesc(
             UUID tenantId, String category, String externalReference);
     List<CommunicationLedgerEntry> findTop20ByTenantIdAndCategoryOrderByCreatedAtDesc(UUID tenantId, String category);

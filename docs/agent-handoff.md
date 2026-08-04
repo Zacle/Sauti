@@ -15,6 +15,85 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-04: Add Phase 1 platform analytics, provider cost, and observed health
+
+- Enabled `/admin/analytics` in the isolated platform console with 7, 30, and
+  90-day UTC views of calls, completed/failed outcomes, conversation duration,
+  and active workspaces. Empty periods remain explicit rather than rendering
+  misleading chart values.
+- Added platform cost evidence from the existing communication ledger. The UI
+  keeps currencies separate, preserves confirmed/estimated/quoted cost bases,
+  applies credits as negative amounts, charts daily net cost, and lists usage
+  that remains unpriced instead of inventing a dollar estimate.
+- Added observed provider health derived from durable integration connections,
+  delivery attempts, and provider-cost reconciliation jobs. Healthy, degraded,
+  attention, and unknown labels describe recorded Sauti evidence only; the page
+  clearly states that it is not a live uptime probe.
+- Refreshing the page performs only local database reads. It never polls Telnyx,
+  Google, Meta, or another provider, so administration does not add provider
+  latency, consume API quota, or create billable usage.
+- Added platform-admin-only `GET /api/v1/admin/analytics?days=7|30|90`, plus
+  package-scoped billing and integration read services that expose metadata and
+  aggregates without credentials, provider payloads, or tenant mutation.
+- Added focused tests for signed costs/credits, unpriced usage, reconciliation
+  status, integration failure classification, authorization, H2 query
+  portability, daily activity, and test-order isolation for invitation flows.
+- Verification:
+  - focused platform cost, integration health, admin API, and combined
+    invitation/admin tests passed;
+  - forced full backend suite passed with every task rerun;
+  - dashboard lint passed with zero warnings;
+  - dashboard typecheck passed;
+  - clean dashboard production build passed with all 60 routes, including
+    `/admin/analytics`;
+  - the generated `.next` directory was cleared and rebuilt after Windows file
+    permissions from timed-out builds prevented a clean trace write.
+- Local operational note: two duplicate Sauti Next development servers that had
+  been running since August 2 and continuously consuming CPU were stopped with
+  approval during verification. Restart the desired local dev server with
+  `npm.cmd run dev` when needed.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and the normal push -> CI -> production deployment chain.
+- Next Phase 1 slice: invitation rejection, delivery state, safe resend/revoke,
+  assignment, internal notes, and immutable platform-admin audit history.
+
+### 2026-08-04: Add Phase 1 workspace/customer administration and prove invitation acceptance
+
+- Added searchable, paginated read-only workspace administration under
+  `/admin/workspaces`. Platform administrators can inspect identity, plan,
+  status, usage allowance, agents, customers, calls, bookings, creation time,
+  and workspace ID without entering or mutating a tenant workspace.
+- Added `/admin/customers` with workspace-scoped customer identities, search by
+  phone/workspace, activity totals, last-contact time, and a detail panel for
+  the 25 most recent calls. The same phone number remains a separate customer
+  in each workspace.
+- Added platform-admin-only workspace/customer list and detail APIs. Workspace
+  search is database-paginated; customer aggregation uses portable JPQL and
+  bounded response pagination so it remains compatible with both PostgreSQL
+  and H2. At substantially larger scale, move customer search pagination into
+  a dedicated customer projection/table rather than loading aggregate rows for
+  the in-memory search step.
+- Added an HTTP integration test for the exact onboarding chain requested:
+  authorized admin approves a stored demo request, the emitted fragment token
+  previews through the public API, `/accept-invite`'s acceptance endpoint
+  creates the tenant and user, and a second use is rejected. Expired or used
+  invitations now return a clear HTTP 410 response instead of escaping as an
+  internal server error.
+- Enabled the Workspaces and Customers navigation destinations and added
+  responsive, read-only detail drawers using the existing admin visual system.
+- Verification:
+  - focused admin service, database query, invitation service, and complete
+    approval-to-accept HTTP tests passed;
+  - full backend test suite passed;
+  - dashboard lint passed with zero warnings;
+  - dashboard typecheck passed;
+  - dashboard production build passed, generating all 59 pages including
+    `/accept-invite`, `/admin/workspaces`, and `/admin/customers`.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and the normal push -> CI -> production deployment chain.
+- Next Phase 1 slice: platform time-series, provider cost, and provider-health
+  visibility; then invitation reject/resend/revoke and immutable audit history.
+
 ### 2026-08-04: Complete password recovery for workspace and Google-created admin accounts
 
 - Exposed the backend's existing reset-code capability through complete

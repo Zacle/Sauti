@@ -49,6 +49,49 @@ export type AdminDemoRequestPage = {
   pageSize: number;
 };
 
+export type AdminWorkspace = {
+  id: string; businessName: string; email: string; countryCode: string;
+  plan: string; status: string; minutesUsed: number; minutesLimit: number;
+  agents: number; calls: number; bookings: number; customers: number; createdAt: string;
+};
+
+export type AdminWorkspacePage = {
+  workspaces: AdminWorkspace[]; total: number; page: number; pageSize: number;
+};
+
+export type AdminCustomer = {
+  tenantId: string; businessName: string; phone: string; calls: number; lastContactAt: string;
+};
+
+export type AdminCustomerCall = {
+  id: string; agentName: string; direction: string; outcome: string;
+  language: string | null; durationSeconds: number | null; startedAt: string;
+};
+
+export type AdminCustomerDetail = AdminCustomer & { recentCalls: AdminCustomerCall[] };
+
+export type AdminCustomerPage = {
+  customers: AdminCustomer[]; total: number; page: number; pageSize: number;
+};
+
+export type AdminPlatformAnalytics = {
+  days: number;
+  from: string;
+  to: string;
+  generatedAt: string;
+  activity: Array<{ date: string; calls: number; completed: number; failed: number; durationSeconds: number; activeWorkspaces: number }>;
+  costTotals: Array<{ currency: string; costBasis: string; category: string; amount: number }>;
+  dailyCosts: Array<{ date: string; currency: string; amount: number }>;
+  unpricedUsage: Array<{ category: string; unit: string; quantity: number }>;
+  providers: Array<{
+    provider: string; status: "healthy" | "degraded" | "attention" | "unknown" | string;
+    configuredConnections: number; connectionErrors: number; deliveryAttempts: number;
+    delivered: number; retryingDeliveries: number; failedDeliveries: number;
+    pendingCosts: number; retryingCosts: number; reconciledCosts: number;
+    estimatedCosts: number; unavailableCosts: number; lastActivityAt: string | null;
+  }>;
+};
+
 export type WorkspaceNotification = {
   id: string;
   type: "booking.confirmed" | "booking.follow_up_required" | string;

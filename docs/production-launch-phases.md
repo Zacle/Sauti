@@ -44,18 +44,21 @@ If the secret is absent, operator endpoints fail closed with `401`.
 
 ### Remaining Phase 1 slices
 
-1. Complete the new Sauti Admin console with workspace, customer, platform
-   analytics, billing/cost, provider-health, and audit views. The first admin
-   slice already provides platform totals and the demo-request approval queue,
-   isolated on the `admin.sauti.uk` origin.
+1. Complete the new Sauti Admin console with audit views. Platform totals,
+   the demo-request approval queue, searchable read-only workspace/customer
+   directories, platform time-series, provider cost evidence, unpriced usage,
+   reconciliation state, and observed provider health are now available on the
+   isolated `admin.sauti.uk` origin.
 2. Extend demo operations with explicit rejection, invitation delivery state,
    safe resend/revoke, assignment, notes, and an audit trail.
 3. Add pilot budgets and provisioning approvals so number purchases, live
    calling, SMS, and WhatsApp cannot consume funds before operator approval.
 4. Add a pilot readiness checklist covering agent setup, number ownership,
    calendar sync, messaging, test calls, and support contacts.
-5. Run one invited-workspace acceptance journey and record the production
-   evidence before Phase 1 is marked complete.
+5. Run one invited-workspace acceptance journey in production and record the
+   evidence before Phase 1 is marked complete. The equivalent admin approval,
+   invitation preview, one-time activation, and database-persistence journey is
+   now covered by an automated integration test.
 
 ## Later phases
 
