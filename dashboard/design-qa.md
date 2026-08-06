@@ -1,3 +1,26 @@
+# Google Calendar disconnect and test feedback QA (2026-08-06)
+
+## Comparison target
+
+- Source states: the supplied native disconnect alert and Google Calendar configuration dialog screenshots.
+- Target route: `/dashboard/integrations` in the local preview at `http://127.0.0.1:8088/dashboard/integrations`.
+- Implemented direction: Sauti in-app confirmation modal with impact guidance; explicit live-test loading, success, and failure feedback.
+
+## Evidence available
+
+- `window.confirm` is no longer used by the integrations feature.
+- The local browser preview rendered the integrations shell and the updated page bundle; a screenshot was captured through the in-app browser.
+- The local integrations data request returned HTTP 500, so a connected Google Calendar row was unavailable for an end-to-end modal click-through.
+
+## Findings
+
+- Native browser chrome is removed from the implementation path.
+- Final interactive click-through is blocked until a working integrations API fixture/backend is available locally.
+
+final result: blocked
+
+---
+
 # Homepage design QA
 
 ## Comparison target

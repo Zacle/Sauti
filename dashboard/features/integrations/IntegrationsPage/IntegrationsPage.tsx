@@ -96,6 +96,7 @@ export function IntegrationsPage() {
   const [editing, setEditing] = useState<IntegrationCatalogEntry | null>(null);
   const [whatsappEditing, setWhatsappEditing] = useState(false);
   const [calendarEditing, setCalendarEditing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState<IntegrationConnection | null>(null);
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -215,11 +216,10 @@ export function IntegrationsPage() {
     catch (caught) { showError(caught); } finally { setBusy(""); }
   }
 
-  async function disconnect(connection: IntegrationConnection) {
-    if (!window.confirm(`Disconnect ${connection.displayName}? Agents using it will be disabled.`)) return;
+  async function disconnect(connection: IntegrationConnection): Promise<boolean> {
     setBusy(connection.provider);
-    try { await deleteIntegrationConnection(connection.id); await refresh(agentId); }
-    catch (caught) { showError(caught); } finally { setBusy(""); }
+    try { await deleteIntegrationConnection(connection.id); await refresh(agentId); return true; }
+    catch (caught) { showError(caught); return false; } finally { setBusy(""); }
   }
 
   return (
@@ -326,7 +326,7 @@ export function IntegrationsPage() {
                     }
                   }} title={entry.authorizationConfigured ? "Configure" : "OAuth app not configured"}><Settings2 size={15} /></button>}
                   {connection && <button onClick={() => void testConnection(connection)} title="Test"><TestTube2 size={15} /></button>}
-                  {connection && <button onClick={() => void disconnect(connection)} title="Disconnect"><Trash2 size={15} /></button>}
+                  {connection && <button onClick={() => setDisconnecting(connection)} title="Disconnect"><Trash2 size={15} /></button>}
                 </div>
               </footer>
             </article>;
@@ -350,6 +350,12 @@ export function IntegrationsPage() {
       />}
       {calendarEditing && <GoogleCalendarDialog agentId={agentId} onClose={() => setCalendarEditing(false)}
         onSaved={async () => { setCalendarEditing(false); await refresh(agentId); }} />}
+      {disconnecting && <DisconnectDialog
+        connection={disconnecting}
+        busy={busy === disconnecting.provider}
+        onClose={() => setDisconnecting(null)}
+        onConfirm={async () => { if (await disconnect(disconnecting)) setDisconnecting(null); }}
+      />}
     </div>
   );
 }
@@ -361,6 +367,8 @@ function GoogleCalendarDialog({ agentId, onClose, onSaved }: {
   const [calendarId, setCalendarId] = useState("primary");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [testState, setTestState] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [testMessage, setTestMessage] = useState("");
 
   useEffect(() => {
     getGoogleCalendarStatus(agentId).then((loaded) => {
@@ -370,20 +378,26 @@ function GoogleCalendarDialog({ agentId, onClose, onSaved }: {
   }, [agentId]);
 
   async function save(event: React.FormEvent) {
-    event.preventDefault(); setBusy(true); setError("");
+    event.preventDefault(); setBusy(true); setError(""); setTestState("idle"); setTestMessage("");
     try { await selectGoogleCalendar(agentId, calendarId); await onSaved(); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to save Calendar settings."); setBusy(false); }
   }
 
   async function test() {
-    setBusy(true); setError("");
-    try { await testGoogleCalendar(agentId); setError("Connection verified with Google Calendar."); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "Calendar test failed."); }
+    setBusy(true); setError(""); setTestState("testing"); setTestMessage("");
+    try {
+      await testGoogleCalendar(agentId);
+      setTestState("success");
+      setTestMessage("Connection verified. Sauti can access the selected calendar.");
+    } catch (caught) {
+      setTestState("error");
+      setTestMessage(caught instanceof Error ? caught.message : "Calendar test failed.");
+    }
     finally { setBusy(false); }
   }
 
   return <div className={styles.backdrop} onMouseDown={onClose}>
-    <form className={styles.dialog} onSubmit={(event) => void save(event)} onMouseDown={(event) => event.stopPropagation()}>
+    <form className={`${styles.dialog} ${styles.calendarDialog}`} onSubmit={(event) => void save(event)} onMouseDown={(event) => event.stopPropagation()}>
       <header><div><h2>Configure Google Calendar</h2><p>Choose the writable calendar used by this workspace connection.</p></div>
         <button type="button" onClick={onClose}><X size={18} /></button></header>
       <div className={styles.formFields}><label><span>Calendar ID</span>
@@ -391,10 +405,56 @@ function GoogleCalendarDialog({ agentId, onClose, onSaved }: {
           placeholder="primary or calendar-id@group.calendar.google.com" />
         <small>Use “primary” for the connected account’s main calendar.</small>
       </label></div>
-      {error && <div className={error.startsWith("Connection verified") ? styles.success : styles.formError}>{error}</div>}
-      <footer><button type="button" disabled={busy || !status?.connected} onClick={() => void test()}>Test live connection</button>
+      {error && <div className={styles.formError}>{error}</div>}
+      {testState !== "idle" && <div className={testState === "success" ? styles.formSuccess : styles.formError} role="status">
+        {testState === "success" && <Check size={15} />}
+        {testState === "testing" ? "Checking calendar access..." : testMessage}
+      </div>}
+      <footer><button type="button" disabled={busy || !status?.connected} onClick={() => void test()}>
+        {testState === "testing" && <LoaderCircle className="spin" size={15} />}
+        {testState === "testing" ? "Testing..." : "Test live connection"}
+      </button>
         <button className={styles.primary} disabled={busy || !status?.connected}>{busy ? "Saving…" : "Save calendar"}</button></footer>
     </form>
+  </div>;
+}
+
+function DisconnectDialog({ connection, busy, onClose, onConfirm }: {
+  connection: IntegrationConnection;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  return <div className={styles.backdrop} onMouseDown={onClose}>
+    <section
+      aria-describedby="disconnect-description"
+      aria-labelledby="disconnect-title"
+      aria-modal="true"
+      className={`${styles.dialog} ${styles.disconnectDialog}`}
+      onMouseDown={(event) => event.stopPropagation()}
+      role="dialog"
+    >
+      <header>
+        <div className={styles.dialogIcon}><Trash2 size={18} /></div>
+        <button aria-label="Close disconnect dialog" type="button" onClick={onClose}><X size={18} /></button>
+      </header>
+      <div className={styles.disconnectCopy}>
+        <span className={styles.dialogEyebrow}>Connection settings</span>
+        <h2 id="disconnect-title">Disconnect {connection.displayName}?</h2>
+        <p id="disconnect-description">This removes the workspace connection and turns off Calendar access for agents using it.</p>
+        <div className={styles.impactList}>
+          <div><Check size={15} /><span>Existing bookings and calendar events stay intact.</span></div>
+          <div><CircleAlert size={15} /><span>Agents will stop creating new Calendar events until you reconnect it.</span></div>
+        </div>
+      </div>
+      <footer>
+        <button type="button" onClick={onClose}>Keep connected</button>
+        <button className={styles.danger} disabled={busy} type="button" onClick={() => void onConfirm()}>
+          {busy && <LoaderCircle className="spin" size={15} />}
+          {busy ? "Disconnecting..." : "Disconnect"}
+        </button>
+      </footer>
+    </section>
   </div>;
 }
 

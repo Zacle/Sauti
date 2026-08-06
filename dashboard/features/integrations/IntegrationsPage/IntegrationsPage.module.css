@@ -54,6 +54,7 @@
 .actions button:disabled { opacity: .45; cursor: not-allowed; }
 .backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(9, 21, 34, .52); backdrop-filter: blur(3px); }
 .dialog { width: min(560px, 100%); max-height: calc(100vh - 40px); overflow: auto; padding: 26px; border: 1px solid rgba(209, 218, 228, .8); border-radius: 22px; background: #fff; box-shadow: 0 28px 90px rgba(15, 23, 42, .24); }
+.calendarDialog { width: min(560px, 100%); }
 .dialog header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 24px; }
 .dialog h2 { margin: 0; color: #0f172a; font-size: 1.22rem; font-weight: 650; letter-spacing: -.02em; }
 .dialog header p, .oauthNote { margin: 6px 0 0; color: #64748b; font-size: .78rem; line-height: 1.5; }
@@ -75,6 +76,19 @@
 .formError { margin-top: 14px; padding: 10px; border-radius: 8px; color: #a43f35; background: #fff1ef; font-size: .72rem; }
 .formSuccess { display:flex; align-items:flex-start; gap:8px; margin-top:14px; padding:11px 12px; border-radius:9px; color:#08766f; background:#effbf8; font-size:.72rem; line-height:1.45; }
 .formSuccess svg { flex:none; margin-top:1px; }
+.disconnectDialog { width: min(500px, 100%); }
+.disconnectDialog > header { align-items: center; margin-bottom: 20px; }
+.dialogIcon { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(255, 126, 102, .25); border-radius: 13px; color: #ff927b; background: rgba(130, 39, 26, .2); }
+.disconnectCopy { display: grid; gap: 8px; }
+.dialogEyebrow { color: #2cdbcf; font-size: .65rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.disconnectCopy h2 { margin-top: 3px; font-size: 1.35rem; }
+.disconnectCopy p { max-width: 420px; margin: 0; color: #91a7b9; font-size: .8rem; line-height: 1.55; }
+.impactList { display: grid; gap: 9px; margin-top: 10px; padding: 14px; border: 1px solid rgba(91, 150, 198, .16); border-radius: 13px; background: rgba(255, 255, 255, .025); }
+.impactList div { display: flex; align-items: flex-start; gap: 9px; color: #b7c8d5; font-size: .74rem; line-height: 1.45; }
+.impactList svg { flex: none; margin-top: 2px; color: #2cdbcf; }
+.impactList div:nth-child(2) svg { color: #ffad67; }
+.dialog > footer .danger { border-color: rgba(255, 126, 102, .42); color: #fff3ef; background: rgba(151, 46, 31, .72); }
+.dialog > footer .danger:hover:not(:disabled) { border-color: rgba(255, 148, 122, .7); background: rgba(180, 55, 36, .88); }
 .sheetsGuide { display:grid; gap:11px; margin:-4px 0 20px; padding:15px; border:1px solid #d9e9e6; border-radius:14px; background:#f5fbfa; }
 .sheetsGuide > div { display:grid; grid-template-columns:auto minmax(0,1fr); gap:10px; align-items:start; }
 .sheetsGuide svg { margin-top:1px; color:#0b958d; }

@@ -15,6 +15,33 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-06: Modernize integration disconnect and Google Calendar testing feedback
+
+- Replaced the browser-native `window.confirm` disconnect alert with an in-app
+  Sauti modal that explains what changes, preserves existing events, and makes
+  the reconnect impact explicit before the destructive action.
+- Updated the Google Calendar configuration dialog so the live-connection test
+  has visible testing, success, and failure states instead of routing success
+  into a generic error message.
+- Files touched: `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`,
+  `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.module.css`,
+  and this handoff record.
+- Verification: dashboard typecheck, lint, production build, `git diff --check`,
+  and local browser DOM/screenshot inspection. The local preview loaded, but its
+  integrations API returned HTTP 500, so modal click-through remains a follow-up
+  once the API fixture/backend is available.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and the normal CI/CD chain.
+
+### 2026-08-06: Verify local environment secrets are not tracked
+
+- Audited the Git index and all local refs for the root `.env`; it is not
+  tracked and has no local commit history. The local file remains on disk and
+  is ignored by the existing `.gitignore` rule. Only placeholder environment
+  templates remain tracked.
+- Verification: `git rm --cached --ignore-unmatch .env`,
+  `git check-ignore -v .env`, and `git status --short --untracked-files=all`.
+
 ### 2026-08-04: Add controlled pilot budgets, provider approvals, and lifecycle email
 
 - Added a tenant-scoped pilot provisioning policy for invited workspaces. Every
