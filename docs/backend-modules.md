@@ -17,6 +17,7 @@ Sauti is intentionally a Spring Boot modular monolith. It deploys as one applica
 | `com.sauti.integration` | Workspace provider connections, agent enablement, OAuth providers, and durable post-call actions. |
 | `com.sauti.tool` | Explicit, policy-controlled during-call tools and encrypted credentials. |
 | `com.sauti.analytics` | Tenant-scoped call aggregation and outcome metrics. |
+| `com.sauti.webanalytics` | Privacy-preserving public acquisition events and platform-admin funnel reporting. |
 | `com.sauti.billing` | Plans, limits, and usage. |
 | `com.sauti.outbound` | Outbound call orchestration. |
 | `com.sauti.telnyx` | Telnyx-specific call-control and media adapters. |

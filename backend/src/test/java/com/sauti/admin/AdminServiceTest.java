@@ -15,6 +15,7 @@ import com.sauti.billing.PlatformCostInsightsService;
 import com.sauti.integration.PlatformIntegrationHealthService;
 import com.sauti.provisioning.PilotProvisioningPolicyService;
 import com.sauti.provisioning.PilotReadinessService;
+import com.sauti.webanalytics.PublicWebAnalyticsService;
 import org.springframework.context.ApplicationEventPublisher;
 import org.junit.jupiter.api.Test;
 
@@ -38,7 +39,8 @@ class AdminServiceTest {
                 mock(PilotInvitationService.class), mock(PlatformCostInsightsService.class),
                 mock(PlatformIntegrationHealthService.class), mock(PilotInvitationRepository.class),
                 mock(PlatformAdminAuditService.class), mock(PilotProvisioningPolicyService.class),
-                mock(ApplicationEventPublisher.class), mock(PilotReadinessService.class)).overview();
+                mock(ApplicationEventPublisher.class), mock(PilotReadinessService.class),
+                mock(PublicWebAnalyticsService.class)).overview();
 
         assertThat(overview.workspaces()).isEqualTo(4);
         assertThat(overview.customers()).isEqualTo(19);

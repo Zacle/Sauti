@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
+import com.sauti.webanalytics.PublicWebAnalyticsDtos.WebAnalyticsSnapshot;
 
 public final class AdminDtos {
     private AdminDtos() { }
@@ -80,7 +81,8 @@ public final class AdminDtos {
     public record PlatformAnalytics(int days, OffsetDateTime from, OffsetDateTime to,
                                     List<DailyActivity> activity, List<CostTotal> costTotals,
                                     List<DailyCost> dailyCosts, List<UnpricedUsage> unpricedUsage,
-                                    List<ProviderHealth> providers, OffsetDateTime generatedAt) { }
+                                    List<ProviderHealth> providers, WebAnalyticsSnapshot web,
+                                    OffsetDateTime generatedAt) { }
 
     public record DailyActivity(String date, long calls, long completed, long failed,
                                 long durationSeconds, long activeWorkspaces) { }

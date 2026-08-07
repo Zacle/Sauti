@@ -41,6 +41,7 @@ import com.sauti.provisioning.PilotProvisioningPolicyService;
 import com.sauti.provisioning.PilotReadinessService;
 import org.springframework.context.ApplicationEventPublisher;
 import com.sauti.demo.DemoRequestRejected;
+import com.sauti.webanalytics.PublicWebAnalyticsService;
 
 @Service
 public class AdminService {
@@ -57,6 +58,7 @@ public class AdminService {
     private final PilotProvisioningPolicyService provisioningPolicies;
     private final ApplicationEventPublisher events;
     private final PilotReadinessService pilotReadiness;
+    private final PublicWebAnalyticsService webAnalytics;
 
     public AdminService(TenantRepository tenants, CallRepository calls, BookingRepository bookings,
                         AgentRepository agents,
@@ -67,7 +69,8 @@ public class AdminService {
                         PlatformAdminAuditService audit,
                         PilotProvisioningPolicyService provisioningPolicies,
                         ApplicationEventPublisher events,
-                        PilotReadinessService pilotReadiness) {
+                        PilotReadinessService pilotReadiness,
+                        PublicWebAnalyticsService webAnalytics) {
         this.tenants = tenants;
         this.calls = calls;
         this.bookings = bookings;
@@ -81,6 +84,7 @@ public class AdminService {
         this.provisioningPolicies = provisioningPolicies;
         this.events = events;
         this.pilotReadiness = pilotReadiness;
+        this.webAnalytics = webAnalytics;
     }
 
     @Transactional(readOnly = true)
@@ -255,7 +259,7 @@ public class AdminService {
                         item.date(), item.currency(), item.amount())).toList(),
                 cost.unpricedUsage().stream().map(item -> new UnpricedUsage(
                         item.category(), item.unit(), item.quantity())).toList(),
-                providers, OffsetDateTime.now(ZoneOffset.UTC));
+                providers, webAnalytics.snapshot(from, to), OffsetDateTime.now(ZoneOffset.UTC));
     }
 
     private java.util.List<DailyActivity> dailyActivity(OffsetDateTime from, OffsetDateTime to) {

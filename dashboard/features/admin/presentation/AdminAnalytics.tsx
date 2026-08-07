@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, Clock3, LoaderCircle, PhoneCall, RefreshCw, ServerCog } from "lucide-react";
+import { Activity, AlertTriangle, Clock3, LoaderCircle, Mic2, MousePointerClick, PhoneCall, RefreshCw, ServerCog, Users } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { getAdminPlatformAnalytics } from "@/lib/api/admin";
 import type { AdminPlatformAnalytics } from "@/types/api";
 import styles from "./AdminAnalytics.module.css";
+import webStyles from "./AdminWebAnalytics.module.css";
 
 type Days = 7 | 30 | 90;
 
@@ -27,6 +28,8 @@ export function AdminAnalytics() {
     duration: data?.activity.reduce((sum, day) => sum + day.durationSeconds, 0) ?? 0,
     failed: data?.activity.reduce((sum, day) => sum + day.failed, 0) ?? 0,
     attention: data?.providers.filter((provider) => provider.status === "attention").length ?? 0,
+    visitors: data?.web.uniqueVisitors ?? 0,
+    requests: data?.web.demoRequests ?? 0,
   }), [data]);
 
   return <div className={styles.page}>
@@ -35,9 +38,12 @@ export function AdminAnalytics() {
     {error && <div className={styles.error} role="alert">{error}</div>}
     {loading && !data ? <div className={styles.loading}><LoaderCircle className={styles.spin} size={22}/>Loading platform evidence…</div> : data && <>
       <section className={styles.kpis}>
-        <Kpi icon={PhoneCall} label="Calls" value={format(totals.calls)}/><Kpi icon={Clock3} label="Conversation time" value={duration(totals.duration)}/><Kpi icon={AlertTriangle} label="Failed calls" value={format(totals.failed)}/><Kpi icon={ServerCog} label="Providers needing attention" value={format(totals.attention)}/>
+        <Kpi icon={Users} label="Daily unique visitors" value={format(totals.visitors)}/><Kpi icon={MousePointerClick} label="Demo requests" value={format(totals.requests)}/><Kpi icon={PhoneCall} label="Calls" value={format(totals.calls)}/><Kpi icon={Clock3} label="Conversation time" value={duration(totals.duration)}/><Kpi icon={AlertTriangle} label="Failed calls" value={format(totals.failed)}/><Kpi icon={ServerCog} label="Providers needing attention" value={format(totals.attention)}/>
       </section>
       <section className={styles.grid}>
+        <Card title="Website acquisition" subtitle="Privacy-preserving daily unique visitors and page views" wide><WebActivityChart data={data}/></Card>
+        <Card title="Acquisition funnel" subtitle="Visitor journey toward a tailored demo"><WebFunnel data={data}/></Card>
+        <Card title="Top pages and sources" subtitle="Where interest starts"><WebRankings data={data}/></Card>
         <Card title="Platform activity" subtitle="Calls and completed outcomes by UTC day" wide><ActivityChart data={data}/></Card>
         <Card title="Provider cost" subtitle="Confirmed, estimated, and quoted ledger entries"><CostSummary data={data}/></Card>
         <Card title="Unpriced usage" subtitle="Usage awaiting a configured or confirmed cost"><UnpricedUsage data={data}/></Card>
@@ -59,6 +65,19 @@ function ActivityChart({ data }: { data: AdminPlatformAnalytics }) {
   const rows = data.activity.map((day) => ({ ...day, label: dateLabel(day.date) }));
   if (!rows.some((day) => day.calls)) return <Empty text="No calls were recorded in this period."/>;
   return <div className={styles.chart}><ResponsiveContainer width="100%" height="100%"><AreaChart data={rows}><defs><linearGradient id="adminCalls" x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor="#35ddd2" stopOpacity={.35}/><stop offset="95%" stopColor="#35ddd2" stopOpacity={.02}/></linearGradient></defs><CartesianGrid stroke="rgba(115,159,198,.13)" strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={24}/><YAxis axisLine={false} tickLine={false} allowDecimals={false}/><Tooltip contentStyle={tooltipStyle}/><Legend/><Area dataKey="calls" name="Calls" stroke="#35ddd2" fill="url(#adminCalls)" strokeWidth={2.5}/><Line dataKey="completed" name="Completed" stroke="#8d83ff" strokeWidth={2} dot={false}/><Line dataKey="failed" name="Failed" stroke="#ff766b" strokeWidth={2} dot={false}/></AreaChart></ResponsiveContainer></div>;
+}
+function WebActivityChart({ data }: { data: AdminPlatformAnalytics }) {
+  const rows = data.web.daily.map((day) => ({ ...day, label: dateLabel(day.date) }));
+  if (!data.web.pageViews) return <Empty text="Website visitor tracking begins after this release is deployed."/>;
+  return <div className={styles.chart}><ResponsiveContainer width="100%" height="100%"><AreaChart data={rows}><defs><linearGradient id="webVisitors" x1="0" x2="0" y1="0" y2="1"><stop offset="5%" stopColor="#35ddd2" stopOpacity={.35}/><stop offset="95%" stopColor="#35ddd2" stopOpacity={.02}/></linearGradient></defs><CartesianGrid stroke="rgba(115,159,198,.13)" strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={24}/><YAxis axisLine={false} tickLine={false} allowDecimals={false}/><Tooltip contentStyle={tooltipStyle}/><Legend/><Area dataKey="visitors" name="Visitors" stroke="#35ddd2" fill="url(#webVisitors)" strokeWidth={2.5}/><Line dataKey="pageViews" name="Page views" stroke="#8d83ff" strokeWidth={2} dot={false}/></AreaChart></ResponsiveContainer></div>;
+}
+function WebFunnel({ data }: { data: AdminPlatformAnalytics }) {
+  const items = [["Daily unique visitors", data.web.uniqueVisitors, Users], ["Voice demos started", data.web.voiceDemoStarts, Mic2], ["Voice demos completed", data.web.voiceDemoCompletions, Activity], ["Demo requests", data.web.demoRequests, MousePointerClick]] as const;
+  return <div className={webStyles.webFunnel}>{items.map(([label, value, Icon]) => <div key={label}><Icon size={16}/><span>{label}</span><strong>{format(value)}</strong></div>)}<p><strong>{format(data.web.visitorToRequestPercent)}%</strong> visitor-to-request conversion</p></div>;
+}
+function WebRankings({ data }: { data: AdminPlatformAnalytics }) {
+  if (!data.web.topPages.length) return <Empty text="No page-view source data is available yet."/>;
+  return <div className={webStyles.webRankings}><section><strong>Pages</strong>{data.web.topPages.map((item) => <div key={item.value}><span>{item.value}</span><b>{format(item.count)}</b></div>)}</section><section><strong>Sources</strong>{data.web.topSources.map((item) => <div key={item.value}><span>{item.value}</span><b>{format(item.count)}</b></div>)}</section></div>;
 }
 function CostSummary({ data }: { data: AdminPlatformAnalytics }) {
   if (!data.costTotals.length) return <Empty text="No priced provider usage was recorded in this period."/>;

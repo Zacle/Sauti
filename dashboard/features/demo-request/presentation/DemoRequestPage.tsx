@@ -7,6 +7,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { createDemoRequest } from "@/lib/api/demo-requests";
 import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
 import styles from "./DemoRequestPage.module.css";
+import { trackPublicAnalyticsEvent } from "@/lib/api/public-analytics";
 
 const CHANNELS = [
   ["voice", "Phone calls"],
@@ -57,6 +58,7 @@ export function DemoRequestPage() {
       });
       setMessage(response.message);
       setComplete(true);
+      trackPublicAnalyticsEvent("demo_request_submitted");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not submit your request. Please try again.");
     } finally {

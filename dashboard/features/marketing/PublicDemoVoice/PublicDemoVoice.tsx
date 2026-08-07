@@ -21,6 +21,7 @@ import {
   type PublicDemoVoiceConfiguration,
 } from "@/lib/api/public-demo-voice";
 import styles from "./PublicDemoVoice.module.css";
+import { trackPublicAnalyticsEvent } from "@/lib/api/public-analytics";
 
 type Readiness = "preparing" | "ready" | "unavailable";
 type CallState = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "ending" | "ended";
@@ -122,6 +123,7 @@ export function PublicDemoVoice() {
     setCallState("connecting");
     endingRef.current = false;
     closingPromptRef.current = false;
+    trackPublicAnalyticsEvent("voice_demo_started");
     let microphone: BrowserMicrophoneCapture | null = null;
     try {
       const [session, preparedMicrophone] = await Promise.all([
@@ -165,6 +167,7 @@ export function PublicDemoVoice() {
         },
       }, { microphone: preparedMicrophone });
     } catch (caught) {
+      trackPublicAnalyticsEvent("voice_demo_failed");
       await microphone?.stop();
       microphoneRef.current = null;
       setCallState("idle");
@@ -187,6 +190,7 @@ export function PublicDemoVoice() {
       if (sessionRef.current.id) {
         await completePublicDemoVoiceSession(sessionRef.current.id, sessionRef.current.token);
       }
+      trackPublicAnalyticsEvent("voice_demo_completed");
     } catch {
       // Provider and quota leases expire independently if either side already closed.
     } finally {

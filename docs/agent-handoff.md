@@ -15,6 +15,51 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-07: Add privacy-preserving public acquisition analytics
+
+- Added first-party marketing analytics without a third-party account or
+  advertising tracker. Marketing routes now record page views; the homepage
+  voice experience records start, completion, and failure events; successful
+  request-demo submissions record the conversion event.
+- The backend stores only event type, sanitized path without query values,
+  referrer hostname, optional UTM tags, UTC time, and a daily rotating HMAC
+  visitor identifier. Raw IP addresses and browser user-agent strings are used
+  transiently to derive the identifier but are not stored in the analytics
+  table. Common bots and browsers with Do Not Track enabled are ignored. A
+  Redis-backed per-visitor limit caps ingestion at 120 events per hour and
+  fails closed without affecting the public page if the limiter is unavailable.
+- Added a 90-day scheduled detailed-event retention limit and Flyway migration
+  `V57__public_web_analytics.sql` with time, event, and visitor indexes.
+- Extended `/admin/analytics` with daily unique visitors, page views, voice-demo
+  funnel steps, successful demo requests, visitor-to-request conversion, top
+  pages, and first-touch sources. Empty states state clearly that measurement
+  starts only after deployment; historical visits cannot be reconstructed.
+- Updated the public Privacy Policy with the measurement, retention, and Do Not
+  Track behavior. The analytics HMAC defaults to the existing strong JWT secret
+  and can be separated later with `SAUTI_ANALYTICS_HASH_SECRET`.
+- Main files touched:
+  - `backend/src/main/java/com/sauti/webanalytics/*`
+  - `backend/src/main/java/com/sauti/api/PublicWebAnalyticsController.java`
+  - `backend/src/main/resources/db/migration/V57__public_web_analytics.sql`
+  - `backend/src/main/java/com/sauti/admin/AdminDtos.java`
+  - `backend/src/main/java/com/sauti/admin/AdminService.java`
+  - `dashboard/features/marketing/PublicAnalytics/PublicAnalytics.tsx`
+  - `dashboard/lib/api/public-analytics.ts`
+  - `dashboard/features/marketing/PublicDemoVoice/PublicDemoVoice.tsx`
+  - `dashboard/features/demo-request/presentation/DemoRequestPage.tsx`
+  - `dashboard/features/admin/presentation/AdminAnalytics.tsx`
+  - `dashboard/features/admin/presentation/AdminWebAnalytics.module.css`
+  - `dashboard/app/(marketing)/privacy/page.tsx`
+  - related API types, tests, configuration, and documentation.
+- Verification: focused web-analytics service/public API/admin API tests passed;
+  the full backend suite passed; dashboard typecheck and zero-warning lint
+  passed; the dashboard production build passed with all 61 routes; `git diff
+  --check` is the final handoff check.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and the normal CI/CD chain.
+- Known limitation: “daily unique visitors” is intentionally privacy-bounded;
+  the same person visiting on different UTC days counts once on each day.
+
 ### 2026-08-07: Route new demo requests to the support admin queue
 
 - Confirmed and strengthened the existing post-commit demo lifecycle email:

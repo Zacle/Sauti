@@ -118,6 +118,13 @@ export type AdminPlatformAnalytics = {
   from: string;
   to: string;
   generatedAt: string;
+  web: {
+    pageViews: number; uniqueVisitors: number; voiceDemoStarts: number; voiceDemoCompletions: number;
+    demoRequests: number; visitorToRequestPercent: number;
+    daily: Array<{ date: string; pageViews: number; visitors: number; voiceDemoStarts: number; voiceDemoCompletions: number; demoRequests: number }>;
+    topPages: Array<{ value: string; count: number }>;
+    topSources: Array<{ value: string; count: number }>;
+  };
   activity: Array<{ date: string; calls: number; completed: number; failed: number; durationSeconds: number; activeWorkspaces: number }>;
   costTotals: Array<{ currency: string; costBasis: string; category: string; amount: number }>;
   dailyCosts: Array<{ date: string; currency: string; amount: number }>;

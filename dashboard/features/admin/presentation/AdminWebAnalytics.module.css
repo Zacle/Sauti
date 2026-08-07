@@ -1,0 +1,13 @@
+.webFunnel { display: grid; gap: 9px; }
+.webFunnel > div { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; padding: 12px; border: 1px solid #173949; border-radius: 12px; color: #49ded3; }
+.webFunnel span { color: #a9bec9; font-size: .76rem; }
+.webFunnel strong { color: #edf8fb; }
+.webFunnel p { margin: 4px 0 0; padding: 12px; border-radius: 12px; color: #7895a6; background: #09212d; font-size: .72rem; }
+.webFunnel p strong { margin-right: 5px; color: #54e0b1; font-size: 1rem; }
+.webRankings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.webRankings section { display: grid; align-content: start; gap: 7px; padding: 12px; border: 1px solid #173949; border-radius: 12px; background: #061721; }
+.webRankings section > strong { color: #49ded3; font-size: .69rem; text-transform: uppercase; }
+.webRankings section div { display: flex; justify-content: space-between; gap: 8px; color: #a9bec9; font-size: .7rem; }
+.webRankings span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.webRankings b { color: #edf8fb; }
+@media (max-width: 520px) { .webRankings { grid-template-columns: 1fr; } }
