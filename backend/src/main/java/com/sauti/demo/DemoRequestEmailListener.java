@@ -21,6 +21,7 @@ public class DemoRequestEmailListener {
     private final String fromEmail;
     private final String fromName;
     private final String notificationEmail;
+    private final String adminReviewUrl;
 
     public DemoRequestEmailListener(
             JavaMailSender mailSender,
@@ -28,12 +29,15 @@ public class DemoRequestEmailListener {
             @Value("${sauti.email.from:noreply@sauti.local}") String fromEmail,
             @Value("${sauti.email.from-name:Sauti}") String fromName,
             @Value("${sauti.demo-request.notification-email:${sauti.email.reply-to:support@sauti.local}}")
-            String notificationEmail) {
+            String notificationEmail,
+            @Value("${sauti.demo-request.admin-review-url:http://localhost:3000/admin/demo-requests}")
+            String adminReviewUrl) {
         this.mailSender = mailSender;
         this.templates = templates;
         this.fromEmail = fromEmail;
         this.fromName = fromName;
         this.notificationEmail = notificationEmail;
+        this.adminReviewUrl = adminReviewUrl;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -46,6 +50,7 @@ public class DemoRequestEmailListener {
         try {
             var context = new Context();
             context.setVariable("request", request);
+            context.setVariable("adminReviewUrl", adminReviewUrl);
             var message = mailSender.createMimeMessage();
             var helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setFrom(fromName + " <" + fromEmail + ">");

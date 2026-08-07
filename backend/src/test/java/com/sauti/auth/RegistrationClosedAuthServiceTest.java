@@ -26,6 +26,7 @@ class RegistrationClosedAuthServiceTest {
             mock(PasswordEncoder.class),
             mock(JwtService.class),
             mock(ApplicationEventPublisher.class),
+            new PlatformAdminPolicy("support@sauti.uk"),
             30,
             30,
             false,
@@ -52,5 +53,31 @@ class RegistrationClosedAuthServiceTest {
 
         verify(tenants, never()).save(org.mockito.ArgumentMatchers.any());
         verify(users, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void letsAnAllowlistedPlatformAdministratorCreateTheirGoogleBackedAccount() {
+        var tenant = new com.sauti.tenant.Tenant("Sauti Support", "support@sauti.uk", "GB");
+        var user = new User(tenant, "support@sauti.uk", "generated");
+        var refreshTokens = mock(RefreshTokenRepository.class);
+        var passwords = mock(PasswordEncoder.class);
+        var jwt = mock(JwtService.class);
+        when(users.findByEmail("support@sauti.uk")).thenReturn(Optional.empty());
+        when(tenants.save(org.mockito.ArgumentMatchers.any())).thenReturn(tenant);
+        when(passwords.encode(org.mockito.ArgumentMatchers.anyString())).thenReturn("generated");
+        when(users.save(org.mockito.ArgumentMatchers.any())).thenReturn(user);
+        when(jwt.issueAccessToken(user)).thenReturn("access");
+        when(jwt.roleFor(user)).thenReturn(PlatformAdminPolicy.ROLE);
+        var adminService = new AuthService(tenants, users, refreshTokens, mock(AuthEmailService.class),
+                mock(GoogleOAuthService.class), mock(VerificationCodeService.class), passwords, jwt,
+                mock(ApplicationEventPublisher.class), new PlatformAdminPolicy("support@sauti.uk"),
+                30, 30, false, false);
+
+        var response = adminService.loginWithGoogleProfile(
+                new GoogleOAuthService.GoogleProfile("support@sauti.uk", "Sauti Support"), null, "GB");
+
+        org.assertj.core.api.Assertions.assertThat(response.role()).isEqualTo(PlatformAdminPolicy.ROLE);
+        verify(tenants).save(org.mockito.ArgumentMatchers.any());
+        verify(users).save(org.mockito.ArgumentMatchers.any());
     }
 }

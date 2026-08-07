@@ -24,6 +24,8 @@ services:
       SPRING_REDIS_PASSWORD: ${SPRING_REDIS_PASSWORD:?SPRING_REDIS_PASSWORD is required}
       SPRING_REDIS_SSL_ENABLED: "${SPRING_REDIS_SSL_ENABLED:-true}"
       DASHBOARD_BASE_URL: https://${SAUTI_DOMAIN:-sauti.uk}
+      SAUTI_DEMO_REQUEST_NOTIFICATION_EMAIL: ${SAUTI_DEMO_REQUEST_NOTIFICATION_EMAIL:-support@sauti.uk}
+      SAUTI_DEMO_REQUEST_ADMIN_URL: https://${SAUTI_ADMIN_DOMAIN:-admin.sauti.uk}/admin/demo-requests
       SAUTI_CORS_ALLOWED_ORIGINS: "https://${SAUTI_DOMAIN:-sauti.uk},https://${SAUTI_ADMIN_DOMAIN:-admin.sauti.uk}"
       PUBLIC_BASE_URL: https://${SAUTI_DOMAIN:-sauti.uk}
       SAUTI_RECORDINGS_DIR: /data/recordings

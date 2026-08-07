@@ -107,6 +107,7 @@ sauti:
     reply-to: ${EMAIL_REPLY_TO:support@sauti.local}
   demo-request:
     notification-email: ${SAUTI_DEMO_REQUEST_NOTIFICATION_EMAIL:${EMAIL_REPLY_TO:support@sauti.local}}
+    admin-review-url: ${SAUTI_DEMO_REQUEST_ADMIN_URL:http://localhost:3000/admin/demo-requests}
   public-demo:
     enabled: ${SAUTI_PUBLIC_DEMO_ENABLED:false}
     telnyx-agent-id: ${SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID:}

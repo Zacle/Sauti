@@ -18,5 +18,7 @@ class PlatformAdminPolicyTest {
 
         when(user.getEmail()).thenReturn("owner@example.com");
         assertThat(policy.roleFor(user)).isEqualTo("OWNER");
+        assertThat(policy.allows("ops@sauti.uk")).isTrue();
+        assertThat(policy.allows("unknown@sauti.uk")).isFalse();
     }
 }

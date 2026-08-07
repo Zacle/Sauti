@@ -38,6 +38,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final ApplicationEventPublisher eventPublisher;
+    private final PlatformAdminPolicy platformAdminPolicy;
     private final long refreshTokenDays;
     private final Duration refreshTokenRotationGrace;
     private final boolean exposeDevTokens;
@@ -53,6 +54,7 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
             ApplicationEventPublisher eventPublisher,
+            PlatformAdminPolicy platformAdminPolicy,
             @Value("${sauti.jwt.refresh-token-days}") long refreshTokenDays,
             @Value("${sauti.jwt.refresh-token-rotation-grace-seconds:30}") long refreshTokenRotationGraceSeconds,
             @Value("${sauti.auth.expose-dev-tokens:true}") boolean exposeDevTokens,
@@ -67,6 +69,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.eventPublisher = eventPublisher;
+        this.platformAdminPolicy = platformAdminPolicy;
         this.refreshTokenDays = refreshTokenDays;
         this.refreshTokenRotationGrace = Duration.ofSeconds(Math.max(0, refreshTokenRotationGraceSeconds));
         this.exposeDevTokens = exposeDevTokens;
@@ -240,7 +243,7 @@ public class AuthService {
                     return user;
                 })
                 .orElseGet(() -> {
-                    requirePublicRegistration();
+                    if (!platformAdminPolicy.allows(email)) requirePublicRegistration();
                     Tenant tenant = tenantRepository.save(new Tenant(
                             businessName(requestedBusinessName, profile),
                             email,

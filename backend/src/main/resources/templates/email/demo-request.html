@@ -23,6 +23,15 @@
                 <p><strong>Use case:</strong><br><span th:text="${request.primaryUseCase}">Use case</span></p>
                 <p><strong>Notes:</strong><br><span th:text="${request.notes ?: 'None'}">Notes</span></p>
                 <p><strong>Request ID:</strong> <code th:text="${request.id}">request-id</code></p>
+                <p style="margin:28px 0 8px;">
+                    <a th:href="${adminReviewUrl}" href="https://admin.sauti.uk/admin/demo-requests"
+                       style="display:inline-block;padding:13px 19px;border-radius:10px;background:#45dbd0;color:#062022;text-decoration:none;font-weight:700;">
+                        Review request in Sauti Admin
+                    </a>
+                </p>
+                <p style="margin:8px 0 0;color:#7895a6;font-size:12px;">
+                    Sign in with an email included in the Sauti platform-admin allowlist. The link does not grant access by itself.
+                </p>
             </td></tr>
         </table>
     </td></tr>

@@ -22,15 +22,21 @@ class DemoLifecycleEmailListenerTest {
     void receiptNotifiesBothThePlatformAndTheRequester() throws Exception {
         var mail = mail(); var templates = templates();
         var listener = new DemoRequestEmailListener(mail, templates,
-                "noreply@sauti.uk", "Sauti", "demo@sauti.uk");
+                "noreply@sauti.uk", "Sauti", "support@sauti.uk",
+                "https://admin.sauti.uk/admin/demo-requests");
 
         listener.notifyParties(new DemoRequestReceived(request()));
 
         var messages = ArgumentCaptor.forClass(MimeMessage.class);
         verify(mail, times(2)).send(messages.capture());
         assertThat(messages.getAllValues()).extracting(message -> message.getAllRecipients()[0].toString())
-                .containsExactly("demo@sauti.uk", "owner@example.com");
+                .containsExactly("support@sauti.uk", "owner@example.com");
+        assertThat(messages.getAllValues().get(0).getSubject()).contains("Acme");
         assertThat(messages.getAllValues().get(1).getSubject()).isEqualTo("We received your Sauti demo request");
+        var contexts = ArgumentCaptor.forClass(IContext.class);
+        verify(templates, times(2)).process(any(String.class), contexts.capture());
+        assertThat(contexts.getAllValues().get(0).getVariable("adminReviewUrl"))
+                .isEqualTo("https://admin.sauti.uk/admin/demo-requests");
     }
 
     @Test

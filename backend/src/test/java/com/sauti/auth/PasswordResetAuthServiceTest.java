@@ -23,7 +23,7 @@ class PasswordResetAuthServiceTest {
     private final AuthService service = new AuthService(
             mock(TenantRepository.class), users, refreshTokens, mock(AuthEmailService.class),
             mock(GoogleOAuthService.class), codes, passwords, mock(JwtService.class),
-            mock(ApplicationEventPublisher.class), 30, 30, false, false);
+            mock(ApplicationEventPublisher.class), new PlatformAdminPolicy(""), 30, 30, false, false);
 
     @Test
     void unknownAccountsUseTheSameInvalidCodeError() {

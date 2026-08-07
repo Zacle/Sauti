@@ -21,6 +21,10 @@ public class PlatformAdminPolicy {
     }
 
     public String roleFor(User user) {
-        return adminEmails.contains(user.getEmail().toLowerCase(Locale.ROOT)) ? ROLE : user.getRole();
+        return allows(user.getEmail()) ? ROLE : user.getRole();
+    }
+
+    public boolean allows(String email) {
+        return email != null && adminEmails.contains(email.trim().toLowerCase(Locale.ROOT));
     }
 }

@@ -15,6 +15,45 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-07: Route new demo requests to the support admin queue
+
+- Confirmed and strengthened the existing post-commit demo lifecycle email:
+  each stored request sends the requester receipt plus an internal notification
+  to `support@sauti.uk`.
+- Added a direct `https://admin.sauti.uk/admin/demo-requests` review button to
+  the internal message. The email states that the link grants no access by
+  itself and continues to omit invitation tokens and credentials.
+- Added `SAUTI_DEMO_REQUEST_ADMIN_URL` and production Compose defaults for the
+  support recipient and admin review URL. Environment templates now show
+  `support@sauti.uk` in `SAUTI_PLATFORM_ADMIN_EMAILS`.
+- Allowlisted platform administrators may create their own Google-backed Sauti
+  account even while public registration is closed. This exception applies
+  only to exact emails in `SAUTI_PLATFORM_ADMIN_EMAILS`; unknown Google users
+  remain rejected. Existing password-reset support remains available after the
+  account exists.
+- Files touched:
+  - `backend/src/main/java/com/sauti/auth/AuthService.java`
+  - `backend/src/main/java/com/sauti/auth/PlatformAdminPolicy.java`
+  - `backend/src/main/java/com/sauti/demo/DemoRequestEmailListener.java`
+  - `backend/src/main/resources/application.yml`
+  - `backend/src/main/resources/templates/email/demo-request.html`
+  - `backend/src/test/java/com/sauti/auth/PasswordResetAuthServiceTest.java`
+  - `backend/src/test/java/com/sauti/auth/PlatformAdminPolicyTest.java`
+  - `backend/src/test/java/com/sauti/auth/RegistrationClosedAuthServiceTest.java`
+  - `backend/src/test/java/com/sauti/demo/DemoLifecycleEmailListenerTest.java`
+  - `.env.example`
+  - `deploy/.env.production.example`
+  - `deploy/docker-compose.prod.yml`
+  - `docs/agent-handoff.md`
+- Verification: focused demo-email, closed-registration, platform-admin policy,
+  and password-reset tests passed; the full backend suite passed; `git diff
+  --check` passed.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and the normal CI/CD chain.
+- Production requirement: set the `SAUTI_PLATFORM_ADMIN_EMAILS` GitHub Actions
+  secret to include `support@sauti.uk` (comma-separated if other admins remain)
+  before deployment. The checked-in example does not modify the live secret.
+
 ### 2026-08-07: Add the evidence-backed Phase 1 pilot readiness review
 
 - Added a platform-admin readiness review to each workspace detail with six
