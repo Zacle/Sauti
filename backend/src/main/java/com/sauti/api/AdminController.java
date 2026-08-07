@@ -15,6 +15,8 @@ import com.sauti.admin.AdminDtos.RejectDemoRequest;
 import com.sauti.admin.AdminDtos.DemoRequestItem;
 import com.sauti.admin.AdminDtos.AuditPage;
 import com.sauti.admin.AdminDtos.ConfigurePilotPolicy;
+import com.sauti.admin.AdminDtos.PilotReadinessItem;
+import com.sauti.admin.AdminDtos.UpdatePilotReadiness;
 import com.sauti.admin.PlatformAdminAuditService;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -99,6 +101,18 @@ public class AdminController {
                                        @PathVariable UUID tenantId,
                                        @RequestBody ConfigurePilotPolicy request) {
         return service.configurePilotPolicy(tenantId, request, user.email());
+    }
+
+    @GetMapping("/workspaces/{tenantId}/readiness")
+    PilotReadinessItem pilotReadiness(@PathVariable UUID tenantId) {
+        return service.pilotReadiness(tenantId);
+    }
+
+    @PatchMapping("/workspaces/{tenantId}/readiness")
+    PilotReadinessItem updatePilotReadiness(@AuthenticationPrincipal AuthenticatedUser user,
+                                            @PathVariable UUID tenantId,
+                                            @RequestBody UpdatePilotReadiness request) {
+        return service.updatePilotReadiness(tenantId, request, user.email());
     }
 
     @GetMapping("/customers")

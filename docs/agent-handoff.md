@@ -15,6 +15,76 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-07: Add the evidence-backed Phase 1 pilot readiness review
+
+- Added a platform-admin readiness review to each workspace detail with six
+  explicit checks: active/complete agent setup, owned phone-number readiness,
+  optional calendar sync, policy-approved messaging readiness, a completed
+  browser test call, and a named escalation contact.
+- The operational checks are computed from current Sauti data instead of
+  manually attested. Phone and messaging are required only when their paid
+  capabilities are enabled in the workspace pilot policy; calendar sync stays
+  visible but optional because Sauti remains the booking source of truth.
+- Added durable support-contact, launch-note, and approval metadata in
+  `pilot_readiness_reviews`. The backend rejects final launch approval while
+  any required computed check is blocked, and every review update enters the
+  immutable platform-admin audit history.
+- Added admin-only `GET` and `PATCH`
+  `/api/v1/admin/workspaces/{tenantId}/readiness`, a Flyway migration, shared
+  dashboard API types/client methods, responsive console UI, and API coverage.
+- Files touched:
+  - `backend/src/main/java/com/sauti/admin/AdminDtos.java`
+  - `backend/src/main/java/com/sauti/admin/AdminService.java`
+  - `backend/src/main/java/com/sauti/api/AdminController.java`
+  - `backend/src/main/java/com/sauti/call/CallRepository.java`
+  - `backend/src/main/java/com/sauti/provisioning/PilotReadinessReview.java`
+  - `backend/src/main/java/com/sauti/provisioning/PilotReadinessReviewRepository.java`
+  - `backend/src/main/java/com/sauti/provisioning/PilotReadinessService.java`
+  - `backend/src/main/resources/db/migration/V56__pilot_readiness_reviews.sql`
+  - `backend/src/test/java/com/sauti/admin/AdminApiSecurityTest.java`
+  - `backend/src/test/java/com/sauti/admin/AdminServiceTest.java`
+  - `dashboard/features/admin/presentation/AdminWorkspaces.tsx`
+  - `dashboard/features/admin/presentation/AdminDirectory.module.css`
+  - `dashboard/lib/api/admin.ts`
+  - `dashboard/types/api.ts`
+  - `docs/production-launch-phases.md`
+  - `docs/agent-handoff.md`
+- Verification: focused admin API tests passed; the full backend suite passed;
+  dashboard typecheck and zero-warning lint passed; the dashboard production
+  build passed with all 61 routes; `git diff --check` is the final handoff
+  check.
+- Deployment status: not deployed; changes remain uncommitted for maintainer
+  review and the normal CI/CD chain.
+- Next Phase 1 step: complete and record one real invited-workspace production
+  acceptance journey; do not mark Phase 1 complete from automated tests alone.
+
+### 2026-08-06: Expand Google verification instructions for empty reviewer workspace
+
+- Updated `docs/google-verification-package.md` with manual agent-creation instructions for a reviewer whose workspace has no agents.
+- Added a plain-English explanation of Google's AI specification request and a copy-ready response covering provider inventory, Workspace data flow, no-training claims, OAuth token handling, and aggregator disclosure.
+- Why: the recorded demonstration assumes an existing agent, while Google reviewers will begin from the supplied empty test account; the AI policy request also needed an actionable response rather than a general warning.
+- Files touched:
+  - `docs/google-verification-package.md`
+  - `docs/agent-handoff.md`
+- Verification: source inspection of the Agent Creator flow and `git diff --check` after documentation edits.
+- Deployment: not deployed; changes remain uncommitted for maintainer review.
+- Known follow-ups and risks:
+  - Replace provider/tier/retention placeholders only after confirming the deployed staging configuration and current provider contracts.
+  - The code path can place Google Sheets lookup values into an AI conversation turn; complete the provider data-use confirmation or disable/isolate that feature before making an absolute compliance claim.
+
+### 2026-08-06: Correct Google AI disclosure for Telnyx-managed assistant
+
+- Corrected `docs/google-verification-package.md` to identify Telnyx AI Assistant as Sauti's primary live voice-agent provider, with `moonshotai/Kimi-K2.6` and `deepgram/nova-3` reflected from the current configuration.
+- Clarified that Sauti does not train or fine-tune generalized models, while distinguishing that Telnyx is the hosted AI service and that its model-improvement opt-out must be enabled before making a no-training claim about Workspace data.
+- Documented that Telnyx assistant recording retention is currently enabled in the Sauti provisioner and is separate from model training.
+- Why: the prior package treated every adapter as if it were the active agent and left the primary provider unspecified.
+- Files touched:
+  - `docs/google-verification-package.md`
+  - `docs/agent-handoff.md`
+- Verification: inspected `TelnyxManagedVoiceAgentProvisioner`, environment templates, official Telnyx AI terms, and ran `git diff --check`.
+- Deployment: not deployed; changes remain uncommitted for maintainer review.
+- Known follow-up: enable/verify Telnyx model-improvement opt-out and confirm the exact downstream provider/model route in the Telnyx account before sending the response to Google.
+
 ### 2026-08-06: Modernize integration disconnect and Google Calendar testing feedback
 
 - Replaced the browser-native `window.confirm` disconnect alert with an in-app
@@ -41,6 +111,14 @@ This document lets a new coding agent continue safely from the previous state. U
   templates remain tracked.
 - Verification: `git rm --cached --ignore-unmatch .env`,
   `git check-ignore -v .env`, and `git status --short --untracked-files=all`.
+
+### 2026-08-06: Make disconnect confirmation copy provider-aware
+
+- Replaced the Google Calendar-specific impact text in the shared disconnect
+  modal with provider-aware copy for Google Calendar, Google Sheets, HubSpot,
+  Salesforce, and Calendly, plus a safe generic fallback.
+- Verification: dashboard typecheck, lint, production build, and `git diff
+  --check`.
 
 ### 2026-08-04: Add controlled pilot budgets, provider approvals, and lifecycle email
 

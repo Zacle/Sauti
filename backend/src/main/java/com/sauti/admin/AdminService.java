@@ -38,6 +38,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.sauti.provisioning.PilotProvisioningPolicyService;
+import com.sauti.provisioning.PilotReadinessService;
 import org.springframework.context.ApplicationEventPublisher;
 import com.sauti.demo.DemoRequestRejected;
 
@@ -55,6 +56,7 @@ public class AdminService {
     private final PlatformAdminAuditService audit;
     private final PilotProvisioningPolicyService provisioningPolicies;
     private final ApplicationEventPublisher events;
+    private final PilotReadinessService pilotReadiness;
 
     public AdminService(TenantRepository tenants, CallRepository calls, BookingRepository bookings,
                         AgentRepository agents,
@@ -64,7 +66,8 @@ public class AdminService {
                         PilotInvitationRepository invitationRepository,
                         PlatformAdminAuditService audit,
                         PilotProvisioningPolicyService provisioningPolicies,
-                        ApplicationEventPublisher events) {
+                        ApplicationEventPublisher events,
+                        PilotReadinessService pilotReadiness) {
         this.tenants = tenants;
         this.calls = calls;
         this.bookings = bookings;
@@ -77,6 +80,7 @@ public class AdminService {
         this.audit = audit;
         this.provisioningPolicies = provisioningPolicies;
         this.events = events;
+        this.pilotReadiness = pilotReadiness;
     }
 
     @Transactional(readOnly = true)
@@ -184,6 +188,21 @@ public class AdminService {
         audit.record(actor, "pilot.provisioning_policy.updated", "workspace", tenantId.toString(),
                 "Pilot budget and provider capabilities updated to " + policy.getStatus());
         return workspace(tenantId);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminDtos.PilotReadinessItem pilotReadiness(UUID tenantId) {
+        return pilotReadiness.get(tenantId);
+    }
+
+    @Transactional
+    public AdminDtos.PilotReadinessItem updatePilotReadiness(UUID tenantId,
+                                                              AdminDtos.UpdatePilotReadiness request,
+                                                              String actor) {
+        var result = pilotReadiness.update(tenantId, request, actor);
+        audit.record(actor, "pilot.readiness.updated", "workspace", tenantId.toString(),
+                result.readyForLaunch() ? "Pilot launch readiness approved" : "Pilot readiness review updated");
+        return result;
     }
 
     @Transactional(readOnly = true)

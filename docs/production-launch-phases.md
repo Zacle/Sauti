@@ -58,12 +58,14 @@ If the secret is absent, operator endpoints fail closed with `401`.
 - Demo requesters receive request-received, approval/invitation, and rejection
   lifecycle emails. A verified first-time workspace receives the onboarding
   welcome email once.
+- Platform administrators now have an evidence-backed pilot readiness review
+  for agent setup, owned phone numbers, optional calendar sync, approved
+  messaging channels, completed browser test calls, and escalation contacts.
+  Required checks cannot be bypassed by the final launch-approval control.
 
 ### Remaining Phase 1 slices
 
-1. Add a pilot readiness checklist covering agent setup, number ownership,
-   calendar sync, messaging, test calls, and support contacts.
-2. Run one invited-workspace acceptance journey in production and record the
+1. Run one invited-workspace acceptance journey in production and record the
    evidence before Phase 1 is marked complete. The equivalent admin approval,
    invitation preview, one-time activation, and database-persistence journey is
    now covered by an automated integration test.

@@ -26,18 +26,76 @@ The repository contains no Google Workspace or Photos model-training pipeline. H
 
 ## AI and model-provider inventory
 
-The codebase references the following providers or model services:
+Sauti does not train, fine-tune, or improve a generalized AI model using Google user data. The live voice agent is a Telnyx AI Assistant managed through the Telnyx API. Sauti supplies the agent instructions and routes authorized tool calls back to Sauti; Telnyx supplies the hosted AI conversation runtime.
 
-| Provider/service | Role observed in code | Plan/tier and training/retention setting to confirm before submission |
+| Provider/service | Role in the verification flow | Disclosure required |
 | --- | --- | --- |
-| Google Gemini / Google GenAI | LLM fallback/default, embeddings, and post-call analysis | `[confirm project, API product, plan, data-use and retention settings]` |
-| OpenAI | Advanced LLM turns and speech transcription fallback | `[confirm API plan and zero-training/data-retention configuration]` |
-| Deepgram | Speech-to-text | `[confirm plan and audio retention/training configuration]` |
-| ElevenLabs | Realtime text-to-speech | `[confirm plan and data-use/retention configuration]` |
-| Telnyx managed voice assistant | Live telephony media, speech recognition, synthesis, and tool webhook calls | `[confirm plan and whether any call content is used for model training]` |
-| Cartesia | Optional realtime text-to-speech provider | `[confirm whether enabled in the staging account, plan, and data-use configuration]` |
+| Telnyx AI Assistant | Primary live voice agent, including hosted conversation runtime, voice, and managed telephony | Telnyx plan/tier; configured model `moonshotai/Kimi-K2.6`; confirm Telnyx model-improvement opt-out is enabled for the account. |
+| Deepgram through Telnyx | Transcription model configured on the managed assistant as `deepgram/nova-3` | Confirm this is the exact Telnyx transcription route for the verification assistant and disclose Telnyx's applicable retention/training controls. |
+| Google Gemini / Google GenAI | Separate optional Sauti LLM, embeddings, and post-call-analysis adapters present in the codebase | State whether disabled in the verification environment. If enabled, disclose the exact model, API plan, and data-use setting. |
+| OpenAI | Separate optional Sauti LLM and transcription fallback adapters present in the codebase | State whether disabled in the verification environment. If enabled, disclose the exact model, API plan, and data-use setting. |
+| ElevenLabs and Cartesia | Optional separate Sauti text-to-speech adapters | State whether disabled in the verification environment. If enabled, disclose the exact plan and data-use setting. |
 
-No multi-model aggregator or gateway was identified in the repository. If production configuration routes through one, add the platform, every downstream model, endpoint, payload flags, zero-data-retention setting, and dashboard control here before replying.
+Telnyx is also the relevant managed AI platform/gateway for this flow. Telnyx's AI Services Addendum lists possible downstream providers including OpenAI, Anthropic, Google, Groq, Deepgram, Azure, AWS, ElevenLabs, and Minimax. The reviewer response must identify only the downstream providers and models actually used by the Telnyx account, not merely every provider listed in Telnyx's general terms. Confirm this in the Telnyx portal or with Telnyx support before submitting.
+
+Important: Telnyx's current AI Services Terms say that model-improvement use is permitted unless the customer opts out through the Telnyx portal or by written notice. Enable and document that opt-out before telling Google that Workspace data is not used for generalized model training. The Sauti provisioner currently sets Telnyx assistant recording retention to enabled; that is a storage setting and is separate from model training.
+
+Reference: [Telnyx AI Services Terms](https://telnyx.com/legal/ai-services-terms).
+
+## What Google's AI specification means
+
+Google is not asking whether Sauti uses AI in general. Google is asking whether data obtained through Google Workspace or Google Photos is sent to an AI provider that may use that data to train or improve a general-purpose model.
+
+For this review, answer four separate questions:
+
+1. Which AI providers can receive data in the application? List every provider, the plan or tier, the endpoint or product, and the model used.
+2. Can Google Calendar or Google Sheets values enter an AI request? In the current implementation, a Google Sheets lookup result can enter the conversation/tool result used by an agent turn. Do not describe this as complete isolation unless the deployed configuration has been changed or verified.
+3. Do those providers use API customer data to train generalized models? Confirm this from the current provider contract and account settings. Do not infer it from marketing language.
+4. If any provider does train on the data, what technical boundary prevents Workspace data from reaching it? If there is no auditable boundary, disable the affected Workspace feature for the verification account or change the architecture before submitting.
+
+The important distinction is: “Sauti does not train its own model on Google data” is not enough. The reviewer also needs to know that Telnyx is the hosted AI provider, which Telnyx downstream models are used, and that the Telnyx model-improvement opt-out is enabled for the account.
+
+## Manual reviewer setup: create an agent first
+
+The reviewer account starts with an empty workspace, so the instructions must not assume that an agent already exists. Use the following exact sequence with the supplied test account:
+
+1. Open `https://sauti.uk` and sign in with the supplied Sauti test credentials.
+2. Open **Agents** in the left navigation.
+3. Select **Create agent**. The page title is **How should your agent help callers?**.
+4. Select the **Appointment Booker** template. This supplies a simple booking scenario for the Calendar demonstration. The reviewer may instead select **Blank agent**, but the remaining steps assume Appointment Booker.
+5. In the draft studio, open **Main** if it is not already selected. Set:
+   - Agent name: `Google Verification Agent`
+   - Short description: `Books a synthetic test appointment using the connected Google Calendar.`
+   - Language: `English`
+   - Greeting: `Hello, this is the Google Verification Agent. How may I help?`
+6. Open **Speech & voice** and choose any available supported voice. A voice must be selected before a test call can be prepared.
+7. Leave phone-call recording disabled and use synthetic test data only. Keep transcript saving enabled only if the reviewer needs to inspect the test conversation.
+8. Click **Save draft** in the upper-right corner. The page must show a saved agent before integrations can be connected; the integrations panel explicitly requires a saved agent ID.
+9. Open **Tools & integrations** from the setup navigation. Connect Google Calendar or Google Sheets from there, depending on the part of the demonstration being reviewed.
+10. After connecting an integration, return to **Agents**, open `Google Verification Agent`, and use **Test** or the test-call panel to demonstrate the configured behavior.
+
+If the reviewer wants to test both Google integrations, use the same saved agent and connect each integration one at a time. Use a synthetic calendar and a synthetic spreadsheet, and disconnect each provider after its demonstration.
+
+## Copy-ready AI specification response
+
+Use this wording only after replacing the bracketed provider settings with facts confirmed in the deployed staging account:
+
+```text
+AI/data-use clarification
+
+Sauti does not train or fine-tune any generalized AI model. The live voice agent in this verification environment is a Telnyx AI Assistant:
+
+- Telnyx AI Assistant — [Telnyx plan/tier], model `moonshotai/Kimi-K2.6`, with Telnyx model-improvement opt-out enabled for this account.
+- Telnyx transcription route — `deepgram/nova-3`, subject to the Telnyx account's configured downstream-provider controls.
+
+Sauti does not use Google Workspace or Google Photos user data to train, improve, or sell a generalized or foundational AI model. Sauti does not control or train the underlying Telnyx models; Telnyx processes the assistant input to provide the hosted AI service. The Telnyx account used for this review has model-improvement opt-out enabled, so the input and output are not used for generalized model training under the configured account setting.
+
+Google Calendar data is used only to check availability and synchronize a confirmed booking in the calendar selected by the workspace owner. Google Sheets data is limited to the spreadsheet and range configured by the workspace owner and is used only for the enabled lookup or confirmed update action.
+
+The Google Sheets feature can return a configured row to the Telnyx agent's tool/conversation layer. Therefore, Workspace data may be included in a Telnyx AI request only when the workspace owner has enabled that agent tool. In the verification environment, the Telnyx model-improvement opt-out is enabled for the account, and the downstream provider/model route shown above is the only AI route used for the demonstration. Telnyx assistant recording retention is configured separately and is disclosed as [retained / not retained] for this account.
+
+OAuth tokens are encrypted at rest. Sauti does not request Google Drive or Google Photos scopes. Telnyx is the managed AI platform for the live assistant, and the downstream model configuration is disclosed above. Sauti does not use a separate multi-model aggregator or gateway outside Telnyx. The Google Sheets tool is enabled only for the synthetic verification spreadsheet.
+```
 
 ## Reviewer test account and navigation
 

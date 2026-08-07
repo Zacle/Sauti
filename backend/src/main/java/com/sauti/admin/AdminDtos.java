@@ -47,6 +47,18 @@ public final class AdminDtos {
                                        boolean phoneNumbersApproved, boolean liveCallingApproved,
                                        boolean smsApproved, boolean whatsappApproved, String notes) { }
 
+    public record PilotReadinessCheck(String key, String label, String status,
+                                      boolean required, String detail) { }
+    public record PilotReadinessItem(List<PilotReadinessCheck> checks, long completedChecks,
+                                     long blockingChecks, boolean launchApproved,
+                                     boolean readyForLaunch, String supportContactName,
+                                     String supportContactEmail, String supportContactPhone,
+                                     String launchNotes, String approvedBy,
+                                     OffsetDateTime approvedAt) { }
+    public record UpdatePilotReadiness(String supportContactName, String supportContactEmail,
+                                       String supportContactPhone, String launchNotes,
+                                       boolean launchApproved) { }
+
     public record WorkspaceItem(UUID id, String businessName, String email, String countryCode,
                                 String plan, String status, int minutesUsed, int minutesLimit,
                                 long agents, long calls, long bookings, long customers,

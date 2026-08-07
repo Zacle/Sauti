@@ -12,6 +12,8 @@ import org.springframework.data.repository.query.Param;
 public interface CallRepository extends JpaRepository<Call, UUID> {
     boolean existsByAgent_Id(UUID agentId);
 
+    boolean existsByTenantIdAndDirectionAndEndedAtIsNotNull(UUID tenantId, String direction);
+
     List<Call> findAllByTenantIdOrderByStartedAtDesc(UUID tenantId);
 
     Optional<Call> findByIdAndTenantId(UUID id, UUID tenantId);

@@ -1,4 +1,4 @@
-import type { AdminAuditPage, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPlatformAnalytics, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
+import type { AdminAuditPage, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
 import { apiRequest } from "./client";
 
 export function getAdminOverview() {
@@ -58,6 +58,19 @@ export function configureAdminPilotPolicy(tenantId: string, policy: {
 }) {
   return apiRequest<AdminWorkspace>(`/admin/workspaces/${tenantId}/pilot-policy`, {
     method: "PATCH", body: JSON.stringify(policy),
+  });
+}
+
+export function getAdminPilotReadiness(tenantId: string) {
+  return apiRequest<AdminPilotReadiness>(`/admin/workspaces/${tenantId}/readiness`);
+}
+
+export function updateAdminPilotReadiness(tenantId: string, review: {
+  supportContactName: string; supportContactEmail: string; supportContactPhone: string;
+  launchNotes: string; launchApproved: boolean;
+}) {
+  return apiRequest<AdminPilotReadiness>(`/admin/workspaces/${tenantId}/readiness`, {
+    method: "PATCH", body: JSON.stringify(review),
   });
 }
 

@@ -41,6 +41,34 @@ import styles from "./IntegrationsPage.module.css";
 type Filter = "all" | "calendar" | "messaging" | "crm" | "data" | "notifications" | "payments" | "developer" | "during" | "post" | "connected";
 const oauthProviders = ["google_sheets", "hubspot", "salesforce", "calendly"];
 
+const disconnectImpact: Record<string, { resource: string; intact: string; stops: string }> = {
+  google_calendar: {
+    resource: "Calendar access",
+    intact: "Existing bookings and calendar events stay intact.",
+    stops: "Agents will stop creating new Calendar events until you reconnect it.",
+  },
+  google_sheets: {
+    resource: "Google Sheets access",
+    intact: "Existing spreadsheet data stays intact.",
+    stops: "Agents will stop reading from or writing to connected Sheets until you reconnect it.",
+  },
+  hubspot: {
+    resource: "HubSpot access",
+    intact: "Existing HubSpot records stay intact.",
+    stops: "Agents will stop reading from or updating HubSpot records until you reconnect it.",
+  },
+  salesforce: {
+    resource: "Salesforce access",
+    intact: "Existing Salesforce records stay intact.",
+    stops: "Agents will stop reading from or updating Salesforce records until you reconnect it.",
+  },
+  calendly: {
+    resource: "Calendly access",
+    intact: "Existing Calendly event types and bookings stay intact.",
+    stops: "Agents will stop using Calendly scheduling data until you reconnect it.",
+  },
+};
+
 const logos: Record<string, string> = {
   google_calendar: "/logos/google-calendar.svg",
   calendly: "/logos/calendly.svg",
@@ -425,6 +453,12 @@ function DisconnectDialog({ connection, busy, onClose, onConfirm }: {
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }) {
+  const impact = disconnectImpact[connection.provider] ?? {
+    resource: `${connection.displayName} access`,
+    intact: `Existing ${connection.displayName} data stays intact.`,
+    stops: `Agents will stop using ${connection.displayName} until you reconnect it.`,
+  };
+
   return <div className={styles.backdrop} onMouseDown={onClose}>
     <section
       aria-describedby="disconnect-description"
@@ -441,10 +475,10 @@ function DisconnectDialog({ connection, busy, onClose, onConfirm }: {
       <div className={styles.disconnectCopy}>
         <span className={styles.dialogEyebrow}>Connection settings</span>
         <h2 id="disconnect-title">Disconnect {connection.displayName}?</h2>
-        <p id="disconnect-description">This removes the workspace connection and turns off Calendar access for agents using it.</p>
-        <div className={styles.impactList}>
-          <div><Check size={15} /><span>Existing bookings and calendar events stay intact.</span></div>
-          <div><CircleAlert size={15} /><span>Agents will stop creating new Calendar events until you reconnect it.</span></div>
+    <p id="disconnect-description">This removes the workspace connection and turns off {impact.resource} for agents using it.</p>
+    <div className={styles.impactList}>
+     <div><Check size={15} /><span>{impact.intact}</span></div>
+     <div><CircleAlert size={15} /><span>{impact.stops}</span></div>
         </div>
       </div>
       <footer>

@@ -91,6 +91,13 @@ export type AdminWorkspacePage = {
   workspaces: AdminWorkspace[]; total: number; page: number; pageSize: number;
 };
 
+export type AdminPilotReadiness = {
+  checks: Array<{ key: string; label: string; status: "ready" | "not_ready" | "not_required" | string; required: boolean; detail: string }>;
+  completedChecks: number; blockingChecks: number; launchApproved: boolean; readyForLaunch: boolean;
+  supportContactName: string | null; supportContactEmail: string | null; supportContactPhone: string | null;
+  launchNotes: string | null; approvedBy: string | null; approvedAt: string | null;
+};
+
 export type AdminCustomer = {
   tenantId: string; businessName: string; phone: string; calls: number; lastContactAt: string;
 };

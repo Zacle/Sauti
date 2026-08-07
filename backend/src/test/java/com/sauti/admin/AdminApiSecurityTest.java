@@ -141,6 +141,38 @@ class AdminApiSecurityTest {
                 .andExpect(jsonPath("$.events[0].action").value("pilot.provisioning_policy.updated"));
     }
 
+    @Test
+    void platformAdminReviewsEvidenceBackedPilotReadiness() throws Exception {
+        var admin = user("Admin workspace", "platform-admin@sauti.test");
+        var pilot = user("Pilot workspace", "readiness-owner@sauti.test");
+        var authorization = "Bearer " + jwt.issueAccessToken(admin);
+
+        mvc.perform(get("/api/v1/admin/workspaces/{id}/readiness", pilot.getTenant().getId())
+                        .header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.blockingChecks").value(3))
+                .andExpect(jsonPath("$.checks[0].key").value("agent_setup"))
+                .andExpect(jsonPath("$.checks[1].status").value("not_required"))
+                .andExpect(jsonPath("$.checks[2].status").value("not_required"));
+
+        mvc.perform(patch("/api/v1/admin/workspaces/{id}/readiness", pilot.getTenant().getId())
+                        .contentType("application/json")
+                        .content("""
+                                {"supportContactName":"Zachary","supportContactEmail":"support@example.com",
+                                 "supportContactPhone":"","launchNotes":"Pilot owner briefed",
+                                 "launchApproved":false}
+                                """)
+                        .header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.supportContactName").value("Zachary"))
+                .andExpect(jsonPath("$.blockingChecks").value(2))
+                .andExpect(jsonPath("$.readyForLaunch").value(false));
+
+        mvc.perform(get("/api/v1/admin/audit").header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.events[0].action").value("pilot.readiness.updated"));
+    }
+
     private User user(String business, String email) {
         var tenant = tenants.save(new Tenant(business, email, "KE"));
         var user = new User(tenant, email, passwords.encode("password123"));
