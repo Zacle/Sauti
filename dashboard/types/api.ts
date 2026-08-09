@@ -138,6 +138,27 @@ export type AdminPlatformAnalytics = {
   }>;
 };
 
+export type AdminReliabilityIncident = {
+  id: string;
+  provider: string;
+  severity: "warning" | "critical" | string;
+  status: "open" | "resolved" | string;
+  summary: string;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  notifiedAt: string | null;
+  resolvedAt: string | null;
+};
+
+export type AdminQueueHealth = {
+  key: string;
+  label: string;
+  pending: number;
+  retrying: number;
+  exhausted: number;
+  oldestQueuedAt: string | null;
+};
+
 export type WorkspaceNotification = {
   id: string;
   type: "booking.confirmed" | "booking.follow_up_required" | string;

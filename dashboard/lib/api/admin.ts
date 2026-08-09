@@ -1,4 +1,4 @@
-import type { AdminAuditPage, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
+import type { AdminAuditPage, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityIncident, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
 import { apiRequest } from "./client";
 
 export function getAdminOverview() {
@@ -85,4 +85,12 @@ export function getAdminCustomer(tenantId: string, phone: string) {
 
 export function getAdminPlatformAnalytics(days: 7 | 30 | 90 = 30) {
   return apiRequest<AdminPlatformAnalytics>(`/admin/analytics?days=${days}`);
+}
+
+export function getAdminReliabilityIncidents() {
+  return apiRequest<AdminReliabilityIncident[]>("/admin/reliability/incidents");
+}
+
+export function getAdminQueueHealth() {
+  return apiRequest<AdminQueueHealth[]>("/admin/reliability/queues");
 }

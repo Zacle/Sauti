@@ -15,6 +15,145 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-09: Add cross-module queue and retry visibility
+
+- Deferred live off-site backup acceptance at the user's request while funds
+  are limited. The backup/restore tooling remains dormant and creates no account
+  or provider charge unless explicitly configured; it does not block the rest
+  of Phase 2.
+- Added a contributor-based queue-health boundary that aggregates durable work
+  without exposing payloads or tenant/customer data. It covers post-call
+  analysis, integration deliveries, calendar synchronization, custom webhooks,
+  billing-provider events, provider-cost reconciliation, and Telnyx recording
+  reconciliation.
+- Each queue reports separate pending, retrying, and terminally exhausted
+  counts plus the oldest active timestamp. Module repositories use count/oldest
+  queries rather than loading full job tables into memory.
+- Added a platform-admin-only `/api/v1/admin/reliability/queues` endpoint and a
+  responsive Background queues section in Admin Analytics. The former failed-
+  call KPI is replaced by the more actionable total exhausted-jobs KPI; each
+  queue clearly shows Normal, Retrying, or Action required.
+- Files touched:
+  - `backend/src/main/java/com/sauti/reliability/QueueHealthContributor.java`;
+  - `backend/src/main/java/com/sauti/reliability/QueueHealthService.java`;
+  - `backend/src/main/java/com/sauti/api/AdminReliabilityController.java`;
+  - queue repository/contributor files under `com.sauti.integration`,
+    `com.sauti.calendar`, `com.sauti.webhook`, `com.sauti.billing`, and
+    `com.sauti.call`;
+  - `dashboard/types/api.ts`;
+  - `dashboard/lib/api/admin.ts`;
+  - `dashboard/features/admin/presentation/AdminAnalytics.tsx`;
+  - `dashboard/features/admin/presentation/AdminAnalytics.module.css`;
+  - `docs/production-launch-phases.md`;
+  - `docs/agent-handoff.md`.
+- Verification: the full backend test suite, dashboard typecheck, ESLint, and
+  optimized production build passed; `git diff --check` passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+- Next Phase 2 slice: define measurable platform/call/job SLOs and connect queue
+  age plus exhausted-work thresholds to the reliability incident model.
+
+### 2026-08-09: Add off-site backup verification and guarded restore drills
+
+- Hardened the nightly Neon backup so an incomplete dump is never presented as
+  valid: PostgreSQL writes to a private temporary file, `pg_restore --list`
+  validates the catalog, the dump is atomically renamed, and a SHA-256 sidecar
+  is created. Local seven-day retention now removes matching dump/checksum pairs.
+- Added optional, provider-neutral Restic replication. When the private
+  `.env.backup-offsite` is configured, each validated dump and checksum is
+  encrypted before upload to any Restic-supported repository. Secret files with
+  group/other permissions fail closed.
+- Added local/off-site verification that retrieves the latest snapshot when
+  needed, validates its checksum and dump catalog, and rejects backups older
+  than 36 hours by default. The scheduled GitHub workflow remains disabled
+  until `BACKUP_VERIFICATION_ENABLED=true`, avoiding noisy failures before
+  storage is configured; manual verification is always available.
+- Added a guarded restore drill requiring a separate private environment file,
+  the exact `isolated-restore-drill` confirmation, a target database name marked
+  as drill/restore/test/staging, a target identity different from production,
+  and zero existing public tables. It never drops data, restores the selected
+  backup, validates required Sauti tables and aggregate counts, and writes a
+  private JSON evidence file without credentials or customer rows.
+- Removed the need for an interactive VPS session. Manual workflow operation
+  `configure_offsite` now builds the private Restic environment from encrypted
+  GitHub Secrets, transfers it over the existing SSH channel without logging
+  values, initializes storage, creates a fresh dump, uploads it, and verifies
+  it. Restore operations similarly install `RESTORE_DRILL_DATABASE_URL` as a
+  mode-600 VPS file, while `clear_restore_config` removes that temporary target
+  URL after the provider-side database is deleted.
+- Added the operational runbook, configuration examples, deploy-copy wiring,
+  and unit tests for production-target refusal, disposable-name enforcement,
+  valid isolated targets, and fail-closed missing production identity.
+- Files touched:
+  - `deploy/backup-postgres.sh`;
+  - `deploy/verify-postgres-backup.sh`;
+  - `deploy/restore-drill-postgres.sh`;
+  - `deploy/validate-restore-target.py`;
+  - `deploy/tests/test_restore_target_validator.py`;
+  - `deploy/.env.backup-offsite.example`;
+  - `deploy/.env.restore-drill.example`;
+  - `.github/workflows/backup-recovery-drill.yml`;
+  - `.github/workflows/deploy.yml`;
+  - `docs/runbooks/backup-restore.md`;
+  - `docs/deployment.md`;
+  - `docs/production-launch-phases.md`;
+  - `docs/agent-handoff.md`.
+- Verification: four restore-target safety tests passed; all three shell scripts
+  passed `bash -n`; `git diff --check` passed. Docker Desktop is not running in
+  this workspace, so no dump, off-site retrieval, or database restore was
+  attempted locally.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path. A live drill requires private off-site
+  repository credentials and a disposable isolated PostgreSQL database.
+- Next Phase 2 step: configure those two external resources, deploy the scripts,
+  run `restore_offsite`, and retain the generated evidence. Code work can then
+  continue with queue-age, retry-exhaustion, and dead-letter visibility.
+
+### 2026-08-09: Start Phase 2 with durable reliability incidents and alerts
+
+- Marked controlled pilot onboarding (Phase 1) complete and expanded the
+  production roadmap into four explicit Phase 2 operational-reliability slices:
+  incident alerting, backup/restore verification, retry/dead-letter visibility,
+  and SLO/runbook drills.
+- Added a scheduled, production-configurable reliability monitor that evaluates
+  Sauti's stored integration connection and delivery evidence. It makes no live
+  or billable provider health request. Provider failures open a critical
+  incident immediately; retrying work must remain degraded beyond a configurable
+  grace period before a warning email is sent.
+- Incidents are durable and deduplicated per provider while open. Support gets
+  one opening email and one recovery email; a failed email remains pending and
+  is retried on a later monitor pass. Alerting defaults off outside production,
+  and recipient, evidence window, warning grace, and poll interval are all
+  environment-configurable.
+- Added a platform-admin-only incident endpoint and a responsive Reliability
+  incidents section on Admin Analytics, including open/resolved state, severity,
+  evidence summary, detection time, and notification delivery state.
+- Added Flyway migration `V58` plus tests covering immediate critical alerts,
+  transient-warning suppression, and recovery notification requests.
+- Files touched:
+  - `.env.example`;
+  - `deploy/.env.production.example`;
+  - `backend/src/main/resources/application.yml`;
+  - `backend/src/main/resources/db/migration/V58__platform_reliability_incidents.sql`;
+  - `backend/src/main/java/com/sauti/reliability/*`;
+  - `backend/src/main/java/com/sauti/api/AdminReliabilityController.java`;
+  - `backend/src/test/java/com/sauti/reliability/ReliabilityMonitoringServiceTest.java`;
+  - `dashboard/types/api.ts`;
+  - `dashboard/lib/api/admin.ts`;
+  - `dashboard/features/admin/presentation/AdminAnalytics.tsx`;
+  - `dashboard/features/admin/presentation/AdminAnalytics.module.css`;
+  - `docs/production-launch-phases.md`;
+  - `docs/agent-handoff.md`.
+- Verification: the focused reliability tests and full backend test suite
+  passed; dashboard typecheck, ESLint, and optimized production build passed;
+  `git diff --check` passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD release path. Production must set
+  `SAUTI_RELIABILITY_ALERTS_ENABLED=true`; the production example routes alerts
+  to `support@sauti.uk` and links to `admin.sauti.uk/admin/analytics`.
+- Next Phase 2 slice: add off-host backup verification and run a documented,
+  isolated restore drill without writing to the production database.
+
 ### 2026-08-09: Preserve pilot invitation tokens through activation
 
 - Fixed a client-side invitation race where the activation page successfully

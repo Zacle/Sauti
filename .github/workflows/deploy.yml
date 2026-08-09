@@ -48,6 +48,11 @@ jobs:
             deploy/deploy.sh \
             deploy/bootstrap-server-env.sh \
             deploy/backup-postgres.sh \
+            deploy/verify-postgres-backup.sh \
+            deploy/restore-drill-postgres.sh \
+            deploy/validate-restore-target.py \
+            deploy/.env.backup-offsite.example \
+            deploy/.env.restore-drill.example \
             deploy/configure-external-services-env.sh \
             deploy/test-external-services.sh \
             deploy/migrate-postgres-to-neon.sh \

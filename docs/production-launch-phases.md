@@ -12,7 +12,7 @@ Twilio/STT/TTS pipeline.
   enforced quotas and no tenant tools or customer data.
 - The production browser demo has passed live acceptance.
 
-## Phase 1 — controlled pilot onboarding (in progress)
+## Phase 1 — controlled pilot onboarding (completed 2026-08-09)
 
 Goal: approve selected demo leads and activate pilot workspaces without
 reopening public registration or provisioning paid resources automatically.
@@ -63,17 +63,65 @@ If the secret is absent, operator endpoints fail closed with `401`.
   messaging channels, completed browser test calls, and escalation contacts.
   Required checks cannot be bypassed by the final launch-approval control.
 
-### Remaining Phase 1 slices
+The invited-workspace production acceptance journey is complete. Phase 1 is
+closed; later fixes to invitation UX or administration remain normal product
+maintenance and do not reopen the phase.
 
-1. Run one invited-workspace acceptance journey in production and record the
-   evidence before Phase 1 is marked complete. The equivalent admin approval,
-   invitation preview, one-time activation, and database-persistence journey is
-   now covered by an automated integration test.
+## Phase 2 — operational reliability (in progress)
+
+Goal: detect, communicate, diagnose, and recover from production failures
+without relying on a customer to report them first.
+
+### Slice 1: reliability incidents and operator alerts
+
+- Evaluate stored provider connection and delivery evidence on a schedule
+  without making billable provider health requests.
+- Persist deduplicated open/resolved incidents, email support on first detection
+  and recovery, and show the incident history in platform analytics.
+- Keep alerting disabled by default outside production and make the recipient,
+  evidence window, and polling interval configurable.
+
+### Slice 2: off-site backup verification and guarded recovery
+
+- Produce atomic PostgreSQL custom dumps, validate their catalogs, and attach a
+  SHA-256 checksum before treating a backup as complete.
+- Optionally replicate each completed dump to any Restic-supported encrypted
+  off-site repository and verify the latest off-site snapshot daily once the
+  repository variable is explicitly enabled.
+- Restore only into an empty, explicitly named disposable database after
+  comparing it with the production identity. Record non-sensitive recovery
+  evidence covering required tables, Flyway history, and aggregate row counts.
+- Implementation and local safety tests are complete. Live acceptance remains
+  gated on configuring off-site storage and an isolated restore database, then
+  recording one successful `restore_offsite` workflow run.
+- Live acceptance is explicitly deferred during the limited-funds pilot. The
+  dormant tooling creates no storage account or provider charge by itself and
+  does not block the remaining Phase 2 reliability work.
+
+### Slice 3: durable queue and retry visibility
+
+- Aggregate post-call processing, integration delivery, calendar sync, custom
+  webhooks, billing events, cost reconciliation, and recording reconciliation
+  through a contributor-based operational queue boundary.
+- Expose pending, retrying, terminally exhausted, and oldest-active-item state
+  to platform administrators without exposing payloads, endpoints, customer
+  fields, or credentials.
+- Show queue state in Admin Analytics and make total exhausted work a top-level
+  operational KPI so silent background failures are visible without database
+  access.
+
+### Remaining Phase 2 slices
+
+1. Configure off-site storage and execute the documented restore drill against
+   an isolated database; retain the generated evidence without customer rows or
+   credentials.
+2. Define Sauti SLOs for health, call startup, first audio, turn failures, and
+   job delay, then connect thresholds to the incident model.
+3. Publish incident runbooks and record one end-to-end production reliability
+   drill, including detection, operator notification, mitigation, and recovery.
 
 ## Later phases
 
-- Phase 2: operational reliability, alerting, backup/restore drills, provider
-  retry visibility, and incident runbooks.
 - Phase 3: billing-provider lifecycle acceptance and reviewed enforcement.
 - Phase 4: security/privacy review, Google verification completion, legal
   readiness, and controlled general availability.

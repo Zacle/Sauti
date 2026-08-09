@@ -41,6 +41,7 @@ public class PostCallJob {
     public int getAttempts() { return attempts; }
     public OffsetDateTime getNextAttemptAt() { return nextAttemptAt; }
     public String getLastError() { return lastError; }
+    public OffsetDateTime getCreatedAt() { return createdAt; }
 
     public void ready() { status = "ready"; updatedAt = OffsetDateTime.now(); }
     public void completed() { status = "completed"; lastError = null; updatedAt = OffsetDateTime.now(); }

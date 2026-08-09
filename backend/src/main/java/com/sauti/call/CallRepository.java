@@ -26,6 +26,9 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
             String recordingSidPrefix
     );
 
+    long countByRecordingUrlIsNullAndRecordingSidStartingWithAndEndedAtIsNotNull(String recordingSidPrefix);
+    long countByRecordingSidStartingWith(String recordingSidPrefix);
+
     Optional<Call> findFirstByAgent_IdAndDirectionAndCallerNumberAndOutcomeOrderByStartedAtDesc(
             UUID agentId,
             String direction,

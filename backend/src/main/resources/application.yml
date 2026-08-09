@@ -108,6 +108,14 @@ sauti:
   demo-request:
     notification-email: ${SAUTI_DEMO_REQUEST_NOTIFICATION_EMAIL:${EMAIL_REPLY_TO:support@sauti.local}}
     admin-review-url: ${SAUTI_DEMO_REQUEST_ADMIN_URL:http://localhost:3000/admin/demo-requests}
+  reliability:
+    alerts:
+      enabled: ${SAUTI_RELIABILITY_ALERTS_ENABLED:false}
+      notification-email: ${SAUTI_RELIABILITY_ALERT_EMAIL:${EMAIL_REPLY_TO:support@sauti.local}}
+      admin-url: ${SAUTI_RELIABILITY_ADMIN_URL:${DASHBOARD_BASE_URL:http://localhost:8088}/admin/analytics}
+      lookback-hours: ${SAUTI_RELIABILITY_LOOKBACK_HOURS:24}
+      warning-grace-minutes: ${SAUTI_RELIABILITY_WARNING_GRACE_MINUTES:10}
+      poll-delay-ms: ${SAUTI_RELIABILITY_POLL_DELAY_MS:300000}
   analytics:
     hash-secret: ${SAUTI_ANALYTICS_HASH_SECRET:${JWT_SECRET:dev-only-change-me-dev-only-change-me}}
     retention-cron: ${SAUTI_ANALYTICS_RETENTION_CRON:0 41 3 * * *}

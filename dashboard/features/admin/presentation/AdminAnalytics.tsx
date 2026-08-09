@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, Clock3, LoaderCircle, Mic2, MousePointerClick, PhoneCall, RefreshCw, ServerCog, Users } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { getAdminPlatformAnalytics } from "@/lib/api/admin";
-import type { AdminPlatformAnalytics } from "@/types/api";
+import { getAdminPlatformAnalytics, getAdminQueueHealth, getAdminReliabilityIncidents } from "@/lib/api/admin";
+import type { AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityIncident } from "@/types/api";
 import styles from "./AdminAnalytics.module.css";
 import webStyles from "./AdminWebAnalytics.module.css";
 import polish from "./AdminPolish.module.css";
@@ -14,11 +14,22 @@ type Days = 7 | 30 | 90;
 export function AdminAnalytics() {
   const [days, setDays] = useState<Days>(30);
   const [data, setData] = useState<AdminPlatformAnalytics | null>(null);
+  const [incidents, setIncidents] = useState<AdminReliabilityIncident[]>([]);
+  const [queues, setQueues] = useState<AdminQueueHealth[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const load = useCallback(async (range: Days) => {
     setLoading(true); setError("");
-    try { setData(await getAdminPlatformAnalytics(range)); }
+    try {
+      const [analytics, reliabilityIncidents, queueHealth] = await Promise.all([
+        getAdminPlatformAnalytics(range),
+        getAdminReliabilityIncidents(),
+        getAdminQueueHealth(),
+      ]);
+      setData(analytics);
+      setIncidents(reliabilityIncidents);
+      setQueues(queueHealth);
+    }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load platform analytics."); }
     finally { setLoading(false); }
   }, []);
@@ -28,10 +39,11 @@ export function AdminAnalytics() {
     calls: data?.activity.reduce((sum, day) => sum + day.calls, 0) ?? 0,
     duration: data?.activity.reduce((sum, day) => sum + day.durationSeconds, 0) ?? 0,
     failed: data?.activity.reduce((sum, day) => sum + day.failed, 0) ?? 0,
-    attention: data?.providers.filter((provider) => provider.status === "attention").length ?? 0,
+    openIncidents: incidents.filter((incident) => incident.status === "open").length,
+    exhaustedJobs: queues.reduce((sum, queue) => sum + queue.exhausted, 0),
     visitors: data?.web.uniqueVisitors ?? 0,
     requests: data?.web.demoRequests ?? 0,
-  }), [data]);
+  }), [data, incidents, queues]);
 
   return <div className={`${styles.page} ${polish.page}`}>
     <header className={`${styles.heading} ${polish.heading}`}><div><span>PLATFORM INTELLIGENCE</span><h1>Analytics & provider health</h1><p>Stored operational evidence across Sauti. Refreshing this page never calls or charges an external provider.</p></div><button disabled={loading} onClick={() => void load(days)} type="button"><RefreshCw className={loading ? styles.spin : ""} size={16}/>Refresh</button></header>
@@ -39,7 +51,7 @@ export function AdminAnalytics() {
     {error && <div className={styles.error} role="alert">{error}</div>}
     {loading && !data ? <div className={styles.loading}><LoaderCircle className={styles.spin} size={22}/>Loading platform evidence…</div> : data && <>
       <section className={`${styles.kpis} ${polish.kpis}`}>
-        <Kpi icon={Users} label="Daily unique visitors" value={format(totals.visitors)}/><Kpi icon={MousePointerClick} label="Demo requests" value={format(totals.requests)}/><Kpi icon={PhoneCall} label="Calls" value={format(totals.calls)}/><Kpi icon={Clock3} label="Conversation time" value={duration(totals.duration)}/><Kpi icon={AlertTriangle} label="Failed calls" value={format(totals.failed)}/><Kpi icon={ServerCog} label="Providers needing attention" value={format(totals.attention)}/>
+        <Kpi icon={Users} label="Daily unique visitors" value={format(totals.visitors)}/><Kpi icon={MousePointerClick} label="Demo requests" value={format(totals.requests)}/><Kpi icon={PhoneCall} label="Calls" value={format(totals.calls)}/><Kpi icon={Clock3} label="Conversation time" value={duration(totals.duration)}/><Kpi icon={AlertTriangle} label="Exhausted jobs" value={format(totals.exhaustedJobs)}/><Kpi icon={ServerCog} label="Open incidents" value={format(totals.openIncidents)}/>
       </section>
       <section className={`${styles.grid} ${polish.grid}`}>
         <Card title="Website acquisition" subtitle="Privacy-preserving daily unique visitors and page views" wide><WebActivityChart data={data}/></Card>
@@ -50,6 +62,8 @@ export function AdminAnalytics() {
         <Card title="Unpriced usage" subtitle="Usage awaiting a configured or confirmed cost"><UnpricedUsage data={data}/></Card>
         <Card title="Daily cost trend" subtitle="Net ledger amount; credits reduce the daily value" wide><CostChart data={data}/></Card>
         <Card title="Provider health" subtitle="Observed connection, delivery, and reconciliation evidence" wide><ProviderHealth data={data}/></Card>
+        <Card title="Reliability incidents" subtitle="Deduplicated alerts and recovery history" wide><ReliabilityIncidents incidents={incidents}/></Card>
+        <Card title="Background queues" subtitle="Pending, retrying, and exhausted durable work" wide><QueueHealth queues={queues}/></Card>
       </section>
       <p className={styles.generated}>Generated {new Date(data.generatedAt).toLocaleString()} · This is operational evidence, not a live provider uptime check.</p>
     </>}
@@ -102,10 +116,27 @@ function ProviderHealth({ data }: { data: AdminPlatformAnalytics }) {
   if (!data.providers.length) return <Empty text="No provider connection, delivery, or cost evidence exists in this period."/>;
   return <div className={styles.providers}>{data.providers.map((provider) => <article key={provider.provider}><div><span className={`${styles.healthDot} ${styles[provider.status] ?? ""}`}/><strong>{human(provider.provider)}</strong><em>{provider.status}</em></div><dl><div><dt>Connections</dt><dd>{provider.configuredConnections - provider.connectionErrors}/{provider.configuredConnections} healthy</dd></div><div><dt>Deliveries</dt><dd>{provider.delivered}/{provider.deliveryAttempts} delivered</dd></div><div><dt>Delivery issues</dt><dd>{provider.retryingDeliveries} retrying · {provider.failedDeliveries} failed</dd></div><div><dt>Cost evidence</dt><dd>{provider.reconciledCosts} confirmed · {provider.estimatedCosts} estimated</dd></div><div><dt>Cost issues</dt><dd>{provider.pendingCosts + provider.retryingCosts} waiting · {provider.unavailableCosts} unavailable</dd></div></dl>{provider.lastActivityAt && <time>Last recorded activity {new Date(provider.lastActivityAt).toLocaleString()}</time>}</article>)}</div>;
 }
+function ReliabilityIncidents({ incidents }: { incidents: AdminReliabilityIncident[] }) {
+  if (!incidents.length) return <Empty text="No reliability incidents have been detected."/>;
+  return <div className={styles.incidents}>{incidents.map((incident) => <article key={incident.id}>
+    <span className={`${styles.incidentState} ${styles[incident.status] ?? ""}`}>{human(incident.status)}</span>
+    <div><strong>{human(incident.provider)}</strong><p>{incident.summary}</p></div>
+    <dl><div><dt>Severity</dt><dd>{human(incident.severity)}</dd></div><div><dt>First detected</dt><dd>{new Date(incident.firstDetectedAt).toLocaleString()}</dd></div><div><dt>Operator email</dt><dd>{incident.notifiedAt ? `Sent ${new Date(incident.notifiedAt).toLocaleString()}` : "Pending delivery"}</dd></div></dl>
+  </article>)}</div>;
+}
+function QueueHealth({ queues }: { queues: AdminQueueHealth[] }) {
+  if (!queues.length) return <Empty text="No durable background queues are registered."/>;
+  return <div className={styles.queueGrid}>{queues.map((queue) => <article key={queue.key}>
+    <div><strong>{queue.label}</strong><span className={queue.exhausted ? styles.queueAttention : ""}>{queue.exhausted ? "Action required" : queue.retrying ? "Retrying" : "Normal"}</span></div>
+    <dl><div><dt>Pending</dt><dd>{format(queue.pending)}</dd></div><div><dt>Retrying</dt><dd>{format(queue.retrying)}</dd></div><div><dt>Exhausted</dt><dd>{format(queue.exhausted)}</dd></div></dl>
+    <p>{queue.oldestQueuedAt ? `Oldest active item ${relativeAge(queue.oldestQueuedAt)}` : "No active item waiting"}</p>
+  </article>)}</div>;
+}
 function Empty({ text }: { text: string }) { return <div className={styles.empty}>{text}</div>; }
 function format(value: number) { return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(value); }
 function money(value: number, currency: string) { return new Intl.NumberFormat("en", { style: "currency", currency }).format(value); }
 function duration(seconds: number) { const hours = Math.floor(seconds / 3600); const minutes = Math.round((seconds % 3600) / 60); return hours ? `${hours}h ${minutes}m` : `${minutes}m`; }
 function dateLabel(value: string) { return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`)); }
 function human(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
+function relativeAge(value: string) { const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000)); if (seconds < 60) return `${seconds}s ago`; if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`; return `${Math.floor(seconds / 3600)}h ago`; }
 const tooltipStyle = { border: "1px solid #265166", borderRadius: 12, background: "#071925", color: "#dcebf2" };

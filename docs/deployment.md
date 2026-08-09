@@ -63,12 +63,15 @@ The included backup script creates a PostgreSQL custom-format dump and retains
 seven local days:
 
 ```bash
-0 2 * * * /opt/sauti/backup-postgres.sh
+0 2 * * * bash /opt/sauti/backup-postgres.sh
 ```
 
-Local backups do not protect against server loss. Copy them to encrypted
-off-site object storage with restic or rclone before production customer data
-is stored.
+Local backups do not protect against server loss. Configure the provider-neutral
+Restic environment described in `docs/runbooks/backup-restore.md`. The backup
+script validates each dump, writes a checksum, and uploads both to encrypted
+off-site storage. A scheduled GitHub workflow verifies the latest off-site
+snapshot daily, and the guarded restore drill proves recovery against an empty,
+isolated database without touching production.
 
 The `recordings-data` volume also needs an off-site retention policy if call
 recordings are kept locally.

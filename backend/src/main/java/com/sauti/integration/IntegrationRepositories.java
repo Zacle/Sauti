@@ -24,6 +24,9 @@ interface PostCallJobRepository extends JpaRepository<PostCallJob, UUID> {
     Optional<PostCallJob> findByCallId(UUID callId);
     List<PostCallJob> findTop20ByStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
             List<String> statuses, OffsetDateTime now);
+    long countByStatus(String status);
+    long countByStatusAndAttemptsGreaterThan(String status, int attempts);
+    Optional<PostCallJob> findFirstByStatusInOrderByCreatedAtAsc(List<String> statuses);
 }
 
 interface IntegrationDeliveryRepository extends JpaRepository<IntegrationDelivery, UUID> {
@@ -33,6 +36,8 @@ interface IntegrationDeliveryRepository extends JpaRepository<IntegrationDeliver
     List<IntegrationDelivery> findTop20ByStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
             List<String> statuses, OffsetDateTime now);
     List<IntegrationDelivery> findAllByCreatedAtGreaterThanEqual(OffsetDateTime from);
+    long countByStatus(String status);
+    Optional<IntegrationDelivery> findFirstByStatusInOrderByCreatedAtAsc(List<String> statuses);
 }
 
 interface MpesaPaymentRequestRepository extends JpaRepository<MpesaPaymentRequest, UUID> {

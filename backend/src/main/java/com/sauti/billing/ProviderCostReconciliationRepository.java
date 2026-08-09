@@ -15,4 +15,6 @@ interface ProviderCostReconciliationRepository extends JpaRepository<ProviderCos
             List<String> statuses, OffsetDateTime dueAt);
     List<ProviderCostReconciliationJob> findAllByTenantId(UUID tenantId);
     List<ProviderCostReconciliationJob> findAllByCreatedAtGreaterThanEqual(OffsetDateTime from);
+    long countByStatus(String status);
+    Optional<ProviderCostReconciliationJob> findFirstByStatusInOrderByCreatedAtAsc(List<String> statuses);
 }

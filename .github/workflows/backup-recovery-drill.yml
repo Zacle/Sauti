@@ -1,0 +1,118 @@
+name: Backup verification and recovery drill
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "Verification is read-only; restore operations require the isolated drill database configured on the server"
+        required: true
+        default: verify_offsite
+        type: choice
+        options:
+          - configure_offsite
+          - verify_offsite
+          - verify_local
+          - restore_offsite
+          - restore_local
+          - clear_restore_config
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-backup-recovery
+  cancel-in-progress: false
+
+jobs:
+  verify-or-drill:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.BACKUP_VERIFICATION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Securely configure and initialize off-site storage
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'configure_offsite' }}
+        env:
+          RESTIC_REPOSITORY: ${{ secrets.BACKUP_RESTIC_REPOSITORY }}
+          RESTIC_PASSWORD: ${{ secrets.BACKUP_RESTIC_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_AWS_SECRET_ACCESS_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          for value in "$RESTIC_REPOSITORY" "$RESTIC_PASSWORD" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY"; do
+            test -n "$value" || { echo "Required backup secret is missing."; exit 1; }
+            case "$value" in *$'\n'*|*$'\r'*) echo "Backup secrets must be single-line values."; exit 1 ;; esac
+          done
+          config_file="$(mktemp)"
+          chmod 600 "$config_file"
+          trap 'rm -f "$config_file"' EXIT
+          {
+            printf 'RESTIC_REPOSITORY=%s\n' "$RESTIC_REPOSITORY"
+            printf 'RESTIC_PASSWORD=%s\n' "$RESTIC_PASSWORD"
+            printf 'AWS_ACCESS_KEY_ID=%s\n' "$AWS_ACCESS_KEY_ID"
+            printf 'AWS_SECRET_ACCESS_KEY=%s\n' "$AWS_SECRET_ACCESS_KEY"
+          } > "$config_file"
+          remote_file="/tmp/sauti-backup-offsite-env-${GITHUB_RUN_ID}"
+          scp -i ~/.ssh/deploy_key "$config_file" "$VPS_USER@$VPS_HOST:$remote_file"
+          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+            "install -m 600 '$remote_file' /opt/sauti/.env.backup-offsite; result=\$?; rm -f '$remote_file'; exit \$result"
+
+      - name: Securely configure the isolated restore target
+        if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.operation, 'restore_') }}
+        env:
+          RESTORE_DATABASE_URL: ${{ secrets.RESTORE_DRILL_DATABASE_URL }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          test -n "$RESTORE_DATABASE_URL" || { echo "RESTORE_DRILL_DATABASE_URL is missing."; exit 1; }
+          case "$RESTORE_DATABASE_URL" in *$'\n'*|*$'\r'*) echo "Restore URL must be a single-line value."; exit 1 ;; esac
+          config_file="$(mktemp)"
+          chmod 600 "$config_file"
+          trap 'rm -f "$config_file"' EXIT
+          {
+            printf 'SAUTI_RESTORE_DATABASE_URL=%s\n' "$RESTORE_DATABASE_URL"
+            printf 'SAUTI_RESTORE_CONFIRM=isolated-restore-drill\n'
+          } > "$config_file"
+          remote_file="/tmp/sauti-restore-drill-env-${GITHUB_RUN_ID}"
+          scp -i ~/.ssh/deploy_key "$config_file" "$VPS_USER@$VPS_HOST:$remote_file"
+          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+            "install -m 600 '$remote_file' /opt/sauti/.env.restore-drill; result=\$?; rm -f '$remote_file'; exit \$result"
+
+      - name: Verify backup or run guarded restore drill
+        env:
+          OPERATION: ${{ inputs.operation || 'verify_offsite' }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          case "$OPERATION" in
+            configure_offsite) remote_command="set -Eeuo pipefail; if docker run --rm --env-file .env.backup-offsite restic/restic:0.18.0 cat config >/dev/null 2>&1; then echo 'Off-site repository is initialized.'; else docker run --rm --env-file .env.backup-offsite restic/restic:0.18.0 init; fi; bash ./backup-postgres.sh; bash ./verify-postgres-backup.sh offsite" ;;
+            verify_offsite) remote_command="bash ./verify-postgres-backup.sh offsite" ;;
+            verify_local) remote_command="bash ./verify-postgres-backup.sh local" ;;
+            restore_offsite) remote_command="bash ./restore-drill-postgres.sh offsite" ;;
+            restore_local) remote_command="bash ./restore-drill-postgres.sh local" ;;
+            clear_restore_config) remote_command="rm -f /opt/sauti/.env.restore-drill && echo 'Restore-drill configuration removed.'" ;;
+            *) echo "Unsupported operation"; exit 1 ;;
+          esac
+          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+            "cd /opt/sauti && $remote_command"
+
+      - name: Read latest restore evidence
+        if: ${{ startsWith(inputs.operation || '', 'restore_') }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$VPS_USER@$VPS_HOST" \
+            "cd /opt/sauti && latest=\$(find restore-drills -maxdepth 1 -type f -name 'restore-drill-*.json' -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-) && test -n \"\$latest\" && cat \"\$latest\""

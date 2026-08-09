@@ -45,6 +45,10 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             OffsetDateTime nextAttemptAt
     );
 
+    long countByCalendarSyncStatus(String status);
+    long countByCalendarSyncStatusAndCalendarSyncAttemptsGreaterThan(String status, int attempts);
+    Optional<Booking> findFirstByCalendarSyncStatusOrderByCreatedAtAsc(String status);
+
     Optional<Booking> findFirstByTenantIdAndCall_IdAndAgent_IdAndStatusNotAndAppointmentAt(
             UUID tenantId,
             UUID callId,
