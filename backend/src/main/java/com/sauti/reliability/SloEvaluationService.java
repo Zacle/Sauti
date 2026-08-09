@@ -16,6 +16,7 @@ public class SloEvaluationService {
     private final QueueHealthService queues;
     private final CallRepository calls;
     private final CallTurnRepository turns;
+    private final VoiceStartupMeasurementRepository startupMeasurements;
     private final int queueWarningMinutes;
     private final int queueCriticalMinutes;
     private final int callWindowMinutes;
@@ -25,11 +26,15 @@ public class SloEvaluationService {
     private final int minimumTurnSample;
     private final double responseWarningMs;
     private final double responseCriticalMs;
+    private final int minimumStartupSample;
+    private final double startupWarningMs;
+    private final double startupCriticalMs;
 
     public SloEvaluationService(
             QueueHealthService queues,
             CallRepository calls,
             CallTurnRepository turns,
+            VoiceStartupMeasurementRepository startupMeasurements,
             @Value("${sauti.reliability.slo.queue-warning-minutes:5}") int queueWarningMinutes,
             @Value("${sauti.reliability.slo.queue-critical-minutes:30}") int queueCriticalMinutes,
             @Value("${sauti.reliability.slo.call-window-minutes:15}") int callWindowMinutes,
@@ -38,10 +43,14 @@ public class SloEvaluationService {
             @Value("${sauti.reliability.slo.failure-critical-percent:25}") double failureCriticalPercent,
             @Value("${sauti.reliability.slo.minimum-turn-sample:10}") int minimumTurnSample,
             @Value("${sauti.reliability.slo.response-warning-ms:2500}") double responseWarningMs,
-            @Value("${sauti.reliability.slo.response-critical-ms:5000}") double responseCriticalMs) {
+            @Value("${sauti.reliability.slo.response-critical-ms:5000}") double responseCriticalMs,
+            @Value("${sauti.reliability.slo.minimum-startup-sample:5}") int minimumStartupSample,
+            @Value("${sauti.reliability.slo.startup-warning-ms:3000}") double startupWarningMs,
+            @Value("${sauti.reliability.slo.startup-critical-ms:7000}") double startupCriticalMs) {
         this.queues = queues;
         this.calls = calls;
         this.turns = turns;
+        this.startupMeasurements = startupMeasurements;
         this.queueWarningMinutes = Math.max(1, queueWarningMinutes);
         this.queueCriticalMinutes = Math.max(this.queueWarningMinutes + 1, queueCriticalMinutes);
         this.callWindowMinutes = Math.max(5, callWindowMinutes);
@@ -51,6 +60,9 @@ public class SloEvaluationService {
         this.minimumTurnSample = Math.max(2, minimumTurnSample);
         this.responseWarningMs = Math.max(1, responseWarningMs);
         this.responseCriticalMs = Math.max(this.responseWarningMs, responseCriticalMs);
+        this.minimumStartupSample = Math.max(2, minimumStartupSample);
+        this.startupWarningMs = Math.max(1, startupWarningMs);
+        this.startupCriticalMs = Math.max(this.startupWarningMs, startupCriticalMs);
     }
 
     @Transactional(readOnly = true)
@@ -96,6 +108,22 @@ public class SloEvaluationService {
                 turnCount, callWindowMinutes, turnCount < minimumTurnSample
                 ? "Needs at least %d production voice turns; browser tests are excluded".formatted(minimumTurnSample)
                 : "Average stored LLM plus TTS time across %d production turns".formatted(turnCount)));
+
+        var startup = startupMeasurements.aggregateSince(
+                from, List.of("browser_test", "public_demo", "web_voice"));
+        var startupCount = startup == null || startup.getSampleSize() == null ? 0 : startup.getSampleSize();
+        var startupMs = startup == null || startup.getAverageLatencyMs() == null
+                ? 0 : startup.getAverageLatencyMs();
+        var startupStatus = startupCount < minimumStartupSample ? "insufficient_data"
+                : thresholdStatus(startupMs, startupWarningMs, startupCriticalMs);
+        result.add(new SloView("voice:browser_first_audio", "Browser first audio", startupStatus,
+                startupMs, "milliseconds", startupWarningMs, startupCriticalMs,
+                startupCount, callWindowMinutes, startupCount < minimumStartupSample
+                ? "Needs at least %d provider-measured browser greetings".formatted(minimumStartupSample)
+                : "Average Telnyx greeting latency across %d browser sessions".formatted(startupCount)));
+        result.add(new SloView("voice:phone_first_audio", "Phone first audio", "unavailable",
+                0, "milliseconds", startupWarningMs, startupCriticalMs, 0, callWindowMinutes,
+                "Telnyx AI Assistant does not emit a first-speech playback webhook; no estimate is substituted"));
         return List.copyOf(result);
     }
 

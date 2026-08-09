@@ -11,6 +11,7 @@ import com.sauti.call.BrowserVoiceRuntimeSession;
 import com.sauti.call.TelnyxAiBrowserVoiceRuntimeService;
 import com.sauti.call.VoiceRuntimeUnavailableException;
 import com.sauti.call.WebVoiceTokenService;
+import com.sauti.reliability.VoiceStartupMeasurementService;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -18,6 +19,7 @@ class PublicDemoVoiceServiceTest {
     private final TelnyxAiBrowserVoiceRuntimeService runtime = mock(TelnyxAiBrowserVoiceRuntimeService.class);
     private final WebVoiceTokenService tokens = mock(WebVoiceTokenService.class);
     private final PublicDemoVoiceQuotaService quotas = mock(PublicDemoVoiceQuotaService.class);
+    private final VoiceStartupMeasurementService startupMeasurements = mock(VoiceStartupMeasurementService.class);
 
     @Test
     void returnsOnlyTheDedicatedExternalAssistantConfiguration() {
@@ -82,7 +84,8 @@ class PublicDemoVoiceServiceTest {
 
     private PublicDemoVoiceService service(boolean enabled) {
         return new PublicDemoVoiceService(
-                runtime, tokens, quotas, enabled, "demo-agent", "demo-version", 60, "https://sauti.uk"
+                runtime, tokens, quotas, startupMeasurements, enabled, "demo-agent", "demo-version", 60,
+                "https://sauti.uk"
         );
     }
 }

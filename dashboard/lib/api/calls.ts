@@ -55,6 +55,13 @@ export function correlateTestCall(
   });
 }
 
+export function recordTestStartupLatency(callId: string, latencyMs: number) {
+  return apiRequest<void>(`/calls/${callId}/startup-latency`, {
+    method: "POST",
+    body: JSON.stringify({ latencyMs }),
+  });
+}
+
 export function getCall(callId: string) {
   return apiRequest<Call>(`/calls/${callId}`);
 }

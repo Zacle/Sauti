@@ -126,6 +126,9 @@ sauti:
       minimum-turn-sample: ${SAUTI_SLO_MINIMUM_TURN_SAMPLE:10}
       response-warning-ms: ${SAUTI_SLO_RESPONSE_WARNING_MS:2500}
       response-critical-ms: ${SAUTI_SLO_RESPONSE_CRITICAL_MS:5000}
+      minimum-startup-sample: ${SAUTI_SLO_MINIMUM_STARTUP_SAMPLE:5}
+      startup-warning-ms: ${SAUTI_SLO_STARTUP_WARNING_MS:3000}
+      startup-critical-ms: ${SAUTI_SLO_STARTUP_CRITICAL_MS:7000}
   analytics:
     hash-secret: ${SAUTI_ANALYTICS_HASH_SECRET:${JWT_SECRET:dev-only-change-me-dev-only-change-me}}
     retention-cron: ${SAUTI_ANALYTICS_RETENTION_CRON:0 41 3 * * *}

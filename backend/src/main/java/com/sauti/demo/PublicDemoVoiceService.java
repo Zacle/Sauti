@@ -3,6 +3,7 @@ package com.sauti.demo;
 import com.sauti.call.TelnyxAiBrowserVoiceRuntimeService;
 import com.sauti.call.VoiceRuntimeUnavailableException;
 import com.sauti.call.WebVoiceTokenService;
+import com.sauti.reliability.VoiceStartupMeasurementService;
 import com.sauti.demo.PublicDemoVoiceDtos.PublicDemoVoiceConfiguration;
 import com.sauti.demo.PublicDemoVoiceDtos.StartPublicDemoVoiceResponse;
 import java.util.Arrays;
@@ -19,6 +20,7 @@ public class PublicDemoVoiceService {
     private final TelnyxAiBrowserVoiceRuntimeService runtime;
     private final WebVoiceTokenService tokens;
     private final PublicDemoVoiceQuotaService quotas;
+    private final VoiceStartupMeasurementService startupMeasurements;
     private final boolean enabled;
     private final String agentId;
     private final String versionId;
@@ -29,6 +31,7 @@ public class PublicDemoVoiceService {
             TelnyxAiBrowserVoiceRuntimeService runtime,
             WebVoiceTokenService tokens,
             PublicDemoVoiceQuotaService quotas,
+            VoiceStartupMeasurementService startupMeasurements,
             @Value("${sauti.public-demo.enabled:false}") boolean enabled,
             @Value("${sauti.public-demo.telnyx-agent-id:}") String agentId,
             @Value("${sauti.public-demo.telnyx-version-id:}") String versionId,
@@ -38,6 +41,7 @@ public class PublicDemoVoiceService {
         this.runtime = runtime;
         this.tokens = tokens;
         this.quotas = quotas;
+        this.startupMeasurements = startupMeasurements;
         this.enabled = enabled;
         this.agentId = agentId == null ? "" : agentId.trim();
         this.versionId = versionId == null ? "" : versionId.trim();
@@ -86,6 +90,19 @@ public class PublicDemoVoiceService {
             throw new IllegalArgumentException("Invalid public demo session token");
         }
         quotas.release(sessionId);
+    }
+
+    public void recordStartupLatency(String sessionId, String token, int latencyMs) {
+        final WebVoiceTokenService.WebVoicePrincipal principal;
+        try {
+            principal = tokens.verify(token);
+        } catch (RuntimeException invalidToken) {
+            throw new SecurityException("Invalid public demo session token", invalidToken);
+        }
+        if (!sessionId.equals(principal.callSid()) || !PUBLIC_AGENT_ID.equals(principal.publicAgentId())) {
+            throw new SecurityException("Invalid public demo session token");
+        }
+        startupMeasurements.recordPublicDemo(sessionId, latencyMs);
     }
 
     private void requireAvailable(String origin) {

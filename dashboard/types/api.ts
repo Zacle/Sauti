@@ -162,7 +162,7 @@ export type AdminQueueHealth = {
 export type AdminSlo = {
   key: string;
   label: string;
-  status: "healthy" | "warning" | "critical" | "insufficient_data" | string;
+  status: "healthy" | "warning" | "critical" | "insufficient_data" | "unavailable" | string;
   actual: number;
   unit: "minutes" | "percent" | "milliseconds" | string;
   warningThreshold: number;

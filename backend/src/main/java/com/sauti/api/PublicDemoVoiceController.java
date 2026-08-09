@@ -4,6 +4,7 @@ import com.sauti.demo.PublicDemoVoiceDtos.PublicDemoVoiceConfiguration;
 import com.sauti.demo.PublicDemoVoiceDtos.StartPublicDemoVoiceRequest;
 import com.sauti.demo.PublicDemoVoiceDtos.StartPublicDemoVoiceResponse;
 import com.sauti.demo.PublicDemoVoiceService;
+import com.sauti.call.CallDtos.StartupLatencyRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -61,6 +62,26 @@ public class PublicDemoVoiceController {
         try {
             service.complete(sessionId, authorization.substring("Bearer ".length()).trim());
         } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid public demo session token");
+        }
+    }
+
+    @PostMapping("/sessions/{sessionId}/startup-latency")
+    void recordStartupLatency(
+            @org.springframework.web.bind.annotation.PathVariable String sessionId,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestBody StartupLatencyRequest measurement
+    ) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Public demo session token is required");
+        }
+        try {
+            service.recordStartupLatency(
+                    sessionId,
+                    authorization.substring("Bearer ".length()).trim(),
+                    measurement.latencyMs()
+            );
+        } catch (SecurityException exception) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid public demo session token");
         }
     }

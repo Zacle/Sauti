@@ -12,6 +12,8 @@ import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionRequest;
 import com.sauti.call.WebVoiceDtos.StartWebVoiceSessionResponse;
 import com.sauti.call.WebVoiceTokenService;
 import com.sauti.call.TelnyxAiBrowserVoiceRuntimeService;
+import com.sauti.call.CallDtos.StartupLatencyRequest;
+import com.sauti.reliability.VoiceStartupMeasurementService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,19 +32,22 @@ public class PublicWebVoiceController {
     private final CallPipelineService callPipelineService;
     private final WebVoiceTokenService tokenService;
     private final TelnyxAiBrowserVoiceRuntimeService telnyxRuntime;
+    private final VoiceStartupMeasurementService startupMeasurements;
 
     public PublicWebVoiceController(
             PublicWebVoiceAccessService accessService,
             PublicWebVoiceRateLimitService rateLimitService,
             CallPipelineService callPipelineService,
             WebVoiceTokenService tokenService,
-            TelnyxAiBrowserVoiceRuntimeService telnyxRuntime
+            TelnyxAiBrowserVoiceRuntimeService telnyxRuntime,
+            VoiceStartupMeasurementService startupMeasurements
     ) {
         this.accessService = accessService;
         this.rateLimitService = rateLimitService;
         this.callPipelineService = callPipelineService;
         this.tokenService = tokenService;
         this.telnyxRuntime = telnyxRuntime;
+        this.startupMeasurements = startupMeasurements;
     }
 
     @GetMapping("/agents/{publicId}")
@@ -126,6 +131,16 @@ public class PublicWebVoiceController {
                     : "";
             callPipelineService.completeActiveCall(sessionId, "completed", providerCallControlId);
         }
+    }
+
+    @PostMapping("/sessions/{sessionId}/startup-latency")
+    void recordStartupLatency(
+            @PathVariable String sessionId,
+            @RequestBody StartupLatencyRequest measurement,
+            HttpServletRequest request
+    ) {
+        var call = verifiedPublicCall(sessionId, request);
+        startupMeasurements.recordWebVoice(call.getTwilioCallSid(), measurement.latencyMs());
     }
 
     private void validateSessionRequest(Agent agent, StartWebVoiceSessionRequest request) {

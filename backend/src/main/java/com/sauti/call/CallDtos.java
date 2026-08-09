@@ -86,6 +86,9 @@ public final class CallDtos {
     public record ProviderCallCorrelationRequest(String providerCallControlId, String providerCallLegId) {
     }
 
+    public record StartupLatencyRequest(int latencyMs) {
+    }
+
     public record StartTestCallResponse(
             CallResponse call,
             String greeting,

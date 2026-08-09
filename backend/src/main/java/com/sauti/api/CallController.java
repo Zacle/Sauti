@@ -10,6 +10,7 @@ import com.sauti.call.CallDtos.SimulatedTurnRequest;
 import com.sauti.call.CallDtos.SimulatedTurnResponse;
 import com.sauti.call.CallDtos.StartTestCallRequest;
 import com.sauti.call.CallDtos.StartTestCallResponse;
+import com.sauti.call.CallDtos.StartupLatencyRequest;
 import com.sauti.call.CallDtos.TestCallSettings;
 import com.sauti.call.BrowserVoiceRuntimeSession;
 import com.sauti.call.TelnyxAiBrowserVoiceRuntimeService;
@@ -17,6 +18,7 @@ import com.sauti.call.CallPipelineService;
 import com.sauti.call.CallQueryService;
 import com.sauti.call.CallRecordingService;
 import com.sauti.call.WebVoiceTokenService;
+import com.sauti.reliability.VoiceStartupMeasurementService;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptResponse;
 import java.util.List;
@@ -41,6 +43,7 @@ public class CallController {
     private final WebVoiceTokenService webVoiceTokenService;
     private final TelnyxAiBrowserVoiceRuntimeService telnyxRuntime;
     private final BrowserVoiceRuntimePreparationService runtimePreparation;
+    private final VoiceStartupMeasurementService startupMeasurements;
 
     public CallController(
             CallQueryService callQueryService,
@@ -48,7 +51,8 @@ public class CallController {
             CallRecordingService callRecordingService,
             WebVoiceTokenService webVoiceTokenService,
             TelnyxAiBrowserVoiceRuntimeService telnyxRuntime,
-            BrowserVoiceRuntimePreparationService runtimePreparation
+            BrowserVoiceRuntimePreparationService runtimePreparation,
+            VoiceStartupMeasurementService startupMeasurements
     ) {
         this.callQueryService = callQueryService;
         this.callPipelineService = callPipelineService;
@@ -56,6 +60,7 @@ public class CallController {
         this.webVoiceTokenService = webVoiceTokenService;
         this.telnyxRuntime = telnyxRuntime;
         this.runtimePreparation = runtimePreparation;
+        this.startupMeasurements = startupMeasurements;
     }
 
     @GetMapping
@@ -161,6 +166,15 @@ public class CallController {
         return CallResponse.from(callPipelineService.correlateTestCall(
                 user.tenantId(), id, request.providerCallControlId(), request.providerCallLegId()
         ));
+    }
+
+    @PostMapping("/{id}/startup-latency")
+    void recordStartupLatency(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID id,
+            @RequestBody StartupLatencyRequest request
+    ) {
+        startupMeasurements.recordTestCall(user.tenantId(), id, request.latencyMs());
     }
 
     @GetMapping("/{id}/turns")

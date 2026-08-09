@@ -14,8 +14,10 @@ class SloEvaluationServiceTest {
     private final QueueHealthService queues = mock(QueueHealthService.class);
     private final CallRepository calls = mock(CallRepository.class);
     private final CallTurnRepository turns = mock(CallTurnRepository.class);
+    private final VoiceStartupMeasurementRepository startup = mock(VoiceStartupMeasurementRepository.class);
     private final SloEvaluationService service = new SloEvaluationService(
-            queues, calls, turns, 5, 30, 15, 5, 10, 25, 10, 2500, 5000);
+            queues, calls, turns, startup, 5, 30, 15, 5, 10, 25, 10, 2500, 5000,
+            5, 3000, 7000);
     private final OffsetDateTime now = OffsetDateTime.parse("2026-08-09T12:00:00Z");
 
     @Test
@@ -69,6 +71,24 @@ class SloEvaluationServiceTest {
                 .containsExactlyInAnyOrder("calls:failure_rate", "voice:response_latency");
     }
 
+    @Test
+    void browserStartupUsesProviderMeasurementsAndPhoneRemainsExplicitlyUnavailable() {
+        when(queues.snapshot()).thenReturn(List.of());
+        noCallSamples();
+        startup(6, 7200);
+
+        var snapshot = service.snapshot(now);
+
+        assertThat(snapshot).filteredOn(slo -> slo.key().equals("voice:browser_first_audio"))
+                .singleElement().extracting(SloEvaluationService.SloView::status).isEqualTo("critical");
+        assertThat(snapshot).filteredOn(slo -> slo.key().equals("voice:phone_first_audio"))
+                .singleElement().satisfies(slo -> {
+                    assertThat(slo.status()).isEqualTo("unavailable");
+                    assertThat(slo.detail()).contains("does not emit");
+                    assertThat(slo.breached()).isFalse();
+                });
+    }
+
     private void noCallSamples() {
         when(calls.countCompletedProductionCallsStartedSince(now.minusMinutes(15))).thenReturn(0L);
         when(calls.countFailedProductionCallsStartedSince(now.minusMinutes(15))).thenReturn(0L);
@@ -80,5 +100,15 @@ class SloEvaluationServiceTest {
         when(latency.getSampleSize()).thenReturn(sampleSize);
         when(latency.getAvgResponseMs()).thenReturn(averageMs);
         when(turns.platformResponseLatencySince(now.minusMinutes(15))).thenReturn(latency);
+        startup(0, 0);
+    }
+
+    private void startup(long sampleSize, double averageMs) {
+        var aggregate = mock(VoiceStartupMeasurementRepository.StartupAggregate.class);
+        when(aggregate.getSampleSize()).thenReturn(sampleSize);
+        when(aggregate.getAverageLatencyMs()).thenReturn(averageMs);
+        when(startup.aggregateSince(
+                now.minusMinutes(15), List.of("browser_test", "public_demo", "web_voice")))
+                .thenReturn(aggregate);
     }
 }

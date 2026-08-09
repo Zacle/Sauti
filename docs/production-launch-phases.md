@@ -116,25 +116,39 @@ without relying on a customer to report them first.
   critical oldest-item target. Any terminally exhausted work is critical
   immediately, regardless of age.
 - Evaluate completed production call failure rate and stored non-zero
-  LLM-plus-TTS response time
-  over a rolling fifteen-minute window. Browser test calls are excluded, and
+  LLM-plus-TTS response time over a rolling fifteen-minute window. Browser test
+  calls are excluded, and
   the targets stay `insufficient_data` until at least five production calls or
   ten production turns exist, preventing a single pilot call from raising a
   platform incident.
 - Open, deduplicate, notify, and resolve SLO incidents through the same durable
   reliability incident model as provider failures. Show actual values,
   thresholds, sample sufficiency, and evidence details in Admin Analytics.
-- True call-start-to-first-audible-audio latency is not yet persisted. Do not
-  infer it from turn timings; add explicit browser and phone startup telemetry
-  before making it an alerting SLO.
+- Do not infer call-start-to-first-audible-audio from turn timings. Browser
+  measurement is added in Slice 5; phone measurement remains provider-gated.
+
+### Slice 5: measured browser first audio
+
+- Persist Telnyx's provider-measured browser greeting latency once per session
+  for authenticated agent tests, the public Sauti demo, and customer Web Voice.
+  Session credentials or tenant ownership protect every ingestion endpoint;
+  impossible values are rejected and repeated SDK events keep the first sample.
+- Evaluate browser first-audio latency over the same rolling window as other
+  voice SLOs. Require five samples, warn at three seconds, and become critical
+  at seven seconds by default. Breaches use the existing incident and operator
+  notification path.
+- Show phone first audio as `unavailable`, not zero or healthy. Telnyx currently
+  documents only conversation-ended and insights webhooks for AI Assistant
+  start; `call.speak.started` belongs to the separate Speak command and cannot
+  truthfully measure an AI greeting.
 
 ### Remaining Phase 2 slices
 
 1. Configure off-site storage and execute the documented restore drill against
    an isolated database; retain the generated evidence without customer rows or
    credentials.
-2. Persist explicit browser and phone call-start-to-first-audio telemetry, then
-   add the startup SLO without conflating it with LLM/TTS response timing.
+2. Add phone first-audio measurement only when the provider exposes an AI
+   playback event or Sauti owns the phone media stream.
 3. Publish incident runbooks and record one end-to-end production reliability
    drill, including detection, operator notification, mitigation, and recovery.
 

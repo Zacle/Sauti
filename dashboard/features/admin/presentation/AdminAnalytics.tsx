@@ -140,7 +140,7 @@ function SloHealth({ slos }: { slos: AdminSlo[] }) {
   if (!slos.length) return <Empty text="No service objectives are configured."/>;
   return <div className={styles.sloGrid}>{slos.map((slo) => <article key={slo.key}>
     <div><strong>{slo.label}</strong><span className={styles[slo.status] ?? ""}>{human(slo.status)}</span></div>
-    <b>{sloValue(slo.actual, slo.unit)}</b>
+    <b>{slo.status === "unavailable" ? "Not measurable" : sloValue(slo.actual, slo.unit)}</b>
     <p>{slo.detail}</p>
     <small>Warning at {sloValue(slo.warningThreshold, slo.unit)} · Critical at {sloValue(slo.criticalThreshold, slo.unit)}{slo.windowMinutes ? ` · ${slo.windowMinutes}m window` : ""}</small>
   </article>)}</div>;

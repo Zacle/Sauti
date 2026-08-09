@@ -7,6 +7,7 @@ import {
   correlateTestCall,
   prepareTestCallRuntime,
   recordTestRealtimeTranscript,
+  recordTestStartupLatency,
   startTestCall,
 } from "@/lib/api/calls";
 import { ApiError } from "@/lib/api/client";
@@ -86,6 +87,7 @@ export function TestCallPanel({
   const diagnosticSequenceRef = useRef(0);
   const endingRef = useRef(false);
   const firstAgentAudioRef = useRef(false);
+  const startupLatencyRecordedRef = useRef(false);
   const preparationRef = useRef<{
     key: string;
     promise: Promise<BrowserVoiceRuntimeSession>;
@@ -204,6 +206,7 @@ export function TestCallPanel({
     setError("");
     endingRef.current = false;
     firstAgentAudioRef.current = false;
+    startupLatencyRecordedRef.current = false;
     updateStatus("connecting");
     let microphoneCapture: BrowserMicrophoneCapture | undefined;
     try {
@@ -299,6 +302,11 @@ export function TestCallPanel({
         },
         onLatencyMeasured(kind, latencyMs) {
           recordDiagnostic(`${kind}_latency`, { latencyMs });
+          if (kind === "greeting" && !startupLatencyRecordedRef.current) {
+            startupLatencyRecordedRef.current = true;
+            void recordTestStartupLatency(started.call.id, latencyMs)
+              .catch(() => recordDiagnostic("startup_latency_write_failed", undefined, "warn"));
+          }
         },
         onInterrupted() {
           recordDiagnostic("agent_interrupted");

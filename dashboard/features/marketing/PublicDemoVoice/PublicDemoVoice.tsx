@@ -17,6 +17,7 @@ import {
 import {
   completePublicDemoVoiceSession,
   getPublicDemoVoiceConfiguration,
+  recordPublicDemoStartupLatency,
   startPublicDemoVoiceSession,
   type PublicDemoVoiceConfiguration,
 } from "@/lib/api/public-demo-voice";
@@ -55,6 +56,7 @@ export function PublicDemoVoice() {
   const closingPromptRef = useRef(false);
   const endingRef = useRef(false);
   const mountedRef = useRef(true);
+  const startupLatencyRecordedRef = useRef(false);
 
   const prepare = useCallback(async () => {
     setReadiness("preparing");
@@ -123,6 +125,7 @@ export function PublicDemoVoice() {
     setCallState("connecting");
     endingRef.current = false;
     closingPromptRef.current = false;
+    startupLatencyRecordedRef.current = false;
     trackPublicAnalyticsEvent("voice_demo_started");
     let microphone: BrowserMicrophoneCapture | null = null;
     try {
@@ -154,6 +157,12 @@ export function PublicDemoVoice() {
         onAgentSpeaking(speaking) {
           if (speaking) setVisible(true);
           setCallState(speaking ? "speaking" : "listening");
+        },
+        onLatencyMeasured(kind, latencyMs) {
+          if (kind !== "greeting" || startupLatencyRecordedRef.current) return;
+          startupLatencyRecordedRef.current = true;
+          void recordPublicDemoStartupLatency(session.sessionId, session.token, latencyMs)
+            .catch(() => undefined);
         },
         onInterrupted() {
           setCallState("listening");

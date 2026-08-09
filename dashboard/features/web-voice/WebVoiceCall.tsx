@@ -6,6 +6,7 @@ import {
   completePublicWebVoiceSession,
   getPublicWebVoiceAgent,
   recordPublicRealtimeTranscript,
+  recordPublicWebVoiceStartupLatency,
   startPublicWebVoiceSession,
   type PublicWebVoiceAgent,
 } from "@/lib/api/public-web-voice";
@@ -35,6 +36,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const tokenRef = useRef("");
   const captionIdRef = useRef("");
   const endingRef = useRef(false);
+  const startupLatencyRecordedRef = useRef(false);
   const accent = "#39d4c0";
 
   useEffect(() => {
@@ -85,6 +87,7 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
     setError("");
     setMessages([]);
     endingRef.current = false;
+    startupLatencyRecordedRef.current = false;
     try {
       const session = await startPublicWebVoiceSession(
         publicId,
@@ -132,6 +135,12 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
         },
         onAgentSpeaking(value) {
           setSpeaking(value);
+        },
+        onLatencyMeasured(kind, latencyMs) {
+          if (kind !== "greeting" || startupLatencyRecordedRef.current) return;
+          startupLatencyRecordedRef.current = true;
+          void recordPublicWebVoiceStartupLatency(session.sessionId, session.token, latencyMs)
+            .catch(() => undefined);
         },
         onInterrupted() {
           captionIdRef.current = "";

@@ -46,3 +46,15 @@ export async function completePublicDemoVoiceSession(sessionId: string, token: s
   );
   if (!response.ok) throw await responseError(response, "Unable to close the voice demo session.");
 }
+
+export async function recordPublicDemoStartupLatency(sessionId: string, token: string, latencyMs: number) {
+  const response = await fetch(
+    `/api/v1/public/demo-voice/sessions/${encodeURIComponent(sessionId)}/startup-latency`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ latencyMs }),
+    },
+  );
+  if (!response.ok) throw await responseError(response, "Unable to record voice startup timing.");
+}

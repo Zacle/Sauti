@@ -75,4 +75,13 @@ export async function recordPublicRealtimeTranscript(sessionId: string, token: s
   return response.json() as Promise<{ instructions: string; directResponse: string; requiredTool: string }>;
 }
 
+export async function recordPublicWebVoiceStartupLatency(sessionId: string, token: string, latencyMs: number) {
+  const response = await fetch(`/api/v1/public/web-voice/sessions/${encodeURIComponent(sessionId)}/startup-latency`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ latencyMs }),
+  });
+  if (!response.ok) throw new Error("Unable to record voice startup timing.");
+}
+
 import type { BrowserVoiceRuntimeSession } from "@/types/api";

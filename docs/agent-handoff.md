@@ -15,6 +15,35 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-09: Persist measured browser first-audio latency
+
+- Added Flyway migration `V59` and a provider-neutral startup-measurement model
+  that stores one bounded, idempotent latency sample per browser session without
+  transcripts, phone numbers, or customer payloads.
+- Wired Telnyx SDK `greetingLatencyMs` into authenticated agent tests, the public
+  Sauti demo, and customer Web Voice. Tenant ownership or signed session tokens
+  protect each ingestion path; duplicate SDK events retain the first sample.
+- Added a rolling browser first-audio SLO requiring five samples, warning at
+  three seconds and becoming critical at seven seconds by default. It feeds the
+  existing deduplicated incident and support notification path.
+- Phone first audio is deliberately displayed as `Not measurable`. Official
+  Telnyx AI Assistant start documentation exposes conversation-ended and
+  insights webhooks, while `call.speak.started` applies to a different command;
+  Sauti does not substitute command-start or generated-text timing for audible
+  playback.
+- Files touched: startup measurement migration/entity/repository/service and
+  tests; call/public voice controllers and APIs; all three browser voice entry
+  points; SLO configuration/evaluation/admin display; Phase 2 roadmap and this
+  handoff.
+- Verification: focused reliability/public-demo backend tests and the full
+  backend suite passed; dashboard typecheck, zero-warning ESLint, and optimized
+  production build passed; `git diff --check` passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+- Next Phase 2 slice: publish operational incident runbooks and execute a
+  production reliability drill. Phone first-audio support remains provider-
+  gated, and live off-site backup acceptance remains deferred by the user.
+
 ### 2026-08-09: Define pilot SLOs and connect breaches to incidents
 
 - Added configurable, evidence-backed pilot SLO evaluation for durable queue
