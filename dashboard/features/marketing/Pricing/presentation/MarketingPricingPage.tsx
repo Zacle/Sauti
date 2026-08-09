@@ -323,7 +323,7 @@ export function MarketingPricingPage() {
         <div className={styles.addOnFooter}>
           <ShieldCheck size={18} />
           <p><strong>No surprise activation.</strong> Destination rates and recurring add-ons are confirmed before they start. Usage alerts arrive at 80% and 100%, and you can set a hard spending cap.</p>
-          <a href="https://cal.com/sauti/demo" target="_blank" rel="noreferrer">Model my bill <ArrowRight size={14} /></a>
+          <a href="/request-demo">Model my bill <ArrowRight size={14} /></a>
         </div>
       </section>
 
@@ -336,7 +336,7 @@ export function MarketingPricingPage() {
 
       <section className={styles.closingCta}>
         <div><Headphones size={26} /><span><strong>Not sure which plan fits?</strong><small>Bring your weekly call estimate and we will model it with you.</small></span></div>
-        <a href="https://cal.com/sauti/demo" target="_blank" rel="noreferrer">Talk through the numbers <ArrowRight size={15} /></a>
+        <a href="/request-demo">Talk through the numbers <ArrowRight size={15} /></a>
       </section>
     </main>
   );

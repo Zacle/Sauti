@@ -293,10 +293,10 @@ export function FinalCta() {
         <span>Ready to transform your phone calls?</span>
         <h2>Let every caller book without waiting.</h2>
         <div className="hero-actions cta-actions">
-          <a className="solid-button large" href="https://cal.com/sauti/demo" target="_blank" rel="noreferrer">
+          <a className="solid-button large" href="/request-demo">
             Start your pilot <ArrowRight size={18} />
           </a>
-          <a className="demo-button large" href="https://cal.com/sauti/demo" target="_blank" rel="noreferrer">Book a demo</a>
+          <a className="demo-button large" href="/request-demo">Book a demo</a>
         </div>
       </div>
     </section>

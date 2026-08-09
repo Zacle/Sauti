@@ -108,7 +108,7 @@ export function MarketingIntegrationDetailPage({ slug }: { slug: string }) {
           <h1>{integration.heroPrefix}<span>{integration.heroHighlight}</span>{integration.heroSuffix}</h1>
           <p>{integration.description}</p>
           <div className={styles.heroActions}>
-            <Link className={styles.primaryButton} href="https://cal.com/sauti/demo" target="_blank">
+            <Link className={styles.primaryButton} href="/request-demo">
               Book a demo <ArrowRight size={17} />
             </Link>
             <Link className={styles.secondaryButton} href="#integration-flow">
@@ -188,7 +188,7 @@ export function MarketingIntegrationDetailPage({ slug }: { slug: string }) {
         <span>Start with one connection</span>
         <h2>{integration.finalTitle}</h2>
         <p>{integration.finalDescription}</p>
-        <Link className={styles.primaryButton} href="https://cal.com/sauti/demo" target="_blank">
+        <Link className={styles.primaryButton} href="/request-demo">
           Plan your pilot <ArrowRight size={17} />
         </Link>
       </section>
@@ -214,7 +214,7 @@ export function MarketingIntegrationsOverviewPage() {
             <Link className={styles.primaryButton} href="/integrations/calendars">
               Explore a booking flow <ArrowRight size={17} />
             </Link>
-            <Link className={styles.secondaryButton} href="https://cal.com/sauti/demo" target="_blank">Book a demo</Link>
+            <Link className={styles.secondaryButton} href="/request-demo">Book a demo</Link>
           </div>
         </div>
         <div className={styles.stackMap} aria-label="Sauti connected stack">
@@ -273,7 +273,7 @@ export function MarketingIntegrationsOverviewPage() {
         <span>Connect deliberately</span>
         <h2>Start with the outcome your team needs after the call.</h2>
         <p>Then enable only the providers and agent tools required to complete it.</p>
-        <Link className={styles.primaryButton} href="https://cal.com/sauti/demo" target="_blank">
+        <Link className={styles.primaryButton} href="/request-demo">
           Map your workflow <ArrowRight size={17} />
         </Link>
       </section>

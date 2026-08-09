@@ -671,11 +671,13 @@
 .industryGrid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
+  align-items: stretch;
   gap: 14px;
 }
 
 .industryGrid > a {
   position: relative;
+  height: 100%;
   min-height: 238px;
   overflow: hidden;
   border-radius: 18px;
@@ -1274,14 +1276,12 @@
 
 .outcomeGrid > div:nth-child(odd),
 .flow article:nth-child(odd),
-.industryGrid > a:nth-child(odd),
 .trustGrid article:nth-child(odd) {
   translate: 0 var(--section-shift-small);
 }
 
 .outcomeGrid > div:nth-child(even),
 .flow article:nth-child(even),
-.industryGrid > a:nth-child(even),
 .trustGrid article:nth-child(even) {
   translate: 0 var(--section-shift-reverse);
 }

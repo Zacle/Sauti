@@ -1,3 +1,36 @@
+# Internal demo routing and industry-card alignment QA (2026-08-09)
+
+## Comparison target
+
+- Source visual truth: `C:\Users\Zacle\AppData\Local\Temp\codex-clipboard-5ad73099-d795-4e30-8a90-03a9d97ff767.png`.
+- Browser-rendered implementation: `C:\Users\Zacle\AppData\Local\Temp\sauti-industry-section-aligned.png` from `http://127.0.0.1:8088/`.
+- Viewport: 1788 x 900 CSS pixels; desktop, industry reveal fully settled.
+- Source pixels: 1788 x 497. Implementation crop: 1772 x 505. No density normalization was needed; the 16-pixel width difference is the browser scrollbar gutter.
+
+## Evidence and findings
+
+- Full-view comparison: the supplied section capture and the rebuilt browser crop were opened together. The existing navy palette, typography, photography, card radius, and five-card content remain intact.
+- Focused alignment evidence: all five settled card rectangles report the same `top: 247`, `bottom: 485`, and `height: 238` CSS pixels. The prior odd/even vertical translation is gone.
+- Fonts and typography: the existing Sauti marketing hierarchy and card text styles are unchanged.
+- Spacing and layout rhythm: the card grid now stretches every item to the same row height and shares one top and bottom edge.
+- Colors and visual tokens: no palette, overlay, border, or background token was changed.
+- Image quality and asset fidelity: the original five industry assets, crops, and hover treatment are preserved.
+- Copy and content: industry labels and descriptions are unchanged. Demo, sales, pilot, and workflow CTAs resolve to Sauti's internal `/request-demo` route.
+- Interaction checks: the homepage `Request a demo` link and Industries `Design your workflow` link expose `/request-demo` without an external target. Clicking `Design your workflow` reached Sauti's request page and rendered `See how Sauti would work for your business.` `/register` returns a 307 redirect to `/request-demo?registration=closed`.
+- Browser console: no errors were reported on the checked homepage and Industries routes.
+
+## Comparison history
+
+1. Initial evidence: the supplied capture showed staggered card top edges, and source inspection found odd/even vertical translations on the industry grid.
+2. Fix: removed the industry cards from the staggered translation selectors and explicitly stretched equal-height grid items without changing the visual design.
+3. Post-fix evidence: after the existing reveal animation settled, all five cards had identical browser-measured top, bottom, and height values.
+
+No actionable P0, P1, or P2 finding remains.
+
+final result: passed
+
+---
+
 # Homepage ambient-glass redesign QA (2026-08-09)
 
 ## Comparison target

@@ -15,6 +15,43 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-09: Keep demo CTAs inside Sauti and align industry cards
+
+- Routed demo, sales, pilot, access, and workflow CTAs to Sauti's internal
+  `/request-demo` page consistently, including the shared desktop and mobile
+  navigation, homepage, pricing, public voice demo, login prompt, billing,
+  Industries, Integrations, and generic marketing destination pages.
+- Kept the closed-registration flow inside Sauti by redirecting `/register` to
+  `/request-demo?registration=closed`.
+- Preserved the homepage industry card design while removing the odd/even
+  vertical translation that made the five cards appear misaligned. Grid items
+  now stretch to one equal-height row.
+- Files touched:
+  - `dashboard/app/(auth)/register/page.tsx`;
+  - `dashboard/features/auth/AuthForm/AuthForm.tsx`;
+  - `dashboard/features/billing/presentation/BillingPage.tsx`;
+  - `dashboard/features/marketing/DestinationScreen/DestinationScreen.tsx`;
+  - `dashboard/features/marketing/HomeSections/HomeSections.tsx`;
+  - `dashboard/features/marketing/Industries/presentation/IndustriesPage.tsx`;
+  - `dashboard/features/marketing/Integrations/presentation/MarketingIntegrationsPage.tsx`;
+  - `dashboard/features/marketing/MarketingChrome/MarketingChrome.tsx`;
+  - `dashboard/features/marketing/Pricing/presentation/MarketingPricingPage.tsx`;
+  - `dashboard/features/marketing/PublicDemoVoice/PublicDemoVoice.tsx`;
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.tsx`;
+  - `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`;
+  - `dashboard/design-qa.md`;
+  - `docs/agent-handoff.md`.
+- Verification: dashboard typecheck, ESLint, and optimized production build
+  passed; `git diff --check` passed; browser QA at 1788 x 900 confirmed five
+  identical settled card rectangles, internal `/request-demo` destinations on
+  homepage and Industries CTAs, a successful in-app click-through to Sauti's
+  request page, and no console errors; `/register` returned a 307 with the
+  expected internal `Location` header.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the existing GitHub Actions CI/CD release path.
+- Known follow-up: none for this scope; the existing Sauti request-demo form
+  remains the single destination for these public entry points.
+
 ### 2026-08-09: Founder-story Reel composition for “I started building”
 
 - Created a 60-second, 1080x1920 HyperFrames composition focused on a sharper

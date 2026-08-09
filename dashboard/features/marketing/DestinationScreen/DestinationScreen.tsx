@@ -355,7 +355,7 @@ export function DestinationScreen({ slug, section }: { slug: string; section: st
           <h1>{destination.title}</h1>
           <p>{destination.description}</p>
           <div className="hero-actions">
-            <Link className="solid-button large" href="https://cal.com/sauti/demo" target="_blank">
+            <Link className="solid-button large" href="/request-demo">
               Book a demo <ArrowRight size={18} />
             </Link>
             <Link className="demo-button large" href="/#dashboard">
@@ -413,7 +413,7 @@ export function DestinationScreen({ slug, section }: { slug: string; section: st
       <section className="product-page-cta">
         <span>Ready to test it?</span>
         <h2>Launch one agent, measure the outcome, then expand the workflow.</h2>
-        <Link className="solid-button large" href="https://cal.com/sauti/demo" target="_blank">
+        <Link className="solid-button large" href="/request-demo">
           Start your pilot <ArrowRight size={18} />
         </Link>
       </section>
@@ -445,7 +445,7 @@ export function CategoryScreen({ section }: { section: string }) {
             <Link className="solid-button large" href={`/${sectionPath}/${group.items[0][0]}`}>
               Explore {group.label.toLowerCase()} <ArrowRight size={18} />
             </Link>
-            <Link className="demo-button large" href="https://cal.com/sauti/demo" target="_blank">
+            <Link className="demo-button large" href="/request-demo">
               Book a demo
             </Link>
           </div>
@@ -521,7 +521,7 @@ export function PricingScreen() {
           <h1>{pricingPage.title}</h1>
           <p>{pricingPage.description}</p>
           <div className="hero-actions">
-            <Link className="solid-button large" href="https://cal.com/sauti/demo" target="_blank">
+            <Link className="solid-button large" href="/request-demo">
               Talk to sales <ArrowRight size={18} />
             </Link>
           </div>
@@ -536,7 +536,7 @@ export function PricingScreen() {
             {features.map((feature) => (
               <p key={feature}><CheckCircle2 size={17} /> {feature}</p>
             ))}
-            <Link className="demo-button" href="https://cal.com/sauti/demo" target="_blank">Discuss plan</Link>
+            <Link className="demo-button" href="/request-demo">Discuss plan</Link>
           </article>
         ))}
       </section>

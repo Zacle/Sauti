@@ -176,7 +176,7 @@ export function IndustryDetailPage({ slug }: { slug: string }) {
           </h1>
           <p>{industry.description}</p>
           <div className={styles.heroActions}>
-            <Link className={styles.primaryButton} href="https://cal.com/sauti/demo" target="_blank">
+            <Link className={styles.primaryButton} href="/request-demo">
               Book a demo <ArrowRight size={17} />
             </Link>
             <Link className={styles.textButton} href="#industry-workflow">
@@ -267,7 +267,7 @@ export function IndustryDetailPage({ slug }: { slug: string }) {
         <span>{industry.label}</span>
         <h2>{industry.finalTitle}</h2>
         <p>{industry.finalDescription}</p>
-        <Link className={styles.primaryButton} href="https://cal.com/sauti/demo" target="_blank">
+        <Link className={styles.primaryButton} href="/request-demo">
           Plan your pilot <ArrowRight size={17} />
         </Link>
       </section>
@@ -290,7 +290,7 @@ export function IndustriesOverviewPage() {
             <Link className={styles.primaryButton} href="#industry-directory">
               Find your industry <ArrowRight size={17} />
             </Link>
-            <Link className={styles.textButton} href="https://cal.com/sauti/demo" target="_blank">
+            <Link className={styles.textButton} href="/request-demo">
               Book a demo <ArrowRight size={16} />
             </Link>
           </div>
@@ -354,7 +354,7 @@ export function IndustriesOverviewPage() {
           <span>Not seeing your exact industry?</span>
           <h2>Model the calls, rules, and outcomes that make your business different.</h2>
         </div>
-        <Link className={styles.primaryButton} href="https://cal.com/sauti/demo" target="_blank">
+        <Link className={styles.primaryButton} href="/request-demo">
           Design your workflow <ArrowRight size={17} />
         </Link>
       </section>

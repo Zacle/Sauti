@@ -541,7 +541,7 @@ function PlansTab({ currentPlanId, interval, projection, projectedMinutes, quant
             </button>
           ))}
         </div>
-        <p>Need more than {pricingPlans[2].concurrentCalls} lines? <a href="https://cal.com/sauti/demo">Contact sales</a></p>
+        <p>Need more than {pricingPlans[2].concurrentCalls} lines? <a href="/request-demo">Contact sales</a></p>
       </article>
 
       <article className={styles.configurator}>
