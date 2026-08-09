@@ -21,7 +21,7 @@ the Whop plans; the browser cannot submit either value.
 Configure:
 
 - `SAUTI_BILLING_PROVIDER=whop`
-- `WHOP_API_KEY` with a server-only company API key
+- `WHOP_API_KEY` with a server-only company API key 
 - `WHOP_COMPANY_ID` with the Sauti Whop business ID
 - `WHOP_WEBHOOK_SECRET` with the exact webhook signing secret shown by Whop,
   including its `whsec_` prefix; do not strip, decode, or transform it
