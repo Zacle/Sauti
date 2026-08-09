@@ -25,6 +25,11 @@ import {
   writeSession,
 } from "@/lib/session";
 import { COUNTRIES } from "@/lib/countries";
+import { ApiError } from "@/lib/api/client";
+import {
+  clearInvitationToken,
+  retainInvitationToken,
+} from "@/features/auth/domain/invitation-token";
 
 type AuthMode = "login" | "register" | "verify" | "invite" | "forgot" | "reset";
 
@@ -46,6 +51,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const isAdminSurface = searchParams.get("surface") === "admin";
   const businessNameRef = useRef<HTMLInputElement>(null);
   const invitationTokenRef = useRef("");
+  const invitationInitializedRef = useRef(false);
 
   useEffect(() => {
     if (mode === "verify" || mode === "forgot" || mode === "reset") {
@@ -65,11 +71,14 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   }, [mode, searchParams]);
 
   useEffect(() => {
-    if (mode !== "invite") return;
-    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const token = fragment.get("token") ?? "";
+    if (mode !== "invite" || invitationInitializedRef.current) return;
+    invitationInitializedRef.current = true;
+
+    const token = retainInvitationToken(window.location.hash, window.sessionStorage);
     invitationTokenRef.current = token;
-    window.history.replaceState(null, "", window.location.pathname);
+    if (window.location.hash) {
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
     if (!token) {
       setError("This invitation link is invalid.");
       setInvitationLoading(false);
@@ -81,9 +90,15 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         setCountryCode(invitation.countryCode);
         setEmail(invitation.email);
       })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "This invitation is unavailable."))
+      .catch((caught) => {
+        if (caught instanceof ApiError && caught.status >= 400 && caught.status < 500) {
+          clearInvitationToken(window.sessionStorage);
+          invitationTokenRef.current = "";
+        }
+        setError(caught instanceof Error ? caught.message : "This invitation is unavailable.");
+      })
       .finally(() => setInvitationLoading(false));
-  }, [mode, searchParams]);
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== "login" && mode !== "register") return;
@@ -124,6 +139,8 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         router.push(`/login?${query.toString()}`);
       } else if (mode === "invite") {
         const result = await authApi.acceptInvitation(invitationTokenRef.current, password);
+        clearInvitationToken(window.sessionStorage);
+        invitationTokenRef.current = "";
         writePendingEmail(email);
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
         if (result.devVerificationCode) setMessage(`Development code: ${result.devVerificationCode}`);

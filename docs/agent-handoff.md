@@ -15,6 +15,34 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-09: Preserve pilot invitation tokens through activation
+
+- Fixed a client-side invitation race where the activation page successfully
+  previewed an invitation, removed its URL fragment, and could then rerun the
+  initialization effect with no token. The valid token reference was replaced
+  with an empty value, so submitting the password incorrectly reported that the
+  freshly opened invitation was invalid.
+- Invitation tokens are now retained only in tab-scoped session storage while
+  the sensitive fragment is removed from the address bar. The token survives a
+  Next.js effect rerun or page refresh, is cleared after successful activation,
+  and is also cleared when the API confirms a terminal 4xx invitation failure.
+  Transient server errors keep the token available for a safe retry.
+- Added a regression test for fragment removal/token retention and local red
+  error-alert styling (plus the matching success treatment) to the auth form.
+- Files touched:
+  - `dashboard/features/auth/AuthForm/AuthForm.tsx`;
+  - `dashboard/features/auth/AuthForm/AuthForm.css`;
+  - `dashboard/features/auth/domain/invitation-token.ts`;
+  - `dashboard/features/auth/domain/invitation-token.test.ts`;
+  - `docs/agent-handoff.md`.
+- Verification: invitation-token unit tests, dashboard typecheck, ESLint, and
+  optimized production build passed. `git diff --check` passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD release path.
+- Known follow-up: after deployment, approve a fresh demo request and complete
+  activation from the emailed link to confirm the production email/browser
+  round trip.
+
 ### 2026-08-09: Redesign the platform-admin console from the approved reference
 
 - Updated the shared admin shell to match the supplied operations-console

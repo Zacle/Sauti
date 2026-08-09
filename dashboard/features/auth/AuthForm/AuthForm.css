@@ -345,6 +345,26 @@
   color: #ff9b9b;
 }
 
+.auth-card .form-alert {
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.auth-card .form-alert.error {
+  border-color: rgba(255, 93, 93, 0.38);
+  color: #ffaaa4;
+  background: rgba(145, 31, 38, 0.2);
+}
+
+.auth-card .form-alert.success {
+  border-color: rgba(70, 216, 184, 0.3);
+  color: #91ead7;
+  background: rgba(24, 121, 104, 0.16);
+}
+
 .auth-divider {
   display: flex;
   align-items: center;
