@@ -168,8 +168,41 @@ without relying on a customer to report them first.
    retain its database/audit evidence. No provider or customer operation is part
    of the drill.
 
+## Phase 3 — Whop billing lifecycle acceptance (in progress)
+
+Goal: accept hosted subscription payments through a replaceable provider
+adapter, prove the full lifecycle, and only then review enforcement.
+
+### Slice 1: Whop checkout and verified membership synchronization
+
+- Whop is the default provider behind Sauti's existing provider-neutral
+  checkout endpoint. Six server-configured plan IDs map Launch, Growth, and
+  Scale monthly/annual selections to a Whop-hosted checkout configuration.
+- Each checkout carries a signed workspace reference. The browser redirect
+  cannot grant access; only a verified Whop membership webhook can synchronize
+  a tenant subscription.
+- Whop Standard Webhooks signatures, event IDs, replay timestamps, and company
+  ownership are validated before events enter the durable, idempotent provider
+  inbox. Processing is asynchronous because Whop delivery is at-least-once and
+  unordered.
+- Membership activation and deactivation synchronize plan state while billing
+  remains in `observe`. Older or undated events cannot overwrite a newer
+  provider state.
+- Payment, refund, and dispute events are accepted into the provider inbox and
+  explicitly marked `deferred` for the next immutable transaction-evidence
+  slice; they are not mislabeled as reconciled and cannot enable lockouts.
+
+### Remaining Phase 3 slices
+
+1. Persist normalized payment, refund, dispute, and lifecycle acceptance
+   evidence without exposing raw provider payloads in the admin console.
+2. Add a platform-admin readiness matrix and complete the Whop sandbox
+   lifecycle run for all six plans.
+3. Reconcile live settlement/refund/dispute evidence and design a reviewed,
+   reversible enforcement rollout. Enforcement remains out of scope until
+   these checks pass.
+
 ## Later phases
 
-- Phase 3: billing-provider lifecycle acceptance and reviewed enforcement.
 - Phase 4: security/privacy review, Google verification completion, legal
   readiness, and controlled general availability.

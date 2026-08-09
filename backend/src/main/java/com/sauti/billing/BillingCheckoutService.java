@@ -15,7 +15,7 @@ public class BillingCheckoutService {
     private final String activeProvider;
 
     public BillingCheckoutService(List<BillingCheckoutGateway> gateways,
-                                  @Value("${sauti.billing.provider:2checkout}") String activeProvider) {
+                                  @Value("${sauti.billing.provider:whop}") String activeProvider) {
         this.gateways = gateways.stream().collect(Collectors.toUnmodifiableMap(
                 gateway -> normalize(gateway.provider()), Function.identity()));
         this.activeProvider = normalize(activeProvider);

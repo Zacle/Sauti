@@ -57,6 +57,7 @@ public class SecurityConfig {
                         .requestMatchers("/webhooks/mpesa/**").permitAll()
                         .requestMatchers("/webhooks/lemon-squeezy").permitAll()
                         .requestMatchers("/webhooks/2checkout/**").permitAll()
+                        .requestMatchers("/webhooks/whop").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()
                         .anyRequest().authenticated()

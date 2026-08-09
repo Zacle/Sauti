@@ -150,7 +150,24 @@ sauti:
   providers:
     mode: ${PROVIDER_MODE:fake}
   billing:
-    provider: ${SAUTI_BILLING_PROVIDER:2checkout}
+    provider: ${SAUTI_BILLING_PROVIDER:whop}
+    whop:
+      api-key: ${WHOP_API_KEY:}
+      company-id: ${WHOP_COMPANY_ID:}
+      webhook-secret: ${WHOP_WEBHOOK_SECRET:}
+      tenant-reference-secret: ${WHOP_TENANT_REFERENCE_SECRET:}
+      api-base-url: ${WHOP_API_BASE_URL:https://api.whop.com/api/v1}
+      api-version-date: ${WHOP_API_VERSION_DATE:2026-07-20}
+      checkout-redirect-url: ${WHOP_CHECKOUT_REDIRECT_URL:${DASHBOARD_BASE_URL:http://localhost:8088}/billing?checkout=success}
+      worker-delay-ms: ${WHOP_WORKER_DELAY_MS:5000}
+      sandbox: ${WHOP_SANDBOX:false}
+      plans:
+        launch-monthly: ${WHOP_PLAN_LAUNCH_MONTHLY:}
+        launch-annual: ${WHOP_PLAN_LAUNCH_ANNUAL:}
+        growth-monthly: ${WHOP_PLAN_GROWTH_MONTHLY:}
+        growth-annual: ${WHOP_PLAN_GROWTH_ANNUAL:}
+        scale-monthly: ${WHOP_PLAN_SCALE_MONTHLY:}
+        scale-annual: ${WHOP_PLAN_SCALE_ANNUAL:}
     2checkout:
       secret-key: ${TWO_CHECKOUT_SECRET_KEY:}
       worker-delay-ms: ${TWO_CHECKOUT_WORKER_DELAY_MS:5000}

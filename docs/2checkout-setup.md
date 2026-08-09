@@ -1,4 +1,8 @@
-# 2Checkout / 2Monetize activation
+# 2Checkout / 2Monetize activation (dormant adapter)
+
+> Sauti now uses Whop for Phase 3. This document is retained only as rollback
+> history. Do not configure or select 2Checkout for the current production
+> launch; follow `docs/whop-setup.md` instead.
 
 Sauti uses 2Checkout through a provider-neutral billing gateway. The active adapter is selected with
 `SAUTI_BILLING_PROVIDER`; changing processors later does not change the dashboard checkout API or the

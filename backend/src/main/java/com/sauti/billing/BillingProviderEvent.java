@@ -34,6 +34,7 @@ public class BillingProviderEvent extends Auditable {
     }
 
     public void processed() { status = "processed"; lastError = null; }
+    public void deferred() { status = "deferred"; lastError = null; }
     public void retry(String error) {
         attempts++;
         status = attempts >= 8 ? "failed" : "retrying";

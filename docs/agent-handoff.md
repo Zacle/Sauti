@@ -11328,3 +11328,60 @@ Expected:
   Key, enable the documented SHA-256 LCN tags/triggers, and run the test-mode
   lifecycle checklist. Then implement IPN transaction/refund/chargeback evidence
   and reconciliation before any move from observe to enforce.
+
+### 2026-08-09 - Phase 3 Slice 1: Whop billing adapter and verified memberships
+
+- Changed the active billing default from 2Checkout to Whop at the maintainer's
+  direction. The existing `BillingCheckoutGateway` remains the provider-neutral
+  boundary, and the dormant 2Checkout and Lemon Squeezy adapters remain
+  available as unselected rollback code.
+- Added a Whop catalog for the six server-configured Launch, Growth, and Scale
+  monthly/annual plan IDs. Checkout creates a server-side Whop checkout
+  configuration for the selected plan and redirects to Whop's HTTPS
+  `purchase_url`; the browser never supplies prices or product IDs.
+- Added a separate HMAC-protected workspace reference to checkout metadata.
+  Membership processing verifies this reference before associating a Whop
+  membership with a tenant, preventing visible tenant IDs or buyer-controlled
+  metadata from granting another workspace's entitlement.
+- Added public `POST /webhooks/whop` with Standard Webhooks HMAC-SHA256
+  verification over the raw body, five-minute replay protection, signed
+  event-ID matching, configured-company validation, and idempotency by Whop
+  event ID. The dashboard's complete `whsec_...` value is used as the raw HMAC
+  key, matching Whop's current SDK guidance. Verified events enter the existing
+  durable provider inbox before a fast HTTP 200 response.
+- Added the Whop membership worker. It synchronizes activated, deactivated, and
+  cancel-at-period-end membership state to the existing provider-neutral
+  subscription and tenant plan model. Billing accounts remain explicitly in
+  `observe`; this slice cannot lock customers out.
+- Hardened subscription ordering for Whop's documented unordered webhook
+  delivery: once a provider timestamp is known, an older or undated event can
+  no longer overwrite it. This safety rule also applies to the dormant billing
+  adapters.
+- Verified payment, refund, and dispute events are retained with an explicit
+  `deferred` status. They are neither discarded nor falsely labeled as
+  reconciled and can be backfilled idempotently by the next normalized
+  financial-evidence slice.
+- Added placeholder-only Whop environment settings, production callback and
+  setup documentation, and updated the production roadmap. Sandbox and
+  production credentials/resources remain intentionally separate.
+- Files touched:
+  - Whop plan catalog, hosted checkout, signed tenant reference, webhook inbox,
+    subscription processor, and webhook controller;
+  - provider event/subscription ordering, security allow-list, application and
+    environment examples;
+  - focused Whop checkout, webhook, subscription, deferred-event, and ordering
+    tests;
+  - `AGENTS.md`, `docs/whop-setup.md`, the dormant 2Checkout note,
+    `docs/production-launch-phases.md`, and this handoff.
+- Verification:
+  - focused Whop and provider-neutral billing tests passed;
+  - complete `:backend:test` suite passed.
+- Deployment status: not deployed. All changes remain uncommitted for
+  maintainer review and the normal CI/CD path.
+- Required provider setup: create the Whop business/API key, one Sauti product
+  with six sandbox plans, a v1 webhook pointing to
+  `https://sauti.uk/webhooks/whop`, and independent webhook/workspace-reference
+  secrets; then run the documented sandbox lifecycle acceptance.
+- Next Phase 3 slice: normalize payment, refund, dispute, and membership
+  lifecycle evidence into non-sensitive records, expose platform-admin
+  readiness, and keep enforcement disabled.

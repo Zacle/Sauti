@@ -179,6 +179,7 @@ Telnyx:
 
 Billing:
 
+- Whop webhook: `https://sauti.uk/webhooks/whop`
 - 2Checkout / 2Monetize LCN webhook:
   `https://sauti.uk/webhooks/2checkout/lcn`
 - Legacy Lemon Squeezy webhook: `https://sauti.uk/webhooks/lemon-squeezy`

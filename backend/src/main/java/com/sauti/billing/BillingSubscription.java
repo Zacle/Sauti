@@ -41,7 +41,8 @@ public class BillingSubscription extends Auditable {
     }
 
     public boolean isNewerThan(OffsetDateTime candidate) {
-        return providerUpdatedAt == null || candidate == null || !candidate.isBefore(providerUpdatedAt);
+        if (providerUpdatedAt == null) return true;
+        return candidate != null && !candidate.isBefore(providerUpdatedAt);
     }
 
     public void synchronize(String customerId, String orderId, String productId, String variantId,
