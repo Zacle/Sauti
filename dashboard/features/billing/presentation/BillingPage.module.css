@@ -629,6 +629,12 @@
   opacity: .68;
 }
 
+.estimateSummary > button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(.45);
+  opacity: .58;
+}
+
 .checkoutCancel {
   display: block;
   margin: 12px auto 0;
@@ -642,6 +648,126 @@
 
 .checkoutCancel:hover {
   color: #dceaf4;
+}
+
+.stepHeader {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.stepHeader > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  place-items: center;
+  border: 1px solid #29dfd3;
+  border-radius: 50%;
+  color: #032422;
+  background: #31e0d3;
+  box-shadow: 0 0 20px rgba(40, 222, 210, .15);
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.stepHeader > div {
+  min-width: 0;
+}
+
+.stepHeader h2 {
+  margin: 2px 0 4px !important;
+}
+
+.stepHeader p {
+  margin: 0 !important;
+  color: #7891a7;
+  font-size: .68rem;
+  line-height: 1.45;
+}
+
+.summaryHeader {
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between;
+}
+
+.summaryHeader > em {
+  padding: 7px 10px;
+  border: 1px solid rgba(92, 158, 209, .35);
+  border-radius: 9px;
+  color: #cfe0ec;
+  background: rgba(7, 27, 47, .82);
+  font-size: .66rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.benefitsStrip {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(41, 214, 207, .35);
+  border-radius: 16px;
+  background: linear-gradient(105deg, rgba(6, 37, 58, .96), rgba(4, 24, 42, .97));
+}
+
+.benefitsStrip > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 0 18px;
+}
+
+.benefitsStrip > div + div {
+  border-left: 1px solid rgba(101, 157, 201, .16);
+}
+
+.benefitsStrip > div > span {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid rgba(43, 223, 212, .42);
+  border-radius: 50%;
+  color: #2ce0d3;
+  background: rgba(14, 113, 123, .18);
+}
+
+.benefitsStrip > div > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.benefitsStrip strong {
+  color: #e5f0f7;
+  font-size: .72rem;
+}
+
+.benefitsStrip small {
+  color: #7890a5;
+  font-size: .62rem;
+  letter-spacing: 0;
+  line-height: 1.45;
+  text-transform: none;
+}
+
+.benefitsStrip a {
+  grid-column: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  color: #31dfd2;
+  font-size: .66rem;
+  font-weight: 700;
 }
 
 .communicationCosts {
@@ -798,6 +924,14 @@
   .costEvidenceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .benefitsStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .benefitsStrip > div:nth-child(3) {
+    border-left: 0;
+  }
 }
 
 @media (max-width: 560px) {
@@ -811,5 +945,19 @@
 
   .costEvidenceGrid {
     grid-template-columns: 1fr;
+  }
+
+  .benefitsStrip {
+    grid-template-columns: 1fr;
+    padding: 10px;
+  }
+
+  .benefitsStrip > div {
+    padding: 12px 8px;
+  }
+
+  .benefitsStrip > div + div {
+    border-top: 1px solid rgba(101, 157, 201, .16);
+    border-left: 0;
   }
 }

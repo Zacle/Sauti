@@ -24,6 +24,7 @@ import {
   RefreshCw,
   RotateCcw,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   UsersRound,
   X,
@@ -39,8 +40,8 @@ import {
   YAxis,
 } from "recharts";
 import { pricingPlans, type PricingPlanId } from "@/features/marketing/Pricing/domain/pricing-model";
-import { createBillingCheckout, loadBillingAccount, loadBillingUsage } from "@/lib/api/billing";
-import type { BillingAccount, BillingUsage } from "@/types/api";
+import { createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage } from "@/lib/api/billing";
+import type { BillingAccount, BillingCheckoutStatus, BillingUsage } from "@/types/api";
 import {
   billingAddOns,
   billingTabs,
@@ -72,6 +73,7 @@ export function BillingPage() {
   const [activeTab, setActiveTab] = useState<BillingTab>("overview");
   const [usage, setUsage] = useState<BillingUsage>(emptyUsage);
   const [account, setAccount] = useState<BillingAccount | null>(null);
+  const [checkoutStatus, setCheckoutStatus] = useState<BillingCheckoutStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -94,11 +96,12 @@ export function BillingPage() {
     let cancelled = false;
     setLoading(true);
     setError("");
-    Promise.all([loadBillingUsage(), loadBillingAccount()])
-      .then(([response, billingAccount]) => {
+    Promise.all([loadBillingUsage(), loadBillingAccount(), loadBillingCheckoutStatus().catch(() => null)])
+      .then(([response, billingAccount, providerStatus]) => {
         if (cancelled) return;
         setUsage(response);
         setAccount(billingAccount);
+        setCheckoutStatus(providerStatus);
         const current = resolvePlan(response);
         setSelectedPlanId(current.id);
         setProjectedMinutes(Math.max(Math.round(current.includedMinutes * 1.2), estimateForecast(response.minutesUsedThisCycle, response.monthlyMinutesLimit)));
@@ -143,6 +146,9 @@ export function BillingPage() {
   const resetDate = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(
     new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0),
   );
+  const isSandbox = checkoutStatus?.environment === "sandbox";
+  const checkoutConfigured = checkoutStatus?.configured !== false;
+  const checkoutProvider = checkoutStatus?.provider === "whop" ? "Whop" : checkoutStatus?.provider ?? "the billing provider";
 
   function switchTab(tab: BillingTab) {
     setActiveTab(tab);
@@ -181,7 +187,7 @@ export function BillingPage() {
         <div>
           <span>Workspace billing</span>
           <h1>Usage &amp; billing</h1>
-          <p>Understand usage, forecast costs, and test plan controls before billing goes live.</p>
+          <p>Understand usage, forecast costs, and choose the right plan for your workspace.</p>
         </div>
         <button className={styles.explainButton} onClick={() => switchTab("invoices")} type="button">
           <Info size={16} /> How billing works
@@ -198,8 +204,11 @@ export function BillingPage() {
 
       <section className={styles.previewNotice} aria-label="Billing preview status">
         <Info size={18} />
-        <div><strong>Billing preview — no charges are being made</strong><span>Your current plan, agents, and calls will not change.</span></div>
-        <em>Testing mode</em>
+        <div>
+          <strong>{!checkoutConfigured ? "Whop checkout setup is incomplete" : isSandbox ? "Whop sandbox checkout is enabled" : "Secure hosted checkout"}</strong>
+          <span>{!checkoutConfigured ? "Add the server-only Whop credentials and plan IDs before testing checkout." : isSandbox ? "Complete the full checkout flow with Whop test payment details. No live charge will be made." : `Your selected plan opens in ${checkoutProvider}; Sauti never handles card details.`}</span>
+        </div>
+        <em>{!checkoutConfigured ? "Setup required" : isSandbox ? "Sandbox" : "Live billing"}</em>
       </section>
 
       {error && (
@@ -253,6 +262,9 @@ export function BillingPage() {
               setProjectedMinutes={setProjectedMinutes}
               setSelectedPlanId={setSelectedPlanId}
               updateQuantity={updateQuantity}
+              checkoutProvider={checkoutProvider}
+              checkoutConfigured={checkoutConfigured}
+              isSandbox={isSandbox}
             />
           )}
           {activeTab === "invoices" && <InvoicesTab switchTab={switchTab} />}
@@ -264,9 +276,9 @@ export function BillingPage() {
           <section aria-describedby="preview-description" aria-labelledby="preview-title" aria-modal="true" className={styles.dialog} role="dialog">
             <button aria-label="Close preview" className={styles.dialogClose} onClick={() => setPreviewOpen(false)} ref={closeButtonRef} type="button"><X size={18} /></button>
             <span className={styles.dialogIcon}><ShieldCheck size={23} /></span>
-            <small>Secure hosted checkout</small>
-            <h2 id="preview-title">Review before checkout</h2>
-            <p id="preview-description">Continuing opens our secure merchant-of-record checkout. Your plan changes only after you confirm payment there and Sauti receives a signed subscription event.</p>
+            <small>{isSandbox ? "Whop sandbox checkout" : "Secure hosted checkout"}</small>
+            <h2 id="preview-title">Review your {isSandbox ? "test " : ""}checkout</h2>
+            <p id="preview-description">Continuing opens {checkoutProvider}. {isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.</p>
             <div className={styles.dialogRows}>
               <span><em>Plan</em><strong>{selectedPlan.name}</strong></span>
               <span><em>Projected usage</em><strong>{projectedMinutes.toLocaleString()} minutes</strong></span>
@@ -275,7 +287,7 @@ export function BillingPage() {
             {checkoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {checkoutError}</p>}
             <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
               {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
-              {checkoutLoading ? "Opening secure checkout…" : "Continue to secure checkout"}
+              {checkoutLoading ? "Creating checkout…" : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
             </button>
             <button className={styles.checkoutCancel} disabled={checkoutLoading} onClick={() => setPreviewOpen(false)} type="button">Keep exploring</button>
           </section>
@@ -508,9 +520,12 @@ function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab
   );
 }
 
-function PlansTab({ currentPlanId, interval, projection, projectedMinutes, quantities, resetModel, selectedPlanId, setInterval, setPreviewOpen, setProjectedMinutes, setSelectedPlanId, updateQuantity }: {
+function PlansTab({ checkoutConfigured, checkoutProvider, currentPlanId, interval, isSandbox, projection, projectedMinutes, quantities, resetModel, selectedPlanId, setInterval, setPreviewOpen, setProjectedMinutes, setSelectedPlanId, updateQuantity }: {
+  checkoutConfigured: boolean;
+  checkoutProvider: string;
   currentPlanId: PricingPlanId;
   interval: BillingInterval;
+  isSandbox: boolean;
   projection: ReturnType<typeof projectBilling>;
   projectedMinutes: number;
   quantities: Partial<Record<BillingAddOnId, number>>;
@@ -526,7 +541,7 @@ function PlansTab({ currentPlanId, interval, projection, projectedMinutes, quant
   return (
     <section className={styles.planStudio} aria-label="Plan and add-on modeller">
       <article className={styles.planSelector}>
-        <header><small>Preview different plans</small><h2>Select a plan</h2></header>
+        <header className={styles.stepHeader}><span>1</span><div><h2>Choose a plan</h2><p>Select the allowance and capacity your workspace needs.</p></div></header>
         <div className={styles.intervalToggle} role="group" aria-label="Billing interval">
           <button aria-pressed={interval === "monthly"} className={interval === "monthly" ? styles.selected : ""} onClick={() => setInterval("monthly")} type="button">Monthly</button>
           <button aria-pressed={interval === "annual"} className={interval === "annual" ? styles.selected : ""} onClick={() => setInterval("annual")} type="button">Annual</button>
@@ -545,7 +560,7 @@ function PlansTab({ currentPlanId, interval, projection, projectedMinutes, quant
       </article>
 
       <article className={styles.configurator}>
-        <header><small>Safe model</small><h2>Configure your setup</h2><p>Adjust the model to see how each choice affects the estimate.</p></header>
+        <header className={styles.stepHeader}><span>2</span><div><h2>Configure your setup</h2><p>Adjust the model to see how each choice affects the estimate.</p></div></header>
         <label className={styles.minutesInput}><span><Clock3 size={18} /><strong>Projected AI minutes</strong></span><input max={20000} min={0} onChange={(event) => setProjectedMinutes(Math.max(0, Number(event.target.value) || 0))} type="number" value={projectedMinutes} /><small>Includes {selectedPlan.includedMinutes.toLocaleString()} minutes. Projected overage: {projection.overageMinutes.toLocaleString()} minutes.</small></label>
         <QuantityControl description="A separate workflow, department, language, or location." label="Additional agents" onChange={(value) => updateQuantity("agent", value)} value={quantities.agent ?? 0} />
         <div className={styles.addOnList}><h3>Add-ons <span>(optional)</span></h3><p>Only active items are included in your estimate.</p>
@@ -557,18 +572,28 @@ function PlansTab({ currentPlanId, interval, projection, projectedMinutes, quant
       </article>
 
       <article className={styles.estimateSummary}>
-        <header><small>All amounts in USD</small><h2>Estimate summary</h2></header>
+        <header className={styles.summaryHeader}><div className={styles.stepHeader}><span>3</span><div><h2>Estimate summary</h2><p>All amounts in USD</p></div></div><em>USD</em></header>
         <LedgerRow label={`Base plan — ${selectedPlan.name}`} note={interval === "annual" ? "Annual billing equivalent" : "Monthly billing"} value={money(projection.basePrice)} />
         <LedgerRow label="Overage minutes" note={`${projection.overageMinutes.toLocaleString()} × ${money(selectedPlan.overageRate)}`} value={money(projection.overageCost)} />
         <LedgerRow label="Activated add-ons" note="Modelled selection" value={money(projection.addOnCost)} />
         <div className={styles.ledgerTotal}><div><strong>Estimated total / month</strong><span>Plan + overage + activated add-ons</span></div><strong>{money(projection.total)}</strong></div>
         <p><Info size={15} /> If a higher plan produces a lower total for your model, Sauti will explain the arithmetic instead of forcing a recommendation.</p>
-        <button onClick={() => setPreviewOpen(true)} type="button"><ShieldCheck size={16} /> Preview this setup</button>
+        <button disabled={!checkoutConfigured} onClick={() => setPreviewOpen(true)} type="button"><ShieldCheck size={16} /> {!checkoutConfigured ? "Whop setup required" : isSandbox ? "Continue to sandbox checkout" : "Continue to secure checkout"}</button>
         <button className={styles.resetButton} onClick={resetModel} type="button"><RotateCcw size={15} /> Reset model</button>
-        <footer>This preview makes no API mutation and cannot change your current plan or calls.</footer>
+        <footer>Add-ons are estimates only. Checkout purchases the selected base plan through {checkoutProvider}.</footer>
+      </article>
+      <article className={styles.benefitsStrip} aria-label="Billing benefits">
+        <BillingBenefit icon={CircleDollarSign} title="Transparent pricing" note="See how the total is calculated before checkout." />
+        <BillingBenefit icon={ShieldCheck} title="Secure checkout" note={`Payment details stay with ${checkoutProvider}.`} />
+        <BillingBenefit icon={RefreshCw} title="Change anytime" note="Upgrade or adjust your plan as your usage grows." />
+        <BillingBenefit icon={SlidersHorizontal} title="Need a custom plan?" note="Talk to us about higher call capacity." action />
       </article>
     </section>
   );
+}
+
+function BillingBenefit({ action = false, icon: Icon, note, title }: { action?: boolean; icon: typeof Gauge; note: string; title: string }) {
+  return <div><span><Icon size={17} /></span><div><strong>{title}</strong><small>{note}</small></div>{action && <a href="/request-demo">Contact sales <ArrowRight size={13} /></a>}</div>;
 }
 
 function InvoicesTab({ switchTab }: { switchTab: (tab: BillingTab) => void }) {

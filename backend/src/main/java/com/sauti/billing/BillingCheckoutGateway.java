@@ -5,6 +5,8 @@ import java.util.UUID;
 public interface BillingCheckoutGateway {
     String provider();
 
+    default boolean configured() { return true; }
+
     CheckoutResponse create(UUID tenantId, CheckoutRequest request);
 
     record CheckoutRequest(String plan, String interval) { }

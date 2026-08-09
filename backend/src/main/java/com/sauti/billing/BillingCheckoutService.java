@@ -13,12 +13,15 @@ import org.springframework.stereotype.Service;
 public class BillingCheckoutService {
     private final Map<String, BillingCheckoutGateway> gateways;
     private final String activeProvider;
+    private final boolean whopSandbox;
 
     public BillingCheckoutService(List<BillingCheckoutGateway> gateways,
-                                  @Value("${sauti.billing.provider:whop}") String activeProvider) {
+                                  @Value("${sauti.billing.provider:whop}") String activeProvider,
+                                  @Value("${sauti.billing.whop.sandbox:false}") boolean whopSandbox) {
         this.gateways = gateways.stream().collect(Collectors.toUnmodifiableMap(
                 gateway -> normalize(gateway.provider()), Function.identity()));
         this.activeProvider = normalize(activeProvider);
+        this.whopSandbox = whopSandbox;
     }
 
     public BillingCheckoutGateway.CheckoutResponse create(
@@ -27,6 +30,14 @@ public class BillingCheckoutService {
         if (gateway == null) throw new IllegalStateException("Configured billing provider is not available");
         return gateway.create(tenantId, request);
     }
+
+    public CheckoutStatus status() {
+        var gateway = gateways.get(activeProvider);
+        var environment = "whop".equals(activeProvider) && whopSandbox ? "sandbox" : "live";
+        return new CheckoutStatus(activeProvider, environment, gateway != null && gateway.configured());
+    }
+
+    public record CheckoutStatus(String provider, String environment, boolean configured) { }
 
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT).replace('-', '_');

@@ -66,6 +66,9 @@ class WhopCheckoutServiceTest {
     }
 
     private WhopPlanCatalog plans() {
-        return new WhopPlanCatalog("plan_launch_monthly", "", "", "", "", "");
+        return new WhopPlanCatalog(
+                "plan_launch_monthly", "plan_launch_annual",
+                "plan_growth_monthly", "plan_growth_annual",
+                "plan_scale_monthly", "plan_scale_annual");
     }
 }

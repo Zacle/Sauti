@@ -7,6 +7,7 @@ import com.sauti.billing.BillingService;
 import com.sauti.billing.BillingCheckoutGateway.CheckoutRequest;
 import com.sauti.billing.BillingCheckoutGateway.CheckoutResponse;
 import com.sauti.billing.BillingCheckoutService;
+import com.sauti.billing.BillingCheckoutService.CheckoutStatus;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,6 +36,11 @@ public class BillingController {
     @GetMapping("/account")
     BillingAccountResponse account(@AuthenticationPrincipal AuthenticatedUser user) {
         return billingService.account(user.tenantId());
+    }
+
+    @GetMapping("/checkout/status")
+    CheckoutStatus checkoutStatus(@AuthenticationPrincipal AuthenticatedUser user) {
+        return checkoutService.status();
     }
 
     @PostMapping("/checkout")

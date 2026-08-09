@@ -43,6 +43,10 @@ public class WhopPlanCatalog {
         return plans.values().stream().filter(plan -> !plan.planId().isBlank() && plan.planId().equals(id)).findFirst();
     }
 
+    public boolean fullyConfigured() {
+        return plans.size() == 6 && plans.values().stream().noneMatch(plan -> plan.planId().isBlank());
+    }
+
     private static void add(Map<String, Plan> target, String plan, String interval, String planId) {
         target.put(plan + ":" + interval, new Plan(plan, interval, clean(planId), MINUTES.get(plan)));
     }

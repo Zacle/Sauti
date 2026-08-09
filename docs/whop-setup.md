@@ -35,6 +35,13 @@ upgrade. Sandbox and production use separate API keys, products, plans, and
 webhooks. For sandbox testing, use `https://sandbox-api.whop.com/api/v1` and set
 `WHOP_SANDBOX=true`; never combine a sandbox API URL with production IDs.
 
+The billing page reads the active provider environment from the backend. When
+the Whop API key, company ID, redirect URL, and independent tenant-reference
+secret and all six plan IDs are present, it labels the flow as **Whop sandbox checkout** and creates
+a real hosted test checkout. If those server settings are missing, the page
+shows **Setup required** instead of presenting a non-functional preview. The
+The IDs must all belong to the same Whop sandbox company as the API key.
+
 ## Webhook
 
 Create one v1 webhook in Whop's Developer dashboard:

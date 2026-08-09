@@ -26,6 +26,7 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
     private final String apiBaseUrl;
     private final String apiVersionDate;
     private final String redirectUrl;
+    private final boolean tenantReferenceConfigured;
 
     @Autowired
     public WhopCheckoutService(
@@ -53,10 +54,17 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
         this.apiBaseUrl = clean(apiBaseUrl).replaceAll("/+$", "");
         this.apiVersionDate = clean(apiVersionDate);
         this.redirectUrl = clean(redirectUrl);
+        this.tenantReferenceConfigured = !clean(tenantReferenceSecret).isBlank();
         this.tenantReferences = new WhopTenantReference(tenantReferenceSecret);
     }
 
     @Override public String provider() { return "whop"; }
+
+    @Override
+    public boolean configured() {
+        return !apiKey.isBlank() && !companyId.isBlank() && !apiVersionDate.isBlank()
+                && !redirectUrl.isBlank() && tenantReferenceConfigured && plans.fullyConfigured();
+    }
 
     @Override
     public CheckoutResponse create(UUID tenantId, CheckoutRequest request) {
@@ -107,7 +115,7 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
     }
 
     private void requireConfigured() {
-        if (apiKey.isBlank() || companyId.isBlank() || apiVersionDate.isBlank() || redirectUrl.isBlank()) {
+        if (!configured()) {
             throw new IllegalStateException("Whop checkout is not configured");
         }
     }

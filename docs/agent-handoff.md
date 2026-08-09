@@ -2,6 +2,34 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-10: Turn billing preview into a real Whop sandbox checkout
+
+- Replaced the ambiguous hard-coded billing testing banner with authenticated,
+  backend-reported checkout metadata: active provider, sandbox/live environment,
+  and server configuration readiness. No credential or provider secret is
+  exposed.
+- A configured Whop sandbox now presents a real `Continue to sandbox checkout`
+  journey. It creates the existing server-side Whop checkout configuration and
+  redirects to hosted checkout; an incomplete server setup is visibly disabled
+  and says which configuration category is missing instead of behaving like a
+  fake preview.
+- Refined the Plans & add-ons screen toward the supplied reference with numbered
+  three-step hierarchy, currency treatment, clearer checkout copy, an explicit
+  distinction between estimator-only add-ons and the purchased base plan, and a
+  responsive billing-benefits strip.
+- Files touched: billing checkout gateway/router/status/controller and focused
+  test; Whop checkout readiness; dashboard billing API/types/page/styles;
+  `docs/whop-setup.md`; `design-qa.md`; and this handoff.
+- Verification: full backend tests passed; dashboard typecheck, zero-warning
+  ESLint, and optimized production build passed; `git diff --check` passed
+  (line-ending notices only).
+- Visual QA status: blocked. The supplied 1560 x 1016 reference was inspected,
+  but the Codex in-app browser runtime could not initialize in this desktop
+  session, so no browser-rendered comparison is claimed. The post-deployment
+  live acceptance is documented in `design-qa.md`.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+
 ## Current baseline
 
 - Repository: `https://github.com/Zacle/Sauti`

@@ -712,6 +712,12 @@ export type BillingCheckout = {
   provider: string;
 };
 
+export type BillingCheckoutStatus = {
+  provider: string;
+  environment: "sandbox" | "live";
+  configured: boolean;
+};
+
 export type DashboardData = {
   onboarding: OnboardingStatus;
   agents: Agent[];
