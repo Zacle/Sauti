@@ -74,6 +74,7 @@ public class ReliabilityMonitoringService {
 
         for (var incident : incidents.findAllByStatus("open")) {
             if (observedProviders.contains(incident.getProvider())) continue;
+            if (incident.getProvider().startsWith("drill:")) continue;
             incident.resolve(now);
             incidents.save(incident);
             if (incident.getNotifiedAt() != null && incident.getResolutionNotifiedAt() == null) {

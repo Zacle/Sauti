@@ -112,4 +112,22 @@ class ReliabilityMonitoringServiceTest {
         assertThat(event.getValue().provider()).isEqualTo("queue:calendar_sync");
         assertThat(event.getValue().severity()).isEqualTo("critical");
     }
+
+    @Test
+    void doesNotAutoResolveAnOperatorControlledDrill() {
+        var health = mock(PlatformIntegrationHealthService.class);
+        var incidents = mock(ReliabilityIncidentRepository.class);
+        var slos = mock(SloEvaluationService.class);
+        var events = mock(ApplicationEventPublisher.class);
+        var now = OffsetDateTime.parse("2026-08-09T12:00:00Z");
+        var incident = new ReliabilityIncident("drill:test", "critical", "Synthetic drill", now.minusMinutes(2));
+        when(health.snapshot(now.minusHours(24))).thenReturn(List.of());
+        when(slos.snapshot(now)).thenReturn(List.of());
+        when(incidents.findAllByStatus("open")).thenReturn(List.of(incident));
+
+        new ReliabilityMonitoringService(health, incidents, slos, events, true, 24, 10).evaluate(now);
+
+        assertThat(incident.getStatus()).isEqualTo("open");
+        verifyNoInteractions(events);
+    }
 }

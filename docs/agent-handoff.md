@@ -15,6 +15,33 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-09: Add incident runbooks and a safe reliability drill
+
+- Added Flyway migration `V60` and a durable reliability-drill state machine.
+  A platform admin can create one synthetic critical incident, acknowledge it
+  only after detection email delivery is recorded, then resolve it and request
+  the recovery email. Scheduled monitoring cannot auto-resolve drill incidents.
+- Every transition records actor/timestamp evidence and a platform-admin audit
+  event. The drill does not call providers, mutate customer data, consume jobs,
+  place calls, or require the deferred backup infrastructure.
+- Added drill controls and recent evidence to Admin Analytics. The Start action
+  requires explicit confirmation; unavailable transitions are disabled and
+  pending detection/recovery email delivery is visible.
+- Published `docs/runbooks/reliability-incidents.md` with signal-specific triage,
+  safe containment boundaries, escalation criteria, the production drill steps,
+  failure handling, and the exact live-acceptance evidence required.
+- Files touched: reliability drill migration/entity/repository/service/tests;
+  monitoring and admin audit/controller changes; admin API/types/analytics UI;
+  the reliability runbook, Phase 2 roadmap, and this handoff.
+- Verification: focused reliability tests and the full backend suite passed;
+  dashboard typecheck, zero-warning ESLint, and optimized production build
+  passed; `git diff --check` passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+- Follow-up: after deployment, execute one production drill and retain the drill
+  UUID plus detection, acknowledgement, recovery, and audit timestamps. This
+  live acceptance cannot be completed against the current undeployed revision.
+
 ### 2026-08-09: Persist measured browser first-audio latency
 
 - Added Flyway migration `V59` and a provider-neutral startup-measurement model

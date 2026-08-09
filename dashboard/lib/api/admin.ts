@@ -1,4 +1,4 @@
-import type { AdminAuditPage, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityIncident, AdminSlo, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
+import type { AdminAuditPage, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityDrill, AdminReliabilityIncident, AdminSlo, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
 import { apiRequest } from "./client";
 
 export function getAdminOverview() {
@@ -97,4 +97,27 @@ export function getAdminQueueHealth() {
 
 export function getAdminSlos() {
   return apiRequest<AdminSlo[]>("/admin/reliability/slos");
+}
+
+export function getAdminReliabilityDrills() {
+  return apiRequest<AdminReliabilityDrill[]>("/admin/reliability/drills");
+}
+
+export function startAdminReliabilityDrill() {
+  return apiRequest<AdminReliabilityDrill>("/admin/reliability/drills", {
+    method: "POST",
+    body: JSON.stringify({ confirmation: "START RELIABILITY DRILL" }),
+  });
+}
+
+export function acknowledgeAdminReliabilityDrill(drillId: string) {
+  return apiRequest<AdminReliabilityDrill>(`/admin/reliability/drills/${drillId}/acknowledge`, {
+    method: "POST",
+  });
+}
+
+export function resolveAdminReliabilityDrill(drillId: string) {
+  return apiRequest<AdminReliabilityDrill>(`/admin/reliability/drills/${drillId}/resolve`, {
+    method: "POST",
+  });
 }

@@ -172,6 +172,19 @@ export type AdminSlo = {
   detail: string;
 };
 
+export type AdminReliabilityDrill = {
+  id: string;
+  status: "detected" | "acknowledged" | "resolved" | string;
+  initiatedBy: string;
+  initiatedAt: string;
+  acknowledgedBy: string | null;
+  acknowledgedAt: string | null;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  detectionEmailSentAt: string | null;
+  recoveryEmailSentAt: string | null;
+};
+
 export type WorkspaceNotification = {
   id: string;
   type: "booking.confirmed" | "booking.follow_up_required" | string;

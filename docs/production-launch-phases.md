@@ -142,6 +142,21 @@ without relying on a customer to report them first.
   start; `call.speak.started` belongs to the separate Speak command and cannot
   truthfully measure an AI greeting.
 
+### Slice 6: incident runbooks and safe reliability drills
+
+- Provide a platform-admin-only synthetic incident that exercises persistence,
+  support notification, acknowledgement, recovery notification, and admin audit
+  evidence without calling providers or touching tenant data and durable jobs.
+- Enforce one active drill and the ordered `Detected` to `Acknowledged` to
+  `Resolved` lifecycle. The operator cannot acknowledge before detection email
+  delivery is recorded or resolve before acknowledgement; scheduled monitoring
+  cannot auto-resolve an operator-controlled drill.
+- Publish the signal-specific triage, containment, escalation, and drill runbook
+  at `docs/runbooks/reliability-incidents.md`.
+- Implementation and automated verification are complete. Live acceptance
+  requires one post-deployment production drill with detection, acknowledgement,
+  recovery, and audit timestamps.
+
 ### Remaining Phase 2 slices
 
 1. Configure off-site storage and execute the documented restore drill against
@@ -149,8 +164,9 @@ without relying on a customer to report them first.
    credentials.
 2. Add phone first-audio measurement only when the provider exposes an AI
    playback event or Sauti owns the phone media stream.
-3. Publish incident runbooks and record one end-to-end production reliability
-   drill, including detection, operator notification, mitigation, and recovery.
+3. After deployment, execute the documented production reliability drill and
+   retain its database/audit evidence. No provider or customer operation is part
+   of the drill.
 
 ## Later phases
 

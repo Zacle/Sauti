@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, Clock3, LoaderCircle, Mic2, MousePointerClick, PhoneCall, RefreshCw, ServerCog, Users } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { getAdminPlatformAnalytics, getAdminQueueHealth, getAdminReliabilityIncidents, getAdminSlos } from "@/lib/api/admin";
-import type { AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityIncident, AdminSlo } from "@/types/api";
+import { acknowledgeAdminReliabilityDrill, getAdminPlatformAnalytics, getAdminQueueHealth, getAdminReliabilityDrills, getAdminReliabilityIncidents, getAdminSlos, resolveAdminReliabilityDrill, startAdminReliabilityDrill } from "@/lib/api/admin";
+import type { AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityDrill, AdminReliabilityIncident, AdminSlo } from "@/types/api";
 import styles from "./AdminAnalytics.module.css";
 import webStyles from "./AdminWebAnalytics.module.css";
 import polish from "./AdminPolish.module.css";
@@ -17,26 +17,43 @@ export function AdminAnalytics() {
   const [incidents, setIncidents] = useState<AdminReliabilityIncident[]>([]);
   const [queues, setQueues] = useState<AdminQueueHealth[]>([]);
   const [slos, setSlos] = useState<AdminSlo[]>([]);
+  const [drills, setDrills] = useState<AdminReliabilityDrill[]>([]);
+  const [drillAction, setDrillAction] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const load = useCallback(async (range: Days) => {
     setLoading(true); setError("");
     try {
-      const [analytics, reliabilityIncidents, queueHealth, sloHealth] = await Promise.all([
+      const [analytics, reliabilityIncidents, queueHealth, sloHealth, reliabilityDrills] = await Promise.all([
         getAdminPlatformAnalytics(range),
         getAdminReliabilityIncidents(),
         getAdminQueueHealth(),
         getAdminSlos(),
+        getAdminReliabilityDrills(),
       ]);
       setData(analytics);
       setIncidents(reliabilityIncidents);
       setQueues(queueHealth);
       setSlos(sloHealth);
+      setDrills(reliabilityDrills);
     }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load platform analytics."); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(days); }, [days, load]);
+
+  async function runDrill(action: "start" | "acknowledge" | "resolve", drillId?: string) {
+    if (action === "start" && !window.confirm("Start a synthetic critical incident and send an alert to support? No customer or provider operation will be changed.")) return;
+    setDrillAction(action); setError("");
+    try {
+      if (action === "start") await startAdminReliabilityDrill();
+      if (action === "acknowledge" && drillId) await acknowledgeAdminReliabilityDrill(drillId);
+      if (action === "resolve" && drillId) await resolveAdminReliabilityDrill(drillId);
+      await load(days);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to update the reliability drill.");
+    } finally { setDrillAction(""); }
+  }
 
   const totals = useMemo(() => ({
     calls: data?.activity.reduce((sum, day) => sum + day.calls, 0) ?? 0,
@@ -68,6 +85,7 @@ export function AdminAnalytics() {
         <Card title="Reliability incidents" subtitle="Deduplicated alerts and recovery history" wide><ReliabilityIncidents incidents={incidents}/></Card>
         <Card title="Background queues" subtitle="Pending, retrying, and exhausted durable work" wide><QueueHealth queues={queues}/></Card>
         <Card title="Service objectives" subtitle="Stored production evidence compared with pilot alert thresholds" wide><SloHealth slos={slos}/></Card>
+        <Card title="Reliability drill" subtitle="Safe detection, acknowledgement, and recovery rehearsal" wide><ReliabilityDrills drills={drills} action={drillAction} onAction={runDrill}/></Card>
       </section>
       <p className={styles.generated}>Generated {new Date(data.generatedAt).toLocaleString()} · This is operational evidence, not a live provider uptime check.</p>
     </>}
@@ -144,6 +162,16 @@ function SloHealth({ slos }: { slos: AdminSlo[] }) {
     <p>{slo.detail}</p>
     <small>Warning at {sloValue(slo.warningThreshold, slo.unit)} · Critical at {sloValue(slo.criticalThreshold, slo.unit)}{slo.windowMinutes ? ` · ${slo.windowMinutes}m window` : ""}</small>
   </article>)}</div>;
+}
+function ReliabilityDrills({ drills, action, onAction }: { drills: AdminReliabilityDrill[]; action: string; onAction: (action: "start" | "acknowledge" | "resolve", drillId?: string) => Promise<void> }) {
+  const active = drills.find((drill) => drill.status !== "resolved");
+  const recent = drills.slice(0, 5);
+  return <div className={styles.drillPanel}>
+    <div className={styles.drillIntro}><div><strong>{active ? `Drill ${human(active.status)}` : "No active drill"}</strong><p>A synthetic incident exercises Sauti alerts and audit evidence without touching providers, customer data, or queued work.</p></div>
+      {!active ? <button disabled={Boolean(action)} onClick={() => void onAction("start")} type="button">{action === "start" ? "Starting…" : "Start synthetic drill"}</button> : active.status === "detected" ? <button disabled={Boolean(action) || !active.detectionEmailSentAt} onClick={() => void onAction("acknowledge", active.id)} type="button">{active.detectionEmailSentAt ? "Acknowledge alert" : "Waiting for alert email"}</button> : <button disabled={Boolean(action)} onClick={() => void onAction("resolve", active.id)} type="button">{action === "resolve" ? "Resolving…" : "Resolve and send recovery"}</button>}
+    </div>
+    {recent.length ? <div className={styles.drillHistory}>{recent.map((drill) => <article key={drill.id}><span className={styles[drill.status] ?? ""}>{human(drill.status)}</span><div><strong>{new Date(drill.initiatedAt).toLocaleString()}</strong><small>Started by {drill.initiatedBy}</small></div><dl><div><dt>Detection email</dt><dd>{drill.detectionEmailSentAt ? new Date(drill.detectionEmailSentAt).toLocaleString() : "Pending"}</dd></div><div><dt>Acknowledged</dt><dd>{drill.acknowledgedAt ? `${new Date(drill.acknowledgedAt).toLocaleString()} by ${drill.acknowledgedBy}` : "Pending"}</dd></div><div><dt>Recovery email</dt><dd>{drill.recoveryEmailSentAt ? new Date(drill.recoveryEmailSentAt).toLocaleString() : drill.resolvedAt ? "Pending" : "Not requested"}</dd></div></dl></article>)}</div> : <Empty text="No reliability drill has been recorded yet."/>}
+  </div>;
 }
 function Empty({ text }: { text: string }) { return <div className={styles.empty}>{text}</div>; }
 function format(value: number) { return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(value); }

@@ -12,7 +12,7 @@ public class PlatformAdminAuditService {
         this.events = events;
     }
 
-    void record(String actorEmail, String action, String resourceType, String resourceId, String summary) {
+    public void record(String actorEmail, String action, String resourceType, String resourceId, String summary) {
         events.save(new PlatformAdminAuditEvent(actorEmail, action, resourceType, resourceId, summary));
     }
 
