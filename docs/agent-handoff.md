@@ -2,6 +2,29 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-10: Deliver Whop configuration through production CI/CD
+
+- Diagnosed the production `Whop checkout setup is incomplete` state. All Whop
+  values were present in the repository-root `.env`, but that file is local-only;
+  production reads `/opt/sauti/.env.production`, and the deploy workflow did not
+  synchronize any Whop settings into it.
+- Extended the existing secret-safe deployment synchronization to copy Whop API,
+  company, webhook, and tenant-reference secrets from GitHub Actions Secrets and
+  non-secret provider, endpoint, sandbox, redirect, and six plan settings from
+  GitHub Actions Variables. Empty GitHub values are skipped so an incomplete
+  repository configuration cannot erase an existing server value.
+- Updated the Whop runbook with the exact Secrets/Variables split and clarified
+  that editing local `.env` cannot affect `sauti.uk`.
+- Files touched: `.github/workflows/deploy.yml`, `docs/whop-setup.md`, and this
+  handoff, in addition to the still-uncommitted billing checkout changes from the
+  preceding slice.
+- Verification: local Whop setting presence was checked without printing secret
+  values; workflow diff and shell syntax were reviewed; `git diff --check`
+  passed (line-ending notices only).
+- Deployment status: not deployed. A maintainer must populate the GitHub Actions
+  settings, review and commit these changes, then let the normal CI/CD chain
+  update `/opt/sauti/.env.production` and restart the backend.
+
 ### 2026-08-10: Turn billing preview into a real Whop sandbox checkout
 
 - Replaced the ambiguous hard-coded billing testing banner with authenticated,

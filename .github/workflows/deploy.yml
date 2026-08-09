@@ -84,6 +84,21 @@ jobs:
           SAUTI_PUBLIC_DEMO_ENABLED: ${{ vars.SAUTI_PUBLIC_DEMO_ENABLED }}
           SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID: ${{ vars.SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID }}
           SAUTI_PUBLIC_DEMO_TELNYX_VERSION_ID: ${{ vars.SAUTI_PUBLIC_DEMO_TELNYX_VERSION_ID }}
+          SAUTI_BILLING_PROVIDER: ${{ vars.SAUTI_BILLING_PROVIDER }}
+          WHOP_API_KEY: ${{ secrets.WHOP_API_KEY }}
+          WHOP_COMPANY_ID: ${{ secrets.WHOP_COMPANY_ID }}
+          WHOP_WEBHOOK_SECRET: ${{ secrets.WHOP_WEBHOOK_SECRET }}
+          WHOP_TENANT_REFERENCE_SECRET: ${{ secrets.WHOP_TENANT_REFERENCE_SECRET }}
+          WHOP_API_BASE_URL: ${{ vars.WHOP_API_BASE_URL }}
+          WHOP_API_VERSION_DATE: ${{ vars.WHOP_API_VERSION_DATE }}
+          WHOP_CHECKOUT_REDIRECT_URL: ${{ vars.WHOP_CHECKOUT_REDIRECT_URL }}
+          WHOP_SANDBOX: ${{ vars.WHOP_SANDBOX }}
+          WHOP_PLAN_LAUNCH_MONTHLY: ${{ vars.WHOP_PLAN_LAUNCH_MONTHLY }}
+          WHOP_PLAN_LAUNCH_ANNUAL: ${{ vars.WHOP_PLAN_LAUNCH_ANNUAL }}
+          WHOP_PLAN_GROWTH_MONTHLY: ${{ vars.WHOP_PLAN_GROWTH_MONTHLY }}
+          WHOP_PLAN_GROWTH_ANNUAL: ${{ vars.WHOP_PLAN_GROWTH_ANNUAL }}
+          WHOP_PLAN_SCALE_MONTHLY: ${{ vars.WHOP_PLAN_SCALE_MONTHLY }}
+          WHOP_PLAN_SCALE_ANNUAL: ${{ vars.WHOP_PLAN_SCALE_ANNUAL }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
@@ -120,6 +135,21 @@ jobs:
           sync_provider_secret SAUTI_PUBLIC_DEMO_ENABLED "${SAUTI_PUBLIC_DEMO_ENABLED:-false}"
           sync_provider_secret SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID "$SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID"
           sync_provider_secret SAUTI_PUBLIC_DEMO_TELNYX_VERSION_ID "$SAUTI_PUBLIC_DEMO_TELNYX_VERSION_ID"
+          sync_provider_secret SAUTI_BILLING_PROVIDER "$SAUTI_BILLING_PROVIDER"
+          sync_provider_secret WHOP_API_KEY "$WHOP_API_KEY"
+          sync_provider_secret WHOP_COMPANY_ID "$WHOP_COMPANY_ID"
+          sync_provider_secret WHOP_WEBHOOK_SECRET "$WHOP_WEBHOOK_SECRET"
+          sync_provider_secret WHOP_TENANT_REFERENCE_SECRET "$WHOP_TENANT_REFERENCE_SECRET"
+          sync_provider_secret WHOP_API_BASE_URL "$WHOP_API_BASE_URL"
+          sync_provider_secret WHOP_API_VERSION_DATE "$WHOP_API_VERSION_DATE"
+          sync_provider_secret WHOP_CHECKOUT_REDIRECT_URL "$WHOP_CHECKOUT_REDIRECT_URL"
+          sync_provider_secret WHOP_SANDBOX "$WHOP_SANDBOX"
+          sync_provider_secret WHOP_PLAN_LAUNCH_MONTHLY "$WHOP_PLAN_LAUNCH_MONTHLY"
+          sync_provider_secret WHOP_PLAN_LAUNCH_ANNUAL "$WHOP_PLAN_LAUNCH_ANNUAL"
+          sync_provider_secret WHOP_PLAN_GROWTH_MONTHLY "$WHOP_PLAN_GROWTH_MONTHLY"
+          sync_provider_secret WHOP_PLAN_GROWTH_ANNUAL "$WHOP_PLAN_GROWTH_ANNUAL"
+          sync_provider_secret WHOP_PLAN_SCALE_MONTHLY "$WHOP_PLAN_SCALE_MONTHLY"
+          sync_provider_secret WHOP_PLAN_SCALE_ANNUAL "$WHOP_PLAN_SCALE_ANNUAL"
 
       - name: Deploy verified images
         env:

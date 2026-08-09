@@ -30,6 +30,33 @@ Configure:
 - the six `WHOP_PLAN_*` identifiers
 - `WHOP_CHECKOUT_REDIRECT_URL=https://sauti.uk/billing?checkout=success`
 
+## Production environment delivery
+
+The repository-root `.env` is local-only and is never copied to production.
+`sauti.uk` reads `/opt/sauti/.env.production` through Docker Compose. To keep
+secrets out of source control, add the following under **GitHub repository
+Settings → Secrets and variables → Actions** before the next normal deployment:
+
+**Secrets:**
+
+- `WHOP_API_KEY`
+- `WHOP_COMPANY_ID`
+- `WHOP_WEBHOOK_SECRET`
+- `WHOP_TENANT_REFERENCE_SECRET`
+
+**Variables:**
+
+- `SAUTI_BILLING_PROVIDER=whop`
+- `WHOP_API_BASE_URL=https://sandbox-api.whop.com/api/v1`
+- `WHOP_API_VERSION_DATE=2026-07-20`
+- `WHOP_CHECKOUT_REDIRECT_URL=https://sauti.uk/billing?checkout=success`
+- `WHOP_SANDBOX=true`
+- all six `WHOP_PLAN_*` IDs
+
+The verified deployment workflow copies only non-empty values into the private
+server environment file and restarts the backend through the normal CI/CD path.
+Local `.env` values alone cannot change the production checkout status.
+
 Keep `WHOP_API_VERSION_DATE=2026-07-20` until a reviewed provider-version
 upgrade. Sandbox and production use separate API keys, products, plans, and
 webhooks. For sandbox testing, use `https://sandbox-api.whop.com/api/v1` and set
