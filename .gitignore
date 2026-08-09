@@ -35,3 +35,4 @@ dashboard/.env.local
 /video/sauti-journey/sauti-logo.png
 /.codex/agents/sauti-reviewer.toml
 /.codex/agents/sauti-worker.toml
+/video/

@@ -1,1 +1,204 @@
-.delivery,.rejection{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:14px;padding:11px 13px;border:1px solid #17394b;border-radius:11px;color:#7895a5;background:#061722;font-size:.72rem}.delivery strong{color:#9edbd6;text-transform:capitalize}.deliveryError{color:#ffaaa4}.rejection{align-items:flex-start;border-color:#71333a;color:#d7a4a4;background:#241219}.rejection strong{color:#ffaaa4}.operations{margin-top:14px;border-top:1px solid #163342;padding-top:13px}.operations summary{display:flex;align-items:center;gap:7px;color:#8ba6b4;font-size:.76rem;font-weight:750;cursor:pointer}.operationFields{display:grid;grid-template-columns:minmax(180px,.45fr) 1fr;gap:12px;margin:13px 0}.operationFields label{display:grid;gap:6px;color:#7895a5;font-size:.7rem}.operationFields input,.operationFields textarea,.rejectRow input{width:100%;box-sizing:border-box;border:1px solid #21485a;border-radius:10px;color:#d9edf4;background:#06141e;padding:10px 12px;font:inherit}.operationFields textarea{min-height:76px;resize:vertical}.operations>button,.rejectRow button{display:flex;align-items:center;gap:7px;border:1px solid #245066;border-radius:9px;color:#cce8e8;background:#0b2937;padding:9px 12px;font:inherit;font-size:.74rem;font-weight:750;cursor:pointer}.actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}.dangerButton,.rejectRow button{border-color:#71333a!important;color:#ffaaa4!important;background:#26131a!important}.rejectRow{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:12px}.rejectRow button:disabled,.operations button:disabled{cursor:not-allowed;opacity:.5}@media(max-width:700px){.operationFields{grid-template-columns:1fr}.rejectRow{grid-template-columns:1fr}.actions{justify-content:flex-start}}
+.requestCard {
+  display: grid;
+  grid-template-columns: minmax(0, 2.15fr) minmax(280px, 0.95fr);
+}
+
+.requestMain {
+  min-width: 0;
+  padding: 30px;
+}
+
+.requestAside {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 28px;
+  padding: 30px 28px;
+  border-left: 1px solid rgba(43, 82, 109, 0.48);
+  background: linear-gradient(180deg, rgba(7, 27, 44, 0.22), rgba(3, 17, 29, 0.24));
+}
+
+.requestAside time {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 11px;
+  color: #a4b2c8;
+  font-size: 0.86rem;
+}
+
+.delivery,
+.rejection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(37, 77, 103, 0.62);
+  border-radius: 11px;
+  color: #8195a9;
+  background: rgba(5, 23, 36, 0.76);
+  font-size: 0.74rem;
+}
+
+.delivery strong { color: #9edbd6; text-transform: capitalize; }
+.deliveryError { color: #ffaaa4; }
+.rejection { align-items: flex-start; border-color: #71333a; color: #d7a4a4; background: #241219; }
+.rejection strong { color: #ffaaa4; }
+
+.operations {
+  margin-top: 16px;
+  padding-top: 17px;
+  border-top: 1px dashed rgba(48, 85, 111, 0.56);
+}
+
+.operations summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #e0e8f2;
+  font-size: 0.86rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.operations summary svg { color: #20ddd1; }
+
+.operationFields {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.45fr) 1fr;
+  gap: 12px;
+  margin: 15px 0;
+}
+
+.operationFields label {
+  display: grid;
+  gap: 7px;
+  color: #8295aa;
+  font-size: 0.72rem;
+}
+
+.operationFields input,
+.operationFields textarea,
+.rejectField input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(45, 90, 120, 0.74);
+  border-radius: 10px;
+  outline: 0;
+  color: #e2edf4;
+  background: rgba(3, 17, 29, 0.82);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.operationFields input:focus,
+.operationFields textarea:focus,
+.rejectField input:focus {
+  border-color: #22cfd0;
+  box-shadow: 0 0 0 3px rgba(34, 207, 208, 0.1);
+}
+
+.operationFields textarea { min-height: 82px; resize: vertical; }
+
+.operations > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  border: 1px solid #245066;
+  border-radius: 9px;
+  color: #cce8e8;
+  background: #0b2937;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.channel {
+  display: inline-flex;
+  margin-top: 16px;
+  padding: 6px 12px;
+  border: 1px solid rgba(30, 108, 126, 0.45);
+  border-radius: 9px;
+  color: #79b9c0;
+  background: rgba(5, 31, 42, 0.72);
+  font-size: 0.72rem;
+  text-transform: lowercase;
+}
+
+.rejectField {
+  margin-top: 14px;
+}
+
+.actions {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+}
+
+.actions button {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid #25e5dc;
+  border-radius: 10px;
+  color: #e8ffff;
+  background: linear-gradient(180deg, rgba(14, 174, 174, 0.92), rgba(3, 114, 139, 0.92));
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.18), 0 12px 28px rgba(0, 189, 189, 0.11);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 180ms ease;
+}
+
+.actions button:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.actions button:disabled,
+.operations button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.actions .dangerButton {
+  border-color: rgba(255, 72, 87, 0.82);
+  color: #ff5967;
+  background: rgba(24, 16, 27, 0.72);
+  box-shadow: none;
+}
+
+.actionNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid rgba(36, 72, 99, 0.52);
+  border-radius: 10px;
+  color: #94a3ba;
+  background: rgba(7, 25, 41, 0.7);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.actionNote svg { flex: none; margin-top: 1px; }
+
+@media (max-width: 960px) {
+  .requestCard { grid-template-columns: 1fr; }
+  .requestAside { border-top: 1px solid rgba(43, 82, 109, 0.48); border-left: 0; }
+  .requestAside time { justify-content: flex-start; }
+  .actions { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
+}
+
+@media (max-width: 700px) {
+  .requestMain, .requestAside { padding: 22px; }
+  .operationFields { grid-template-columns: 1fr; }
+  .actions { grid-template-columns: 1fr; }
+}

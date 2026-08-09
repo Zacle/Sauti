@@ -1,3 +1,45 @@
+# Admin operations-console redesign QA (2026-08-09)
+
+## Comparison target
+
+- Source visual truth: `C:\Users\Zacle\AppData\Local\Temp\codex-clipboard-707e7c05-c275-4f82-be94-fa6181c454cf.png` (1672 x 941 pixels).
+- Intended implementation routes: `/admin`, `/admin/demo-requests`, `/admin/workspaces`, `/admin/customers`, `/admin/analytics`, and `/admin/audit` at `http://127.0.0.1:8088`.
+- Intended state: authenticated platform administrator, desktop operations console.
+- Browser-rendered implementation screenshot: unavailable because the local browser redirects protected admin routes to `/login?next=...` without an authenticated platform-admin session.
+
+## Evidence available
+
+- The selected reference was opened at original resolution and used to measure the sidebar, top bar, page hierarchy, action card, borders, radii, colors, and spacing.
+- The production build generated every admin route successfully.
+- TypeScript and ESLint validation pass.
+- The browser confirms the admin security boundary still redirects unauthenticated access to the login page without console errors.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the reference's larger page title, compact uppercase eyebrow, stronger navigation weight, and calmer supporting copy are implemented, but browser-rendered wrapping remains unverified behind authentication.
+- Spacing and layout rhythm: the 322px sidebar, 98px top bar, wider content gutters, equal navigation rows, and two-column demo-request card mirror the reference measurements; final visible alignment remains unverified.
+- Colors and visual tokens: the reference's midnight navy, teal focus states, blue active marker, red destructive action, soft glass panels, and cool borders are implemented across the admin shell.
+- Image quality and asset fidelity: the existing Sauti brand mark is preserved; the reference contains no additional raster imagery requiring generation.
+- Copy and content: all current admin actions, data, statuses, filters, search, workspace controls, analytics evidence, and audit content remain present.
+
+## Findings
+
+- [P1] Authenticated browser-rendered evidence is unavailable.
+  - Location: all `/admin` routes.
+  - Evidence: the local preview returns a 307 to the login screen for the target admin route.
+  - Impact: the implementation cannot receive final visual sign-off against the supplied authenticated screenshot.
+  - Fix: sign in locally with an authorized platform-admin account, capture the Demo requests screen at the reference viewport, then inspect Overview, Workspaces, Customers, Analytics, and Audit history for responsive or content-density regressions.
+
+## Comparison history
+
+1. Source review identified the reference's wider shell, stronger top-level hierarchy, blue active navigation marker, bordered glass cards, and split primary/destructive action rail.
+2. The shared shell and all admin surface modules were updated to carry that system while preserving behavior.
+3. Post-fix visual comparison is blocked by the protected admin session requirement.
+
+final result: blocked
+
+---
+
 # Internal demo routing and industry-card alignment QA (2026-08-09)
 
 ## Comparison target

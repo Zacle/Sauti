@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { BarChart3, Building2, ClipboardList, LayoutDashboard, LogOut, MessageSquareText, ShieldCheck, Users } from "lucide-react";
+import { BarChart3, Building2, ChevronDown, ChevronRight, ClipboardList, LayoutDashboard, LogOut, MessageSquareText, ShieldCheck, UserRound, Users } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./AdminShell.module.css";
@@ -43,7 +43,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <main className={styles.shell}>
       <aside className={styles.sidebar}>
         <Link className={styles.brand} href="/admin"><BrandLogo /><strong>Sauti Admin</strong></Link>
-        <div className={styles.operator}><ShieldCheck size={16} /><span><strong>Platform operations</strong><small>Restricted access</small></span></div>
+        <div className={styles.operator}><ShieldCheck size={18} /><span><strong>Platform operations</strong><small>Restricted access</small></span><ChevronRight className={styles.operatorArrow} size={18}/></div>
         <nav aria-label="Sauti administration">
           <span>Control center</span>
           {links.map(({ href, label, icon: Icon }) => (
@@ -53,7 +53,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <button className={styles.logout} onClick={signOut} type="button"><LogOut size={18} />Log out</button>
       </aside>
       <section className={styles.main}>
-        <header><div><span>SAUTI PLATFORM</span><strong>Operations console</strong></div><span className={styles.identity}>{session.tenant.email}</span></header>
+        <header>
+          <div><span>SAUTI PLATFORM</span><strong>Operations console</strong></div>
+          <div className={styles.identity}><span><UserRound size={18}/></span><strong>{session.tenant.email}</strong><ChevronDown size={16}/></div>
+        </header>
         <div className={styles.content}>{children}</div>
       </section>
     </main>

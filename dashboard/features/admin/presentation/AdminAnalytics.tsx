@@ -7,6 +7,7 @@ import { getAdminPlatformAnalytics } from "@/lib/api/admin";
 import type { AdminPlatformAnalytics } from "@/types/api";
 import styles from "./AdminAnalytics.module.css";
 import webStyles from "./AdminWebAnalytics.module.css";
+import polish from "./AdminPolish.module.css";
 
 type Days = 7 | 30 | 90;
 
@@ -32,15 +33,15 @@ export function AdminAnalytics() {
     requests: data?.web.demoRequests ?? 0,
   }), [data]);
 
-  return <div className={styles.page}>
-    <header className={styles.heading}><div><span>PLATFORM INTELLIGENCE</span><h1>Analytics & provider health</h1><p>Stored operational evidence across Sauti. Refreshing this page never calls or charges an external provider.</p></div><button disabled={loading} onClick={() => void load(days)} type="button"><RefreshCw className={loading ? styles.spin : ""} size={16}/>Refresh</button></header>
-    <nav className={styles.ranges} aria-label="Analytics range">{([7, 30, 90] as Days[]).map((range) => <button className={days === range ? styles.activeRange : ""} key={range} onClick={() => setDays(range)} type="button">{range} days</button>)}</nav>
+  return <div className={`${styles.page} ${polish.page}`}>
+    <header className={`${styles.heading} ${polish.heading}`}><div><span>PLATFORM INTELLIGENCE</span><h1>Analytics & provider health</h1><p>Stored operational evidence across Sauti. Refreshing this page never calls or charges an external provider.</p></div><button disabled={loading} onClick={() => void load(days)} type="button"><RefreshCw className={loading ? styles.spin : ""} size={16}/>Refresh</button></header>
+    <nav className={`${styles.ranges} ${polish.ranges}`} aria-label="Analytics range">{([7, 30, 90] as Days[]).map((range) => <button className={days === range ? styles.activeRange : ""} key={range} onClick={() => setDays(range)} type="button">{range} days</button>)}</nav>
     {error && <div className={styles.error} role="alert">{error}</div>}
     {loading && !data ? <div className={styles.loading}><LoaderCircle className={styles.spin} size={22}/>Loading platform evidence…</div> : data && <>
-      <section className={styles.kpis}>
+      <section className={`${styles.kpis} ${polish.kpis}`}>
         <Kpi icon={Users} label="Daily unique visitors" value={format(totals.visitors)}/><Kpi icon={MousePointerClick} label="Demo requests" value={format(totals.requests)}/><Kpi icon={PhoneCall} label="Calls" value={format(totals.calls)}/><Kpi icon={Clock3} label="Conversation time" value={duration(totals.duration)}/><Kpi icon={AlertTriangle} label="Failed calls" value={format(totals.failed)}/><Kpi icon={ServerCog} label="Providers needing attention" value={format(totals.attention)}/>
       </section>
-      <section className={styles.grid}>
+      <section className={`${styles.grid} ${polish.grid}`}>
         <Card title="Website acquisition" subtitle="Privacy-preserving daily unique visitors and page views" wide><WebActivityChart data={data}/></Card>
         <Card title="Acquisition funnel" subtitle="Visitor journey toward a tailored demo"><WebFunnel data={data}/></Card>
         <Card title="Top pages and sources" subtitle="Where interest starts"><WebRankings data={data}/></Card>
@@ -56,10 +57,10 @@ export function AdminAnalytics() {
 }
 
 function Kpi({ icon: Icon, label, value }: { icon: typeof Activity; label: string; value: string }) {
-  return <article className={styles.kpi}><span><Icon size={18}/></span><div><small>{label}</small><strong>{value}</strong></div></article>;
+  return <article className={`${styles.kpi} ${polish.kpi}`}><span><Icon size={18}/></span><div><small>{label}</small><strong>{value}</strong></div></article>;
 }
 function Card({ title, subtitle, children, wide = false }: { title: string; subtitle: string; children: React.ReactNode; wide?: boolean }) {
-  return <article className={`${styles.card} ${wide ? styles.wide : ""}`}><header><span>{subtitle}</span><h2>{title}</h2></header>{children}</article>;
+  return <article className={`${styles.card} ${polish.card} ${wide ? styles.wide : ""}`}><header><span>{subtitle}</span><h2>{title}</h2></header>{children}</article>;
 }
 function ActivityChart({ data }: { data: AdminPlatformAnalytics }) {
   const rows = data.activity.map((day) => ({ ...day, label: dateLabel(day.date) }));

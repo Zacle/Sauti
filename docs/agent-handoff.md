@@ -15,6 +15,78 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-09: Redesign the platform-admin console from the approved reference
+
+- Updated the shared admin shell to match the supplied operations-console
+  reference: a wider midnight sidebar, stronger Sauti Admin lockup, bordered
+  platform-operations control, blue active-route marker, 98px top bar, account
+  avatar treatment, ambient navy depth, and larger content gutters.
+- Reworked Demo requests into a responsive two-column operational review card.
+  Lead context, contact details, use case, assignment, and rejection reason stay
+  together on the left; date, approval/resend/revoke/reject actions, activation
+  state, and guidance now form a clear right-side action rail. All existing API
+  behavior and safety requirements remain intact.
+- Applied the same typography, glass-card, border, spacing, form, hover, and
+  responsive language to Overview, Workspaces, Customers, Analytics, and Audit
+  history. No admin routes, APIs, permissions, or tenant boundaries changed.
+- Files touched:
+  - `dashboard/features/admin/presentation/AdminShell.tsx`;
+  - `dashboard/features/admin/presentation/AdminShell.module.css`;
+  - `dashboard/features/admin/presentation/AdminDemoRequests.tsx`;
+  - `dashboard/features/admin/presentation/AdminDemoRequests.module.css`;
+  - `dashboard/features/admin/presentation/AdminViews.module.css`;
+  - `dashboard/features/admin/presentation/AdminDirectory.module.css`;
+  - `dashboard/features/admin/presentation/AdminAnalytics.tsx`;
+  - `dashboard/features/admin/presentation/AdminAudit.tsx`;
+  - `dashboard/features/admin/presentation/AdminPolish.module.css`;
+  - `dashboard/design-qa.md`;
+  - `docs/agent-handoff.md`.
+- Verification: dashboard typecheck, ESLint, optimized production build, and
+  `git diff --check` passed. All six admin routes were generated. The local
+  browser confirmed unauthenticated admin access still redirects to login with
+  no console errors.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD release path.
+- Known follow-up: visual QA is blocked until an authorized platform-admin signs
+  into the local preview. Capture all admin routes after login before final
+  design sign-off; `dashboard/design-qa.md` records this as blocked.
+
+### 2026-08-09: Enhanced founder-story video with captions and motion
+
+- Reworked the supplied 106-second portrait draft into a finished HyperFrames
+  composition while preserving the original personal footage, screen captures,
+  pacing, and recorded stereo narration.
+- Added 32 corrected, speech-synced caption groups; a sharper opening treatment;
+  a restrained founder-journey progress system; chapter transitions; the
+  "So I started building" turning point; a branded Sauti reveal; animated
+  capability, technology, progress, and journey overlays; and a final follow CTA.
+- Used dark glass caption and chapter surfaces for readability over both hospital
+  footage and bright product screens. The visual treatment stays quiet during
+  the personal story, then gains energy at the product reveal so Sauti reads as
+  the response to the story rather than an opening product pitch.
+- Files touched:
+  - `video/sauti-journey-enhanced/index.html`;
+  - `video/sauti-journey-enhanced/DESIGN.md`;
+  - `video/sauti-journey-enhanced/hyperframes.json`;
+  - `video/sauti-journey-enhanced/meta.json`;
+  - `video/sauti-journey-enhanced/package.json`;
+  - `video/sauti-journey-enhanced/sauti-logo.png`;
+  - `video/sauti-journey-enhanced/Untitled design.mp4`;
+  - `video/sauti-journey-enhanced/sauti-journey-enhanced-final.mp4`;
+  - `docs/agent-handoff.md`.
+- Verification: HyperFrames lint passed with 0 errors and 0 warnings;
+  headless validation reported no console errors and all 38 tested text elements
+  passing WCAG AA; 15-sample layout inspection passed with no errors or warnings;
+  live preview checks covered the reveal, proof grid, human moment, journey chips,
+  and CTA; an exported-frame inspection confirmed overlays are baked into the
+  final file; FFprobe confirmed H.264 1080x1920 video, AAC 48 kHz stereo audio,
+  and a 106.2-second duration.
+- Deployment status: not applicable. Video/source files remain uncommitted for
+  maintainer review; no application deployment was performed.
+- Known follow-up: the 106-second cut preserves the supplied draft in full. A
+  separate 45-60 second social cut can be made later if platform retention data
+  favors a shorter version.
+
 ### 2026-08-09: Keep demo CTAs inside Sauti and align industry cards
 
 - Routed demo, sales, pilot, access, and workflow CTAs to Sauti's internal
