@@ -24,3 +24,14 @@ dashboard/.env.local
 /design-qa/resources-console-comparison.png
 /design-qa/resources-console-final-1440x1024.png
 /design-qa/
+/.codex/config.toml
+/video/sauti-journey/DESIGN.md
+/video/sauti-journey/index.html
+/video/sauti-journey/narration.txt
+/video/sauti-journey/narration.wav
+/video/sauti-journey/narration-fast.wav
+/.codex/agents/sauti-explorer.toml
+/video/sauti-journey/sauti-journey-reel.mp4
+/video/sauti-journey/sauti-logo.png
+/.codex/agents/sauti-reviewer.toml
+/.codex/agents/sauti-worker.toml

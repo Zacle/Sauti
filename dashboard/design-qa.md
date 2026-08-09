@@ -1,3 +1,26 @@
+# Homepage ambient-glass redesign QA (2026-08-09)
+
+## Comparison target
+
+- Source visual truth: the existing local Sauti homepage at `/`, captured before this pass.
+- Updated implementation: the same route at `http://127.0.0.1:8088/`, captured after the production build.
+- Target: preserve the existing hero, section ordering, content, interactions, and marketing imagery while removing the alternating opaque section backgrounds.
+
+## Evidence and result
+
+- Desktop renders confirm one continuous midnight ambient canvas instead of mint, ivory, navy, and purple section slabs.
+- Glass treatment is limited to content groups that benefit from containment: outcomes, dialogue, capabilities, language demo, trust, pilot card, and final CTA.
+- The hero photo, navigation, existing CTA, timeline, integration controls, and analytics-period buttons remain visible and functional.
+- No clipping, contrast, or broken layout was observed in the desktop hero, outcome/timeline, or language/integration/analytics captures.
+- Follow-up correction: the message cards now occlude the decorative waveform
+  sufficiently for their copy to remain readable, outcome copy has stronger
+  contrast, and the industry cards retain their original image-card treatment
+  after the user declined the added glass copy panels.
+
+final result: passed
+
+---
+
 # Google Calendar disconnect and test feedback QA (2026-08-06)
 
 ## Comparison target

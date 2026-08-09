@@ -40,6 +40,50 @@ After every code or deployment change:
 3. Leave all changes uncommitted for the user to review. Coding agents must not run `git add`, `git commit`, `git push`, open a pull request, or otherwise publish repository changes.
 4. Never stage or publish `.env`, `secrets/`, private keys, local screenshots, build outputs, or unrelated user files.
 
+## Subagent model routing
+
+Until the user revokes this policy, optimize subagent use for lower weighted
+usage consumption. Subagents normally increase raw token volume, so delegate
+only when a cheaper agent is expected to replace a substantial amount of Sol
+work rather than duplicate it.
+
+- Do not spawn a subagent for small tasks, one-file changes, straightforward
+  questions, or work confined to one already-understood subsystem. The primary
+  agent should complete those directly.
+- Use at most one subagent at a time. Subagents must not spawn other subagents.
+  Do not delegate merely for parallel speed, a routine second opinion, or to
+  repeat analysis the primary agent already performed.
+- Prefer the project-scoped `sauti_explorer` Luna agent when a substantial
+  read-only search, code-path map, inventory, test-log analysis, documentation
+  trace, or summarization can replace equivalent Sol exploration.
+- If Luna is unavailable in the active Codex client or workspace, use a Terra
+  agent with low reasoning effort for the same work.
+- Use the project-scoped `sauti_reviewer` Terra agent for focused correctness,
+  regression, security, tenant-isolation, and missing-test review only when the
+  change risk justifies a separate review. Do not run it automatically after
+  every implementation.
+- Use the project-scoped `sauti_worker` Terra agent only for a well-bounded
+  implementation with explicit acceptance criteria when it will materially
+  reduce the implementation work otherwise performed by Sol.
+- Give delegated agents only the context, paths, constraints, and output fields
+  needed for their assignment. Require concise summaries instead of raw logs.
+- After delegation, Sol should use the returned evidence and perform targeted
+  validation; it should not repeat the full delegated exploration or
+  implementation unless the result is incomplete or inconsistent.
+- Keep architecture, ambiguous requirements, cross-stack integration, final
+  decisions, and final verification with the primary Sol agent.
+- Always keep authentication and authorization, tenant isolation, credential
+  encryption, billing and payment confirmation, OAuth token lifecycle,
+  telephony control, database migrations, production configuration, and CI/CD
+  release behavior under primary Sol ownership. Subagents may inspect or review
+  these areas, but Sol must decide and integrate any change.
+- The primary agent must wait for required subagent results, reconcile them,
+  inspect all edits, run final verification, and update
+  `docs/agent-handoff.md`. Delegated writers should return exact handoff notes
+  to the primary agent instead of editing the handoff concurrently.
+- All subagents remain subject to this file, including the prohibition on
+  staging, committing, pushing, opening pull requests, and manual deployment.
+
 ## Source control and deployment policy
 
 - Coding agents do not commit or push changes. A human maintainer or separately authorized source-control automation owns commits and pushes.

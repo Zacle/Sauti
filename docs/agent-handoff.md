@@ -15,6 +15,142 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-09: Founder-story Reel composition for “I started building”
+
+- Created a 60-second, 1080x1920 HyperFrames composition focused on a sharper
+  first three seconds, an authentic illness-to-builder arc, and a delayed
+  Sauti reveal at approximately 14 seconds so the product reads as a turning
+  point rather than an opening pitch.
+- Added a restrained Soft Signal / Sauti Blue visual identity, nine timed scenes,
+  transition overlays, concise on-screen copy, a product/UI proof section, and
+  an end-card CTA. The composition is intentionally built from branded UI cards
+  and a placeholder wristband/memory treatment because no personal hospital,
+  face, or desk footage was supplied; those clips can replace the matching
+  scenes without changing the timing.
+- Added local Kokoro narration source and a 60-second retimed narration track,
+  plus the rendered MP4 artifact.
+- Files touched:
+  - `video/sauti-journey/DESIGN.md`;
+  - `video/sauti-journey/index.html`;
+  - `video/sauti-journey/narration.txt`;
+  - `video/sauti-journey/narration.wav`;
+  - `video/sauti-journey/narration-fast.wav`;
+  - `video/sauti-journey/sauti-logo.png`;
+  - `video/sauti-journey/sauti-journey-reel.mp4`;
+  - `docs/agent-handoff.md`.
+- Verification:
+  - `npx hyperframes lint` passed with one non-blocking composition-root
+    selector warning;
+  - `npx hyperframes validate` passed with no console or WCAG errors;
+  - `npx hyperframes inspect --at 1.5,4,7.25` equivalent focused inspection
+    passed with only an intentional decorative glow overflow, marked ignored;
+  - FFprobe confirms H.264/AAC, 1080x1920, 60.000 seconds, 4.3 MB;
+  - rendered with `npx hyperframes render --output sauti-journey-reel.mp4
+    --quality standard --fps 30`.
+- Deployment status: not applicable; local video artifact only. All changes
+  remain uncommitted for maintainer review.
+- Known follow-up: replace the placeholder memory, face, and desk moments with
+  the creator’s own clips and record a final human narration before publishing.
+
+### 2026-08-09: Add cost-aware Codex subagent routing
+
+- Added project-scoped Codex configuration that permits only one subagent at a
+  time and defaults otherwise unspecified delegated work to GPT-5.6 Terra at
+  medium reasoning.
+- Added a Luna read-only explorer for narrow searches and summarization, a
+  Terra high-reasoning read-only reviewer, and a Terra medium-reasoning bounded
+  implementation worker. The routing policy falls back to Terra low for
+  exploration when Luna is unavailable.
+- Updated `AGENTS.md` with a conservative consumption-first policy until the
+  user revokes it. Small or already-understood tasks stay with Sol; only one
+  cheaper subagent may run when it is expected to replace substantial Sol work,
+  and nested delegation, routine second opinions, and speed-only parallelism
+  are prohibited.
+- Luna is preferred for substantial read-only offloads. Terra implementation
+  and review agents are used only when their bounded work or risk-focused review
+  justifies the additional agent. Primary Sol retains architecture, sensitive
+  decisions, integration, targeted validation, final verification, and handoff
+  ownership without repeating completed delegated work by default.
+- Files touched: `AGENTS.md`, `.codex/config.toml`,
+  `.codex/agents/sauti-explorer.toml`,
+  `.codex/agents/sauti-reviewer.toml`,
+  `.codex/agents/sauti-worker.toml`, and `docs/agent-handoff.md`.
+- Verification: TOML parsing, configuration-value assertions,
+  `git diff --check`, and worktree inspection.
+- Deployment status: configuration-only repository change; not deployed and
+  left uncommitted for maintainer review.
+- Known risks: Luna availability depends on the active Codex client and
+  workspace, so the policy falls back to Terra low when Luna cannot be selected.
+  Lower weighted usage is expected only when delegated work genuinely replaces
+  Sol work; the policy avoids claiming that subagents reduce raw token volume.
+
+### 2026-08-09: Unify the marketing homepage with a glass surface system
+
+- Kept the existing homepage structure, content, animations, and routes intact,
+  while replacing the alternating opaque section backgrounds with one continuous
+  midnight ambient canvas.
+- Introduced restrained glass surfaces for the outcomes strip, conversation
+  dialogue, capabilities, language demo, trust grid, tailored-pilot card, and
+  final CTA. This uses low-opacity navy, soft blur, fine cool borders, and
+  restrained teal depth so content still has clear grouping without looking
+  like disconnected coloured slabs.
+- Files touched: `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`,
+  `dashboard/design-qa.md`, and this handoff record.
+- Verification: dashboard typecheck, lint, production build, local browser
+  visual check at desktop width, and `git diff --check`.
+- Deployment status: not deployed; all changes remain uncommitted for
+  maintainer review.
+- Known follow-up: perform a mobile visual pass before any production release.
+
+### 2026-08-09: Repair homepage glass readability
+
+- Corrected the conversation-dialogue treatment so the decorative waveform no
+  longer crosses through message copy; each message now has a stronger readable
+  dark glass surface.
+- Increased the opacity and text contrast of the outcome rail, and added a
+  subtle glass treatment to existing industry-card copy without changing the
+  card content, imagery, or layout.
+- Files touched: `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  and this handoff record.
+- Verification: dashboard typecheck, lint, production build, desktop browser
+  review of outcomes, conversation dialogue, and industry cards, plus
+  `git diff --check`.
+- Deployment status: not deployed; all changes remain uncommitted.
+
+### 2026-08-09: Strengthen the homepage ambient gradient
+
+- Refined the shared homepage backdrop into a more visible navy-to-teal and
+  cobalt ambient gradient, while retaining the low-opacity glass surfaces as
+  the content layer above it.
+- Files touched: `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  and this handoff record.
+- Verification: dashboard typecheck, lint, production build, desktop visual
+  review, and `git diff --check`.
+- Deployment status: not deployed; all changes remain uncommitted.
+
+### 2026-08-09: Verify repaired homepage cards
+
+- Rebuilt and reviewed the homepage after the glass-readability and gradient
+  corrections. Conversation message cards are readable over a subdued waveform,
+  the outcomes rail retains contrast, and all five AI voice-agent industry cards
+  render with contained glass copy panels.
+- Files touched: `dashboard/design-qa.md` and this handoff record.
+- Verification: dashboard typecheck, lint, production build, browser captures
+  of the conversation/capabilities and industry areas, and `git diff --check`.
+- Deployment status: not deployed; all changes remain uncommitted.
+
+### 2026-08-09: Restore original AI voice-agent industry cards
+
+- Reverted the added glass copy panels, borders, and shadows from the existing
+  AI voice-agent industry cards at the user's request. The original image-card
+  presentation is restored; the shared homepage gradient and other glass
+  surfaces remain unchanged.
+- Files touched: `dashboard/features/marketing/ReferenceHome/ReferenceHome.module.css`
+  and this handoff record.
+- Verification: dashboard typecheck, production build, browser review of the
+  industry section, and `git diff --check`.
+- Deployment status: not deployed; all changes remain uncommitted.
+
 ### 2026-08-07: Add privacy-preserving public acquisition analytics
 
 - Added first-party marketing analytics without a third-party account or
