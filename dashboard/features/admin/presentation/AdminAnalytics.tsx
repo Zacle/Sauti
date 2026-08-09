@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, Clock3, LoaderCircle, Mic2, MousePointerClick, PhoneCall, RefreshCw, ServerCog, Users } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { getAdminPlatformAnalytics, getAdminQueueHealth, getAdminReliabilityIncidents } from "@/lib/api/admin";
-import type { AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityIncident } from "@/types/api";
+import { getAdminPlatformAnalytics, getAdminQueueHealth, getAdminReliabilityIncidents, getAdminSlos } from "@/lib/api/admin";
+import type { AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityIncident, AdminSlo } from "@/types/api";
 import styles from "./AdminAnalytics.module.css";
 import webStyles from "./AdminWebAnalytics.module.css";
 import polish from "./AdminPolish.module.css";
@@ -16,19 +16,22 @@ export function AdminAnalytics() {
   const [data, setData] = useState<AdminPlatformAnalytics | null>(null);
   const [incidents, setIncidents] = useState<AdminReliabilityIncident[]>([]);
   const [queues, setQueues] = useState<AdminQueueHealth[]>([]);
+  const [slos, setSlos] = useState<AdminSlo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const load = useCallback(async (range: Days) => {
     setLoading(true); setError("");
     try {
-      const [analytics, reliabilityIncidents, queueHealth] = await Promise.all([
+      const [analytics, reliabilityIncidents, queueHealth, sloHealth] = await Promise.all([
         getAdminPlatformAnalytics(range),
         getAdminReliabilityIncidents(),
         getAdminQueueHealth(),
+        getAdminSlos(),
       ]);
       setData(analytics);
       setIncidents(reliabilityIncidents);
       setQueues(queueHealth);
+      setSlos(sloHealth);
     }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Unable to load platform analytics."); }
     finally { setLoading(false); }
@@ -64,6 +67,7 @@ export function AdminAnalytics() {
         <Card title="Provider health" subtitle="Observed connection, delivery, and reconciliation evidence" wide><ProviderHealth data={data}/></Card>
         <Card title="Reliability incidents" subtitle="Deduplicated alerts and recovery history" wide><ReliabilityIncidents incidents={incidents}/></Card>
         <Card title="Background queues" subtitle="Pending, retrying, and exhausted durable work" wide><QueueHealth queues={queues}/></Card>
+        <Card title="Service objectives" subtitle="Stored production evidence compared with pilot alert thresholds" wide><SloHealth slos={slos}/></Card>
       </section>
       <p className={styles.generated}>Generated {new Date(data.generatedAt).toLocaleString()} · This is operational evidence, not a live provider uptime check.</p>
     </>}
@@ -132,6 +136,15 @@ function QueueHealth({ queues }: { queues: AdminQueueHealth[] }) {
     <p>{queue.oldestQueuedAt ? `Oldest active item ${relativeAge(queue.oldestQueuedAt)}` : "No active item waiting"}</p>
   </article>)}</div>;
 }
+function SloHealth({ slos }: { slos: AdminSlo[] }) {
+  if (!slos.length) return <Empty text="No service objectives are configured."/>;
+  return <div className={styles.sloGrid}>{slos.map((slo) => <article key={slo.key}>
+    <div><strong>{slo.label}</strong><span className={styles[slo.status] ?? ""}>{human(slo.status)}</span></div>
+    <b>{sloValue(slo.actual, slo.unit)}</b>
+    <p>{slo.detail}</p>
+    <small>Warning at {sloValue(slo.warningThreshold, slo.unit)} · Critical at {sloValue(slo.criticalThreshold, slo.unit)}{slo.windowMinutes ? ` · ${slo.windowMinutes}m window` : ""}</small>
+  </article>)}</div>;
+}
 function Empty({ text }: { text: string }) { return <div className={styles.empty}>{text}</div>; }
 function format(value: number) { return new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(value); }
 function money(value: number, currency: string) { return new Intl.NumberFormat("en", { style: "currency", currency }).format(value); }
@@ -139,4 +152,5 @@ function duration(seconds: number) { const hours = Math.floor(seconds / 3600); c
 function dateLabel(value: string) { return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`)); }
 function human(value: string) { return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function relativeAge(value: string) { const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000)); if (seconds < 60) return `${seconds}s ago`; if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`; return `${Math.floor(seconds / 3600)}h ago`; }
+function sloValue(value: number, unit: string) { if (unit === "percent") return `${format(value)}%`; if (unit === "milliseconds") return `${format(value)} ms`; if (unit === "minutes") return `${format(value)} min`; return `${format(value)} ${unit}`; }
 const tooltipStyle = { border: "1px solid #265166", borderRadius: 12, background: "#071925", color: "#dcebf2" };

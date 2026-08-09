@@ -15,6 +15,36 @@ This document lets a new coding agent continue safely from the previous state. U
 - The dashboard is Next.js, not Flutter.
 - Real secrets are intentionally not stored in git.
 
+### 2026-08-09: Define pilot SLOs and connect breaches to incidents
+
+- Added configurable, evidence-backed pilot SLO evaluation for durable queue
+  delay, production call failure rate, and average stored LLM-plus-TTS response
+  generation time. Queue age warns at five minutes and becomes critical at
+  thirty minutes by default; any exhausted item is critical immediately.
+- Production call targets use a rolling fifteen-minute window, exclude browser
+  test and still-active calls, ignore zero-time opening turns, and remain
+  `insufficient_data` below five completed calls or ten measured voice turns.
+  This prevents one test or pilot call from creating an incident.
+- Connected warning/critical SLO breaches to the existing deduplicated incident,
+  support-email, and recovery path. Provider and SLO observations are collected
+  before resolution so one signal category cannot incorrectly resolve another.
+- Added the platform-admin-only `/api/v1/admin/reliability/slos` endpoint and a
+  Service objectives section showing actual values, thresholds, evidence
+  windows, and sample sufficiency in Admin Analytics.
+- Documented the intentional telemetry gap: true call-start-to-first-audible-
+  audio latency is not stored and must not be inferred from turn latency.
+- Files touched: call/call-turn repositories; reliability SLO, monitoring,
+  controller, email and tests; application and example environment config;
+  dashboard admin API/types/analytics UI; Phase 2 roadmap and this handoff.
+- Verification: focused reliability tests and the full backend test suite passed;
+  dashboard typecheck, zero-warning ESLint, and optimized production build also
+  passed; `git diff --check` passed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+- Next Phase 2 slice: add explicit first-audio telemetry, then publish incident
+  runbooks and execute a production reliability drill. Live off-site backup
+  acceptance remains deferred by the user and does not block this work.
+
 ### 2026-08-09: Add cross-module queue and retry visibility
 
 - Deferred live off-site backup acceptance at the user's request while funds

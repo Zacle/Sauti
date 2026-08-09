@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ReliabilityMonitoringService {
     private final PlatformIntegrationHealthService providerHealth;
     private final ReliabilityIncidentRepository incidents;
+    private final SloEvaluationService slos;
     private final ApplicationEventPublisher events;
     private final boolean enabled;
     private final int lookbackHours;
@@ -24,12 +25,14 @@ public class ReliabilityMonitoringService {
     public ReliabilityMonitoringService(
             PlatformIntegrationHealthService providerHealth,
             ReliabilityIncidentRepository incidents,
+            SloEvaluationService slos,
             ApplicationEventPublisher events,
             @Value("${sauti.reliability.alerts.enabled:false}") boolean enabled,
             @Value("${sauti.reliability.alerts.lookback-hours:24}") int lookbackHours,
             @Value("${sauti.reliability.alerts.warning-grace-minutes:10}") int warningGraceMinutes) {
         this.providerHealth = providerHealth;
         this.incidents = incidents;
+        this.slos = slos;
         this.events = events;
         this.enabled = enabled;
         this.lookbackHours = Math.max(1, lookbackHours);
@@ -43,20 +46,28 @@ public class ReliabilityMonitoringService {
     }
 
     void evaluate(OffsetDateTime now) {
-        var observedProviders = new HashSet<String>();
+        var observations = new java.util.ArrayList<Observation>();
         for (var health : providerHealth.snapshot(now.minusHours(lookbackHours))) {
             if (!List.of("degraded", "attention").contains(health.status())) continue;
-            observedProviders.add(health.provider());
             var severity = "attention".equals(health.status()) ? "critical" : "warning";
-            var summary = summary(health);
+            observations.add(new Observation(health.provider(), severity, summary(health)));
+        }
+        for (var slo : slos.snapshot(now)) {
+            if (!slo.breached()) continue;
+            observations.add(new Observation(slo.key(), slo.status(), slo.detail()));
+        }
+
+        var observedProviders = new HashSet<String>();
+        for (var observation : observations) {
+            observedProviders.add(observation.key());
             var open = incidents.findFirstByProviderAndStatusOrderByFirstDetectedAtDesc(
-                    health.provider(), "open");
+                    observation.key(), "open");
             var incident = open.orElseGet(() -> new ReliabilityIncident(
-                    health.provider(), severity, summary, now));
-            if (open.isPresent()) incident.observed(severity, summary, now);
+                    observation.key(), observation.severity(), observation.summary(), now));
+            if (open.isPresent()) incident.observed(observation.severity(), observation.summary(), now);
             incident = incidents.save(incident);
             var warningMatured = !incident.getFirstDetectedAt().isAfter(now.minusMinutes(warningGraceMinutes));
-            if (incident.getNotifiedAt() == null && ("critical".equals(severity) || warningMatured)) {
+            if (incident.getNotifiedAt() == null && ("critical".equals(observation.severity()) || warningMatured)) {
                 publish(incident, false, now);
             }
         }
@@ -90,6 +101,8 @@ public class ReliabilityMonitoringService {
         return "%d connection errors, %d failed deliveries, and %d deliveries retrying in the last %d hours"
                 .formatted(health.connectionErrors(), health.failed(), health.retrying(), lookbackHours);
     }
+
+    private record Observation(String key, String severity, String summary) { }
 
     public record IncidentView(UUID id, String provider, String severity, String status, String summary,
                                OffsetDateTime firstDetectedAt, OffsetDateTime lastDetectedAt,

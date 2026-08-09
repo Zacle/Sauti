@@ -110,13 +110,31 @@ without relying on a customer to report them first.
   operational KPI so silent background failures are visible without database
   access.
 
+### Slice 4: measurable pilot SLOs and automatic incidents
+
+- Evaluate every durable queue against a five-minute warning and thirty-minute
+  critical oldest-item target. Any terminally exhausted work is critical
+  immediately, regardless of age.
+- Evaluate completed production call failure rate and stored non-zero
+  LLM-plus-TTS response time
+  over a rolling fifteen-minute window. Browser test calls are excluded, and
+  the targets stay `insufficient_data` until at least five production calls or
+  ten production turns exist, preventing a single pilot call from raising a
+  platform incident.
+- Open, deduplicate, notify, and resolve SLO incidents through the same durable
+  reliability incident model as provider failures. Show actual values,
+  thresholds, sample sufficiency, and evidence details in Admin Analytics.
+- True call-start-to-first-audible-audio latency is not yet persisted. Do not
+  infer it from turn timings; add explicit browser and phone startup telemetry
+  before making it an alerting SLO.
+
 ### Remaining Phase 2 slices
 
 1. Configure off-site storage and execute the documented restore drill against
    an isolated database; retain the generated evidence without customer rows or
    credentials.
-2. Define Sauti SLOs for health, call startup, first audio, turn failures, and
-   job delay, then connect thresholds to the incident model.
+2. Persist explicit browser and phone call-start-to-first-audio telemetry, then
+   add the startup SLO without conflating it with LLM/TTS response timing.
 3. Publish incident runbooks and record one end-to-end production reliability
    drill, including detection, operator notification, mitigation, and recovery.
 

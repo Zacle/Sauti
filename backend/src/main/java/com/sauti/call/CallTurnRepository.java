@@ -3,6 +3,7 @@ package com.sauti.call;
 import java.util.List;
 import java.util.UUID;
 import java.util.Optional;
+import java.time.OffsetDateTime;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -26,9 +27,24 @@ public interface CallTurnRepository extends JpaRepository<CallTurn, UUID> {
             """)
     LatencyStats avgLatencies(@Param("tenantId") UUID tenantId);
 
+    @Query("""
+            SELECT COUNT(ct) as sampleSize,
+                   COALESCE(AVG(ct.llmLatencyMs + ct.ttsLatencyMs), 0) as avgResponseMs
+            FROM CallTurn ct
+            WHERE ct.createdAt >= :from
+              AND ct.call.direction <> 'test'
+              AND (ct.llmLatencyMs > 0 OR ct.ttsLatencyMs > 0)
+            """)
+    PlatformResponseLatency platformResponseLatencySince(@Param("from") OffsetDateTime from);
+
     interface LatencyStats {
         Double getAvgSttMs();
         Double getAvgLlmMs();
         Double getAvgTtsMs();
+    }
+
+    interface PlatformResponseLatency {
+        Long getSampleSize();
+        Double getAvgResponseMs();
     }
 }

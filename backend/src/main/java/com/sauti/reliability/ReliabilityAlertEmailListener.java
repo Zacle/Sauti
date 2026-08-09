@@ -66,7 +66,7 @@ public class ReliabilityAlertEmailListener {
         return """
                 <!doctype html><html><body style="font-family:Arial,sans-serif;color:#10243a">
                 <h2>Sauti reliability incident %s</h2>
-                <p><strong>Provider:</strong> %s</p>
+                <p><strong>Signal:</strong> %s</p>
                 <p><strong>Severity:</strong> %s</p>
                 <p>%s</p>
                 <p><a href="%s">Open platform analytics</a></p>

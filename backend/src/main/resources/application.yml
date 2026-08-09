@@ -116,6 +116,16 @@ sauti:
       lookback-hours: ${SAUTI_RELIABILITY_LOOKBACK_HOURS:24}
       warning-grace-minutes: ${SAUTI_RELIABILITY_WARNING_GRACE_MINUTES:10}
       poll-delay-ms: ${SAUTI_RELIABILITY_POLL_DELAY_MS:300000}
+    slo:
+      queue-warning-minutes: ${SAUTI_SLO_QUEUE_WARNING_MINUTES:5}
+      queue-critical-minutes: ${SAUTI_SLO_QUEUE_CRITICAL_MINUTES:30}
+      call-window-minutes: ${SAUTI_SLO_CALL_WINDOW_MINUTES:15}
+      minimum-call-sample: ${SAUTI_SLO_MINIMUM_CALL_SAMPLE:5}
+      failure-warning-percent: ${SAUTI_SLO_FAILURE_WARNING_PERCENT:10}
+      failure-critical-percent: ${SAUTI_SLO_FAILURE_CRITICAL_PERCENT:25}
+      minimum-turn-sample: ${SAUTI_SLO_MINIMUM_TURN_SAMPLE:10}
+      response-warning-ms: ${SAUTI_SLO_RESPONSE_WARNING_MS:2500}
+      response-critical-ms: ${SAUTI_SLO_RESPONSE_CRITICAL_MS:5000}
   analytics:
     hash-secret: ${SAUTI_ANALYTICS_HASH_SECRET:${JWT_SECRET:dev-only-change-me-dev-only-change-me}}
     retention-cron: ${SAUTI_ANALYTICS_RETENTION_CRON:0 41 3 * * *}

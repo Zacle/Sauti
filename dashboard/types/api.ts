@@ -159,6 +159,19 @@ export type AdminQueueHealth = {
   oldestQueuedAt: string | null;
 };
 
+export type AdminSlo = {
+  key: string;
+  label: string;
+  status: "healthy" | "warning" | "critical" | "insufficient_data" | string;
+  actual: number;
+  unit: "minutes" | "percent" | "milliseconds" | string;
+  warningThreshold: number;
+  criticalThreshold: number;
+  sampleSize: number;
+  windowMinutes: number;
+  detail: string;
+};
+
 export type WorkspaceNotification = {
   id: string;
   type: "booking.confirmed" | "booking.follow_up_required" | string;

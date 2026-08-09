@@ -1,4 +1,4 @@
-import type { AdminAuditPage, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityIncident, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
+import type { AdminAuditPage, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityIncident, AdminSlo, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
 import { apiRequest } from "./client";
 
 export function getAdminOverview() {
@@ -93,4 +93,8 @@ export function getAdminReliabilityIncidents() {
 
 export function getAdminQueueHealth() {
   return apiRequest<AdminQueueHealth[]>("/admin/reliability/queues");
+}
+
+export function getAdminSlos() {
+  return apiRequest<AdminSlo[]>("/admin/reliability/slos");
 }

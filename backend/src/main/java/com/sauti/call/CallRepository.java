@@ -146,6 +146,22 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
             OffsetDateTime to
     );
 
+    @Query("""
+            select count(c) from Call c
+            where c.startedAt >= :from
+              and c.direction <> 'test'
+              and c.outcome <> 'active'
+            """)
+    long countCompletedProductionCallsStartedSince(@Param("from") OffsetDateTime from);
+
+    @Query("""
+            select count(c) from Call c
+            where c.startedAt >= :from
+              and c.direction <> 'test'
+              and c.outcome = 'failed'
+            """)
+    long countFailedProductionCallsStartedSince(@Param("from") OffsetDateTime from);
+
     interface LanguageStat {
         String getLanguage();
         Long getCallCount();
