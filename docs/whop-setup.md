@@ -25,12 +25,14 @@ and Sauti applies the new plan only after the signed membership webhook arrives.
 All six base plans must therefore belong to the same Whop product so they are
 available as plan-change options in the membership portal.
 
-Whop's current documented membership update API accepts membership metadata;
-it does not expose a documented server-side target-plan or customer
-cancel-at-period-end request. Sauti must therefore not imitate a plan change by
-creating a second checkout. The billing UI presents the current and target plan,
-then guides the customer into the membership-specific Whop portal for the final
-billing authorization. If a sandbox account already has two Sauti base
+Whop's current documented membership update API accepts membership metadata but
+does not expose a server-side target-plan mutation. Sauti must therefore not
+imitate a plan change by creating a second checkout. The billing UI presents the
+current and target plan, then guides the customer into the membership-specific
+Whop portal for the final billing authorization. Cancellation is different:
+Sauti calls Whop's documented membership cancellation endpoint for the exact
+tenant-owned membership and schedules it at the end of the paid period. If a
+sandbox account already has two Sauti base
 memberships, cancel the unwanted membership in Whop and verify that all six
 configured base plan IDs belong to the same Whop product before testing again.
 
@@ -160,6 +162,22 @@ The checkout redirect is presentation only. Sauti never grants a plan from a
 the workspace subscription.
 
 ## Safe acceptance
+
+### Clean up repeated sandbox checkouts first
+
+Every completed checkout creates a separate Whop membership; repeating a base
+checkout is not an upgrade. The Sauti billing page labels the single membership
+synchronized with the workspace as **Current subscription to keep** and shows
+its Whop membership reference. In Whop Dashboard, open **Users**, choose the
+customer, and use **Access details** to match that reference. Cancel the other
+test memberships. Do not choose between same-priced memberships by price alone.
+
+After a base membership has synchronized, Sauti does not create another base
+checkout for that workspace. It opens the membership-specific Whop management
+URL. If Whop does not show a plan-change control for that membership, do not
+create a replacement subscription as a workaround; review that all six plan
+IDs belong to the same Whop product and contact Whop support if the control is
+still unavailable.
 
 1. Start in Whop sandbox and create all six plans there.
 2. Complete the first base checkout, then change from Growth to Scale through

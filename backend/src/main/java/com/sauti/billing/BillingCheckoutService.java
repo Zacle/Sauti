@@ -38,6 +38,12 @@ public class BillingCheckoutService {
         return gateway.createAddOn(tenantId, request);
     }
 
+    public BillingCheckoutGateway.CancellationResponse cancel(UUID tenantId) {
+        var gateway = gateways.get(activeProvider);
+        if (gateway == null) throw new IllegalStateException("Configured billing provider is not available");
+        return gateway.cancel(tenantId);
+    }
+
     public CheckoutStatus status() {
         var gateway = gateways.get(activeProvider);
         var environment = "whop".equals(activeProvider) && whopSandbox ? "sandbox" : "live";

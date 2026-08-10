@@ -126,6 +126,45 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
         return new AddOnCheckoutResponse(url, selection.id(), provider());
     }
 
+    @Override
+    public CancellationResponse cancel(UUID tenantId) {
+        if (!coreConfigured()) throw new IllegalStateException("Whop billing is not configured");
+        tenants.findById(tenantId).orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
+        var subscription = subscriptions.findByTenantId(tenantId)
+                .orElseThrow(() -> new IllegalStateException("This workspace does not have an active subscription"));
+        if (!provider().equals(subscription.getProvider())) {
+            throw new IllegalStateException("This workspace subscription belongs to a different billing provider");
+        }
+        var membershipId = subscription.getProviderSubscriptionId();
+        if (membershipId == null || !membershipId.matches("[A-Za-z0-9_=-]+")) {
+            throw new IllegalStateException("The Whop membership reference is invalid");
+        }
+        try {
+            var httpRequest = HttpRequest.newBuilder(URI.create(apiBaseUrl + "/memberships/" + membershipId + "/cancel"))
+                    .timeout(Duration.ofSeconds(12))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Api-Version-Date", apiVersionDate)
+                    .header("Accept", "application/json")
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"cancellation_mode\":\"at_period_end\"}"))
+                    .build();
+            var response = http.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                LOGGER.warn("Whop membership cancellation failed with status {} and type {}",
+                        response.statusCode(), providerErrorType(response.body()));
+                throw providerFailure(response.statusCode());
+            }
+            return new CancellationResponse(provider(), "canceling");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Subscription cancellation was interrupted", exception);
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Whop subscription cancellation is temporarily unavailable", exception);
+        }
+    }
+
     private String createHostedCheckout(String planId, Map<String, String> metadata) {
         var payload = Map.of(
                 "company_id", companyId,

@@ -8,6 +8,7 @@ import com.sauti.billing.BillingCheckoutGateway.CheckoutRequest;
 import com.sauti.billing.BillingCheckoutGateway.CheckoutResponse;
 import com.sauti.billing.BillingCheckoutGateway.AddOnCheckoutRequest;
 import com.sauti.billing.BillingCheckoutGateway.AddOnCheckoutResponse;
+import com.sauti.billing.BillingCheckoutGateway.CancellationResponse;
 import com.sauti.billing.BillingCheckoutService;
 import com.sauti.billing.BillingCheckoutService.CheckoutStatus;
 import org.springframework.http.HttpStatus;
@@ -61,6 +62,15 @@ public class BillingController {
             return checkoutService.createAddOn(user.tenantId(), request);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+        }
+    }
+
+    @PostMapping("/subscription/cancel")
+    CancellationResponse cancelSubscription(@AuthenticationPrincipal AuthenticatedUser user) {
+        try {
+            return checkoutService.cancel(user.tenantId());
         } catch (IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
         }

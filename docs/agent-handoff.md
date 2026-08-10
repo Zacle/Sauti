@@ -11607,3 +11607,34 @@ Expected:
 - Existing sandbox remediation: the screenshot shows Growth and Scale as two
   active memberships. Cancel the unwanted one in Whop before the next test, then
   confirm all six Sauti base plan IDs are pricing options on one Whop product.
+
+### 2026-08-10 - Duplicate Whop membership identification and checkout return recovery
+
+- Confirmed from the sandbox payment history that repeated checkout tests
+  created four independent active base memberships rather than upgrading one:
+  one Growth membership and three Scale memberships. Sauti continues to treat
+  its tenant-scoped subscription record as authoritative.
+- Added the exact Whop membership reference to the authenticated billing account
+  response and a prominent `Current subscription to keep` notice. This lets the
+  operator match the synchronized membership through Whop Dashboard `Users ->
+  Access details` and cancel duplicate test memberships without guessing between
+  identical prices.
+- Reset base-plan and add-on checkout progress whenever the billing tab returns
+  through browser history, regains focus, or becomes visible. Abandoning a Whop
+  checkout can no longer leave an add-on button indefinitely at `Opening...`.
+- Added responsive styling for the current-subscription notice and a focused
+  billing service test for the provider reference.
+- Replaced the generic Whop cancellation redirect with a tenant-scoped Sauti
+  action against the exact synchronized membership. Cancellation is scheduled
+  at the end of the paid period and local state still changes only after Whop's
+  signed membership webhook.
+- Files touched: billing DTO/test, dashboard API type and billing presentation,
+  Whop setup documentation, and this handoff.
+- Verification:
+  - focused `WhopCheckoutServiceTest` and `BillingServiceTest` passed;
+  - complete `:backend:test` passed;
+  - dashboard `npm.cmd run typecheck`, `npm.cmd run lint`, and
+    `npm.cmd run build` passed; the production build generated all 61 pages;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.

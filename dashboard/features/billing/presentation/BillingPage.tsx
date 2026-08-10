@@ -39,7 +39,7 @@ import {
   YAxis,
 } from "recharts";
 import { pricingPlans, type PricingPlanId } from "@/features/marketing/Pricing/domain/pricing-model";
-import { createBillingAddOnCheckout, createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage } from "@/lib/api/billing";
+import { cancelBillingSubscription, createBillingAddOnCheckout, createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage } from "@/lib/api/billing";
 import type { BillingAccount, BillingCheckoutStatus, BillingUsage } from "@/types/api";
 import {
   billingAddOns,
@@ -85,6 +85,7 @@ export function BillingPage() {
   const [managementIntent, setManagementIntent] = useState<"change" | "cancel">("change");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [billingActionMessage, setBillingActionMessage] = useState("");
   const [addOnCheckoutLoading, setAddOnCheckoutLoading] = useState<BillingAddOnId | null>(null);
   const [addOnCheckoutError, setAddOnCheckoutError] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -130,6 +131,24 @@ export function BillingPage() {
       closeButtonRef.current?.focus();
     }
   }, [previewOpen]);
+
+  useEffect(() => {
+    function resetReturnedCheckout() {
+      setCheckoutLoading(false);
+      setAddOnCheckoutLoading(null);
+    }
+    function resetWhenVisible() {
+      if (document.visibilityState === "visible") resetReturnedCheckout();
+    }
+    window.addEventListener("pageshow", resetReturnedCheckout);
+    window.addEventListener("focus", resetReturnedCheckout);
+    document.addEventListener("visibilitychange", resetWhenVisible);
+    return () => {
+      window.removeEventListener("pageshow", resetReturnedCheckout);
+      window.removeEventListener("focus", resetReturnedCheckout);
+      document.removeEventListener("visibilitychange", resetWhenVisible);
+    };
+  }, []);
 
   const currentPlan = useMemo(() => resolvePlan(usage), [usage]);
   const selectedPlan = useMemo(() => planById(selectedPlanId), [selectedPlanId]);
@@ -185,6 +204,13 @@ export function BillingPage() {
     setCheckoutLoading(true);
     setCheckoutError("");
     try {
+      if (account?.subscription && managementIntent === "cancel") {
+        await cancelBillingSubscription();
+        setPreviewOpen(false);
+        setBillingActionMessage("Cancellation scheduled. Your access remains available through the current paid period.");
+        setReloadKey((key) => key + 1);
+        return;
+      }
       const checkout = await createBillingCheckout(selectedPlan.id, interval);
       window.location.assign(checkout.url);
     } catch (caught) {
@@ -234,6 +260,8 @@ export function BillingPage() {
         </div>
         <em>{!checkoutConfigured ? "Setup required" : isSandbox ? "Sandbox" : "Live billing"}</em>
       </section>
+
+      {billingActionMessage && <section className={styles.actionSuccess} role="status"><Check size={18} /><span>{billingActionMessage}</span><button aria-label="Dismiss message" onClick={() => setBillingActionMessage("")} type="button"><X size={15} /></button></section>}
 
       {error && (
         <section className={styles.errorState} role="alert">
@@ -291,6 +319,7 @@ export function BillingPage() {
               addOnCheckoutError={addOnCheckoutError}
               addOnCheckoutLoading={addOnCheckoutLoading}
               hasSubscription={account?.subscription != null}
+              subscription={account?.subscription ?? null}
               isSandbox={isSandbox}
               startAddOnCheckout={startAddOnCheckout}
             />
@@ -310,7 +339,7 @@ export function BillingPage() {
               : `Review your ${isSandbox ? "test " : ""}checkout`}</h2>
             <p id="preview-description">{account?.subscription
               ? managementIntent === "cancel"
-                ? `You will keep access until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of the paid billing period"}. On Whop, choose the Sauti membership showing ${currentMembershipPrice}, then select Cancel subscription.`
+                ? `You will keep access until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of the paid billing period"}. Sauti will cancel the exact synchronized Whop membership; no provider selection is required.`
                 : `Whop must securely authorize this billing change. Open the Sauti membership showing ${currentMembershipPrice} and choose ${selectedPlan.name}. Do not purchase a second Sauti subscription.`
               : `Continuing opens ${checkoutProvider}. ${isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.`}</p>
             <div className={styles.dialogRows}>
@@ -331,7 +360,7 @@ export function BillingPage() {
             <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
               {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
               {checkoutLoading ? "Opening Whop…" : account?.subscription
-                ? managementIntent === "cancel" ? "Continue to cancellation" : "Continue plan change"
+                ? managementIntent === "cancel" ? "Schedule cancellation" : "Continue plan change"
                 : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
             </button>
             <button className={styles.checkoutCancel} disabled={checkoutLoading} onClick={() => setPreviewOpen(false)} type="button">Keep exploring</button>
@@ -565,7 +594,7 @@ function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab
   );
 }
 
-function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, openPlanDialog, projection, projectedMinutes, resetModel, selectedPlanId, setInterval, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout }: {
+function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, openPlanDialog, projection, projectedMinutes, resetModel, selectedPlanId, setInterval, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout, subscription }: {
   activeAddOns: NonNullable<BillingAccount["addOns"]>;
   addOnCheckoutError: string;
   addOnCheckoutLoading: BillingAddOnId | null;
@@ -585,11 +614,22 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
   setProjectedMinutes: (value: number) => void;
   setSelectedPlanId: (value: PricingPlanId) => void;
   startAddOnCheckout: (id: BillingAddOnId) => void;
+  subscription: BillingAccount["subscription"];
 }) {
   const selectedPlan = planById(selectedPlanId);
+  const currentPlan = planById(currentPlanId);
   const activeAddOnIds = new Set(activeAddOns.map((item) => item.addOn));
+  const currentPrice = subscription?.interval === "annual"
+    ? `${money(currentPlan.monthlyPrice * 0.9 * 12)} / year`
+    : `${money(currentPlan.monthlyPrice)} / month`;
+  const providerReference = subscription?.providerReference ?? "";
   return (
     <section className={styles.planStudio} aria-label="Plan and add-on modeller">
+      {subscription && <article className={styles.currentSubscriptionNotice}>
+        <span><ShieldCheck size={18} /></span>
+        <div><small>Current subscription to keep</small><strong>{currentPlan.name} · {currentPrice}</strong><p>This is the only membership synchronized with this workspace. Other active Sauti entries in Whop are separate test subscriptions, not upgrades.</p>{providerReference && <code>Whop reference: {providerReference}</code>}</div>
+        <em>{subscription.status === "canceling" ? "Cancellation scheduled" : "Active"}</em>
+      </article>}
       <article className={styles.planSelector}>
         <header className={styles.stepHeader}><span>1</span><div><h2>Choose a plan</h2><p>Select the allowance and capacity your workspace needs.</p></div></header>
         <div className={styles.intervalToggle} role="group" aria-label="Billing interval">

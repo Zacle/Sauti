@@ -1,4 +1,4 @@
-import type { BillingAccount, BillingAddOnCheckout, BillingCheckout, BillingCheckoutStatus, BillingUsage } from "@/types/api";
+import type { BillingAccount, BillingAddOnCheckout, BillingCancellation, BillingCheckout, BillingCheckoutStatus, BillingUsage } from "@/types/api";
 import { apiRequest } from "./client";
 
 export function loadBillingUsage(): Promise<BillingUsage> {
@@ -25,4 +25,8 @@ export function createBillingAddOnCheckout(addOn: BillingAddOnCheckout["addOn"])
     method: "POST",
     body: JSON.stringify({ addOn }),
   });
+}
+
+export function cancelBillingSubscription(): Promise<BillingCancellation> {
+  return apiRequest<BillingCancellation>("/billing/subscription/cancel", { method: "POST" });
 }

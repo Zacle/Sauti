@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.sauti.tenant.TenantRepository;
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -55,6 +56,28 @@ class BillingServiceTest {
         assertThat(response.reconciliation().reconciled()).isEqualTo(1);
         assertThat(response.reconciliation().retrying()).isEqualTo(1);
         assertThat(response.reconciliation().unavailable()).isZero();
+    }
+
+    @Test
+    void identifiesTheExactProviderMembershipSynchronizedWithTheWorkspace() {
+        var tenantId = UUID.randomUUID();
+        var account = new BillingAccount(tenantId);
+        var subscription = new BillingSubscription(tenantId, "whop", "mem_keep_this_one");
+        subscription.synchronize("user_1", "order_1", "product_1", "plan_1", "scale", "monthly",
+                "active", true, OffsetDateTime.now().plusMonths(1), null, null, OffsetDateTime.now(),
+                "visa", "4242", "https://whop.com/billing/manage/mem_keep_this_one");
+        when(ledger.account(tenantId)).thenReturn(account);
+        when(ledger.balances(tenantId)).thenReturn(Map.of());
+        when(ledger.currentCycle(tenantId)).thenReturn(List.of());
+        when(ledger.recent(tenantId)).thenReturn(List.of());
+        when(jobs.findAllByTenantId(tenantId)).thenReturn(List.of());
+        when(subscriptions.findByTenantId(tenantId)).thenReturn(java.util.Optional.of(subscription));
+        when(addOnSubscriptions.findAllByTenantId(tenantId)).thenReturn(List.of());
+
+        var response = service.account(tenantId);
+
+        assertThat(response.subscription().providerReference()).isEqualTo("mem_keep_this_one");
+        assertThat(response.subscription().plan()).isEqualTo("scale");
     }
 
     private CommunicationLedgerEntry entry(UUID tenantId, UUID accountId, String direction, String category,

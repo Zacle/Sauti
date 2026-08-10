@@ -89,12 +89,12 @@ public final class BillingDtos {
         }
     }
 
-    public record SubscriptionResponse(String provider, String plan, String interval, String status,
-                                       OffsetDateTime renewsAt, String manageUrl) {
+    public record SubscriptionResponse(String provider, String providerReference, String plan, String interval,
+                                       String status, OffsetDateTime renewsAt, String manageUrl) {
         static SubscriptionResponse from(BillingSubscription subscription) {
             return subscription == null ? null : new SubscriptionResponse(
-                    subscription.getProvider(), subscription.getPlan(), subscription.getBillingInterval(),
-                    subscription.getProviderStatus(), subscription.getRenewsAt(),
+                    subscription.getProvider(), subscription.getProviderSubscriptionId(), subscription.getPlan(),
+                    subscription.getBillingInterval(), subscription.getProviderStatus(), subscription.getRenewsAt(),
                     subscription.getUpdatePaymentMethodUrl());
         }
     }

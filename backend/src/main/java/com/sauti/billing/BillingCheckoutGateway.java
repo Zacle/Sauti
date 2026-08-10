@@ -15,6 +15,10 @@ public interface BillingCheckoutGateway {
         throw new IllegalStateException("Add-on checkout is not available for this billing provider");
     }
 
+    default CancellationResponse cancel(UUID tenantId) {
+        throw new IllegalStateException("Subscription cancellation is not available for this billing provider");
+    }
+
     record CheckoutRequest(String plan, String interval) { }
 
     record CheckoutResponse(String url, String plan, String interval, String provider) { }
@@ -22,4 +26,6 @@ public interface BillingCheckoutGateway {
     record AddOnCheckoutRequest(String addOn) { }
 
     record AddOnCheckoutResponse(String url, String addOn, String provider) { }
+
+    record CancellationResponse(String provider, String status) { }
 }

@@ -796,6 +796,109 @@
   min-width: 0;
 }
 
+.currentSubscriptionNotice {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(43, 220, 208, .32);
+  border-radius: 14px;
+  background: linear-gradient(100deg, rgba(9, 72, 79, .28), rgba(6, 27, 47, .88));
+}
+
+.currentSubscriptionNotice > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(43, 220, 208, .35);
+  border-radius: 50%;
+  color: #31dfd2;
+  background: rgba(12, 112, 111, .2);
+}
+
+.currentSubscriptionNotice > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.currentSubscriptionNotice small {
+  color: #31dfd2;
+  font-size: .59rem;
+}
+
+.currentSubscriptionNotice strong {
+  color: #e9f8fa;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.currentSubscriptionNotice p {
+  margin: 0;
+  color: #88a4b5;
+  font-size: .66rem;
+  line-height: 1.45;
+}
+
+.currentSubscriptionNotice code {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 3px;
+  overflow: hidden;
+  color: #a7c6d2;
+  font-size: .61rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.currentSubscriptionNotice > em {
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: #57e6db;
+  background: rgba(27, 172, 160, .14);
+  font-size: .59rem;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.actionSuccess {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(43, 220, 208, .3);
+  border-radius: 12px;
+  color: #bdece7;
+  background: rgba(9, 92, 88, .2);
+  font-size: .72rem;
+}
+
+.actionSuccess > svg {
+  color: #31dfd2;
+}
+
+.actionSuccess button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  color: #87aab3;
+  background: transparent;
+  cursor: pointer;
+}
+
+.actionSuccess button:hover {
+  color: #e8f8f7;
+  background: rgba(255, 255, 255, .05);
+}
+
 .planStudio small,
 .planStudio p,
 .planStudio footer {
@@ -958,6 +1061,17 @@
   border-color: rgba(240, 103, 103, .55);
   background: rgba(122, 40, 53, .2);
   filter: none;
+}
+
+@media (max-width: 560px) {
+  .currentSubscriptionNotice {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .currentSubscriptionNotice > em {
+    grid-column: 2;
+    justify-self: start;
+  }
 }
 
 .communicationCosts {

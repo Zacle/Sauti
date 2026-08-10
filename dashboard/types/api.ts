@@ -687,6 +687,7 @@ export type BillingAccount = {
   paidResourcesAllowed: boolean;
   subscription: {
     provider: string;
+    providerReference: string;
     plan: string;
     interval: "monthly" | "annual";
     status: string;
@@ -717,6 +718,11 @@ export type BillingAccount = {
     unavailable: number;
   };
   recentEntries: BillingLedgerEntry[];
+};
+
+export type BillingCancellation = {
+  provider: string;
+  status: string;
 };
 
 export type BillingCheckout = {
