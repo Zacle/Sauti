@@ -39,7 +39,7 @@ import {
   YAxis,
 } from "recharts";
 import { pricingPlans, type PricingPlanId } from "@/features/marketing/Pricing/domain/pricing-model";
-import { cancelBillingSubscription, createBillingAddOnCheckout, createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage } from "@/lib/api/billing";
+import { cancelBillingSubscription, createBillingAddOnCheckout, createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage, requestBillingPlanChange } from "@/lib/api/billing";
 import type { BillingAccount, BillingCheckoutStatus, BillingUsage } from "@/types/api";
 import {
   billingAddOns,
@@ -211,6 +211,13 @@ export function BillingPage() {
         setReloadKey((key) => key + 1);
         return;
       }
+      if (account?.subscription) {
+        await requestBillingPlanChange(selectedPlan.id, interval);
+        setPreviewOpen(false);
+        setBillingActionMessage(`Plan change requested. Your ${currentPlan.name} subscription stays unchanged until Sauti confirms the move to ${selectedPlan.name}.`);
+        setReloadKey((key) => key + 1);
+        return;
+      }
       const checkout = await createBillingCheckout(selectedPlan.id, interval);
       window.location.assign(checkout.url);
     } catch (caught) {
@@ -262,6 +269,11 @@ export function BillingPage() {
       </section>
 
       {billingActionMessage && <section className={styles.actionSuccess} role="status"><Check size={18} /><span>{billingActionMessage}</span><button aria-label="Dismiss message" onClick={() => setBillingActionMessage("")} type="button"><X size={15} /></button></section>}
+
+      {account?.pendingPlanChange && <section className={styles.pendingPlanChange} role="status">
+        <Clock3 size={18} />
+        <div><strong>Plan change requested</strong><span>Your {planById(account.pendingPlanChange.currentPlan).name} plan remains active while Sauti reviews the move to {planById(account.pendingPlanChange.targetPlan).name} ({account.pendingPlanChange.targetInterval}). We will confirm the billing details by email before changing it.</span></div>
+      </section>}
 
       {error && (
         <section className={styles.errorState} role="alert">
@@ -340,7 +352,7 @@ export function BillingPage() {
             <p id="preview-description">{account?.subscription
               ? managementIntent === "cancel"
                 ? `You will keep access until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of the paid billing period"}. Sauti will cancel the exact synchronized Whop membership; no provider selection is required.`
-                : `Whop must securely authorize this billing change. Open the Sauti membership showing ${currentMembershipPrice} and choose ${selectedPlan.name}. Do not purchase a second Sauti subscription.`
+                : `Send this request to Sauti without opening Whop's account-wide subscription list. Your current plan and charge remain unchanged until support confirms the effective date and billing difference with you.`
               : `Continuing opens ${checkoutProvider}. ${isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.`}</p>
             <div className={styles.dialogRows}>
               <span><em>{account?.subscription && managementIntent === "change" ? "New plan" : "Plan"}</em><strong>{account?.subscription && managementIntent === "cancel" ? currentPlan.name : selectedPlan.name}</strong></span>
@@ -359,8 +371,8 @@ export function BillingPage() {
             {checkoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {checkoutError}</p>}
             <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
               {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
-              {checkoutLoading ? "Opening Whop…" : account?.subscription
-                ? managementIntent === "cancel" ? "Schedule cancellation" : "Continue plan change"
+              {checkoutLoading ? account?.subscription && managementIntent === "change" ? "Sending request…" : "Opening Whop…" : account?.subscription
+                ? managementIntent === "cancel" ? "Schedule cancellation" : "Request plan change"
                 : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
             </button>
             <button className={styles.checkoutCancel} disabled={checkoutLoading} onClick={() => setPreviewOpen(false)} type="button">Keep exploring</button>

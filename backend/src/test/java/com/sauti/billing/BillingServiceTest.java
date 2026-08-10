@@ -18,7 +18,9 @@ class BillingServiceTest {
     private final ProviderCostReconciliationRepository jobs = mock(ProviderCostReconciliationRepository.class);
     private final BillingSubscriptionRepository subscriptions = mock(BillingSubscriptionRepository.class);
     private final BillingAddOnSubscriptionRepository addOnSubscriptions = mock(BillingAddOnSubscriptionRepository.class);
-    private final BillingService service = new BillingService(tenants, ledger, jobs, subscriptions, addOnSubscriptions);
+    private final BillingPlanChangeRequestRepository planChangeRequests = mock(BillingPlanChangeRequestRepository.class);
+    private final BillingService service = new BillingService(tenants, ledger, jobs, subscriptions,
+            addOnSubscriptions, planChangeRequests);
 
     @Test
     void reportsNetEvidenceTotalsAndTenantScopedReconciliationHealth() {

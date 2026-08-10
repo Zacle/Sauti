@@ -22,16 +22,19 @@ public class BillingService {
     private final ProviderCostReconciliationRepository reconciliationJobs;
     private final BillingSubscriptionRepository subscriptions;
     private final BillingAddOnSubscriptionRepository addOnSubscriptions;
+    private final BillingPlanChangeRequestRepository planChangeRequests;
 
     public BillingService(TenantRepository tenantRepository, BillingLedgerService ledger,
                           ProviderCostReconciliationRepository reconciliationJobs,
                           BillingSubscriptionRepository subscriptions,
-                          BillingAddOnSubscriptionRepository addOnSubscriptions) {
+                          BillingAddOnSubscriptionRepository addOnSubscriptions,
+                          BillingPlanChangeRequestRepository planChangeRequests) {
         this.tenantRepository = tenantRepository;
         this.ledger = ledger;
         this.reconciliationJobs = reconciliationJobs;
         this.subscriptions = subscriptions;
         this.addOnSubscriptions = addOnSubscriptions;
+        this.planChangeRequests = planChangeRequests;
     }
 
     @Transactional(readOnly = true)
@@ -49,6 +52,8 @@ public class BillingService {
                 account,
                 ledger.balances(tenantId),
                 subscriptions.findByTenantId(tenantId).orElse(null),
+                planChangeRequests.findByTenantId(tenantId)
+                        .filter(item -> "requested".equals(item.getStatus())).orElse(null),
                 addOnSubscriptions.findAllByTenantId(tenantId),
                 costTotals(entries),
                 unpricedUsage(entries),

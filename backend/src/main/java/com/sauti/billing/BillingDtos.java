@@ -47,6 +47,7 @@ public final class BillingDtos {
             Map<String, BigDecimal> communicationBalances,
             boolean paidResourcesAllowed,
             SubscriptionResponse subscription,
+            PlanChangeResponse pendingPlanChange,
             List<AddOnResponse> addOns,
             List<CostTotalResponse> costTotals,
             List<UnpricedUsageResponse> unpricedUsage,
@@ -55,6 +56,7 @@ public final class BillingDtos {
     ) {
         static BillingAccountResponse from(BillingAccount account, Map<String, BigDecimal> balances,
                                            BillingSubscription subscription,
+                                           BillingPlanChangeRequest pendingPlanChange,
                                            List<BillingAddOnSubscription> addOnSubscriptions,
                                            List<CostTotalResponse> costTotals,
                                            List<UnpricedUsageResponse> unpricedUsage,
@@ -68,7 +70,8 @@ public final class BillingDtos {
                     account.getId(), account.getStatus(), account.getEnforcementMode(),
                     account.getBillingCurrency(), account.getMonthlySpendingLimit(),
                     account.getLowBalanceThreshold(), balances, paidResourcesAllowed,
-                    SubscriptionResponse.from(subscription), activeAddOns(addOnSubscriptions),
+                    SubscriptionResponse.from(subscription), PlanChangeResponse.from(pendingPlanChange),
+                    activeAddOns(addOnSubscriptions),
                     costTotals, unpricedUsage, reconciliation,
                     recentEntries.stream().map(LedgerEntryResponse::from).toList()
             );
@@ -100,6 +103,15 @@ public final class BillingDtos {
     }
 
     public record AddOnResponse(String addOn, int quantity, String status, String manageUrl) { }
+
+    public record PlanChangeResponse(UUID id, String status, String currentPlan, String targetPlan,
+                                     String targetInterval, OffsetDateTime effectiveAt) {
+        static PlanChangeResponse from(BillingPlanChangeRequest request) {
+            return request == null ? null : new PlanChangeResponse(request.getId(), request.getStatus(),
+                    request.getCurrentPlan(), request.getTargetPlan(), request.getTargetInterval(),
+                    request.getEffectiveAt());
+        }
+    }
 
     public record CostTotalResponse(String costBasis, String currency, BigDecimal amount) { }
 

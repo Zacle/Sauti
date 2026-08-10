@@ -92,8 +92,7 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
             if (!provider().equals(existing.getProvider())) {
                 throw new IllegalStateException("This workspace subscription belongs to a different billing provider");
             }
-            var manageUrl = trustedWhopUrl(existing.getUpdatePaymentMethodUrl(), "manage");
-            return new CheckoutResponse(manageUrl, selection.plan(), selection.interval(), provider());
+            throw new IllegalStateException("Use the Sauti plan change request for an existing subscription");
         }
         var url = createHostedCheckout(selection.planId(), Map.of(
                 "sauti_tenant_reference", tenantReferences.create(tenant.getId()),

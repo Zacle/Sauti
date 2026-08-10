@@ -2,6 +2,39 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-10: Replace confusing Whop plan list with Sauti plan-change requests
+
+- Kept Whop as the recurring billing provider, while removing the customer
+  journey into Whop's account-wide subscription list for base-plan changes.
+- Added a durable, tenant-scoped plan-change request tied to the exact current
+  Whop membership. Selecting another plan now creates or retargets one pending
+  request, leaves the existing plan and charge unchanged, and displays the
+  pending state in Sauti.
+- Added post-commit notifications to the workspace owner and
+  `support@sauti.uk`. The messages explicitly say not to purchase another
+  subscription and give support the exact membership/current/target details.
+- Hardened the Whop adapter to reject every second base checkout for a workspace.
+  Direct, membership-specific cancel-at-period-end remains available in Sauti;
+  add-ons keep their independent Whop checkout and membership lifecycle.
+- This workflow is intentionally support-assisted: Whop's documented membership
+  update body only accepts metadata and does not expose an atomic target-plan
+  replacement. Sauti does not simulate a change with a duplicate checkout or
+  an unapproved off-session charge.
+- Files touched: billing plan-change entity/repository/service/event/email,
+  billing controller/account DTO/service, Flyway V63, Whop checkout guard and
+  tests, dashboard billing API/types/presentation/CSS, Whop setup guide, and
+  this handoff.
+- Verification: focused billing plan-change and account tests passed; complete
+  backend test suite passed; dashboard typecheck and zero-warning lint passed;
+  optimized production build passed and generated all 61 pages;
+  `git diff --check` passed before this documentation update (line-ending
+  notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+- Follow-up: add a platform-admin plan-change queue with complete/reject actions,
+  then automate provider-side replacement only if Whop publishes and the team
+  sandbox-validates a safe atomic plan-change contract.
+
 ### 2026-08-10: Remove the remaining billing workbench overflow
 
 - Replaced the Plans & add-ons desktop grid's fixed 340px/500px/390px track

@@ -11,6 +11,9 @@ import com.sauti.billing.BillingCheckoutGateway.AddOnCheckoutResponse;
 import com.sauti.billing.BillingCheckoutGateway.CancellationResponse;
 import com.sauti.billing.BillingCheckoutService;
 import com.sauti.billing.BillingCheckoutService.CheckoutStatus;
+import com.sauti.billing.BillingPlanChangeService;
+import com.sauti.billing.BillingPlanChangeService.PlanChangeCommand;
+import com.sauti.billing.BillingPlanChangeService.PlanChangeResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,10 +28,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class BillingController {
     private final BillingService billingService;
     private final BillingCheckoutService checkoutService;
+    private final BillingPlanChangeService planChanges;
 
-    public BillingController(BillingService billingService, BillingCheckoutService checkoutService) {
+    public BillingController(BillingService billingService, BillingCheckoutService checkoutService,
+                             BillingPlanChangeService planChanges) {
         this.billingService = billingService;
         this.checkoutService = checkoutService;
+        this.planChanges = planChanges;
     }
 
     @GetMapping("/usage")
@@ -73,6 +79,18 @@ public class BillingController {
             return checkoutService.cancel(user.tenantId());
         } catch (IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+        }
+    }
+
+    @PostMapping("/subscription/change-request")
+    PlanChangeResponse requestPlanChange(@AuthenticationPrincipal AuthenticatedUser user,
+                                         @RequestBody PlanChangeCommand request) {
+        try {
+            return planChanges.request(user.tenantId(), request);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage());
         }
     }
 }

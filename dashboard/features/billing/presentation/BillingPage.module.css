@@ -865,6 +865,36 @@
   font-weight: 600;
 }
 
+.pendingPlanChange {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(43, 220, 208, .32);
+  border-radius: 14px;
+  color: #31dfd2;
+  background: rgba(9, 72, 79, .2);
+}
+
+.pendingPlanChange > div {
+  display: grid;
+  gap: 3px;
+}
+
+.pendingPlanChange strong {
+  color: #e9f8fa;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.pendingPlanChange span {
+  color: #88a4b5;
+  font-size: .68rem;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
 .actionSuccess {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

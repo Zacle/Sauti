@@ -694,6 +694,7 @@ export type BillingAccount = {
     renewsAt: string | null;
     manageUrl: string | null;
   } | null;
+  pendingPlanChange: BillingPlanChange | null;
   addOns: Array<{
     addOn: "agent" | "line" | "number" | "voice" | "messaging";
     quantity: number;
@@ -723,6 +724,15 @@ export type BillingAccount = {
 export type BillingCancellation = {
   provider: string;
   status: string;
+};
+
+export type BillingPlanChange = {
+  id: string;
+  status: "requested";
+  currentPlan: "launch" | "growth" | "scale";
+  targetPlan: "launch" | "growth" | "scale";
+  targetInterval: "monthly" | "annual";
+  effectiveAt: string | null;
 };
 
 export type BillingCheckout = {

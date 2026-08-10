@@ -1,4 +1,4 @@
-import type { BillingAccount, BillingAddOnCheckout, BillingCancellation, BillingCheckout, BillingCheckoutStatus, BillingUsage } from "@/types/api";
+import type { BillingAccount, BillingAddOnCheckout, BillingCancellation, BillingCheckout, BillingCheckoutStatus, BillingPlanChange, BillingUsage } from "@/types/api";
 import { apiRequest } from "./client";
 
 export function loadBillingUsage(): Promise<BillingUsage> {
@@ -29,4 +29,11 @@ export function createBillingAddOnCheckout(addOn: BillingAddOnCheckout["addOn"])
 
 export function cancelBillingSubscription(): Promise<BillingCancellation> {
   return apiRequest<BillingCancellation>("/billing/subscription/cancel", { method: "POST" });
+}
+
+export function requestBillingPlanChange(plan: BillingCheckout["plan"], interval: BillingCheckout["interval"]): Promise<BillingPlanChange> {
+  return apiRequest<BillingPlanChange>("/billing/subscription/change-request", {
+    method: "POST",
+    body: JSON.stringify({ plan, interval }),
+  });
 }

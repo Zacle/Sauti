@@ -60,7 +60,7 @@ class WhopCheckoutServiceTest {
     }
 
     @Test
-    void opensExistingMembershipPortalForPlanChangesInsteadOfCreatingDuplicateCheckout() {
+    void refusesASecondBaseCheckoutForAnExistingWorkspaceSubscription() {
         var tenants = mock(TenantRepository.class);
         var subscriptions = mock(BillingSubscriptionRepository.class);
         var tenant = new Tenant("Clinic", "owner@example.com", "GB");
@@ -76,11 +76,10 @@ class WhopCheckoutServiceTest {
                 "api-key", "biz_sauti", "reference-secret", "http://127.0.0.1:1/api/v1",
                 "2026-07-20", "https://sauti.uk/billing?checkout=success");
 
-        var response = service.create(tenant.getId(),
-                new BillingCheckoutGateway.CheckoutRequest("scale", "monthly"));
-
-        assertThat(response.url()).isEqualTo("https://whop.com/billing/manage/mem_growth");
-        assertThat(response.plan()).isEqualTo("scale");
+        assertThatThrownBy(() -> service.create(tenant.getId(),
+                new BillingCheckoutGateway.CheckoutRequest("scale", "monthly")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Sauti plan change request");
     }
 
     @Test
