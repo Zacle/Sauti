@@ -6,6 +6,8 @@ import com.sauti.billing.BillingDtos.BillingAccountResponse;
 import com.sauti.billing.BillingService;
 import com.sauti.billing.BillingCheckoutGateway.CheckoutRequest;
 import com.sauti.billing.BillingCheckoutGateway.CheckoutResponse;
+import com.sauti.billing.BillingCheckoutGateway.AddOnCheckoutRequest;
+import com.sauti.billing.BillingCheckoutGateway.AddOnCheckoutResponse;
 import com.sauti.billing.BillingCheckoutService;
 import com.sauti.billing.BillingCheckoutService.CheckoutStatus;
 import org.springframework.http.HttpStatus;
@@ -47,6 +49,18 @@ public class BillingController {
     CheckoutResponse checkout(@AuthenticationPrincipal AuthenticatedUser user, @RequestBody CheckoutRequest request) {
         try {
             return checkoutService.create(user.tenantId(), request);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+        }
+    }
+
+    @PostMapping("/checkout/add-on")
+    AddOnCheckoutResponse addOnCheckout(@AuthenticationPrincipal AuthenticatedUser user,
+                                        @RequestBody AddOnCheckoutRequest request) {
+        try {
+            return checkoutService.createAddOn(user.tenantId(), request);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
         } catch (IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
         }

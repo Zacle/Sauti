@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sauti payment confirmed</title>
+</head>
+<body style="margin:0;padding:0;background:#020a14;color:#edf7fc;font-family:Arial,Helvetica,sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+    Your Sauti payment has been confirmed.
+</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#020a14;">
+    <tr><td align="center" style="padding:38px 14px;">
+        <table role="presentation" width="620" cellspacing="0" cellpadding="0" border="0"
+               style="width:100%;max-width:620px;background:#071827;border:1px solid #17384d;border-radius:22px;overflow:hidden;">
+            <tr><td style="padding:25px 30px;border-bottom:1px solid #17384d;">
+                <span style="font-size:21px;font-weight:700;color:#fff;">Sauti</span>
+                <span th:if="${testMode}" style="float:right;padding:7px 10px;border:1px solid #246c69;border-radius:999px;background:#0c3032;font-size:10px;color:#5ee6dc;">SANDBOX</span>
+            </td></tr>
+            <tr><td style="padding:38px 36px 18px;">
+                <div style="font-size:12px;color:#85a0b1;">Payment confirmation for <span th:text="${businessName}">your business</span></div>
+                <h1 style="margin:10px 0 0;font-size:30px;line-height:1.2;font-weight:650;color:#fff;">Your payment is confirmed.</h1>
+                <p style="margin:16px 0 0;font-size:15px;line-height:1.7;color:#9db1bf;">
+                    Whop confirmed the payment below. Your Sauti billing status is synchronized separately through verified provider webhooks.
+                </p>
+            </td></tr>
+            <tr><td style="padding:18px 36px 28px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#06131f;border:1px solid #1b4052;border-radius:16px;">
+                    <tr><td style="padding:18px;color:#8399aa;font-size:12px;">Purchase</td><td align="right" style="padding:18px;color:#edf7fb;font-size:13px;" th:text="${purchaseDescription}">Growth plan</td></tr>
+                    <tr><td style="padding:18px;border-top:1px solid #17384d;color:#8399aa;font-size:12px;">Amount paid</td><td align="right" style="padding:18px;border-top:1px solid #17384d;color:#5ee6dc;font-size:16px;"><span th:text="${currency}">USD</span> <span th:text="${amount}">149.00</span></td></tr>
+                    <tr><td style="padding:18px;border-top:1px solid #17384d;color:#8399aa;font-size:12px;">Confirmed at</td><td align="right" style="padding:18px;border-top:1px solid #17384d;color:#edf7fb;font-size:12px;" th:text="${paidAt}">Confirmed by Whop</td></tr>
+                    <tr th:if="${cardLast4 != null}"><td style="padding:18px;border-top:1px solid #17384d;color:#8399aa;font-size:12px;">Payment method</td><td align="right" style="padding:18px;border-top:1px solid #17384d;color:#edf7fb;font-size:12px;">Card ending <span th:text="${cardLast4}">4242</span></td></tr>
+                    <tr><td style="padding:18px;border-top:1px solid #17384d;color:#8399aa;font-size:12px;">Reference</td><td align="right" style="padding:18px;border-top:1px solid #17384d;color:#edf7fb;font-size:11px;" th:text="${paymentReference}">pay_reference</td></tr>
+                </table>
+            </td></tr>
+            <tr><td style="padding:0 36px 38px;">
+                <a th:href="${billingUrl}" href="https://sauti.uk/billing" style="display:block;padding:15px 20px;border-radius:12px;background:#45d8d0;color:#03151c;text-align:center;text-decoration:none;font-size:14px;font-weight:700;">View billing</a>
+                <p style="margin:16px 0 0;text-align:center;font-size:11px;line-height:1.55;color:#6f899a;">
+                    This confirmation is not a tax invoice. Whop remains the payment processor and merchant billing record.
+                </p>
+            </td></tr>
+        </table>
+    </td></tr>
+</table>
+</body>
+</html>

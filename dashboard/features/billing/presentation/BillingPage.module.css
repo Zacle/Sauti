@@ -831,6 +831,97 @@
   font-weight: 600;
 }
 
+.addOnCheckoutPanel {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(100, 155, 200, .16);
+}
+
+.addOnCheckoutPanel > header h3 {
+  margin: 0;
+  color: #e5f0f7;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.addOnCheckoutPanel > header p {
+  margin: 5px 0 10px;
+  color: #72899e;
+  font-size: .63rem;
+  line-height: 1.45;
+}
+
+.addOnCheckoutPanel > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(100, 155, 200, .09);
+}
+
+.addOnCheckoutPanel > div > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.addOnCheckoutPanel > div strong {
+  color: #dce9f2;
+  font-size: .69rem;
+  font-weight: 550;
+}
+
+.addOnCheckoutPanel > div small {
+  color: #758da2;
+  font-size: .61rem;
+}
+
+.addOnCheckoutPanel > div button {
+  display: inline-flex;
+  min-width: 78px;
+  min-height: 32px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(43, 220, 208, .35);
+  border-radius: 9px;
+  color: #31dfd2;
+  background: rgba(10, 70, 79, .2);
+  font: inherit;
+  font-size: .65rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.addOnCheckoutPanel > div button:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.addOnCheckoutPanel > .addOnCheckoutNote {
+  margin: 10px 0 0;
+  color: #dbad72;
+  font-size: .63rem;
+  line-height: 1.45;
+}
+
+.addOnCheckoutPanel > .checkoutError {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 10px 0 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(249, 137, 66, .28);
+  border-radius: 9px;
+  color: #ffc07b;
+  background: rgba(111, 52, 20, .16);
+  font-size: .65rem;
+  line-height: 1.45;
+}
+
 .communicationCosts {
   padding: 20px;
   border: 1px solid rgba(96, 154, 201, .17);

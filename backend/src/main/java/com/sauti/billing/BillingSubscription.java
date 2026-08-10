@@ -72,6 +72,10 @@ public class BillingSubscription extends Auditable {
     public String getProviderSubscriptionId() { return providerSubscriptionId; }
     public String getProviderStatus() { return providerStatus; }
     public OffsetDateTime getProviderUpdatedAt() { return providerUpdatedAt; }
+    public String getPlan() { return plan; }
+    public String getBillingInterval() { return billingInterval; }
+    public OffsetDateTime getRenewsAt() { return renewsAt; }
+    public String getUpdatePaymentMethodUrl() { return updatePaymentMethodUrl; }
 
     private static String required(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Subscription value is required");

@@ -11504,3 +11504,76 @@ Expected:
 - Next Phase 3 slice: normalize payment, refund, dispute, and membership
   lifecycle evidence into non-sensitive records, expose platform-admin
   readiness, and keep enforcement disabled.
+
+### 2026-08-10 - Whop plan changes and independent add-on checkout
+
+- Fixed Growth-to-Scale and other post-checkout base-plan changes. Once a
+  workspace has a Whop subscription, Sauti now opens the provider-issued
+  membership `manage_url` instead of attempting to create a second membership.
+  Whop performs the plan change on the original membership and the signed
+  membership webhook remains the only path that updates Sauti's plan.
+- Added five separately configured recurring add-on products: additional agent,
+  concurrent call line, business phone number, premium voice, and SMS/WhatsApp
+  messaging. Add-on checkout carries a signed workspace reference and typed
+  add-on metadata; its webhook synchronizes a dedicated add-on membership and
+  cannot overwrite the workspace's base plan.
+- Added migration `V61__billing_add_on_subscriptions.sql`, tenant-scoped add-on
+  persistence, add-on checkout API, active subscription/add-on account DTOs,
+  environment examples, and CI/CD variable delivery for all five add-on plan
+  IDs. The billing page now distinguishes base-plan management from independent
+  add-on purchase/management and reports missing provider setup clearly.
+- Self-service currently permits one active membership per add-on category per
+  workspace. Higher quantities remain a custom-sales workflow. Add-on state is
+  synchronized and visible, but hard feature/capacity enforcement remains in
+  `observe` pending the reviewed billing-enforcement rollout.
+- Updated `docs/whop-setup.md` with catalog construction, environment variables,
+  same-membership plan-change acceptance, add-on acceptance, and the requirement
+  that all six base plans belong to one Whop product.
+- Verification:
+  - focused `WhopCheckoutServiceTest`, `WhopSubscriptionProcessorTest`, and
+    `BillingServiceTest` passed;
+  - complete `:backend:test` suite passed;
+  - dashboard `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build`
+    passed for the billing UI/API changes;
+  - `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. All changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+- Required provider setup: create five separate recurring Whop sandbox products,
+  configure the five `WHOP_ADDON_*_PLAN_ID` GitHub Actions variables, deploy
+  through reviewed CI/CD, then test one base-plan change and one independent
+  add-on purchase through signed webhooks.
+
+### 2026-08-10 - Verified Whop payment confirmation email
+
+- Fixed the missing customer payment confirmation. The existing Whop worker had
+  intentionally retained `payment.succeeded` as deferred financial evidence but
+  did not create any customer notification.
+- A verified `payment.succeeded` event now resolves its membership against the
+  already synchronized, tenant-owned base or add-on subscription. Because Whop
+  webhook ordering is not guaranteed, an earlier payment event retries until
+  membership ownership has been established; checkout redirects and buyer email
+  fields are never trusted to choose the workspace recipient.
+- Added the durable, provider-payment-idempotent
+  `billing_payment_notifications` outbox in Flyway migration `V62`. Its worker
+  sends the account email through the existing SMTP configuration, retries
+  temporary delivery failures up to eight times, and records sent/failed state.
+- Added a branded confirmation template containing the purchase, actual Whop
+  total and currency, provider confirmation time/reference, masked card suffix
+  when present, sandbox labeling, and a billing-page link. The message clearly
+  states that it is not a tax invoice.
+- Financial reconciliation remains deferred and billing enforcement remains in
+  `observe`; sending a customer confirmation does not claim that refunds,
+  disputes, or settlement evidence have been normalized.
+- Files touched: Whop subscription processor and tests, billing payment email
+  outbox/entity/repository/worker/service and tests, `V62`, the email template,
+  Whop setup documentation, and this handoff.
+- Verification:
+  - focused Whop processor and payment-email worker tests passed;
+  - complete `:backend:test` suite passed;
+  - `git diff --check` passed after the implementation (line-ending notices
+    only).
+- Deployment status: not deployed. All changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+- Provider acceptance: ensure the Whop v1 webhook subscribes to
+  `payment.succeeded`, complete a sandbox payment, and confirm exactly one email
+  reaches the workspace account address rather than the buyer-supplied address.

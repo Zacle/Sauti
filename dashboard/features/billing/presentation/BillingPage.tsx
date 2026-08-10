@@ -40,7 +40,7 @@ import {
   YAxis,
 } from "recharts";
 import { pricingPlans, type PricingPlanId } from "@/features/marketing/Pricing/domain/pricing-model";
-import { createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage } from "@/lib/api/billing";
+import { createBillingAddOnCheckout, createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage } from "@/lib/api/billing";
 import type { BillingAccount, BillingCheckoutStatus, BillingUsage } from "@/types/api";
 import {
   billingAddOns,
@@ -85,6 +85,8 @@ export function BillingPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [addOnCheckoutLoading, setAddOnCheckoutLoading] = useState<BillingAddOnId | null>(null);
+  const [addOnCheckoutError, setAddOnCheckoutError] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -181,6 +183,18 @@ export function BillingPage() {
     }
   }
 
+  async function startAddOnCheckout(addOn: BillingAddOnId) {
+    setAddOnCheckoutLoading(addOn);
+    setAddOnCheckoutError("");
+    try {
+      const checkout = await createBillingAddOnCheckout(addOn);
+      window.location.assign(checkout.url);
+    } catch (caught) {
+      setAddOnCheckoutError(caught instanceof Error ? caught.message : "Add-on checkout is temporarily unavailable.");
+      setAddOnCheckoutLoading(null);
+    }
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -264,7 +278,13 @@ export function BillingPage() {
               updateQuantity={updateQuantity}
               checkoutProvider={checkoutProvider}
               checkoutConfigured={checkoutConfigured}
+              addOnsConfigured={checkoutStatus?.addOnsConfigured === true}
+              activeAddOns={account?.addOns ?? []}
+              addOnCheckoutError={addOnCheckoutError}
+              addOnCheckoutLoading={addOnCheckoutLoading}
+              hasSubscription={account?.subscription != null}
               isSandbox={isSandbox}
+              startAddOnCheckout={startAddOnCheckout}
             />
           )}
           {activeTab === "invoices" && <InvoicesTab switchTab={switchTab} />}
@@ -277,8 +297,10 @@ export function BillingPage() {
             <button aria-label="Close preview" className={styles.dialogClose} onClick={() => setPreviewOpen(false)} ref={closeButtonRef} type="button"><X size={18} /></button>
             <span className={styles.dialogIcon}><ShieldCheck size={23} /></span>
             <small>{isSandbox ? "Whop sandbox checkout" : "Secure hosted checkout"}</small>
-            <h2 id="preview-title">Review your {isSandbox ? "test " : ""}checkout</h2>
-            <p id="preview-description">Continuing opens {checkoutProvider}. {isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.</p>
+            <h2 id="preview-title">{account?.subscription ? "Manage your base plan" : `Review your ${isSandbox ? "test " : ""}checkout`}</h2>
+            <p id="preview-description">{account?.subscription
+              ? `Continuing opens ${checkoutProvider}'s secure membership portal so the existing subscription can change without creating a duplicate.`
+              : `Continuing opens ${checkoutProvider}. ${isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.`}</p>
             <div className={styles.dialogRows}>
               <span><em>Plan</em><strong>{selectedPlan.name}</strong></span>
               <span><em>Projected usage</em><strong>{projectedMinutes.toLocaleString()} minutes</strong></span>
@@ -287,7 +309,7 @@ export function BillingPage() {
             {checkoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {checkoutError}</p>}
             <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
               {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
-              {checkoutLoading ? "Creating checkout…" : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
+              {checkoutLoading ? "Opening Whop…" : account?.subscription ? "Open Whop billing" : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
             </button>
             <button className={styles.checkoutCancel} disabled={checkoutLoading} onClick={() => setPreviewOpen(false)} type="button">Keep exploring</button>
           </section>
@@ -520,10 +542,15 @@ function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab
   );
 }
 
-function PlansTab({ checkoutConfigured, checkoutProvider, currentPlanId, interval, isSandbox, projection, projectedMinutes, quantities, resetModel, selectedPlanId, setInterval, setPreviewOpen, setProjectedMinutes, setSelectedPlanId, updateQuantity }: {
+function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, projection, projectedMinutes, quantities, resetModel, selectedPlanId, setInterval, setPreviewOpen, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout, updateQuantity }: {
+  activeAddOns: NonNullable<BillingAccount["addOns"]>;
+  addOnCheckoutError: string;
+  addOnCheckoutLoading: BillingAddOnId | null;
+  addOnsConfigured: boolean;
   checkoutConfigured: boolean;
   checkoutProvider: string;
   currentPlanId: PricingPlanId;
+  hasSubscription: boolean;
   interval: BillingInterval;
   isSandbox: boolean;
   projection: ReturnType<typeof projectBilling>;
@@ -535,9 +562,11 @@ function PlansTab({ checkoutConfigured, checkoutProvider, currentPlanId, interva
   setPreviewOpen: (value: boolean) => void;
   setProjectedMinutes: (value: number) => void;
   setSelectedPlanId: (value: PricingPlanId) => void;
+  startAddOnCheckout: (id: BillingAddOnId) => void;
   updateQuantity: (id: BillingAddOnId, value: number) => void;
 }) {
   const selectedPlan = planById(selectedPlanId);
+  const activeAddOnIds = new Set(activeAddOns.map((item) => item.addOn));
   return (
     <section className={styles.planStudio} aria-label="Plan and add-on modeller">
       <article className={styles.planSelector}>
@@ -569,6 +598,17 @@ function PlansTab({ checkoutConfigured, checkoutProvider, currentPlanId, interva
             return <div key={addOn.id}><span>{addOn.id === "line" ? <Phone size={17} /> : addOn.id === "number" ? <CreditCard size={17} /> : addOn.id === "voice" ? <Sparkles size={17} /> : <FileText size={17} />}</span><div><strong>{addOn.name}</strong><small>{addOn.description}</small></div><button aria-label={`${active ? "Remove" : "Add"} ${addOn.name}`} aria-pressed={active} className={active ? styles.toggleActive : ""} onClick={() => updateQuantity(addOn.id, active ? 0 : 1)} type="button"><i /></button><em>from {money(addOn.monthlyPrice)} /mo</em></div>;
           })}
         </div>
+        <div className={styles.addOnCheckoutPanel}>
+          <header><h3>Purchase add-ons separately</h3><p>Each add-on is its own recurring Whop membership, so changing the base plan cannot remove it.</p></header>
+          {billingAddOns.map((addOn) => {
+            const active = activeAddOnIds.has(addOn.id);
+            const loading = addOnCheckoutLoading === addOn.id;
+            return <div key={addOn.id}><span><strong>{addOn.name}</strong><small>{money(addOn.monthlyPrice)} / month</small></span><button disabled={!hasSubscription || !addOnsConfigured || addOnCheckoutLoading != null} onClick={() => startAddOnCheckout(addOn.id)} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : active ? <SlidersHorizontal size={14} /> : <Plus size={14} />}{active ? "Manage" : "Add"}</button></div>;
+          })}
+          {!hasSubscription && <p className={styles.addOnCheckoutNote}>Choose a base plan before purchasing add-ons.</p>}
+          {hasSubscription && !addOnsConfigured && <p className={styles.addOnCheckoutNote}>Add-on checkout needs the five Whop add-on plan IDs.</p>}
+          {addOnCheckoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {addOnCheckoutError}</p>}
+        </div>
       </article>
 
       <article className={styles.estimateSummary}>
@@ -578,9 +618,9 @@ function PlansTab({ checkoutConfigured, checkoutProvider, currentPlanId, interva
         <LedgerRow label="Activated add-ons" note="Modelled selection" value={money(projection.addOnCost)} />
         <div className={styles.ledgerTotal}><div><strong>Estimated total / month</strong><span>Plan + overage + activated add-ons</span></div><strong>{money(projection.total)}</strong></div>
         <p><Info size={15} /> If a higher plan produces a lower total for your model, Sauti will explain the arithmetic instead of forcing a recommendation.</p>
-        <button disabled={!checkoutConfigured} onClick={() => setPreviewOpen(true)} type="button"><ShieldCheck size={16} /> {!checkoutConfigured ? "Whop setup required" : isSandbox ? "Continue to sandbox checkout" : "Continue to secure checkout"}</button>
+        <button disabled={!checkoutConfigured} onClick={() => setPreviewOpen(true)} type="button"><ShieldCheck size={16} /> {!checkoutConfigured ? "Whop setup required" : hasSubscription ? "Manage base plan" : isSandbox ? "Continue to sandbox checkout" : "Continue to secure checkout"}</button>
         <button className={styles.resetButton} onClick={resetModel} type="button"><RotateCcw size={15} /> Reset model</button>
-        <footer>Add-ons are estimates only. Checkout purchases the selected base plan through {checkoutProvider}.</footer>
+        <footer>Base-plan changes and add-on purchases are completed separately through {checkoutProvider}.</footer>
       </article>
       <article className={styles.benefitsStrip} aria-label="Billing benefits">
         <BillingBenefit icon={CircleDollarSign} title="Transparent pricing" note="See how the total is calculated before checkout." />

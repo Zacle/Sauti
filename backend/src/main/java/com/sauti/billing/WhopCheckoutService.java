@@ -21,6 +21,9 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
     private static final Logger LOGGER = LoggerFactory.getLogger(WhopCheckoutService.class);
     private final TenantRepository tenants;
     private final WhopPlanCatalog plans;
+    private final WhopAddOnCatalog addOns;
+    private final BillingSubscriptionRepository subscriptions;
+    private final BillingAddOnSubscriptionRepository addOnSubscriptions;
     private final ObjectMapper objectMapper;
     private final HttpClient http;
     private final WhopTenantReference tenantReferences;
@@ -33,23 +36,31 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
 
     @Autowired
     public WhopCheckoutService(
-            TenantRepository tenants, WhopPlanCatalog plans, ObjectMapper objectMapper,
+            TenantRepository tenants, WhopPlanCatalog plans, WhopAddOnCatalog addOns,
+            BillingSubscriptionRepository subscriptions,
+            BillingAddOnSubscriptionRepository addOnSubscriptions, ObjectMapper objectMapper,
             @Value("${sauti.billing.whop.api-key:}") String apiKey,
             @Value("${sauti.billing.whop.company-id:}") String companyId,
             @Value("${sauti.billing.whop.tenant-reference-secret:}") String tenantReferenceSecret,
             @Value("${sauti.billing.whop.api-base-url:https://api.whop.com/api/v1}") String apiBaseUrl,
             @Value("${sauti.billing.whop.api-version-date:2026-07-20}") String apiVersionDate,
             @Value("${sauti.billing.whop.checkout-redirect-url:http://localhost:8088/billing?checkout=success}") String redirectUrl) {
-        this(tenants, plans, objectMapper, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
+        this(tenants, plans, addOns, subscriptions, addOnSubscriptions, objectMapper,
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
                 apiKey, companyId, tenantReferenceSecret, apiBaseUrl, apiVersionDate, redirectUrl);
     }
 
-    WhopCheckoutService(TenantRepository tenants, WhopPlanCatalog plans, ObjectMapper objectMapper,
+    WhopCheckoutService(TenantRepository tenants, WhopPlanCatalog plans, WhopAddOnCatalog addOns,
+                        BillingSubscriptionRepository subscriptions,
+                        BillingAddOnSubscriptionRepository addOnSubscriptions, ObjectMapper objectMapper,
                         HttpClient http, String apiKey, String companyId, String tenantReferenceSecret,
                         String apiBaseUrl, String apiVersionDate,
                         String redirectUrl) {
         this.tenants = tenants;
         this.plans = plans;
+        this.addOns = addOns;
+        this.subscriptions = subscriptions;
+        this.addOnSubscriptions = addOnSubscriptions;
         this.objectMapper = objectMapper;
         this.http = http;
         this.apiKey = clean(apiKey);
@@ -65,20 +76,62 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
 
     @Override
     public boolean configured() {
-        return !apiKey.isBlank() && !companyId.isBlank() && !apiVersionDate.isBlank()
-                && !redirectUrl.isBlank() && tenantReferenceConfigured && plans.fullyConfigured();
+        return coreConfigured() && plans.fullyConfigured();
     }
+
+    @Override
+    public boolean addOnsConfigured() { return coreConfigured() && addOns.fullyConfigured(); }
 
     @Override
     public CheckoutResponse create(UUID tenantId, CheckoutRequest request) {
         requireConfigured();
         var tenant = tenants.findById(tenantId).orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
         var selection = plans.checkoutSelection(request.plan(), request.interval());
+        var existing = subscriptions.findByTenantId(tenantId).orElse(null);
+        if (existing != null) {
+            if (!provider().equals(existing.getProvider())) {
+                throw new IllegalStateException("This workspace subscription belongs to a different billing provider");
+            }
+            var manageUrl = trustedWhopUrl(existing.getUpdatePaymentMethodUrl(), "manage");
+            return new CheckoutResponse(manageUrl, selection.plan(), selection.interval(), provider());
+        }
+        var url = createHostedCheckout(selection.planId(), Map.of(
+                "sauti_tenant_reference", tenantReferences.create(tenant.getId()),
+                "sauti_purchase_type", "base"));
+        return new CheckoutResponse(url, selection.plan(), selection.interval(), provider());
+    }
+
+    @Override
+    public AddOnCheckoutResponse createAddOn(UUID tenantId, AddOnCheckoutRequest request) {
+        if (!addOnsConfigured()) throw new IllegalStateException("Whop add-on checkout is not configured");
+        var tenant = tenants.findById(tenantId).orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
+        var baseSubscription = subscriptions.findByTenantId(tenantId)
+                .orElseThrow(() -> new IllegalStateException("Choose a base plan before purchasing add-ons"));
+        if (!provider().equals(baseSubscription.getProvider())) {
+            throw new IllegalStateException("This workspace subscription belongs to a different billing provider");
+        }
+        var selection = addOns.checkoutSelection(request.addOn());
+        var existing = addOnSubscriptions.findAllByTenantId(tenantId).stream()
+                .filter(item -> selection.id().equals(item.getAddOn()))
+                .filter(item -> item.activeAt(java.time.OffsetDateTime.now()))
+                .findFirst().orElse(null);
+        if (existing != null) {
+            return new AddOnCheckoutResponse(trustedWhopUrl(existing.getManageUrl(), "add-on manage"),
+                    selection.id(), provider());
+        }
+        var url = createHostedCheckout(selection.planId(), Map.of(
+                "sauti_tenant_reference", tenantReferences.create(tenant.getId()),
+                "sauti_purchase_type", "add_on",
+                "sauti_add_on", selection.id()));
+        return new AddOnCheckoutResponse(url, selection.id(), provider());
+    }
+
+    private String createHostedCheckout(String planId, Map<String, String> metadata) {
         var payload = Map.of(
                 "company_id", companyId,
-                "plan_id", selection.planId(),
+                "plan_id", planId,
                 "redirect_url", redirectUrl,
-                "metadata", Map.of("sauti_tenant_reference", tenantReferences.create(tenant.getId())));
+                "metadata", metadata);
         try {
             var requestId = UUID.randomUUID().toString();
             var httpRequest = HttpRequest.newBuilder(URI.create(apiBaseUrl + "/checkout_configurations"))
@@ -96,8 +149,7 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
                         response.statusCode(), providerErrorType(response.body()));
                 throw providerFailure(response.statusCode());
             }
-            var url = checkoutUrl(response.body());
-            return new CheckoutResponse(url, selection.plan(), selection.interval(), provider());
+            return checkoutUrl(response.body());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Checkout creation was interrupted", exception);
@@ -110,11 +162,18 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
 
     private String checkoutUrl(String body) throws Exception {
         var url = objectMapper.readTree(body).path("purchase_url").asText("");
+        return trustedWhopUrl(url, "checkout");
+    }
+
+    private String trustedWhopUrl(String url, String label) {
+        if (url == null || url.isBlank()) {
+            throw new IllegalStateException("Whop " + label + " URL is unavailable");
+        }
         var uri = URI.create(url);
         var host = uri.getHost();
         if (!"https".equalsIgnoreCase(uri.getScheme()) || host == null
                 || !("whop.com".equalsIgnoreCase(host) || host.toLowerCase().endsWith(".whop.com"))) {
-            throw new IllegalStateException("Whop returned an invalid checkout URL");
+            throw new IllegalStateException("Whop returned an invalid " + label + " URL");
         }
         return uri.toString();
     }
@@ -148,6 +207,11 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
         if (!configured()) {
             throw new IllegalStateException("Whop checkout is not configured");
         }
+    }
+
+    private boolean coreConfigured() {
+        return !apiKey.isBlank() && !companyId.isBlank() && !apiVersionDate.isBlank()
+                && !redirectUrl.isBlank() && tenantReferenceConfigured;
     }
 
     private static String clean(String value) { return value == null ? "" : value.trim(); }

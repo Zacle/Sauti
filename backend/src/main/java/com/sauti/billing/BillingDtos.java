@@ -46,12 +46,16 @@ public final class BillingDtos {
             BigDecimal lowBalanceThreshold,
             Map<String, BigDecimal> communicationBalances,
             boolean paidResourcesAllowed,
+            SubscriptionResponse subscription,
+            List<AddOnResponse> addOns,
             List<CostTotalResponse> costTotals,
             List<UnpricedUsageResponse> unpricedUsage,
             ReconciliationHealthResponse reconciliation,
             List<LedgerEntryResponse> recentEntries
     ) {
         static BillingAccountResponse from(BillingAccount account, Map<String, BigDecimal> balances,
+                                           BillingSubscription subscription,
+                                           List<BillingAddOnSubscription> addOnSubscriptions,
                                            List<CostTotalResponse> costTotals,
                                            List<UnpricedUsageResponse> unpricedUsage,
                                            ReconciliationHealthResponse reconciliation,
@@ -64,11 +68,38 @@ public final class BillingDtos {
                     account.getId(), account.getStatus(), account.getEnforcementMode(),
                     account.getBillingCurrency(), account.getMonthlySpendingLimit(),
                     account.getLowBalanceThreshold(), balances, paidResourcesAllowed,
+                    SubscriptionResponse.from(subscription), activeAddOns(addOnSubscriptions),
                     costTotals, unpricedUsage, reconciliation,
                     recentEntries.stream().map(LedgerEntryResponse::from).toList()
             );
         }
+
+        private static List<AddOnResponse> activeAddOns(List<BillingAddOnSubscription> subscriptions) {
+            var now = OffsetDateTime.now();
+            return subscriptions.stream().filter(item -> item.activeAt(now))
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            BillingAddOnSubscription::getAddOn,
+                            java.util.LinkedHashMap::new,
+                            java.util.stream.Collectors.toList()))
+                    .entrySet().stream()
+                    .map(entry -> new AddOnResponse(entry.getKey(), entry.getValue().size(),
+                            entry.getValue().get(0).getProviderStatus(),
+                            entry.getValue().get(0).getManageUrl()))
+                    .toList();
+        }
     }
+
+    public record SubscriptionResponse(String provider, String plan, String interval, String status,
+                                       OffsetDateTime renewsAt, String manageUrl) {
+        static SubscriptionResponse from(BillingSubscription subscription) {
+            return subscription == null ? null : new SubscriptionResponse(
+                    subscription.getProvider(), subscription.getPlan(), subscription.getBillingInterval(),
+                    subscription.getProviderStatus(), subscription.getRenewsAt(),
+                    subscription.getUpdatePaymentMethodUrl());
+        }
+    }
+
+    public record AddOnResponse(String addOn, int quantity, String status, String manageUrl) { }
 
     public record CostTotalResponse(String costBasis, String currency, BigDecimal amount) { }
 

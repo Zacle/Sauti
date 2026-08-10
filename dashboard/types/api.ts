@@ -685,6 +685,20 @@ export type BillingAccount = {
   lowBalanceThreshold: number;
   communicationBalances: Record<string, number>;
   paidResourcesAllowed: boolean;
+  subscription: {
+    provider: string;
+    plan: string;
+    interval: "monthly" | "annual";
+    status: string;
+    renewsAt: string | null;
+    manageUrl: string | null;
+  } | null;
+  addOns: Array<{
+    addOn: "agent" | "line" | "number" | "voice" | "messaging";
+    quantity: number;
+    status: string;
+    manageUrl: string | null;
+  }>;
   costTotals: Array<{
     costBasis: BillingLedgerEntry["costBasis"];
     currency: string;
@@ -716,6 +730,13 @@ export type BillingCheckoutStatus = {
   provider: string;
   environment: "sandbox" | "live";
   configured: boolean;
+  addOnsConfigured: boolean;
+};
+
+export type BillingAddOnCheckout = {
+  url: string;
+  addOn: "agent" | "line" | "number" | "voice" | "messaging";
+  provider: string;
 };
 
 export type DashboardData = {

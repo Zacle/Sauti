@@ -99,6 +99,11 @@ jobs:
           WHOP_PLAN_GROWTH_ANNUAL: ${{ vars.WHOP_PLAN_GROWTH_ANNUAL }}
           WHOP_PLAN_SCALE_MONTHLY: ${{ vars.WHOP_PLAN_SCALE_MONTHLY }}
           WHOP_PLAN_SCALE_ANNUAL: ${{ vars.WHOP_PLAN_SCALE_ANNUAL }}
+          WHOP_ADDON_AGENT_PLAN_ID: ${{ vars.WHOP_ADDON_AGENT_PLAN_ID }}
+          WHOP_ADDON_LINE_PLAN_ID: ${{ vars.WHOP_ADDON_LINE_PLAN_ID }}
+          WHOP_ADDON_NUMBER_PLAN_ID: ${{ vars.WHOP_ADDON_NUMBER_PLAN_ID }}
+          WHOP_ADDON_VOICE_PLAN_ID: ${{ vars.WHOP_ADDON_VOICE_PLAN_ID }}
+          WHOP_ADDON_MESSAGING_PLAN_ID: ${{ vars.WHOP_ADDON_MESSAGING_PLAN_ID }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
@@ -150,6 +155,11 @@ jobs:
           sync_provider_secret WHOP_PLAN_GROWTH_ANNUAL "$WHOP_PLAN_GROWTH_ANNUAL"
           sync_provider_secret WHOP_PLAN_SCALE_MONTHLY "$WHOP_PLAN_SCALE_MONTHLY"
           sync_provider_secret WHOP_PLAN_SCALE_ANNUAL "$WHOP_PLAN_SCALE_ANNUAL"
+          sync_provider_secret WHOP_ADDON_AGENT_PLAN_ID "$WHOP_ADDON_AGENT_PLAN_ID"
+          sync_provider_secret WHOP_ADDON_LINE_PLAN_ID "$WHOP_ADDON_LINE_PLAN_ID"
+          sync_provider_secret WHOP_ADDON_NUMBER_PLAN_ID "$WHOP_ADDON_NUMBER_PLAN_ID"
+          sync_provider_secret WHOP_ADDON_VOICE_PLAN_ID "$WHOP_ADDON_VOICE_PLAN_ID"
+          sync_provider_secret WHOP_ADDON_MESSAGING_PLAN_ID "$WHOP_ADDON_MESSAGING_PLAN_ID"
 
       - name: Deploy verified images
         env:

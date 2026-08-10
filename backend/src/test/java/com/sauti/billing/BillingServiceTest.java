@@ -15,7 +15,9 @@ class BillingServiceTest {
     private final TenantRepository tenants = mock(TenantRepository.class);
     private final BillingLedgerService ledger = mock(BillingLedgerService.class);
     private final ProviderCostReconciliationRepository jobs = mock(ProviderCostReconciliationRepository.class);
-    private final BillingService service = new BillingService(tenants, ledger, jobs);
+    private final BillingSubscriptionRepository subscriptions = mock(BillingSubscriptionRepository.class);
+    private final BillingAddOnSubscriptionRepository addOnSubscriptions = mock(BillingAddOnSubscriptionRepository.class);
+    private final BillingService service = new BillingService(tenants, ledger, jobs, subscriptions, addOnSubscriptions);
 
     @Test
     void reportsNetEvidenceTotalsAndTenantScopedReconciliationHealth() {
@@ -41,6 +43,8 @@ class BillingServiceTest {
         when(ledger.currentCycle(tenantId)).thenReturn(entries);
         when(ledger.recent(tenantId)).thenReturn(entries);
         when(jobs.findAllByTenantId(tenantId)).thenReturn(List.of(reconciled, retrying));
+        when(subscriptions.findByTenantId(tenantId)).thenReturn(java.util.Optional.empty());
+        when(addOnSubscriptions.findAllByTenantId(tenantId)).thenReturn(List.of());
 
         var response = service.account(tenantId);
 

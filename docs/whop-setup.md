@@ -18,6 +18,32 @@ adds a signed workspace reference as metadata, and sends the customer to the
 returned Whop-hosted `purchase_url`. Prices and billing periods remain owned by
 the Whop plans; the browser cannot submit either value.
 
+Once a workspace has a Whop membership, Sauti no longer creates another base
+checkout for an upgrade or downgrade. It opens the existing membership's
+provider-issued `manage_url`; Whop performs the plan change on that membership,
+and Sauti applies the new plan only after the signed membership webhook arrives.
+All six base plans must therefore belong to the same Whop product so they are
+available as plan-change options in the membership portal.
+
+## Create the add-on catalog
+
+Create five additional Whop products, each with one monthly recurring plan:
+
+- Additional agent — USD 29/month → `WHOP_ADDON_AGENT_PLAN_ID`
+- Concurrent call line — USD 25/month → `WHOP_ADDON_LINE_PLAN_ID`
+- Business phone number — USD 5/month → `WHOP_ADDON_NUMBER_PLAN_ID`
+- Premium voice — USD 19/month → `WHOP_ADDON_VOICE_PLAN_ID`
+- SMS / WhatsApp messaging — USD 19/month → `WHOP_ADDON_MESSAGING_PLAN_ID`
+
+Keep these as separate products rather than extra pricing options on the base
+Sauti product. Each purchase creates an independent recurring membership, so a
+base-plan change cannot accidentally remove an add-on. Sauti verifies the
+signed workspace reference, configured add-on plan ID, and add-on identifier
+before recording the entitlement. An already-active add-on opens its own Whop
+membership portal instead of creating a duplicate checkout. The initial
+self-service catalog supports one active membership of each add-on type per
+workspace; larger quantities remain a custom-sales workflow.
+
 Configure:
 
 - `SAUTI_BILLING_PROVIDER=whop`
@@ -28,6 +54,7 @@ Configure:
 - `WHOP_TENANT_REFERENCE_SECRET` with an independent random secret of at least
   32 bytes; do not reuse the API key or webhook secret
 - the six `WHOP_PLAN_*` identifiers
+- the five `WHOP_ADDON_*_PLAN_ID` identifiers
 - `WHOP_CHECKOUT_REDIRECT_URL=https://sauti.uk/billing?checkout=success`
 
 The API key must be created in the same Whop environment and company as the six
@@ -60,6 +87,7 @@ Settings → Secrets and variables → Actions** before the next normal deployme
 - `WHOP_CHECKOUT_REDIRECT_URL=https://sauti.uk/billing?checkout=success`
 - `WHOP_SANDBOX=true`
 - all six `WHOP_PLAN_*` IDs
+- all five `WHOP_ADDON_*_PLAN_ID` IDs
 
 The verified deployment workflow copies only non-empty values into the private
 server environment file and restarts the backend through the normal CI/CD path.
@@ -72,10 +100,12 @@ webhooks. For sandbox testing, use `https://sandbox-api.whop.com/api/v1` and set
 
 The billing page reads the active provider environment from the backend. When
 the Whop API key, company ID, redirect URL, and independent tenant-reference
-secret and all six plan IDs are present, it labels the flow as **Whop sandbox checkout** and creates
+secret and all six base plan IDs are present, it labels the flow as **Whop sandbox checkout** and creates
 a real hosted test checkout. If those server settings are missing, the page
-shows **Setup required** instead of presenting a non-functional preview. The
-The IDs must all belong to the same Whop sandbox company as the API key.
+shows **Setup required** instead of presenting a non-functional preview. Add-on
+purchase buttons become available only when all five add-on plan IDs are also
+configured. All IDs must belong to the same Whop environment and company as
+the API key.
 
 ## Webhook
 
@@ -108,6 +138,14 @@ payment, refund, and dispute events are retained with the explicit `deferred`
 state. This avoids claiming that money movement has been reconciled while also
 preserving the signed input for an idempotent backfill.
 
+For `payment.succeeded`, Sauti additionally resolves the payment through its
+verified membership ownership and queues a payment confirmation to the
+workspace account email. The email outbox is provider-payment idempotent and
+retries temporary SMTP failures. It includes the purchase, amount, currency,
+provider payment reference, confirmation time, and masked card suffix when
+available. This customer notification is not represented as financial
+reconciliation or a tax invoice.
+
 The checkout redirect is presentation only. Sauti never grants a plan from a
 `status=success` query parameter; only a verified membership webhook can update
 the workspace subscription.
@@ -115,16 +153,19 @@ the workspace subscription.
 ## Safe acceptance
 
 1. Start in Whop sandbox and create all six plans there.
-2. Complete a checkout for each plan and confirm the plan changes only after a
-   signed membership event.
-3. Replay the same webhook ID and confirm it is processed once.
-4. Alter the body, signature, company ID, and timestamp independently and
+2. Complete the first base checkout, then change from Growth to Scale through
+   the Whop membership portal. Confirm the provider membership ID remains the
+   same and Sauti changes only after the signed membership event.
+3. Purchase one add-on. Confirm it appears separately in Sauti, does not change
+   the base plan, and its Manage action opens that add-on membership.
+4. Replay the same webhook ID and confirm it is processed once.
+5. Alter the body, signature, company ID, and timestamp independently and
    confirm each request is rejected.
-5. Exercise activation, renewal, cancel-at-period-end, deactivation,
+6. Exercise activation, renewal, cancel-at-period-end, deactivation,
    past-due/failed payment, expiration, refund, and dispute journeys.
-6. Confirm webhook failures are visible in the Admin Analytics billing-event
+7. Confirm webhook failures are visible in the Admin Analytics billing-event
    queue.
-7. Keep every billing account in `observe` until refund/dispute ledger handling
+8. Keep every billing account in `observe` until refund/dispute ledger handling
    and production lifecycle evidence receive a separate review.
 
 The older 2Checkout and Lemon Squeezy adapters remain dormant rollback code.

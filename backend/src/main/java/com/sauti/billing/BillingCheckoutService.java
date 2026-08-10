@@ -31,13 +31,22 @@ public class BillingCheckoutService {
         return gateway.create(tenantId, request);
     }
 
+    public BillingCheckoutGateway.AddOnCheckoutResponse createAddOn(
+            UUID tenantId, BillingCheckoutGateway.AddOnCheckoutRequest request) {
+        var gateway = gateways.get(activeProvider);
+        if (gateway == null) throw new IllegalStateException("Configured billing provider is not available");
+        return gateway.createAddOn(tenantId, request);
+    }
+
     public CheckoutStatus status() {
         var gateway = gateways.get(activeProvider);
         var environment = "whop".equals(activeProvider) && whopSandbox ? "sandbox" : "live";
-        return new CheckoutStatus(activeProvider, environment, gateway != null && gateway.configured());
+        return new CheckoutStatus(activeProvider, environment, gateway != null && gateway.configured(),
+                gateway != null && gateway.addOnsConfigured());
     }
 
-    public record CheckoutStatus(String provider, String environment, boolean configured) { }
+    public record CheckoutStatus(String provider, String environment, boolean configured,
+                                 boolean addOnsConfigured) { }
 
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT).replace('-', '_');
