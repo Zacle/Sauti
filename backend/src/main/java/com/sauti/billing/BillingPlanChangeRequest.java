@@ -39,6 +39,8 @@ public class BillingPlanChangeRequest extends Auditable {
         this.status = "requested";
     }
 
+    public void complete() { this.status = "completed"; }
+
     public UUID getId() { return id; }
     public UUID getTenantId() { return tenantId; }
     public String getProviderSubscriptionId() { return providerSubscriptionId; }

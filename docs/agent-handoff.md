@@ -2,6 +2,38 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-10: Automatically reconcile Whop replacement memberships
+
+- Replaced the support-assisted base-plan change with customer-authorized Whop
+  management followed by automatic webhook reconciliation. Sauti records the
+  exact source membership and target plan/interval, then opens only the
+  synchronized Whop membership URL; no plan-change email or support action is
+  required in the normal path.
+- Fixed the synchronization gap observed after an upgrade. Whop may cancel the
+  old membership and activate a new membership instead of mutating the original
+  ID. Sauti now adopts that replacement only when the verified event's customer,
+  target plan, interval, source membership, and tenant-owned pending request all
+  match. A late cancellation event for the replaced ID is consumed without
+  overwriting the new subscription.
+- Preserved tenant isolation for replacement events without signed checkout
+  metadata: the provider customer ID must resolve to exactly one workspace with
+  the matching pending request. Ambiguous or unrequested replacements fail
+  closed and remain retry-visible.
+- Improved the billing card so `canceling` and `canceled` are shown as
+  `Cancellation scheduled`, with the paid-through date. Past-due, unresolved,
+  expired, and completed memberships no longer appear generically Active.
+- Updated the pending banner and plan-change dialog to explain that Whop handles
+  secure authorization and Sauti updates automatically after the signed event.
+- Files touched: Whop subscription processor/repository/entity and regression
+  tests; plan-change service/request/API type; billing presentation; Whop setup
+  guide; and this handoff. The obsolete plan-change email listener/event were
+  removed.
+- Verification: focused backend reconciliation tests, complete backend test
+  suite, dashboard typecheck, zero-warning lint, and optimized production build
+  passed; the build generated all 61 pages.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+
 ### 2026-08-10: Replace confusing Whop plan list with Sauti plan-change requests
 
 - Kept Whop as the recurring billing provider, while removing the customer

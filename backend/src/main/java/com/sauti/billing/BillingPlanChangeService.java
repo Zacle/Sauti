@@ -3,9 +3,9 @@ package com.sauti.billing;
 import com.sauti.tenant.TenantRepository;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.Locale;
+import java.net.URI;
 import java.util.Set;
 import java.util.UUID;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,14 +16,12 @@ public class BillingPlanChangeService {
     private final TenantRepository tenants;
     private final BillingSubscriptionRepository subscriptions;
     private final BillingPlanChangeRequestRepository requests;
-    private final ApplicationEventPublisher events;
 
     public BillingPlanChangeService(TenantRepository tenants, BillingSubscriptionRepository subscriptions,
-                                    BillingPlanChangeRequestRepository requests, ApplicationEventPublisher events) {
+                                    BillingPlanChangeRequestRepository requests) {
         this.tenants = tenants;
         this.subscriptions = subscriptions;
         this.requests = requests;
-        this.events = events;
     }
 
     @Transactional
@@ -49,8 +47,7 @@ public class BillingPlanChangeService {
         request.retarget(subscription.getProviderSubscriptionId(), subscription.getPlan(),
                 targetPlan, targetInterval, subscription.getRenewsAt());
         var saved = requests.save(request);
-        events.publishEvent(new BillingPlanChangeRequested(saved, tenant.getBusinessName(), tenant.getEmail()));
-        return PlanChangeResponse.from(saved);
+        return PlanChangeResponse.from(saved, trustedWhopUrl(subscription.getUpdatePaymentMethodUrl()));
     }
 
     @Transactional(readOnly = true)
@@ -61,11 +58,25 @@ public class BillingPlanChangeService {
     public record PlanChangeCommand(String plan, String interval) { }
 
     public record PlanChangeResponse(UUID id, String status, String currentPlan, String targetPlan,
-                                     String targetInterval, java.time.OffsetDateTime effectiveAt) {
-        static PlanChangeResponse from(BillingPlanChangeRequest request) {
+                                     String targetInterval, java.time.OffsetDateTime effectiveAt,
+                                     String authorizationUrl) {
+        static PlanChangeResponse from(BillingPlanChangeRequest request, String authorizationUrl) {
             return new PlanChangeResponse(request.getId(), request.getStatus(), request.getCurrentPlan(),
-                    request.getTargetPlan(), request.getTargetInterval(), request.getEffectiveAt());
+                    request.getTargetPlan(), request.getTargetInterval(), request.getEffectiveAt(), authorizationUrl);
         }
+    }
+
+    private static String trustedWhopUrl(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Whop plan-change authorization is unavailable for this subscription");
+        }
+        var uri = URI.create(value);
+        var host = uri.getHost();
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || host == null
+                || !("whop.com".equalsIgnoreCase(host) || host.toLowerCase(Locale.ROOT).endsWith(".whop.com"))) {
+            throw new IllegalStateException("Whop returned an invalid plan-change authorization URL");
+        }
+        return uri.toString();
     }
 
     private static String normalized(String value) {

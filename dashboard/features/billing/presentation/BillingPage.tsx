@@ -212,10 +212,8 @@ export function BillingPage() {
         return;
       }
       if (account?.subscription) {
-        await requestBillingPlanChange(selectedPlan.id, interval);
-        setPreviewOpen(false);
-        setBillingActionMessage(`Plan change requested. Your ${currentPlan.name} subscription stays unchanged until Sauti confirms the move to ${selectedPlan.name}.`);
-        setReloadKey((key) => key + 1);
+        const change = await requestBillingPlanChange(selectedPlan.id, interval);
+        window.location.assign(change.authorizationUrl);
         return;
       }
       const checkout = await createBillingCheckout(selectedPlan.id, interval);
@@ -272,7 +270,7 @@ export function BillingPage() {
 
       {account?.pendingPlanChange && <section className={styles.pendingPlanChange} role="status">
         <Clock3 size={18} />
-        <div><strong>Plan change requested</strong><span>Your {planById(account.pendingPlanChange.currentPlan).name} plan remains active while Sauti reviews the move to {planById(account.pendingPlanChange.targetPlan).name} ({account.pendingPlanChange.targetInterval}). We will confirm the billing details by email before changing it.</span></div>
+        <div><strong>Plan change awaiting Whop confirmation</strong><span>Your {planById(account.pendingPlanChange.currentPlan).name} plan remains active until Whop confirms the move to {planById(account.pendingPlanChange.targetPlan).name} ({account.pendingPlanChange.targetInterval}). Return to the exact Whop membership to finish authorization if you left before completing it.</span></div>
       </section>}
 
       {error && (
@@ -352,7 +350,7 @@ export function BillingPage() {
             <p id="preview-description">{account?.subscription
               ? managementIntent === "cancel"
                 ? `You will keep access until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of the paid billing period"}. Sauti will cancel the exact synchronized Whop membership; no provider selection is required.`
-                : `Send this request to Sauti without opening Whop's account-wide subscription list. Your current plan and charge remain unchanged until support confirms the effective date and billing difference with you.`
+                : `Sauti will track this exact change and open the synchronized Whop membership for secure billing authorization. When Whop confirms the replacement membership, Sauti will update the plan automatically.`
               : `Continuing opens ${checkoutProvider}. ${isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.`}</p>
             <div className={styles.dialogRows}>
               <span><em>{account?.subscription && managementIntent === "change" ? "New plan" : "Plan"}</em><strong>{account?.subscription && managementIntent === "cancel" ? currentPlan.name : selectedPlan.name}</strong></span>
@@ -371,8 +369,8 @@ export function BillingPage() {
             {checkoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {checkoutError}</p>}
             <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
               {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
-              {checkoutLoading ? account?.subscription && managementIntent === "change" ? "Sending request…" : "Opening Whop…" : account?.subscription
-                ? managementIntent === "cancel" ? "Schedule cancellation" : "Request plan change"
+              {checkoutLoading ? "Opening Whop…" : account?.subscription
+                ? managementIntent === "cancel" ? "Schedule cancellation" : "Authorize plan change"
                 : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
             </button>
             <button className={styles.checkoutCancel} disabled={checkoutLoading} onClick={() => setPreviewOpen(false)} type="button">Keep exploring</button>
@@ -635,12 +633,26 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
     ? `${money(currentPlan.monthlyPrice * 0.9 * 12)} / year`
     : `${money(currentPlan.monthlyPrice)} / month`;
   const providerReference = subscription?.providerReference ?? "";
+  const subscriptionState = subscription?.status === "canceling" || subscription?.status === "canceled"
+    ? "Cancellation scheduled"
+    : subscription?.status === "past_due" || subscription?.status === "unresolved"
+      ? "Payment issue"
+      : subscription?.status === "expired" || subscription?.status === "completed"
+        ? "Ended"
+        : "Active";
+  const subscriptionExplanation = subscriptionState === "Cancellation scheduled"
+    ? `Whop has cancelled renewal. Access continues until ${subscription?.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(subscription.renewsAt)) : "the end of the paid period"}.`
+    : subscriptionState === "Payment issue"
+      ? "Whop reported a payment problem. Update the payment method to prevent an interruption."
+      : subscriptionState === "Ended"
+        ? "Whop has ended this membership. Choose a plan to restore paid service."
+        : "This is the only Whop membership currently synchronized with this workspace.";
   return (
     <section className={styles.planStudio} aria-label="Plan and add-on modeller">
       {subscription && <article className={styles.currentSubscriptionNotice}>
         <span><ShieldCheck size={18} /></span>
-        <div><small>Current subscription to keep</small><strong>{currentPlan.name} · {currentPrice}</strong><p>This is the only membership synchronized with this workspace. Other active Sauti entries in Whop are separate test subscriptions, not upgrades.</p>{providerReference && <code>Whop reference: {providerReference}</code>}</div>
-        <em>{subscription.status === "canceling" ? "Cancellation scheduled" : "Active"}</em>
+        <div><small>Current synchronized subscription</small><strong>{currentPlan.name} · {currentPrice}</strong><p>{subscriptionExplanation}</p>{providerReference && <code>Whop reference: {providerReference}</code>}</div>
+        <em data-state={subscriptionState}>{subscriptionState}</em>
       </article>}
       <article className={styles.planSelector}>
         <header className={styles.stepHeader}><span>1</span><div><h2>Choose a plan</h2><p>Select the allowance and capacity your workspace needs.</p></div></header>
@@ -689,7 +701,7 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
         <div className={styles.ledgerTotal}><div><strong>Estimated total / month</strong><span>Plan + overage + activated add-ons</span></div><strong>{money(projection.total)}</strong></div>
         <p><Info size={15} /> If a higher plan produces a lower total for your model, Sauti will explain the arithmetic instead of forcing a recommendation.</p>
         <button disabled={!checkoutConfigured || (hasSubscription && selectedPlanId === currentPlanId)} onClick={() => openPlanDialog("change")} type="button"><ShieldCheck size={16} /> {!checkoutConfigured ? "Whop setup required" : hasSubscription ? selectedPlanId === currentPlanId ? "Current plan selected" : `Change to ${selectedPlan.name}` : isSandbox ? "Continue to sandbox checkout" : "Continue to secure checkout"}</button>
-        {hasSubscription && <button className={styles.cancelPlanButton} onClick={() => openPlanDialog("cancel")} type="button">Cancel subscription</button>}
+        {hasSubscription && subscriptionState !== "Cancellation scheduled" && subscriptionState !== "Ended" && <button className={styles.cancelPlanButton} onClick={() => openPlanDialog("cancel")} type="button">Cancel subscription</button>}
         <button className={styles.resetButton} onClick={resetModel} type="button"><RotateCcw size={15} /> Reset model</button>
         <footer>Sauti guides the change; {checkoutProvider} securely authorizes billing.</footer>
       </article>

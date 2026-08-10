@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.sauti.tenant.Tenant;
@@ -12,15 +11,13 @@ import com.sauti.tenant.TenantRepository;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.springframework.context.ApplicationEventPublisher;
 
 class BillingPlanChangeServiceTest {
     private final TenantRepository tenants = mock(TenantRepository.class);
     private final BillingSubscriptionRepository subscriptions = mock(BillingSubscriptionRepository.class);
     private final BillingPlanChangeRequestRepository requests = mock(BillingPlanChangeRequestRepository.class);
-    private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final BillingPlanChangeService service = new BillingPlanChangeService(
-            tenants, subscriptions, requests, events);
+            tenants, subscriptions, requests);
 
     @Test
     void recordsOneTenantScopedRequestWithoutCreatingAnotherWhopCheckout() {
@@ -40,7 +37,7 @@ class BillingPlanChangeServiceTest {
         assertThat(result.targetPlan()).isEqualTo("scale");
         assertThat(result.targetInterval()).isEqualTo("annual");
         assertThat(result.effectiveAt()).isEqualTo(renewal);
-        verify(events).publishEvent(any(BillingPlanChangeRequested.class));
+        assertThat(result.authorizationUrl()).isEqualTo("https://whop.com/billing/manage/mem_growth");
     }
 
     @Test

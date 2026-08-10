@@ -19,6 +19,7 @@ public class WhopSubscriptionProcessor {
     private final BillingSubscriptionRepository subscriptions;
     private final BillingAddOnSubscriptionRepository addOnSubscriptions;
     private final BillingPaymentNotificationRepository paymentNotifications;
+    private final BillingPlanChangeRequestRepository planChangeRequests;
     private final TenantRepository tenants;
     private final BillingLedgerService ledger;
     private final WhopPlanCatalog plans;
@@ -31,6 +32,7 @@ public class WhopSubscriptionProcessor {
             BillingProviderEventRepository events, BillingSubscriptionRepository subscriptions,
             BillingAddOnSubscriptionRepository addOnSubscriptions,
             BillingPaymentNotificationRepository paymentNotifications,
+            BillingPlanChangeRequestRepository planChangeRequests,
             TenantRepository tenants, BillingLedgerService ledger, WhopPlanCatalog plans,
             WhopAddOnCatalog addOns, ObjectMapper objectMapper,
             @Value("${sauti.billing.whop.tenant-reference-secret:}") String tenantReferenceSecret,
@@ -39,6 +41,7 @@ public class WhopSubscriptionProcessor {
         this.subscriptions = subscriptions;
         this.addOnSubscriptions = addOnSubscriptions;
         this.paymentNotifications = paymentNotifications;
+        this.planChangeRequests = planChangeRequests;
         this.tenants = tenants;
         this.ledger = ledger;
         this.plans = plans;
@@ -119,7 +122,7 @@ public class WhopSubscriptionProcessor {
                 .orElseThrow(() -> new IllegalArgumentException("Whop plan is not configured"));
         var existingByProvider = subscriptions
                 .findByProviderAndProviderSubscriptionId(PROVIDER, membershipId).orElse(null);
-        var tenantId = tenantId(data, existingByProvider);
+        var tenantId = tenantId(data, existingByProvider, selection);
         if (existingByProvider != null && !existingByProvider.getTenantId().equals(tenantId)) {
             throw new SecurityException("Whop membership workspace does not match existing ownership");
         }
@@ -132,11 +135,19 @@ public class WhopSubscriptionProcessor {
             throw new IllegalArgumentException("Workspace subscription belongs to a different billing provider");
         }
         if (!membershipId.equals(subscription.getProviderSubscriptionId())) {
-            throw new IllegalArgumentException("Workspace already has a different subscription");
+            var request = planChangeRequests.findByTenantId(tenantId).orElse(null);
+            if (request != null && "completed".equals(request.getStatus())
+                    && membershipId.equals(request.getProviderSubscriptionId())) {
+                return;
+            }
+            requireReplacement(request, subscription, membershipId, selection, data);
+            subscription.replaceProviderSubscription(membershipId);
+            request.complete();
+            planChangeRequests.save(request);
         }
         var providerUpdatedAt = timestamp(data.path("updated_at"));
         if (!subscription.isNewerThan(providerUpdatedAt)) return;
-        var status = required(data.path("status"), "membership status");
+        var status = membershipStatus(data);
         var customerId = first(data.path("user").path("id"), data.path("member").path("id"), membershipId);
         var productId = required(data.path("product").path("id"), "product id");
         var renewsAt = timestamp(data.path("renewal_period_end"));
@@ -145,6 +156,7 @@ public class WhopSubscriptionProcessor {
                 renewsAt, endDate(status, renewsAt), null, providerUpdatedAt,
                 "", "", data.path("manage_url").asText(""));
         subscriptions.save(subscription);
+        completeInPlacePlanChange(tenantId, membershipId, selection);
         tenant.applyBillingSubscription(selection.plan(), selection.monthlyMinutes(),
                 renewsAt, customerId);
         tenants.save(tenant);
@@ -174,7 +186,7 @@ public class WhopSubscriptionProcessor {
         if (existing != null && !existing.isNewerThan(timestamp(data.path("updated_at")))) return;
         var subscription = existing != null ? existing
                 : new BillingAddOnSubscription(tenantId, PROVIDER, membershipId);
-        var status = required(data.path("status"), "membership status");
+        var status = membershipStatus(data);
         var renewsAt = timestamp(data.path("renewal_period_end"));
         subscription.synchronize(planId, selection.id(), status, sandbox, renewsAt,
                 endDate(status, renewsAt), timestamp(data.path("updated_at")),
@@ -186,11 +198,72 @@ public class WhopSubscriptionProcessor {
         throw new IllegalArgumentException("Whop workspace reference is missing");
     }
 
-    private UUID tenantId(JsonNode data, BillingSubscription existing) {
+    private UUID tenantId(JsonNode data, BillingSubscription existing, WhopPlanCatalog.Plan selection) {
         var reference = data.path("metadata").path("sauti_tenant_reference").asText("");
         if (!reference.isBlank()) return tenantReferences.verify(reference);
         if (existing != null) return existing.getTenantId();
-        throw new IllegalArgumentException("Whop workspace reference is missing");
+        var customerIds = customerIds(data);
+        if (customerIds.isEmpty()) throw new IllegalArgumentException("Whop workspace reference is missing");
+        var candidates = customerIds.stream()
+                .flatMap(customerId -> subscriptions
+                        .findAllByProviderAndProviderCustomerId(PROVIDER, customerId).stream())
+                .distinct()
+                .filter(subscription -> planChangeRequests.findByTenantId(subscription.getTenantId())
+                        .filter(request -> "requested".equals(request.getStatus()))
+                        .filter(request -> request.getTargetPlan().equals(selection.plan()))
+                        .filter(request -> request.getTargetInterval().equals(selection.interval()))
+                        .isPresent())
+                .toList();
+        if (candidates.size() != 1) {
+            throw new SecurityException("Whop replacement membership does not identify one workspace");
+        }
+        return candidates.get(0).getTenantId();
+    }
+
+    private void requireReplacement(BillingPlanChangeRequest request, BillingSubscription subscription,
+                                    String membershipId, WhopPlanCatalog.Plan selection, JsonNode data) {
+        if (request == null || !"requested".equals(request.getStatus())
+                || !request.getProviderSubscriptionId().equals(subscription.getProviderSubscriptionId())
+                || !request.getTargetPlan().equals(selection.plan())
+                || !request.getTargetInterval().equals(selection.interval())) {
+            throw new SecurityException("Whop replacement membership does not match the requested plan change");
+        }
+        var status = required(data.path("status"), "membership status");
+        if (!List.of("active", "trialing").contains(status)) {
+            throw new IllegalArgumentException("Whop replacement membership is not active");
+        }
+        if (!customerIds(data).contains(subscription.getProviderCustomerId())) {
+            throw new SecurityException("Whop replacement membership customer does not match the workspace");
+        }
+        if (membershipId.equals(subscription.getProviderSubscriptionId())) {
+            throw new IllegalArgumentException("Whop replacement membership must be different");
+        }
+    }
+
+    private void completeInPlacePlanChange(UUID tenantId, String membershipId,
+                                           WhopPlanCatalog.Plan selection) {
+        planChangeRequests.findByTenantId(tenantId)
+                .filter(request -> "requested".equals(request.getStatus()))
+                .filter(request -> membershipId.equals(request.getProviderSubscriptionId()))
+                .filter(request -> selection.plan().equals(request.getTargetPlan()))
+                .filter(request -> selection.interval().equals(request.getTargetInterval()))
+                .ifPresent(request -> {
+                    request.complete();
+                    planChangeRequests.save(request);
+                });
+    }
+
+    private static List<String> customerIds(JsonNode data) {
+        var userId = data.path("user").path("id").asText("").trim();
+        var memberId = data.path("member").path("id").asText("").trim();
+        return java.util.stream.Stream.of(userId, memberId)
+                .filter(value -> !value.isBlank()).distinct().toList();
+    }
+
+    private static String membershipStatus(JsonNode data) {
+        var status = required(data.path("status"), "membership status");
+        return data.path("cancel_at_period_end").asBoolean(false)
+                && List.of("active", "trialing").contains(status) ? "canceling" : status;
     }
 
     private static String accountStatus(String status) {

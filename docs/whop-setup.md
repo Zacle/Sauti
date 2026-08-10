@@ -21,16 +21,18 @@ the Whop plans; the browser cannot submit either value.
 Once a workspace has a Whop membership, Sauti no longer creates another base
 checkout for an upgrade or downgrade. The customer selects a target in Sauti,
 which records one tenant-scoped plan-change request tied to the exact current
-Whop membership and emails both the workspace owner and `support@sauti.uk`.
-The current plan and charge remain unchanged until support verifies the request
-and confirms the billing effect with the customer. The customer is never sent
-to Whop's account-wide subscription list for this operation.
+Whop membership and opens that membership's provider-issued `manage_url` for
+secure billing authorization. No support operator or plan-change email is part
+of the normal path.
 
 Whop's current documented membership update API accepts membership metadata but
-does not expose a server-side target-plan mutation. Sauti must therefore not
-imitate a plan change by creating a second checkout or an off-session charge.
-The first production workflow is deliberately support-assisted until Whop
-documents a safe, atomic plan-replacement API. Cancellation is different:
+does not expose a server-side target-plan mutation. Sauti therefore records the
+exact intended target before sending the customer to Whop and never imitates a
+change with a second checkout or an unapproved off-session charge. When Whop
+changes the plan on the existing membership, Sauti applies the signed update.
+When Whop instead activates a replacement membership and cancels the old one,
+Sauti adopts it only when its customer, target plan, interval, source membership,
+and pending tenant request all match. Cancellation is different:
 Sauti calls Whop's documented membership cancellation endpoint for the exact
 tenant-owned membership and schedules it at the end of the paid period. If a
 sandbox account already has two Sauti base
@@ -175,14 +177,16 @@ test memberships. Do not choose between same-priced memberships by price alone.
 
 After a base membership has synchronized, Sauti rejects another base checkout
 for that workspace. Selecting another plan creates or updates the workspace's
-pending plan-change request; it never opens the generic Whop portal. Support
-must match the request's membership reference before making a provider-side
-change and must confirm the billing effect with the customer first.
+pending plan-change request and opens the exact synchronized membership URL.
+Whop remains responsible for showing and authorizing the billing consequence;
+the signed webhook is the only event that changes Sauti's entitlement.
 
 1. Start in Whop sandbox and create all six plans there.
 2. Complete the first base checkout, then request Growth to Scale in Sauti.
-   Confirm no checkout opens, no payment occurs, the pending state appears, and
-   both the workspace owner and support receive the request email.
+   Complete the provider authorization and confirm the pending state appears
+   until the signed event arrives. Test both Whop behaviors: same membership ID
+   updated in place, and a new active membership replacing the canceled old ID.
+   In both cases Sauti must end on Scale without support intervention.
 3. Purchase one add-on. Confirm it appears separately in Sauti, does not change
    the base plan, and its Manage action opens that add-on membership.
 4. Replay the same webhook ID and confirm it is processed once.

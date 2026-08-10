@@ -10,6 +10,7 @@ interface BillingSubscriptionRepository extends JpaRepository<BillingSubscriptio
     Optional<BillingSubscription> findByTenantId(UUID tenantId);
     Optional<BillingSubscription> findByProviderAndProviderSubscriptionId(
             String provider, String providerSubscriptionId);
+    List<BillingSubscription> findAllByProviderAndProviderCustomerId(String provider, String providerCustomerId);
 }
 
 interface BillingAddOnSubscriptionRepository extends JpaRepository<BillingAddOnSubscription, UUID> {

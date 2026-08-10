@@ -67,10 +67,16 @@ public class BillingSubscription extends Auditable {
         this.updatePaymentMethodUrl = optional(updatePaymentMethodUrl);
     }
 
+    public void replaceProviderSubscription(String providerSubscriptionId) {
+        this.providerSubscriptionId = required(providerSubscriptionId);
+        this.providerUpdatedAt = null;
+    }
+
     public UUID getTenantId() { return tenantId; }
     public String getProvider() { return provider; }
     public String getProviderSubscriptionId() { return providerSubscriptionId; }
     public String getProviderStatus() { return providerStatus; }
+    public String getProviderCustomerId() { return providerCustomerId; }
     public OffsetDateTime getProviderUpdatedAt() { return providerUpdatedAt; }
     public String getPlan() { return plan; }
     public String getBillingInterval() { return billingInterval; }

@@ -865,6 +865,17 @@
   font-weight: 600;
 }
 
+.currentSubscriptionNotice > em[data-state="Cancellation scheduled"] {
+  color: #ffd38a;
+  background: rgba(210, 139, 42, .16);
+}
+
+.currentSubscriptionNotice > em[data-state="Payment issue"],
+.currentSubscriptionNotice > em[data-state="Ended"] {
+  color: #ff9f9f;
+  background: rgba(214, 68, 68, .14);
+}
+
 .pendingPlanChange {
   display: flex;
   align-items: center;
