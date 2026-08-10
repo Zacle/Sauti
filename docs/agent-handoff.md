@@ -2,6 +2,27 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-10: Remove the remaining billing workbench overflow
+
+- Replaced the Plans & add-ons desktop grid's fixed 340px/500px/390px track
+  minimums with zero-minimum proportional tracks. Those fixed minimums could
+  still exceed the real content width after the console sidebar and page
+  padding were deducted from a 1600px-class viewport.
+- Made the billing page an inline-size container and added a content-width
+  breakpoint. When the actual workspace is 821–1320px wide, the plan and
+  configuration panels remain side by side while the estimate moves to a full
+  row below them. This responds correctly whether the sidebar is expanded or
+  collapsed, unlike the older viewport-only media query.
+- File touched: billing presentation CSS, plus this handoff and the existing
+  design-QA record.
+- Verification: dashboard typecheck, zero-warning ESLint, optimized production
+  build (all 61 pages), and `git diff --check` passed (line-ending notices
+  only).
+- Visual QA remains blocked by the unavailable Codex in-app browser runtime;
+  the responsive rules require confirmation at the user's deployed viewport.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+
 ### 2026-08-10: Keep the Whop billing workbench visible and soften typography
 
 - Corrected the desktop Plans & add-ons overflow shown at 1608 x 969. Pricing

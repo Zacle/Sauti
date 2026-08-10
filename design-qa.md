@@ -42,6 +42,11 @@
 3. Post-fix evidence: TypeScript, zero-warning ESLint, and the optimized Next.js
    build pass. A browser-rendered screenshot comparison remains unavailable
    because the in-app browser runtime cannot initialize.
+4. The first deployed correction still overflowed because the three desktop
+   grid tracks retained fixed 340px/500px/390px minimums. Those were replaced
+   with zero-minimum proportional tracks, and a billing-content container query
+   now moves the estimate to its own row at 821–1320px of actual workspace
+   width, independent of the expanded or collapsed sidebar state.
 
 ## Interaction checks
 
@@ -54,7 +59,7 @@
 
 ## Remaining finding
 
-- [P2] Capture `/billing?tab=plans` at 1608 x 969 after deployment and verify
+- [P2] Capture `/billing?tab=plans` at 1608 x 969 after the revised deployment and verify
   that the complete estimate card, every amount, and both actions remain inside
   the viewport at 100% and 125% browser zoom.
 
