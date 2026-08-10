@@ -55,10 +55,12 @@ public class BillingPlanChangeService {
                 .orElseGet(() -> new BillingPlanChangeRequest(tenantId,
                         subscription.getProviderSubscriptionId(), subscription.getPlan(),
                         targetPlan, targetInterval, subscription.getRenewsAt()));
+        var replacedInvoiceId = "scheduled".equals(request.getStatus())
+                ? request.getProviderInvoiceId() : null;
         request.retarget(subscription.getProviderSubscriptionId(), subscription.getPlan(),
                 targetPlan, targetInterval, subscription.getRenewsAt());
         requests.save(request);
-        var transition = whop.prepare(subscription, selection, subscription.getRenewsAt());
+        var transition = whop.prepare(subscription, selection, subscription.getRenewsAt(), replacedInvoiceId);
         if ("adopt".equals(transition.kind())) {
             adopt(tenant, subscription, request, selection, transition.membership());
         } else {

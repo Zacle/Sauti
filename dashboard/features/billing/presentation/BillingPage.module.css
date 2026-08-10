@@ -855,6 +855,25 @@
   white-space: nowrap;
 }
 
+.resumePlanButton {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 191, 89, .4);
+  border-radius: 9px;
+  color: #ffd38a;
+  background: rgba(210, 139, 42, .1);
+  font-size: .64rem;
+}
+
+.resumePlanButton:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
 .currentSubscriptionNotice > em {
   padding: 5px 9px;
   border-radius: 999px;

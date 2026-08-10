@@ -49,6 +49,11 @@ public class WhopPlanChangeGateway {
 
     PlanTransition prepare(BillingSubscription subscription, WhopPlanCatalog.Plan target,
                            OffsetDateTime effectiveAt) {
+        return prepare(subscription, target, effectiveAt, null);
+    }
+
+    PlanTransition prepare(BillingSubscription subscription, WhopPlanCatalog.Plan target,
+                           OffsetDateTime effectiveAt, String replacedInvoiceId) {
         requireConfigured();
         if (effectiveAt == null || !effectiveAt.isAfter(OffsetDateTime.now())) {
             throw new IllegalStateException("Whop did not provide a future renewal date for this subscription");
@@ -57,6 +62,7 @@ public class WhopPlanChangeGateway {
         verifyCurrent(subscription, current);
         var replacements = matchingMemberships(subscription.getProviderCustomerId(), target.planId()).stream()
                 .filter(item -> !subscription.getProviderSubscriptionId().equals(item.path("id").asText()))
+                .filter(item -> !item.path("cancel_at_period_end").asBoolean(false))
                 .toList();
         if (replacements.size() > 1) {
             throw new IllegalStateException("More than one active " + target.plan()
@@ -65,6 +71,7 @@ public class WhopPlanChangeGateway {
         if (replacements.size() == 1) {
             verifyReplacement(subscription, replacements.get(0), target.planId());
             cancelAtPeriodEndIfNeeded(current);
+            voidReplacedInvoice(replacedInvoiceId);
             return PlanTransition.adopt(replacements.get(0));
         }
 
@@ -74,6 +81,7 @@ public class WhopPlanChangeGateway {
         var invoice = createInvoice(targetPlan, memberId, paymentMethodId, effectiveAt);
         try {
             cancelAtPeriodEndIfNeeded(current);
+            voidReplacedInvoice(replacedInvoiceId);
         } catch (RuntimeException exception) {
             voidInvoice(invoice.path("id").asText(""));
             throw exception;
@@ -107,6 +115,10 @@ public class WhopPlanChangeGateway {
         planInput.put("initial_price", 0);
         planInput.put("renewal_price", decimal(plan.path("renewal_price"), "renewal price"));
         planInput.put("billing_period", integer(plan.path("billing_period"), "billing period"));
+        planInput.put("currency", required(plan.path("currency"), "plan currency"));
+        planInput.put("plan_type", "renewal");
+        planInput.put("release_method", "buy_now");
+        planInput.put("visibility", "hidden");
         planInput.put("description", plan.path("description").asText("Sauti subscription"));
         planInput.put("unlimited_stock", true);
         var payload = new LinkedHashMap<String, Object>();
@@ -117,6 +129,7 @@ public class WhopPlanChangeGateway {
         payload.put("member_id", memberId);
         payload.put("payment_method_id", paymentMethodId);
         payload.put("automatically_finalizes_at", effectiveAt.toString());
+        payload.put("due_date", effectiveAt.toString());
         payload.put("subscription_billing_anchor_at", effectiveAt.toString());
         payload.put("charge_buyer_fee", false);
         return post("/invoices", payload);
@@ -133,6 +146,11 @@ public class WhopPlanChangeGateway {
         if (invoiceId == null || invoiceId.isBlank()) return;
         try { post("/invoices/" + safeId(invoiceId) + "/void", Map.of()); }
         catch (RuntimeException ignored) { /* best-effort compensation; Whop retains the audit trail */ }
+    }
+
+    private void voidReplacedInvoice(String invoiceId) {
+        if (invoiceId == null || invoiceId.isBlank()) return;
+        post("/invoices/" + safeId(invoiceId) + "/void", Map.of());
     }
 
     private void verifyCurrent(BillingSubscription subscription, JsonNode membership) {

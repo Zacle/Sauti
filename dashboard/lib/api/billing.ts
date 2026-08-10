@@ -31,6 +31,10 @@ export function cancelBillingSubscription(): Promise<BillingCancellation> {
   return apiRequest<BillingCancellation>("/billing/subscription/cancel", { method: "POST" });
 }
 
+export function resumeBillingSubscription(): Promise<BillingCancellation> {
+  return apiRequest<BillingCancellation>("/billing/subscription/resume", { method: "POST" });
+}
+
 export function requestBillingPlanChange(plan: BillingCheckout["plan"], interval: BillingCheckout["interval"]): Promise<BillingPlanChange> {
   return apiRequest<BillingPlanChange>("/billing/subscription/change-request", {
     method: "POST",

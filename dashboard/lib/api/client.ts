@@ -14,7 +14,7 @@ const SESSION_REFRESH_LOCK = "sauti-auth-session-refresh";
 async function parseError(response: Response) {
   try {
     const body = (await response.json()) as { detail?: string; message?: string; error?: string };
-    return body.message ?? body.detail ?? body.error ?? `Request failed (${response.status})`;
+    return body.detail ?? body.message ?? body.error ?? `Request failed (${response.status})`;
   } catch {
     return `Request failed (${response.status})`;
   }

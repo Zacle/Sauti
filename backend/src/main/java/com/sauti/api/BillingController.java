@@ -15,12 +15,15 @@ import com.sauti.billing.BillingPlanChangeService;
 import com.sauti.billing.BillingPlanChangeService.PlanChangeCommand;
 import com.sauti.billing.BillingPlanChangeService.PlanChangeResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -82,6 +85,15 @@ public class BillingController {
         }
     }
 
+    @PostMapping("/subscription/resume")
+    CancellationResponse resumeSubscription(@AuthenticationPrincipal AuthenticatedUser user) {
+        try {
+            return checkoutService.resume(user.tenantId());
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, exception.getMessage());
+        }
+    }
+
     @PostMapping("/subscription/change-request")
     PlanChangeResponse requestPlanChange(@AuthenticationPrincipal AuthenticatedUser user,
                                          @RequestBody PlanChangeCommand request) {
@@ -92,5 +104,13 @@ public class BillingController {
         } catch (IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage());
         }
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<ProblemDetail> billingError(ResponseStatusException exception) {
+        var problem = ProblemDetail.forStatusAndDetail(exception.getStatusCode(),
+                exception.getReason() == null ? "The billing operation could not be completed" : exception.getReason());
+        problem.setTitle("Billing operation failed");
+        return ResponseEntity.status(exception.getStatusCode()).body(problem);
     }
 }

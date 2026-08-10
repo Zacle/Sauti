@@ -19,6 +19,10 @@ public interface BillingCheckoutGateway {
         throw new IllegalStateException("Subscription cancellation is not available for this billing provider");
     }
 
+    default CancellationResponse resume(UUID tenantId) {
+        throw new IllegalStateException("Subscription renewal cannot be resumed for this billing provider");
+    }
+
     record CheckoutRequest(String plan, String interval) { }
 
     record CheckoutResponse(String url, String plan, String interval, String provider) { }

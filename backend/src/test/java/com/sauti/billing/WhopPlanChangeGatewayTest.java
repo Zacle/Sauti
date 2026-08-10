@@ -22,10 +22,14 @@ class WhopPlanChangeGatewayTest {
                  "member":{"id":"mber_1"},"user":{"id":"user_1"},
                  "company":{"id":"biz_sauti"},"product":{"id":"prod_sauti"}}
                 """);
-        respond(server, "/api/v1/memberships", "{\"data\":[]}");
+        respond(server, "/api/v1/memberships", """
+                {"data":[{"id":"mem_growth_canceling","status":"active","cancel_at_period_end":true,
+                 "user":{"id":"user_1"},"company":{"id":"biz_sauti"},
+                 "product":{"id":"prod_sauti"},"plan":{"id":"plan_growth_monthly"}}]}
+                """);
         respond(server, "/api/v1/payment_methods", "{\"data\":[{\"id\":\"pmt_1\"}]}");
         respond(server, "/api/v1/plans/plan_growth_monthly", """
-                {"id":"plan_growth_monthly","renewal_price":149,"billing_period":30,
+                {"id":"plan_growth_monthly","renewal_price":149,"billing_period":30,"currency":"usd",
                  "description":"Growth monthly","product":{"id":"prod_sauti"}}
                 """);
         server.createContext("/api/v1/invoices", exchange -> {
@@ -58,6 +62,9 @@ class WhopPlanChangeGatewayTest {
             assertThat(body.path("collection_method").asText()).isEqualTo("charge_automatically");
             assertThat(body.path("automatically_finalizes_at").asText()).isEqualTo(effectiveAt.toString());
             assertThat(body.path("plan").path("renewal_price").decimalValue()).isEqualByComparingTo("149");
+            assertThat(body.path("plan").path("currency").asText()).isEqualTo("usd");
+            assertThat(body.path("plan").path("plan_type").asText()).isEqualTo("renewal");
+            assertThat(body.path("due_date").asText()).isEqualTo(effectiveAt.toString());
             assertThat(mapper.readTree(cancelBody.get()).path("cancellation_mode").asText())
                     .isEqualTo("at_period_end");
         } finally {

@@ -164,6 +164,45 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
         }
     }
 
+    @Override
+    public CancellationResponse resume(UUID tenantId) {
+        if (!coreConfigured()) throw new IllegalStateException("Whop billing is not configured");
+        tenants.findById(tenantId).orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
+        var subscription = subscriptions.findByTenantId(tenantId)
+                .orElseThrow(() -> new IllegalStateException("This workspace does not have a subscription"));
+        if (!provider().equals(subscription.getProvider())) {
+            throw new IllegalStateException("This workspace subscription belongs to a different billing provider");
+        }
+        var membershipId = subscription.getProviderSubscriptionId();
+        if (membershipId == null || !membershipId.matches("[A-Za-z0-9_=-]+")) {
+            throw new IllegalStateException("The Whop membership reference is invalid");
+        }
+        try {
+            var httpRequest = HttpRequest.newBuilder(URI.create(apiBaseUrl + "/memberships/" + membershipId + "/resume"))
+                    .timeout(Duration.ofSeconds(12))
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Api-Version-Date", apiVersionDate)
+                    .header("Accept", "application/json")
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                    .build();
+            var response = http.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                LOGGER.warn("Whop membership resume failed with status {} and type {}",
+                        response.statusCode(), providerErrorType(response.body()));
+                throw providerResumeFailure(response.statusCode());
+            }
+            return new CancellationResponse(provider(), "active");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Subscription renewal recovery was interrupted", exception);
+        } catch (IllegalStateException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalStateException("Whop subscription renewal is temporarily unavailable", exception);
+        }
+    }
+
     private String createHostedCheckout(String planId, Map<String, String> metadata) {
         var payload = Map.of(
                 "company_id", companyId,
@@ -230,6 +269,20 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
             case 429 -> new IllegalStateException(environment
                     + " is temporarily rate limiting checkout requests. Please try again shortly.");
             default -> new IllegalStateException(environment + " checkout is temporarily unavailable.");
+        };
+    }
+
+    private IllegalStateException providerResumeFailure(int statusCode) {
+        var environment = apiBaseUrl.contains("sandbox-api.whop.com") ? "Whop Sandbox" : "Whop";
+        return switch (statusCode) {
+            case 400, 422 -> new IllegalStateException(environment
+                    + " could not resume this membership. It may already have ended.");
+            case 401 -> new IllegalStateException(environment + " rejected the API key.");
+            case 403 -> new IllegalStateException(environment
+                    + " API key needs the member:manage permission to resume renewal.");
+            case 404 -> new IllegalStateException(environment + " could not find this membership.");
+            case 429 -> new IllegalStateException(environment + " is rate limiting renewal requests. Try again shortly.");
+            default -> new IllegalStateException(environment + " subscription renewal is temporarily unavailable.");
         };
     }
 

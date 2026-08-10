@@ -34,7 +34,7 @@ class BillingPlanChangeServiceTest {
         when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(subscription));
         when(requests.findByTenantId(tenant.getId())).thenReturn(Optional.empty());
         when(requests.save(any(BillingPlanChangeRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(whop.prepare(subscription, plans.checkoutSelection("scale", "annual"), renewal))
+        when(whop.prepare(subscription, plans.checkoutSelection("scale", "annual"), renewal, null))
                 .thenReturn(WhopPlanChangeGateway.PlanTransition.scheduled("inv_change", "plan_generated"));
 
         var result = service.request(tenant.getId(),
@@ -45,6 +45,30 @@ class BillingPlanChangeServiceTest {
         assertThat(result.targetPlan()).isEqualTo("scale");
         assertThat(result.targetInterval()).isEqualTo("annual");
         assertThat(result.effectiveAt()).isEqualTo(renewal);
+    }
+
+    @Test
+    void replacesThePreviouslyScheduledInvoiceWhenTheTargetChanges() {
+        var tenant = new Tenant("Clinic", "owner@example.com", "GB");
+        var renewal = OffsetDateTime.parse("2026-09-10T10:00:00Z");
+        var subscription = subscription(tenant, renewal);
+        var existing = new BillingPlanChangeRequest(tenant.getId(), "mem_growth", "growth",
+                "scale", "monthly", renewal);
+        existing.schedule("inv_old", "plan_scale_monthly", "plan_generated_old");
+        when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(subscription));
+        when(requests.findByTenantId(tenant.getId())).thenReturn(Optional.of(existing));
+        when(requests.save(any(BillingPlanChangeRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(whop.prepare(subscription, plans.checkoutSelection("launch", "monthly"), renewal, "inv_old"))
+                .thenReturn(WhopPlanChangeGateway.PlanTransition.scheduled("inv_new", "plan_generated_new"));
+
+        var result = service.request(tenant.getId(),
+                new BillingPlanChangeService.PlanChangeCommand("launch", "monthly"));
+
+        assertThat(result.status()).isEqualTo("scheduled");
+        assertThat(result.targetPlan()).isEqualTo("launch");
+        assertThat(existing.getProviderInvoiceId()).isEqualTo("inv_new");
+        verify(whop).prepare(subscription, plans.checkoutSelection("launch", "monthly"), renewal, "inv_old");
     }
 
     @Test
@@ -75,7 +99,7 @@ class BillingPlanChangeServiceTest {
         when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(subscription));
         when(requests.findByTenantId(tenant.getId())).thenReturn(Optional.empty());
         when(requests.save(any(BillingPlanChangeRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(whop.prepare(subscription, plans.checkoutSelection("scale", "monthly"), renewal))
+        when(whop.prepare(subscription, plans.checkoutSelection("scale", "monthly"), renewal, null))
                 .thenReturn(WhopPlanChangeGateway.PlanTransition.adopt(replacement));
         when(ledger.account(tenant.getId())).thenReturn(account);
 

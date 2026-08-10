@@ -20,8 +20,9 @@ the Whop plans; the browser cannot submit either value.
 
 Once a workspace has a Whop membership, Sauti no longer sends upgrades or
 downgrades to Whop's generic membership portal. It first looks for one active,
-same-customer membership on the exact target plan and safely reuses it when
-present. Otherwise Sauti schedules a future automatic invoice for the target
+renewing same-customer membership on the exact target plan and safely reuses it
+when present. A membership with `cancel_at_period_end=true` is never reused.
+Otherwise Sauti schedules a future automatic invoice for the target
 plan, anchored to the current renewal date, and ends only the synchronized
 source membership then. No support operator or plan-change email is involved.
 
@@ -31,9 +32,14 @@ instead of pretending a portal visit completed the change. The future invoice
 creates a provider plan for that renewal; Sauti stores the generated plan ID and
 only adopts its membership when customer, target, source membership, and tenant
 all match the stored request. More than one matching target membership is
-rejected rather than guessed. Cancellation is different:
+rejected rather than guessed. Replacing a pending transition creates the new
+future invoice first and then voids the superseded invoice, so only the latest
+requested plan should renew. Cancellation is different:
 Sauti calls Whop's documented membership cancellation endpoint for the exact
 tenant-owned membership and schedules it at the end of the paid period. If a
+synchronized membership is marked for cancellation without a completed plan
+change, the billing page exposes **Resume renewal** for that exact membership.
+Local status remains webhook-driven after Whop accepts the recovery. If a
 sandbox account already has two Sauti base
 memberships, cancel the unwanted membership in Whop and verify that all six
 configured base plan IDs belong to the same Whop product before testing again.
@@ -75,8 +81,8 @@ plan IDs. A production key cannot authenticate against
 `https://sandbox-api.whop.com/api/v1`, and production plan IDs are not visible
 to Whop Sandbox. The key must allow checkout-configuration creation plus
 `member:basic:read`, `member:email:read`, `member:payment_methods:read`,
-`plan:basic:read`, `invoice:create`, `invoice:update`, and membership
-cancellation. Sauti only receives Whop's tokenized payment-method ID, never card
+`plan:basic:read`, `invoice:create`, `invoice:update`, and `member:manage` for
+membership cancellation and renewal recovery. Sauti only receives Whop's tokenized payment-method ID, never card
 numbers. A `401` from the checkout-configuration list is an API-key or
 environment mismatch; a `404` for every plan normally means the plan IDs belong
 to the other environment or company.

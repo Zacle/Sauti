@@ -2,6 +2,37 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-10: TikTok/Instagram founder-build Reel
+
+- Edited the supplied `tiktok.mp4` into a 33-second, 1080x1920 founder Reel for
+  TikTok and Instagram. The cut frames the real late-night Sauti build as an
+  authentic founder moment rather than replacing the workspace with synthetic
+  footage.
+- Added a restrained Rec.709 media treatment (lifted exposure/shadows, protected
+  lamp highlights, modest contrast/vibrance, vignette, and fine grain), a slow
+  virtual camera move, kinetic text entrances, product-progress copy, capability
+  chips, and a "Follow the journey" close. The original stereo room audio is
+  retained at a reduced level.
+- Files touched:
+  - `video/sauti-building-reel-edit/index.html`;
+  - `video/sauti-building-reel-edit/BRIEF.md`;
+  - `video/sauti-building-reel-edit/index.motion.json`;
+  - `video/sauti-building-reel-edit/tiktok-33s.mp4`;
+  - `video/sauti-building-reel-edit/sauti-building-reel-final.mp4`;
+  - `docs/agent-handoff.md`.
+- Verification: HyperFrames lint passed with 0 errors and 0 warnings after
+  removing unused scaffold compositions. The automated browser check timed out
+  while preparing the source video's first frame, but the complete HyperFrames
+  render succeeded and validated its artifact. FFprobe confirmed H.264 1080x1920
+  video, AAC 48 kHz stereo audio, and a 33-second duration. An extracted final
+  frame at 16 seconds was visually reviewed and confirmed the text, treatment,
+  and footage render correctly.
+- Deployment status: not applicable. Video/source files remain uncommitted for
+  review; no application deployment was performed.
+- Known follow-up: the edit deliberately preserves the original ambient audio
+  instead of adding music, so a platform-native trending track can be chosen at
+  posting time.
+
 ### 2026-08-10: Automatically reconcile Whop replacement memberships
 
 - Replaced the support-assisted base-plan change with customer-authorized Whop
@@ -11729,6 +11760,30 @@ Expected:
   this handoff.
 - Verification: focused plan-change, Whop gateway, subscription worker, and
   Spring migration tests passed; complete `:backend:test` passed; dashboard
+  `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed
+  with all 61 pages generated; `git diff --check` passed (line-ending notices
+  only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.
+
+### 2026-08-10 - Reliable Whop downgrade recovery
+
+- Fixed Growth-to-Launch conflicts caused by treating an active Whop membership
+  with `cancel_at_period_end=true` as a reusable target. Only memberships that
+  are both active and renewing can now satisfy a plan transition.
+- Completed the scheduled Whop invoice payload with target currency, renewal
+  plan type, buy-now release method, hidden visibility, and due date. Retargeting
+  an existing scheduled change now voids the superseded invoice after the new
+  transition is prepared, with compensation if cancellation fails.
+- Added a tenant-scoped **Resume renewal** action for the synchronized
+  membership when Whop has cancelled renewal, plus a focused provider test.
+- Billing API errors now preserve Spring's specific problem detail in the UI
+  instead of reducing every provider conflict to the generic word `Conflict`.
+- Files touched: billing controller, checkout and plan-change services/gateways,
+  focused backend tests, dashboard billing API/client/presentation/styles, Whop
+  setup documentation, and this handoff.
+- Verification: focused checkout, plan-change gateway/service, and subscription
+  processor tests passed; complete `:backend:test` passed; dashboard
   `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed
   with all 61 pages generated; `git diff --check` passed (line-ending notices
   only).

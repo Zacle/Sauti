@@ -39,7 +39,7 @@ import {
   YAxis,
 } from "recharts";
 import { pricingPlans, type PricingPlanId } from "@/features/marketing/Pricing/domain/pricing-model";
-import { cancelBillingSubscription, createBillingAddOnCheckout, createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage, requestBillingPlanChange } from "@/lib/api/billing";
+import { cancelBillingSubscription, createBillingAddOnCheckout, createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage, requestBillingPlanChange, resumeBillingSubscription } from "@/lib/api/billing";
 import type { BillingAccount, BillingCheckoutStatus, BillingUsage } from "@/types/api";
 import {
   billingAddOns,
@@ -86,6 +86,8 @@ export function BillingPage() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [billingActionMessage, setBillingActionMessage] = useState("");
+  const [billingActionError, setBillingActionError] = useState("");
+  const [resumeLoading, setResumeLoading] = useState(false);
   const [addOnCheckoutLoading, setAddOnCheckoutLoading] = useState<BillingAddOnId | null>(null);
   const [addOnCheckoutError, setAddOnCheckoutError] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -240,6 +242,20 @@ export function BillingPage() {
     }
   }
 
+  async function resumeSubscription() {
+    setResumeLoading(true);
+    setBillingActionError("");
+    try {
+      await resumeBillingSubscription();
+      setBillingActionMessage("Renewal resumed. Whop will keep the current plan active for the next billing period.");
+      setReloadKey((key) => key + 1);
+    } catch (caught) {
+      setBillingActionError(caught instanceof Error ? caught.message : "Renewal could not be resumed.");
+    } finally {
+      setResumeLoading(false);
+    }
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -271,6 +287,7 @@ export function BillingPage() {
       </section>
 
       {billingActionMessage && <section className={styles.actionSuccess} role="status"><Check size={18} /><span>{billingActionMessage}</span><button aria-label="Dismiss message" onClick={() => setBillingActionMessage("")} type="button"><X size={15} /></button></section>}
+      {billingActionError && <section className={styles.errorState} role="alert"><AlertTriangle size={18} /><div><strong>Billing action failed</strong><span>{billingActionError}</span></div><button onClick={() => setBillingActionError("")} type="button"><X size={15} /> Dismiss</button></section>}
 
       {account?.pendingPlanChange && <section className={styles.pendingPlanChange} role="status">
         <Clock3 size={18} />
@@ -335,6 +352,8 @@ export function BillingPage() {
               hasSubscription={account?.subscription != null}
               subscription={account?.subscription ?? null}
               isSandbox={isSandbox}
+              resumeLoading={resumeLoading}
+              resumeSubscription={resumeSubscription}
               startAddOnCheckout={startAddOnCheckout}
             />
           )}
@@ -608,7 +627,7 @@ function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab
   );
 }
 
-function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, openPlanDialog, projection, projectedMinutes, resetModel, selectedPlanId, setInterval, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout, subscription }: {
+function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, openPlanDialog, projection, projectedMinutes, resetModel, resumeLoading, resumeSubscription, selectedPlanId, setInterval, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout, subscription }: {
   activeAddOns: NonNullable<BillingAccount["addOns"]>;
   addOnCheckoutError: string;
   addOnCheckoutLoading: BillingAddOnId | null;
@@ -623,6 +642,8 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
   projectedMinutes: number;
   openPlanDialog: (intent: "change" | "cancel") => void;
   resetModel: () => void;
+  resumeLoading: boolean;
+  resumeSubscription: () => void;
   selectedPlanId: PricingPlanId;
   setInterval: (value: BillingInterval) => void;
   setProjectedMinutes: (value: number) => void;
@@ -655,7 +676,18 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
     <section className={styles.planStudio} aria-label="Plan and add-on modeller">
       {subscription && <article className={styles.currentSubscriptionNotice}>
         <span><ShieldCheck size={18} /></span>
-        <div><small>Current synchronized subscription</small><strong>{currentPlan.name} · {currentPrice}</strong><p>{subscriptionExplanation}</p>{providerReference && <code>Whop reference: {providerReference}</code>}</div>
+        <div>
+          <small>Current synchronized subscription</small>
+          <strong>{currentPlan.name}{" · "}{currentPrice}</strong>
+          <p>{subscriptionExplanation}</p>
+          {providerReference && <code>Whop reference: {providerReference}</code>}
+          {subscriptionState === "Cancellation scheduled" && (
+            <button className={styles.resumePlanButton} disabled={resumeLoading} onClick={resumeSubscription} type="button">
+              {resumeLoading ? <LoaderCircle className="spin" size={13} /> : <RefreshCw size={13} />}
+              {resumeLoading ? "Resuming…" : `Resume ${currentPlan.name} renewal`}
+            </button>
+          )}
+        </div>
         <em data-state={subscriptionState}>{subscriptionState}</em>
       </article>}
       <article className={styles.planSelector}>

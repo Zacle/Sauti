@@ -60,6 +60,47 @@ class WhopCheckoutServiceTest {
     }
 
     @Test
+    void resumesRenewalForTheWorkspaceMembership() throws Exception {
+        var capturedBody = new AtomicReference<String>();
+        var capturedPath = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/api/v1/memberships/mem_keep/resume", exchange -> {
+            capturedPath.set(exchange.getRequestURI().getPath());
+            capturedBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            var response = "{\"id\":\"mem_keep\",\"status\":\"active\",\"cancel_at_period_end\":false}";
+            exchange.sendResponseHeaders(200, response.getBytes(StandardCharsets.UTF_8).length);
+            exchange.getResponseBody().write(response.getBytes(StandardCharsets.UTF_8));
+            exchange.close();
+        });
+        server.start();
+        try {
+            var tenants = mock(TenantRepository.class);
+            var subscriptions = mock(BillingSubscriptionRepository.class);
+            var tenant = new Tenant("Clinic", "owner@example.com", "GB");
+            var subscription = new BillingSubscription(tenant.getId(), "whop", "mem_keep");
+            subscription.synchronize("user_1", "mem_keep", "prod_sauti", "plan_growth_monthly",
+                    "growth", "monthly", "canceling", true, null, null, null,
+                    java.time.OffsetDateTime.parse("2026-09-09T10:00:00Z"), "", "",
+                    "https://whop.com/billing/manage/mem_keep");
+            when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+            when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(subscription));
+            var service = new WhopCheckoutService(tenants, plans(), addOns(), subscriptions,
+                    mock(BillingAddOnSubscriptionRepository.class), new ObjectMapper(), HttpClient.newHttpClient(),
+                    "api-key", "biz_sauti", "reference-secret",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/api/v1",
+                    "2026-07-20", "https://sauti.uk/billing?checkout=success");
+
+            var response = service.resume(tenant.getId());
+
+            assertThat(response.status()).isEqualTo("active");
+            assertThat(capturedPath.get()).isEqualTo("/api/v1/memberships/mem_keep/resume");
+            assertThat(new ObjectMapper().readTree(capturedBody.get()).isObject()).isTrue();
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void refusesASecondBaseCheckoutForAnExistingWorkspaceSubscription() {
         var tenants = mock(TenantRepository.class);
         var subscriptions = mock(BillingSubscriptionRepository.class);
