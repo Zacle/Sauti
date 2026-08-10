@@ -65,6 +65,37 @@ class WhopCheckoutServiceTest {
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("not configured");
     }
 
+    @Test
+    void explainsAuthenticationFailureWithoutReturningProviderPayload() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/api/v1/checkout_configurations", exchange -> {
+            var response = "{\"error\":{\"type\":\"unauthorized\",\"message\":\"Authentication failed\"}}";
+            exchange.sendResponseHeaders(401, response.getBytes(StandardCharsets.UTF_8).length);
+            exchange.getResponseBody().write(response.getBytes(StandardCharsets.UTF_8));
+            exchange.close();
+        });
+        server.start();
+        try {
+            var tenants = mock(TenantRepository.class);
+            var tenant = new Tenant("Clinic", "owner@example.com", "GB");
+            when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+            var service = new WhopCheckoutService(tenants, plans(), new ObjectMapper(),
+                    HttpClient.newHttpClient(), "invalid-key", "biz_sauti", "reference-secret",
+                    "https://sandbox-api.whop.com/api/v1".replace("https://sandbox-api.whop.com",
+                            "http://127.0.0.1:" + server.getAddress().getPort()),
+                    "2026-07-20", "https://sauti.uk/billing?checkout=success");
+
+            assertThatThrownBy(() -> service.create(tenant.getId(),
+                    new BillingCheckoutGateway.CheckoutRequest("launch", "monthly")))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Whop rejected the API key")
+                    .satisfies(exception -> assertThat(exception.getMessage())
+                            .doesNotContain("Authentication failed"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private WhopPlanCatalog plans() {
         return new WhopPlanCatalog(
                 "plan_launch_monthly", "plan_launch_annual",

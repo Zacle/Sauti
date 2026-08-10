@@ -30,6 +30,14 @@ Configure:
 - the six `WHOP_PLAN_*` identifiers
 - `WHOP_CHECKOUT_REDIRECT_URL=https://sauti.uk/billing?checkout=success`
 
+The API key must be created in the same Whop environment and company as the six
+plan IDs. A production key cannot authenticate against
+`https://sandbox-api.whop.com/api/v1`, and production plan IDs are not visible
+to Whop Sandbox. The key must allow checkout-configuration creation and basic
+read access. A `401` from the checkout-configuration list is an API-key or
+environment mismatch; a `404` for every plan normally means the plan IDs belong
+to the other environment or company.
+
 ## Production environment delivery
 
 The repository-root `.env` is local-only and is never copied to production.

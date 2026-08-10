@@ -2,6 +2,34 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-10: Diagnose Whop sandbox checkout authentication and expose safe errors
+
+- Reproduced the production checkout failure with read-only requests using the
+  locally configured Whop Sandbox endpoint. Checkout-configuration listing
+  returned `401 unauthorized: Authentication failed`, and all six configured
+  plan lookups returned `404`. No checkout, payment, membership, or provider
+  resource was created during diagnosis.
+- Root cause is external configuration, not browser checkout: the configured API
+  key and plan IDs are not valid in the same Whop Sandbox company/environment.
+  Production Whop credentials and resources cannot be mixed with the sandbox API.
+- Replaced the generic provider failure with safe status-specific messages for
+  invalid keys, missing permissions, wrong plans, rejected details, rate limits,
+  and provider outages. Provider logs retain only HTTP status and error type,
+  never keys, response payloads, tenant references, or checkout metadata.
+- Extended the dashboard API error parser to display Spring Problem Detail
+  messages, so the checkout dialog shows the actionable cause rather than only
+  `Service unavailable`. Added Whop checkout failures to the filtered production
+  diagnostics workflow and documented sandbox key/plan isolation plus required
+  checkout permissions.
+- Files touched: Whop checkout service/test; dashboard API client; production
+  diagnostics workflow; `docs/whop-setup.md`; and this handoff.
+- Verification: focused Whop checkout tests and the full backend suite passed;
+  dashboard typecheck, zero-warning ESLint, and optimized production build
+  passed; `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. The user must create/use a valid API key and
+  all six plans inside the same Whop Sandbox company, update GitHub Actions
+  settings, and release through the normal CI/CD path.
+
 ### 2026-08-10: Deliver Whop configuration through production CI/CD
 
 - Diagnosed the production `Whop checkout setup is incomplete` state. All Whop

@@ -13,9 +13,12 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class WhopCheckoutService implements BillingCheckoutGateway {
+    private static final Logger LOGGER = LoggerFactory.getLogger(WhopCheckoutService.class);
     private final TenantRepository tenants;
     private final WhopPlanCatalog plans;
     private final ObjectMapper objectMapper;
@@ -89,7 +92,9 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
                     .build();
             var response = http.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("Whop could not create a checkout");
+                LOGGER.warn("Whop checkout creation failed with status {} and type {}",
+                        response.statusCode(), providerErrorType(response.body()));
+                throw providerFailure(response.statusCode());
             }
             var url = checkoutUrl(response.body());
             return new CheckoutResponse(url, selection.plan(), selection.interval(), provider());
@@ -112,6 +117,31 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
             throw new IllegalStateException("Whop returned an invalid checkout URL");
         }
         return uri.toString();
+    }
+
+    private IllegalStateException providerFailure(int statusCode) {
+        var environment = apiBaseUrl.contains("sandbox-api.whop.com") ? "Whop Sandbox" : "Whop";
+        return switch (statusCode) {
+            case 400, 422 -> new IllegalStateException(environment
+                    + " rejected the checkout details. Verify the company ID, plan ID, and redirect URL.");
+            case 401 -> new IllegalStateException(environment
+                    + " rejected the API key. Use a key created in the same environment as the configured plans.");
+            case 403 -> new IllegalStateException(environment
+                    + " API key does not have permission to create checkout configurations.");
+            case 404 -> new IllegalStateException(environment
+                    + " could not find the selected plan. Use a plan from the configured company and environment.");
+            case 429 -> new IllegalStateException(environment
+                    + " is temporarily rate limiting checkout requests. Please try again shortly.");
+            default -> new IllegalStateException(environment + " checkout is temporarily unavailable.");
+        };
+    }
+
+    private String providerErrorType(String body) {
+        try {
+            return objectMapper.readTree(body).path("error").path("type").asText("unknown");
+        } catch (Exception ignored) {
+            return "unparseable";
+        }
     }
 
     private void requireConfigured() {
