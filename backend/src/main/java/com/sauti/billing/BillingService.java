@@ -53,7 +53,8 @@ public class BillingService {
                 ledger.balances(tenantId),
                 subscriptions.findByTenantId(tenantId).orElse(null),
                 planChangeRequests.findByTenantId(tenantId)
-                        .filter(item -> "requested".equals(item.getStatus())).orElse(null),
+                        .filter(item -> java.util.List.of("requested", "scheduled").contains(item.getStatus()))
+                        .orElse(null),
                 addOnSubscriptions.findAllByTenantId(tenantId),
                 costTotals(entries),
                 unpricedUsage(entries),

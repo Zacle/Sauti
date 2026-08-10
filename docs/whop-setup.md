@@ -18,21 +18,20 @@ adds a signed workspace reference as metadata, and sends the customer to the
 returned Whop-hosted `purchase_url`. Prices and billing periods remain owned by
 the Whop plans; the browser cannot submit either value.
 
-Once a workspace has a Whop membership, Sauti no longer creates another base
-checkout for an upgrade or downgrade. The customer selects a target in Sauti,
-which records one tenant-scoped plan-change request tied to the exact current
-Whop membership and opens that membership's provider-issued `manage_url` for
-secure billing authorization. No support operator or plan-change email is part
-of the normal path.
+Once a workspace has a Whop membership, Sauti no longer sends upgrades or
+downgrades to Whop's generic membership portal. It first looks for one active,
+same-customer membership on the exact target plan and safely reuses it when
+present. Otherwise Sauti schedules a future automatic invoice for the target
+plan, anchored to the current renewal date, and ends only the synchronized
+source membership then. No support operator or plan-change email is involved.
 
-Whop's current documented membership update API accepts membership metadata but
-does not expose a server-side target-plan mutation. Sauti therefore records the
-exact intended target before sending the customer to Whop and never imitates a
-change with a second checkout or an unapproved off-session charge. When Whop
-changes the plan on the existing membership, Sauti applies the signed update.
-When Whop instead activates a replacement membership and cancels the old one,
-Sauti adopts it only when its customer, target plan, interval, source membership,
-and pending tenant request all match. Cancellation is different:
+Whop's documented membership update API accepts metadata but does not expose a
+target-plan mutation. Sauti therefore uses Whop's saved-payment and invoice APIs
+instead of pretending a portal visit completed the change. The future invoice
+creates a provider plan for that renewal; Sauti stores the generated plan ID and
+only adopts its membership when customer, target, source membership, and tenant
+all match the stored request. More than one matching target membership is
+rejected rather than guessed. Cancellation is different:
 Sauti calls Whop's documented membership cancellation endpoint for the exact
 tenant-owned membership and schedules it at the end of the paid period. If a
 sandbox account already has two Sauti base
@@ -74,8 +73,11 @@ Configure:
 The API key must be created in the same Whop environment and company as the six
 plan IDs. A production key cannot authenticate against
 `https://sandbox-api.whop.com/api/v1`, and production plan IDs are not visible
-to Whop Sandbox. The key must allow checkout-configuration creation and basic
-read access. A `401` from the checkout-configuration list is an API-key or
+to Whop Sandbox. The key must allow checkout-configuration creation plus
+`member:basic:read`, `member:email:read`, `member:payment_methods:read`,
+`plan:basic:read`, `invoice:create`, `invoice:update`, and membership
+cancellation. Sauti only receives Whop's tokenized payment-method ID, never card
+numbers. A `401` from the checkout-configuration list is an API-key or
 environment mismatch; a `404` for every plan normally means the plan IDs belong
 to the other environment or company.
 
@@ -176,17 +178,17 @@ customer, and use **Access details** to match that reference. Cancel the other
 test memberships. Do not choose between same-priced memberships by price alone.
 
 After a base membership has synchronized, Sauti rejects another base checkout
-for that workspace. Selecting another plan creates or updates the workspace's
-pending plan-change request and opens the exact synchronized membership URL.
-Whop remains responsible for showing and authorizing the billing consequence;
-the signed webhook is the only event that changes Sauti's entitlement.
+for that workspace. Selecting another plan stays inside Sauti. One verified
+existing target membership is adopted; no match creates a renewal-date invoice;
+and multiple matches produce a clear conflict that requires duplicate cleanup.
 
 1. Start in Whop sandbox and create all six plans there.
 2. Complete the first base checkout, then request Growth to Scale in Sauti.
-   Complete the provider authorization and confirm the pending state appears
-   until the signed event arrives. Test both Whop behaviors: same membership ID
-   updated in place, and a new active membership replacing the canceled old ID.
-   In both cases Sauti must end on Scale without support intervention.
+   Confirm the page stays in Sauti, reports the effective renewal date, the old
+   membership is canceling, and Whop contains one future automatic invoice. At
+   renewal, confirm the generated membership is adopted from its signed event.
+   Also test one pre-existing target membership (reuse) and two matching
+   memberships (clear conflict, no new subscription).
 3. Purchase one add-on. Confirm it appears separately in Sauti, does not change
    the base plan, and its Manage action opens that add-on membership.
 4. Replay the same webhook ID and confirm it is processed once.

@@ -2686,6 +2686,8 @@ Release policy:
   - `.\gradlew.bat :backend:test --console=plain` - passed.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and the normal CI/CD path.
+
+
 #### Follow-up: use a four-character confirmation fallback and color bookings by agent
 
 - Replaced the terminal first lookup miss with one bounded, easier fallback:
@@ -11703,3 +11705,32 @@ Expected:
   - `git diff --check` passed (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and the normal CI/CD path.
+
+### 2026-08-10 - Automated Whop plan transitions
+
+- Replaced the ineffective membership-portal redirect with a server-orchestrated
+  Whop transition. Sauti now reuses one verified active target membership or
+  schedules a future automatic invoice on the customer's saved Whop payment
+  method at the current renewal date, then cancels only the authoritative source
+  membership at period end.
+- Multiple existing target memberships are rejected instead of guessed. This
+  prevents repeated sandbox tests from silently creating another duplicate. The
+  authenticated reuse path handles the case where one target membership is
+  already active.
+- Added generated invoice and plan references to the durable tenant-scoped plan
+  change request. Signed membership and payment events can resolve Whop's
+  generated renewal plan back to the configured Sauti plan.
+- The billing page no longer leaves Sauti for a plan change. It reports either
+  an adopted existing plan or a renewal-date scheduled change and explains that
+  no Whop page remains to complete.
+- Files touched: Whop plan-change gateway/service/entity/repository/processor,
+  subscription accessors, billing account projection, Flyway `V65`, focused
+  tests, dashboard billing types/presentation, Whop setup documentation, and
+  this handoff.
+- Verification: focused plan-change, Whop gateway, subscription worker, and
+  Spring migration tests passed; complete `:backend:test` passed; dashboard
+  `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed
+  with all 61 pages generated; `git diff --check` passed (line-ending notices
+  only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.

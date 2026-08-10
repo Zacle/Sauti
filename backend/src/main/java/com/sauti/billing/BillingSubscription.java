@@ -77,6 +77,8 @@ public class BillingSubscription extends Auditable {
     public String getProviderSubscriptionId() { return providerSubscriptionId; }
     public String getProviderStatus() { return providerStatus; }
     public String getProviderCustomerId() { return providerCustomerId; }
+    public String getProviderProductId() { return providerProductId; }
+    public boolean isTestMode() { return testMode; }
     public OffsetDateTime getProviderUpdatedAt() { return providerUpdatedAt; }
     public String getPlan() { return plan; }
     public String getBillingInterval() { return billingInterval; }

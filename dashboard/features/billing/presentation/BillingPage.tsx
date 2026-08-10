@@ -213,7 +213,11 @@ export function BillingPage() {
       }
       if (account?.subscription) {
         const change = await requestBillingPlanChange(selectedPlan.id, interval);
-        window.location.assign(change.authorizationUrl);
+        setPreviewOpen(false);
+        setBillingActionMessage(change.status === "completed"
+          ? `${selectedPlan.name} was already active in Whop and is now your synchronized Sauti plan.`
+          : `${selectedPlan.name} is scheduled to start at the end of your current paid period.`);
+        setReloadKey((key) => key + 1);
         return;
       }
       const checkout = await createBillingCheckout(selectedPlan.id, interval);
@@ -270,7 +274,7 @@ export function BillingPage() {
 
       {account?.pendingPlanChange && <section className={styles.pendingPlanChange} role="status">
         <Clock3 size={18} />
-        <div><strong>Plan change awaiting Whop confirmation</strong><span>Your {planById(account.pendingPlanChange.currentPlan).name} plan remains active until Whop confirms the move to {planById(account.pendingPlanChange.targetPlan).name} ({account.pendingPlanChange.targetInterval}). Return to the exact Whop membership to finish authorization if you left before completing it.</span></div>
+        <div><strong>{account.pendingPlanChange.status === "scheduled" ? "Plan change scheduled" : "Plan change is being prepared"}</strong><span>Your {planById(account.pendingPlanChange.currentPlan).name} plan remains active until {account.pendingPlanChange.effectiveAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.pendingPlanChange.effectiveAt)) : "the end of the paid period"}. {planById(account.pendingPlanChange.targetPlan).name} ({account.pendingPlanChange.targetInterval}) will start automatically; there is no Whop page to complete.</span></div>
       </section>}
 
       {error && (
@@ -350,7 +354,7 @@ export function BillingPage() {
             <p id="preview-description">{account?.subscription
               ? managementIntent === "cancel"
                 ? `You will keep access until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of the paid billing period"}. Sauti will cancel the exact synchronized Whop membership; no provider selection is required.`
-                : `Sauti will track this exact change and open the synchronized Whop membership for secure billing authorization. When Whop confirms the replacement membership, Sauti will update the plan automatically.`
+                : `Sauti will schedule ${selectedPlan.name} for the end of your current paid period using the payment method already stored securely by Whop. If that plan is already active in Whop, Sauti will reuse it instead of creating another subscription.`
               : `Continuing opens ${checkoutProvider}. ${isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.`}</p>
             <div className={styles.dialogRows}>
               <span><em>{account?.subscription && managementIntent === "change" ? "New plan" : "Plan"}</em><strong>{account?.subscription && managementIntent === "cancel" ? currentPlan.name : selectedPlan.name}</strong></span>
@@ -369,8 +373,8 @@ export function BillingPage() {
             {checkoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {checkoutError}</p>}
             <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
               {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
-              {checkoutLoading ? "Opening Whop…" : account?.subscription
-                ? managementIntent === "cancel" ? "Schedule cancellation" : "Authorize plan change"
+              {checkoutLoading ? "Updating billing…" : account?.subscription
+                ? managementIntent === "cancel" ? "Schedule cancellation" : "Schedule plan change"
                 : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
             </button>
             <button className={styles.checkoutCancel} disabled={checkoutLoading} onClick={() => setPreviewOpen(false)} type="button">Keep exploring</button>

@@ -728,12 +728,11 @@ export type BillingCancellation = {
 
 export type BillingPlanChange = {
   id: string;
-  status: "requested";
+  status: "requested" | "scheduled" | "completed";
   currentPlan: "launch" | "growth" | "scale";
   targetPlan: "launch" | "growth" | "scale";
   targetInterval: "monthly" | "annual";
   effectiveAt: string | null;
-  authorizationUrl: string;
 };
 
 export type BillingCheckout = {

@@ -197,6 +197,7 @@ class WhopSubscriptionProcessorTest {
                 "https://whop.com/billing/manage/mem_old");
         var change = new BillingPlanChangeRequest(tenant.getId(), "mem_old", "growth",
                 "scale", "monthly", OffsetDateTime.parse("2026-09-10T12:00:00Z"));
+        change.schedule("inv_change", "plan_scale_monthly", "plan_scale_generated");
         var replacementPayload = new ObjectMapper().writeValueAsString(java.util.Map.of(
                 "id", "msg_new", "type", "membership.activated", "company_id", "biz_sauti",
                 "data", java.util.Map.ofEntries(
@@ -205,7 +206,7 @@ class WhopSubscriptionProcessorTest {
                         java.util.Map.entry("updated_at", "2026-08-10T12:00:00Z"),
                         java.util.Map.entry("renewal_period_end", "2026-09-10T12:00:00Z"),
                         java.util.Map.entry("metadata", java.util.Map.of()),
-                        java.util.Map.entry("plan", java.util.Map.of("id", "plan_scale_monthly")),
+                        java.util.Map.entry("plan", java.util.Map.of("id", "plan_scale_generated")),
                         java.util.Map.entry("product", java.util.Map.of("id", "prod_sauti")),
                         java.util.Map.entry("user", java.util.Map.of("id", "user_1")),
                         java.util.Map.entry("manage_url", "https://whop.com/billing/manage/mem_new")
@@ -239,6 +240,8 @@ class WhopSubscriptionProcessorTest {
                 .thenReturn(List.of(existing));
         when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(existing));
         when(planChanges.findByTenantId(tenant.getId())).thenReturn(Optional.of(change));
+        when(planChanges.findByProviderGeneratedPlanId("plan_scale_generated"))
+                .thenReturn(Optional.of(change));
         when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
         when(ledger.account(tenant.getId())).thenReturn(new BillingAccount(tenant.getId()));
         var processor = new WhopSubscriptionProcessor(events, subscriptions,

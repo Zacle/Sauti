@@ -95,7 +95,7 @@ public class WhopSubscriptionProcessor {
         var tenantId = base != null ? base.getTenantId() : addOn.getTenantId();
         var tenant = tenants.findById(tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Whop payment workspace was not found"));
-        var description = plans.byPlanId(planId)
+        var description = planSelection(planId)
                 .map(plan -> title(plan.plan()) + " plan (" + plan.interval() + ")")
                 .orElseGet(() -> addOns.byPlanId(planId)
                         .map(item -> addOnTitle(item.id()))
@@ -118,10 +118,14 @@ public class WhopSubscriptionProcessor {
             processAddOn(data, membershipId, planId);
             return;
         }
-        var selection = plans.byPlanId(planId)
+        var selection = planSelection(planId)
                 .orElseThrow(() -> new IllegalArgumentException("Whop plan is not configured"));
         var existingByProvider = subscriptions
                 .findByProviderAndProviderSubscriptionId(PROVIDER, membershipId).orElse(null);
+        if (existingByProvider == null && planChangeRequests
+                .findByProviderSubscriptionIdAndStatus(membershipId, "completed").isPresent()) {
+            return;
+        }
         var tenantId = tenantId(data, existingByProvider, selection);
         if (existingByProvider != null && !existingByProvider.getTenantId().equals(tenantId)) {
             throw new SecurityException("Whop membership workspace does not match existing ownership");
@@ -209,7 +213,7 @@ public class WhopSubscriptionProcessor {
                         .findAllByProviderAndProviderCustomerId(PROVIDER, customerId).stream())
                 .distinct()
                 .filter(subscription -> planChangeRequests.findByTenantId(subscription.getTenantId())
-                        .filter(request -> "requested".equals(request.getStatus()))
+                        .filter(request -> List.of("requested", "scheduled").contains(request.getStatus()))
                         .filter(request -> request.getTargetPlan().equals(selection.plan()))
                         .filter(request -> request.getTargetInterval().equals(selection.interval()))
                         .isPresent())
@@ -222,7 +226,7 @@ public class WhopSubscriptionProcessor {
 
     private void requireReplacement(BillingPlanChangeRequest request, BillingSubscription subscription,
                                     String membershipId, WhopPlanCatalog.Plan selection, JsonNode data) {
-        if (request == null || !"requested".equals(request.getStatus())
+        if (request == null || !List.of("requested", "scheduled").contains(request.getStatus())
                 || !request.getProviderSubscriptionId().equals(subscription.getProviderSubscriptionId())
                 || !request.getTargetPlan().equals(selection.plan())
                 || !request.getTargetInterval().equals(selection.interval())) {
@@ -243,7 +247,7 @@ public class WhopSubscriptionProcessor {
     private void completeInPlacePlanChange(UUID tenantId, String membershipId,
                                            WhopPlanCatalog.Plan selection) {
         planChangeRequests.findByTenantId(tenantId)
-                .filter(request -> "requested".equals(request.getStatus()))
+                .filter(request -> List.of("requested", "scheduled").contains(request.getStatus()))
                 .filter(request -> membershipId.equals(request.getProviderSubscriptionId()))
                 .filter(request -> selection.plan().equals(request.getTargetPlan()))
                 .filter(request -> selection.interval().equals(request.getTargetInterval()))
@@ -258,6 +262,14 @@ public class WhopSubscriptionProcessor {
         var memberId = data.path("member").path("id").asText("").trim();
         return java.util.stream.Stream.of(userId, memberId)
                 .filter(value -> !value.isBlank()).distinct().toList();
+    }
+
+    private java.util.Optional<WhopPlanCatalog.Plan> planSelection(String planId) {
+        var configured = plans.byPlanId(planId);
+        if (configured.isPresent()) return configured;
+        return planChangeRequests.findByProviderGeneratedPlanId(planId)
+                .filter(request -> List.of("scheduled", "completed").contains(request.getStatus()))
+                .map(request -> plans.checkoutSelection(request.getTargetPlan(), request.getTargetInterval()));
     }
 
     private static String membershipStatus(JsonNode data) {

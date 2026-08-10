@@ -19,6 +19,9 @@ public class BillingPlanChangeRequest extends Auditable {
     @Column(nullable = false, length = 20) private String targetInterval;
     @Column(nullable = false, length = 20) private String status;
     private OffsetDateTime effectiveAt;
+    @Column(length = 100) private String providerInvoiceId;
+    @Column(length = 100) private String providerTargetPlanId;
+    @Column(length = 100) private String providerGeneratedPlanId;
 
     protected BillingPlanChangeRequest() { }
 
@@ -37,6 +40,17 @@ public class BillingPlanChangeRequest extends Auditable {
         this.targetInterval = required(targetInterval);
         this.effectiveAt = effectiveAt;
         this.status = "requested";
+        this.providerInvoiceId = null;
+        this.providerTargetPlanId = null;
+        this.providerGeneratedPlanId = null;
+    }
+
+    public void schedule(String providerInvoiceId, String providerTargetPlanId,
+                         String providerGeneratedPlanId) {
+        this.providerInvoiceId = required(providerInvoiceId);
+        this.providerTargetPlanId = required(providerTargetPlanId);
+        this.providerGeneratedPlanId = required(providerGeneratedPlanId);
+        this.status = "scheduled";
     }
 
     public void complete() { this.status = "completed"; }
@@ -49,6 +63,9 @@ public class BillingPlanChangeRequest extends Auditable {
     public String getTargetInterval() { return targetInterval; }
     public String getStatus() { return status; }
     public OffsetDateTime getEffectiveAt() { return effectiveAt; }
+    public String getProviderInvoiceId() { return providerInvoiceId; }
+    public String getProviderTargetPlanId() { return providerTargetPlanId; }
+    public String getProviderGeneratedPlanId() { return providerGeneratedPlanId; }
 
     private static String required(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Plan change value is required");

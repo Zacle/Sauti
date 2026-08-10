@@ -1,9 +1,12 @@
 package com.sauti.billing;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.sauti.tenant.Tenant;
 import com.sauti.tenant.TenantRepository;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.Locale;
-import java.net.URI;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -16,12 +19,19 @@ public class BillingPlanChangeService {
     private final TenantRepository tenants;
     private final BillingSubscriptionRepository subscriptions;
     private final BillingPlanChangeRequestRepository requests;
+    private final WhopPlanCatalog plans;
+    private final WhopPlanChangeGateway whop;
+    private final BillingLedgerService ledger;
 
     public BillingPlanChangeService(TenantRepository tenants, BillingSubscriptionRepository subscriptions,
-                                    BillingPlanChangeRequestRepository requests) {
+                                    BillingPlanChangeRequestRepository requests, WhopPlanCatalog plans,
+                                    WhopPlanChangeGateway whop, BillingLedgerService ledger) {
         this.tenants = tenants;
         this.subscriptions = subscriptions;
         this.requests = requests;
+        this.plans = plans;
+        this.whop = whop;
+        this.ledger = ledger;
     }
 
     @Transactional
@@ -40,43 +50,78 @@ public class BillingPlanChangeService {
         if (targetPlan.equals(subscription.getPlan()) && targetInterval.equals(subscription.getBillingInterval())) {
             throw new IllegalArgumentException("This workspace is already on the selected plan");
         }
+        var selection = plans.checkoutSelection(targetPlan, targetInterval);
         var request = requests.findByTenantId(tenantId)
                 .orElseGet(() -> new BillingPlanChangeRequest(tenantId,
                         subscription.getProviderSubscriptionId(), subscription.getPlan(),
                         targetPlan, targetInterval, subscription.getRenewsAt()));
         request.retarget(subscription.getProviderSubscriptionId(), subscription.getPlan(),
                 targetPlan, targetInterval, subscription.getRenewsAt());
-        var saved = requests.save(request);
-        return PlanChangeResponse.from(saved, trustedWhopUrl(subscription.getUpdatePaymentMethodUrl()));
+        requests.save(request);
+        var transition = whop.prepare(subscription, selection, subscription.getRenewsAt());
+        if ("adopt".equals(transition.kind())) {
+            adopt(tenant, subscription, request, selection, transition.membership());
+        } else {
+            request.schedule(transition.invoiceId(), selection.planId(), transition.generatedPlanId());
+            requests.save(request);
+        }
+        return PlanChangeResponse.from(request);
     }
 
     @Transactional(readOnly = true)
     public BillingPlanChangeRequest pending(UUID tenantId) {
-        return requests.findByTenantId(tenantId).filter(item -> "requested".equals(item.getStatus())).orElse(null);
+        return requests.findByTenantId(tenantId)
+                .filter(item -> List.of("requested", "scheduled").contains(item.getStatus())).orElse(null);
     }
 
     public record PlanChangeCommand(String plan, String interval) { }
 
     public record PlanChangeResponse(UUID id, String status, String currentPlan, String targetPlan,
-                                     String targetInterval, java.time.OffsetDateTime effectiveAt,
-                                     String authorizationUrl) {
-        static PlanChangeResponse from(BillingPlanChangeRequest request, String authorizationUrl) {
+                                     String targetInterval, java.time.OffsetDateTime effectiveAt) {
+        static PlanChangeResponse from(BillingPlanChangeRequest request) {
             return new PlanChangeResponse(request.getId(), request.getStatus(), request.getCurrentPlan(),
-                    request.getTargetPlan(), request.getTargetInterval(), request.getEffectiveAt(), authorizationUrl);
+                    request.getTargetPlan(), request.getTargetInterval(), request.getEffectiveAt());
         }
     }
 
-    private static String trustedWhopUrl(String value) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException("Whop plan-change authorization is unavailable for this subscription");
-        }
-        var uri = URI.create(value);
-        var host = uri.getHost();
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || host == null
-                || !("whop.com".equalsIgnoreCase(host) || host.toLowerCase(Locale.ROOT).endsWith(".whop.com"))) {
-            throw new IllegalStateException("Whop returned an invalid plan-change authorization URL");
-        }
-        return uri.toString();
+    private void adopt(Tenant tenant, BillingSubscription subscription,
+                       BillingPlanChangeRequest request, WhopPlanCatalog.Plan selection,
+                       JsonNode membership) {
+        var membershipId = required(membership.path("id"), "membership id");
+        var status = membershipStatus(membership);
+        var renewsAt = timestamp(membership.path("renewal_period_end"));
+        subscription.replaceProviderSubscription(membershipId);
+        subscription.synchronize(required(membership.path("user").path("id"), "customer id"), membershipId,
+                required(membership.path("product").path("id"), "product id"), selection.planId(),
+                selection.plan(), selection.interval(), status,
+                subscription.isTestMode(), renewsAt, null, null, timestamp(membership.path("updated_at")), "", "",
+                membership.path("manage_url").asText(""));
+        subscriptions.save(subscription);
+        request.complete();
+        requests.save(request);
+        tenant.applyBillingSubscription(selection.plan(), selection.monthlyMinutes(), renewsAt,
+                subscription.getProviderCustomerId());
+        tenants.save(tenant);
+        var account = ledger.account(tenant.getId());
+        account.configure("active", "observe", account.getBillingCurrency(),
+                account.getMonthlySpendingLimit(), account.getLowBalanceThreshold());
+    }
+
+    private static String membershipStatus(JsonNode membership) {
+        var status = required(membership.path("status"), "membership status");
+        return membership.path("cancel_at_period_end").asBoolean(false)
+                && List.of("active", "trialing").contains(status) ? "canceling" : status;
+    }
+
+    private static String required(JsonNode node, String label) {
+        var value = node.asText("").trim();
+        if (value.isBlank()) throw new IllegalStateException("Whop " + label + " is missing");
+        return value;
+    }
+
+    private static OffsetDateTime timestamp(JsonNode node) {
+        var value = node.asText("").trim();
+        return value.isBlank() ? null : OffsetDateTime.parse(value);
     }
 
     private static String normalized(String value) {
