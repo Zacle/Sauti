@@ -25,6 +25,15 @@ and Sauti applies the new plan only after the signed membership webhook arrives.
 All six base plans must therefore belong to the same Whop product so they are
 available as plan-change options in the membership portal.
 
+Whop's current documented membership update API accepts membership metadata;
+it does not expose a documented server-side target-plan or customer
+cancel-at-period-end request. Sauti must therefore not imitate a plan change by
+creating a second checkout. The billing UI presents the current and target plan,
+then guides the customer into the membership-specific Whop portal for the final
+billing authorization. If a sandbox account already has two Sauti base
+memberships, cancel the unwanted membership in Whop and verify that all six
+configured base plan IDs belong to the same Whop product before testing again.
+
 ## Create the add-on catalog
 
 Create five additional Whop products, each with one monthly recurring plan:

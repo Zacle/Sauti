@@ -17,7 +17,6 @@ import {
   Gauge,
   Info,
   LoaderCircle,
-  Minus,
   Phone,
   Plus,
   ReceiptText,
@@ -80,9 +79,10 @@ export function BillingPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<PricingPlanId>("growth");
   const [interval, setInterval] = useState<BillingInterval>("monthly");
   const [projectedMinutes, setProjectedMinutes] = useState(900);
-  const [quantities, setQuantities] = useState<Partial<Record<BillingAddOnId, number>>>({ agent: 1 });
+  const [quantities, setQuantities] = useState<Partial<Record<BillingAddOnId, number>>>({});
   const [policy, setPolicy] = useState<LimitPolicy>("cap");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [managementIntent, setManagementIntent] = useState<"change" | "cancel">("change");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [addOnCheckoutLoading, setAddOnCheckoutLoading] = useState<BillingAddOnId | null>(null);
@@ -103,9 +103,13 @@ export function BillingPage() {
         if (cancelled) return;
         setUsage(response);
         setAccount(billingAccount);
+        setQuantities(Object.fromEntries(
+          (billingAccount.addOns ?? []).map((item) => [item.addOn, Math.max(1, item.quantity)]),
+        ) as Partial<Record<BillingAddOnId, number>>);
         setCheckoutStatus(providerStatus);
         const current = resolvePlan(response);
         setSelectedPlanId(current.id);
+        if (billingAccount.subscription?.interval) setInterval(billingAccount.subscription.interval);
         setProjectedMinutes(Math.max(Math.round(current.includedMinutes * 1.2), estimateForecast(response.minutesUsedThisCycle, response.monthlyMinutesLimit)));
       })
       .catch((caught) => {
@@ -134,8 +138,8 @@ export function BillingPage() {
     [currentPlan.includedMinutes, usage.minutesUsedThisCycle, usage.monthlyMinutesLimit],
   );
   const currentProjection = useMemo(
-    () => projectBilling(currentPlan, forecast, "monthly", {}),
-    [currentPlan, forecast],
+    () => projectBilling(currentPlan, forecast, "monthly", quantities),
+    [currentPlan, forecast, quantities],
   );
   const modelProjection = useMemo(
     () => projectBilling(selectedPlan, projectedMinutes, interval, quantities),
@@ -151,6 +155,9 @@ export function BillingPage() {
   const isSandbox = checkoutStatus?.environment === "sandbox";
   const checkoutConfigured = checkoutStatus?.configured !== false;
   const checkoutProvider = checkoutStatus?.provider === "whop" ? "Whop" : checkoutStatus?.provider ?? "the billing provider";
+  const currentMembershipPrice = account?.subscription?.interval === "annual"
+    ? `${money(currentPlan.monthlyPrice * 0.9 * 12)} per year`
+    : `${money(currentPlan.monthlyPrice)} per month`;
 
   function switchTab(tab: BillingTab) {
     setActiveTab(tab);
@@ -160,15 +167,18 @@ export function BillingPage() {
     window.history.replaceState(null, "", url);
   }
 
-  function updateQuantity(id: BillingAddOnId, next: number) {
-    setQuantities((current) => ({ ...current, [id]: Math.max(0, next) }));
-  }
-
   function resetModel() {
     setSelectedPlanId(currentPlan.id);
     setInterval("monthly");
     setProjectedMinutes(Math.max(currentPlan.includedMinutes, forecast));
-    setQuantities({ agent: 1 });
+    setQuantities(Object.fromEntries(
+      (account?.addOns ?? []).map((item) => [item.addOn, Math.max(1, item.quantity)]),
+    ) as Partial<Record<BillingAddOnId, number>>);
+  }
+
+  function openPlanDialog(intent: "change" | "cancel") {
+    setManagementIntent(intent);
+    setPreviewOpen(true);
   }
 
   async function startCheckout() {
@@ -268,14 +278,12 @@ export function BillingPage() {
               interval={interval}
               projection={modelProjection}
               projectedMinutes={projectedMinutes}
-              quantities={quantities}
               resetModel={resetModel}
               selectedPlanId={selectedPlanId}
               setInterval={setInterval}
-              setPreviewOpen={setPreviewOpen}
+              openPlanDialog={openPlanDialog}
               setProjectedMinutes={setProjectedMinutes}
               setSelectedPlanId={setSelectedPlanId}
-              updateQuantity={updateQuantity}
               checkoutProvider={checkoutProvider}
               checkoutConfigured={checkoutConfigured}
               addOnsConfigured={checkoutStatus?.addOnsConfigured === true}
@@ -296,20 +304,35 @@ export function BillingPage() {
           <section aria-describedby="preview-description" aria-labelledby="preview-title" aria-modal="true" className={styles.dialog} role="dialog">
             <button aria-label="Close preview" className={styles.dialogClose} onClick={() => setPreviewOpen(false)} ref={closeButtonRef} type="button"><X size={18} /></button>
             <span className={styles.dialogIcon}><ShieldCheck size={23} /></span>
-            <small>{isSandbox ? "Whop sandbox checkout" : "Secure hosted checkout"}</small>
-            <h2 id="preview-title">{account?.subscription ? "Manage your base plan" : `Review your ${isSandbox ? "test " : ""}checkout`}</h2>
+            <small>{isSandbox ? "Whop sandbox billing" : "Secure subscription management"}</small>
+            <h2 id="preview-title">{account?.subscription
+              ? managementIntent === "cancel" ? `Cancel your ${currentPlan.name} plan?` : `Change ${currentPlan.name} to ${selectedPlan.name}`
+              : `Review your ${isSandbox ? "test " : ""}checkout`}</h2>
             <p id="preview-description">{account?.subscription
-              ? `Continuing opens ${checkoutProvider}'s secure membership portal so the existing subscription can change without creating a duplicate.`
+              ? managementIntent === "cancel"
+                ? `You will keep access until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of the paid billing period"}. On Whop, choose the Sauti membership showing ${currentMembershipPrice}, then select Cancel subscription.`
+                : `Whop must securely authorize this billing change. Open the Sauti membership showing ${currentMembershipPrice} and choose ${selectedPlan.name}. Do not purchase a second Sauti subscription.`
               : `Continuing opens ${checkoutProvider}. ${isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.`}</p>
             <div className={styles.dialogRows}>
-              <span><em>Plan</em><strong>{selectedPlan.name}</strong></span>
-              <span><em>Projected usage</em><strong>{projectedMinutes.toLocaleString()} minutes</strong></span>
-              <span><em>Estimated monthly total</em><strong>{money(modelProjection.total)}</strong></span>
+              <span><em>{account?.subscription && managementIntent === "change" ? "New plan" : "Plan"}</em><strong>{account?.subscription && managementIntent === "cancel" ? currentPlan.name : selectedPlan.name}</strong></span>
+              {account?.subscription && managementIntent === "cancel" ? (
+                <>
+                  <span><em>Current price</em><strong>{currentMembershipPrice}</strong></span>
+                  <span><em>Access ends</em><strong>{account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "End of billing period"}</strong></span>
+                </>
+              ) : (
+                <>
+                  <span><em>Projected usage</em><strong>{projectedMinutes.toLocaleString()} minutes</strong></span>
+                  <span><em>Estimated monthly total</em><strong>{money(modelProjection.total)}</strong></span>
+                </>
+              )}
             </div>
             {checkoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {checkoutError}</p>}
             <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
               {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
-              {checkoutLoading ? "Opening Whop…" : account?.subscription ? "Open Whop billing" : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
+              {checkoutLoading ? "Opening Whop…" : account?.subscription
+                ? managementIntent === "cancel" ? "Continue to cancellation" : "Continue plan change"
+                : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
             </button>
             <button className={styles.checkoutCancel} disabled={checkoutLoading} onClick={() => setPreviewOpen(false)} type="button">Keep exploring</button>
           </section>
@@ -532,7 +555,7 @@ function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab
           <header><small>Estimate</small><h2>Projected bill</h2><p>Preview cycle ends {resetDate}</p></header>
           <LedgerRow label="Growth plan" note="Up to 750 AI minutes" value="$149" />
           <LedgerRow label="Projected overage" note={`${projection.overageMinutes} minutes`} value={money(projection.overageCost)} />
-          <LedgerRow label="Additional agent" note="1 modelled add-on" value="$29" />
+          <LedgerRow label="Active add-ons" note="Currently enabled" value={money(projection.addOnCost)} />
           <div className={styles.ledgerTotal}><div><strong>Estimated total</strong><span>Plan + overage + activated add-ons</span></div><strong>{money(projection.total)}</strong></div>
           <button onClick={() => switchTab("plans")} type="button">Model another plan <ArrowRight size={15} /></button>
           <button className={styles.textButton} onClick={() => switchTab("invoices")} type="button">How usage is calculated</button>
@@ -542,7 +565,7 @@ function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab
   );
 }
 
-function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, projection, projectedMinutes, quantities, resetModel, selectedPlanId, setInterval, setPreviewOpen, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout, updateQuantity }: {
+function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, openPlanDialog, projection, projectedMinutes, resetModel, selectedPlanId, setInterval, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout }: {
   activeAddOns: NonNullable<BillingAccount["addOns"]>;
   addOnCheckoutError: string;
   addOnCheckoutLoading: BillingAddOnId | null;
@@ -555,15 +578,13 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
   isSandbox: boolean;
   projection: ReturnType<typeof projectBilling>;
   projectedMinutes: number;
-  quantities: Partial<Record<BillingAddOnId, number>>;
+  openPlanDialog: (intent: "change" | "cancel") => void;
   resetModel: () => void;
   selectedPlanId: PricingPlanId;
   setInterval: (value: BillingInterval) => void;
-  setPreviewOpen: (value: boolean) => void;
   setProjectedMinutes: (value: number) => void;
   setSelectedPlanId: (value: PricingPlanId) => void;
   startAddOnCheckout: (id: BillingAddOnId) => void;
-  updateQuantity: (id: BillingAddOnId, value: number) => void;
 }) {
   const selectedPlan = planById(selectedPlanId);
   const activeAddOnIds = new Set(activeAddOns.map((item) => item.addOn));
@@ -591,19 +612,16 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
       <article className={styles.configurator}>
         <header className={styles.stepHeader}><span>2</span><div><h2>Configure your setup</h2><p>Adjust the model to see how each choice affects the estimate.</p></div></header>
         <label className={styles.minutesInput}><span><Clock3 size={18} /><strong>Projected AI minutes</strong></span><input max={20000} min={0} onChange={(event) => setProjectedMinutes(Math.max(0, Number(event.target.value) || 0))} type="number" value={projectedMinutes} /><small>Includes {selectedPlan.includedMinutes.toLocaleString()} minutes. Projected overage: {projection.overageMinutes.toLocaleString()} minutes.</small></label>
-        <QuantityControl description="A separate workflow, department, language, or location." label="Additional agents" onChange={(value) => updateQuantity("agent", value)} value={quantities.agent ?? 0} />
-        <div className={styles.addOnList}><h3>Add-ons <span>(optional)</span></h3><p>Only active items are included in your estimate.</p>
-          {billingAddOns.filter((item) => item.id !== "agent").map((addOn) => {
-            const active = (quantities[addOn.id] ?? 0) > 0;
-            return <div key={addOn.id}><span>{addOn.id === "line" ? <Phone size={17} /> : addOn.id === "number" ? <CreditCard size={17} /> : addOn.id === "voice" ? <Sparkles size={17} /> : <FileText size={17} />}</span><div><strong>{addOn.name}</strong><small>{addOn.description}</small></div><button aria-label={`${active ? "Remove" : "Add"} ${addOn.name}`} aria-pressed={active} className={active ? styles.toggleActive : ""} onClick={() => updateQuantity(addOn.id, active ? 0 : 1)} type="button"><i /></button><em>from {money(addOn.monthlyPrice)} /mo</em></div>;
-          })}
-        </div>
         <div className={styles.addOnCheckoutPanel}>
-          <header><h3>Purchase add-ons separately</h3><p>Each add-on is its own recurring Whop membership, so changing the base plan cannot remove it.</p></header>
+          <header><h3>Optional add-ons</h3><p>Add or manage each feature here. Active add-ons are included in the estimate automatically.</p></header>
           {billingAddOns.map((addOn) => {
             const active = activeAddOnIds.has(addOn.id);
             const loading = addOnCheckoutLoading === addOn.id;
-            return <div key={addOn.id}><span><strong>{addOn.name}</strong><small>{money(addOn.monthlyPrice)} / month</small></span><button disabled={!hasSubscription || !addOnsConfigured || addOnCheckoutLoading != null} onClick={() => startAddOnCheckout(addOn.id)} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : active ? <SlidersHorizontal size={14} /> : <Plus size={14} />}{active ? "Manage" : "Add"}</button></div>;
+            return <div key={addOn.id}>
+              <span className={styles.addOnIcon}>{addOn.id === "line" ? <Phone size={17} /> : addOn.id === "number" ? <CreditCard size={17} /> : addOn.id === "voice" ? <Sparkles size={17} /> : addOn.id === "messaging" ? <FileText size={17} /> : <UsersRound size={17} />}</span>
+              <span><strong>{addOn.name}{active && <em>Active</em>}</strong><small>{addOn.description}</small><small>{money(addOn.monthlyPrice)} / month</small></span>
+              <button disabled={!hasSubscription || !addOnsConfigured || addOnCheckoutLoading != null} onClick={() => startAddOnCheckout(addOn.id)} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : active ? <SlidersHorizontal size={14} /> : <Plus size={14} />}{loading ? "Opening…" : active ? "Manage" : "Add"}</button>
+            </div>;
           })}
           {!hasSubscription && <p className={styles.addOnCheckoutNote}>Choose a base plan before purchasing add-ons.</p>}
           {hasSubscription && !addOnsConfigured && <p className={styles.addOnCheckoutNote}>Add-on checkout needs the five Whop add-on plan IDs.</p>}
@@ -615,12 +633,13 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
         <header className={styles.summaryHeader}><div className={styles.stepHeader}><span>3</span><div><h2>Estimate summary</h2><p>All amounts in USD</p></div></div><em>USD</em></header>
         <LedgerRow label={`Base plan — ${selectedPlan.name}`} note={interval === "annual" ? "Annual billing equivalent" : "Monthly billing"} value={money(projection.basePrice)} />
         <LedgerRow label="Overage minutes" note={`${projection.overageMinutes.toLocaleString()} × ${money(selectedPlan.overageRate)}`} value={money(projection.overageCost)} />
-        <LedgerRow label="Activated add-ons" note="Modelled selection" value={money(projection.addOnCost)} />
+        <LedgerRow label="Active add-ons" note={`${activeAddOns.length} currently enabled`} value={money(projection.addOnCost)} />
         <div className={styles.ledgerTotal}><div><strong>Estimated total / month</strong><span>Plan + overage + activated add-ons</span></div><strong>{money(projection.total)}</strong></div>
         <p><Info size={15} /> If a higher plan produces a lower total for your model, Sauti will explain the arithmetic instead of forcing a recommendation.</p>
-        <button disabled={!checkoutConfigured} onClick={() => setPreviewOpen(true)} type="button"><ShieldCheck size={16} /> {!checkoutConfigured ? "Whop setup required" : hasSubscription ? "Manage base plan" : isSandbox ? "Continue to sandbox checkout" : "Continue to secure checkout"}</button>
+        <button disabled={!checkoutConfigured || (hasSubscription && selectedPlanId === currentPlanId)} onClick={() => openPlanDialog("change")} type="button"><ShieldCheck size={16} /> {!checkoutConfigured ? "Whop setup required" : hasSubscription ? selectedPlanId === currentPlanId ? "Current plan selected" : `Change to ${selectedPlan.name}` : isSandbox ? "Continue to sandbox checkout" : "Continue to secure checkout"}</button>
+        {hasSubscription && <button className={styles.cancelPlanButton} onClick={() => openPlanDialog("cancel")} type="button">Cancel subscription</button>}
         <button className={styles.resetButton} onClick={resetModel} type="button"><RotateCcw size={15} /> Reset model</button>
-        <footer>Base-plan changes and add-on purchases are completed separately through {checkoutProvider}.</footer>
+        <footer>Sauti guides the change; {checkoutProvider} securely authorizes billing.</footer>
       </article>
       <article className={styles.benefitsStrip} aria-label="Billing benefits">
         <BillingBenefit icon={CircleDollarSign} title="Transparent pricing" note="See how the total is calculated before checkout." />
@@ -659,10 +678,6 @@ function LedgerRow({ label, note, value }: { label: string; note: string; value:
 
 function PolicyOption({ active, icon: Icon, label, note, onClick }: { active: boolean; icon: typeof Gauge; label: string; note: string; onClick: () => void }) {
   return <button aria-pressed={active} className={active ? styles.policyActive : ""} onClick={onClick} type="button"><span>{active ? <Check size={16} /> : <Icon size={17} />}</span><strong>{label}</strong><small>{note}</small></button>;
-}
-
-function QuantityControl({ description, label, onChange, value }: { description: string; label: string; onChange: (value: number) => void; value: number }) {
-  return <div className={styles.quantityControl}><div><UsersRound size={18} /><span><strong>{label}</strong><small>{description}</small></span></div><div><button aria-label={`Decrease ${label}`} disabled={value === 0} onClick={() => onChange(value - 1)} type="button"><Minus size={15} /></button><strong>{value}</strong><button aria-label={`Increase ${label}`} onClick={() => onChange(value + 1)} type="button"><Plus size={15} /></button></div></div>;
 }
 
 function BillingLoading() {

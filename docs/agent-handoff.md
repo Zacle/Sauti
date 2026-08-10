@@ -11577,3 +11577,33 @@ Expected:
 - Provider acceptance: ensure the Whop v1 webhook subscribes to
   `payment.succeeded`, complete a sandbox payment, and confirm exactly one email
   reaches the workspace account address rather than the buyer-supplied address.
+
+### 2026-08-10 - Guided subscription management and unified add-ons
+
+- Replaced the vague `Manage base plan` journey with explicit Sauti actions.
+  Selecting a different plan now opens a review that names the current and
+  target plans, identifies the exact current membership by monthly price, and
+  warns the customer not to purchase a second subscription. Selecting the
+  current plan cannot open Whop accidentally.
+- Added a separate cancellation action and confirmation that explains when
+  access ends and which Whop membership to cancel. The final provider action
+  still uses the membership-specific `manage_url`, because Whop's documented
+  membership update body currently supports metadata and does not expose a safe
+  target-plan or customer cancellation mutation. Sauti does not create a second
+  checkout to simulate a change.
+- Removed the duplicated add-on modeller controls and purchase list. Each add-on
+  now appears once with its icon, description, monthly price, active state, and
+  one Add/Manage action. Billing estimates include only add-ons synchronized as
+  active on the workspace; reset returns to that real state.
+- Updated the overview/usage estimate to stop showing a hard-coded additional
+  agent and use the synchronized active add-on cost instead.
+- Files touched: billing page presentation/CSS, Whop setup documentation, and
+  this handoff. Existing uncommitted Whop checkout, add-on, and payment-email
+  work was preserved.
+- Verification: dashboard `npm.cmd run typecheck`, `npm.cmd run lint`, and
+  `npm.cmd run build` passed; the production build generated all 61 pages.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+- Existing sandbox remediation: the screenshot shows Growth and Scale as two
+  active memberships. Cancel the unwanted one in Whop before the next test, then
+  confirm all six Sauti base plan IDs are pricing options on one Whop product.

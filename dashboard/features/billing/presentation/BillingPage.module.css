@@ -852,24 +852,47 @@
 }
 
 .addOnCheckoutPanel > div {
-  display: flex;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 8px 0;
+  padding: 11px 0;
   border-bottom: 1px solid rgba(100, 155, 200, .09);
 }
 
-.addOnCheckoutPanel > div > span {
+.addOnCheckoutPanel > div > span:not(.addOnIcon) {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 3px;
 }
 
+.addOnCheckoutPanel .addOnIcon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid rgba(43, 220, 208, .3);
+  border-radius: 10px;
+  color: #2edfd2;
+  background: rgba(10, 70, 79, .18);
+}
+
 .addOnCheckoutPanel > div strong {
   color: #dce9f2;
   font-size: .69rem;
+  font-weight: 550;
+}
+
+.addOnCheckoutPanel > div strong em {
+  display: inline-flex;
+  margin-left: 7px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #5be5d9;
+  background: rgba(32, 183, 171, .15);
+  font-size: .54rem;
+  font-style: normal;
   font-weight: 550;
 }
 
@@ -920,6 +943,21 @@
   background: rgba(111, 52, 20, .16);
   font-size: .65rem;
   line-height: 1.45;
+}
+
+.planStudio .estimateSummary > button.cancelPlanButton {
+  min-height: 38px;
+  margin-top: 8px;
+  border: 1px solid rgba(240, 103, 103, .34);
+  color: #f4a1a1;
+  background: rgba(104, 35, 47, .13);
+  font-weight: 550;
+}
+
+.planStudio .estimateSummary > button.cancelPlanButton:hover {
+  border-color: rgba(240, 103, 103, .55);
+  background: rgba(122, 40, 53, .2);
+  filter: none;
 }
 
 .communicationCosts {
