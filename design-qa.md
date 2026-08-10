@@ -1,36 +1,61 @@
-# Design QA: usage and billing checkout
+# Design QA: billing plans and Whop checkout
 
 ## Evidence
 
-- Source visual truth: `C:\Users\Zacle\AppData\Local\Temp\codex-clipboard-7581d99e-55e3-4196-b826-a0e35f30a028.png`.
-- Source pixels: 1560 x 1016.
-- Target state: desktop `Plans & add-ons` billing workspace with a Whop sandbox checkout available.
-- Automated browser capture: blocked because the Codex in-app browser runtime could not initialize in this desktop session (`failed to write kernel assets: path not found`). No alternate browser automation was used.
+- Source visual truth: `C:\Users\Zacle\AppData\Local\Temp\codex-clipboard-c6a7a24c-d8e7-4c5b-9bd8-5cab2b9769e8.png`.
+- Source pixels and viewport evidence: 1608 x 969 at desktop density.
+- State: authenticated `Plans & add-ons` view with Whop Sandbox checkout ready.
+- Implementation screenshot: unavailable. The Codex in-app browser runtime
+  failed to initialize in this desktop session with `failed to write kernel
+  assets: path not found`. No alternate browser automation was used.
 
-## Static comparison
+## Full-view comparison evidence
 
-- The implementation preserves the existing Sauti console shell, navy/teal palette, bordered cards, typography, spacing rhythm, and responsive breakpoints shown in the source.
-- The plans workspace now mirrors the source hierarchy: numbered plan, configuration, and estimate steps; monthly/annual selector; plan cards; usage and add-on controls; sticky estimate; explicit currency; primary checkout action; and the four-part billing benefits strip.
-- All visible icons come from the existing Lucide icon library. No placeholder or approximate image asset was introduced.
-- Sandbox status is data-driven rather than decorative. The page distinguishes configured Whop sandbox, live checkout, and incomplete server setup.
-- The primary action opens a review dialog and then calls the real provider-neutral checkout endpoint. It no longer describes this journey as a mutation-free preview.
+- The supplied screen shows a P1 horizontal-overflow defect: the estimate
+  summary reaches beyond the right viewport edge, clipping currency badges,
+  ledger values, the calculated total, and action content.
+- The supplied screen also shows P2 typography drift: helper descriptions and
+  add-on explanations inherit bold weight, uppercase treatment, and expanded
+  letter spacing intended for section labels.
+- The existing Sauti navy/teal palette, three-step hierarchy, rounded cards,
+  provider-status banner, plan controls, and checkout hierarchy remain the
+  visual baseline. No image asset is present or required on this screen.
 
-## Interaction and build verification
+## Focused-region comparison evidence
 
-- Whop sandbox/live/provider/configuration status is returned by an authenticated backend endpoint.
-- Incomplete server setup disables checkout with an explicit setup-required state.
-- A configured sandbox creates the same real hosted checkout configuration used by production, but against the separately configured Whop sandbox resources.
-- Backend tests passed.
-- Dashboard typecheck passed.
-- ESLint passed with zero warnings.
-- Optimized Next.js production build passed, including `/billing`.
-- `git diff --check` passed (line-ending notices only).
+- Estimate summary: the grid's desktop minimum tracks plus content-box card
+  padding exceeded the available console width. Monetary values were also
+  allowed to shrink inside flex rows.
+- Configuration descriptions: `.planStudio small` inherited the shared
+  uppercase label rule and a `750` font weight, producing the heavy appearance
+  visible under minutes, agents, and add-ons.
 
-## Required live visual acceptance
+## Comparison history
 
-- After deployment, open `/billing?tab=plans` at 1560 x 1016 and compare it beside the source.
-- Confirm the banner reads `Whop sandbox checkout is enabled` when `WHOP_SANDBOX=true`.
-- Select a plan, change minutes and add-ons, and confirm the estimate updates without changing the workspace.
-- Continue to Whop Sandbox and complete one test checkout; confirm Sauti changes entitlement only after the signed membership webhook.
+1. Initial evidence: right-hand content clipped and secondary copy displayed
+   with excessive emphasis.
+2. Fix applied: pricing cards now use border-box sizing and a zero intrinsic
+   minimum; monetary values are non-shrinking and stay on one line. Billing
+   descriptions, helper text, and footers now use normal weight, spacing, and
+   casing. Headings, labels, prices, and the checkout action were reduced to
+   moderate emphasis.
+3. Post-fix evidence: TypeScript, zero-warning ESLint, and the optimized Next.js
+   build pass. A browser-rendered screenshot comparison remains unavailable
+   because the in-app browser runtime cannot initialize.
 
-final result: blocked — implementation and build checks passed, but the required browser screenshot comparison could not run because the in-app browser runtime was unavailable.
+## Interaction checks
+
+- The plan, interval, projected-minute, quantity, add-on, reset, and checkout
+  controls remain unchanged and compile successfully.
+- Checkout remains data-driven: Sandbox and live labels come from backend
+  configuration, and an unavailable provider disables the primary action.
+- Browser interaction and console-error inspection are blocked by the browser
+  runtime issue above.
+
+## Remaining finding
+
+- [P2] Capture `/billing?tab=plans` at 1608 x 969 after deployment and verify
+  that the complete estimate card, every amount, and both actions remain inside
+  the viewport at 100% and 125% browser zoom.
+
+final result: blocked

@@ -2,6 +2,25 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-10: Keep the Whop billing workbench visible and soften typography
+
+- Corrected the desktop Plans & add-ons overflow shown at 1608 x 969. Pricing
+  cards now include their padding inside the grid track, have no intrinsic
+  minimum-width overflow, and preserve complete monetary values on one line.
+- Removed the shared uppercase/bold label treatment from billing descriptions,
+  helper text, and footers. Headings, labels, prices, and the checkout action
+  now use moderate emphasis instead of the previous heavy weight.
+- Files touched: billing presentation CSS, `design-qa.md`, and this handoff.
+- Verification: dashboard typecheck, zero-warning ESLint, optimized production
+  build (all 61 pages), and `git diff --check` passed (line-ending notices
+  only).
+- Visual QA remains blocked: the supplied 1608 x 969 screenshot was inspected,
+  but the Codex in-app browser runtime could not initialize (`failed to write
+  kernel assets: path not found`), so no post-fix browser capture or console
+  inspection is claimed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal GitHub Actions CI/CD path.
+
 ### 2026-08-10: Diagnose Whop sandbox checkout authentication and expose safe errors
 
 - Reproduced the production checkout failure with read-only requests using the

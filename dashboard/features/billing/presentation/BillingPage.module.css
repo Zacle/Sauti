@@ -683,6 +683,7 @@
   margin: 0 !important;
   color: #7891a7;
   font-size: .68rem;
+  font-weight: 400;
   line-height: 1.45;
 }
 
@@ -768,6 +769,49 @@
   color: #31dfd2;
   font-size: .66rem;
   font-weight: 700;
+}
+
+/* Keep the pricing workbench inside the available console width. Grid tracks
+   include card padding, and monetary values remain visible instead of being
+   squeezed past the right edge at desktop zoom levels. */
+.planStudio > article {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+.planStudio small,
+.planStudio p,
+.planStudio footer {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.planStudio .ledgerRow > strong,
+.planStudio .ledgerTotal > strong,
+.planStudio .planPrice {
+  flex: none;
+  white-space: nowrap;
+}
+
+.planStudio .stepHeader h2,
+.planStudio .summaryHeader h2 {
+  font-weight: 600;
+}
+
+.planStudio .planRows strong,
+.planStudio .minutesInput strong,
+.planStudio .quantityControl strong,
+.planStudio .addOnList strong,
+.planStudio .ledgerRow strong,
+.planStudio .ledgerTotal strong,
+.planStudio .benefitsStrip strong {
+  font-weight: 550;
+}
+
+.planStudio .intervalToggle .selected,
+.planStudio .estimateSummary > button:not(.resetButton) {
+  font-weight: 600;
 }
 
 .communicationCosts {
