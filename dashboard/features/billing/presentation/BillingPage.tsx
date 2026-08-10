@@ -176,6 +176,7 @@ export function BillingPage() {
   const isSandbox = checkoutStatus?.environment === "sandbox";
   const checkoutConfigured = checkoutStatus?.configured !== false;
   const checkoutProvider = checkoutStatus?.provider === "whop" ? "Whop" : checkoutStatus?.provider ?? "the billing provider";
+  const hasPaidSubscription = subscriptionAllowsCalls(account?.subscription ?? null);
   const currentMembershipPrice = account?.subscription?.interval === "annual"
     ? `${money(currentPlan.monthlyPrice * 0.9 * 12)} per year`
     : `${money(currentPlan.monthlyPrice)} per month`;
@@ -206,19 +207,21 @@ export function BillingPage() {
     setCheckoutLoading(true);
     setCheckoutError("");
     try {
-      if (account?.subscription && managementIntent === "cancel") {
+      if (hasPaidSubscription && account?.subscription && managementIntent === "cancel") {
         await cancelBillingSubscription();
         setPreviewOpen(false);
         setBillingActionMessage("Cancellation scheduled. Your access remains available through the current paid period.");
         setReloadKey((key) => key + 1);
         return;
       }
-      if (account?.subscription) {
+      if (hasPaidSubscription && account?.subscription) {
         const change = await requestBillingPlanChange(selectedPlan.id, interval);
         setPreviewOpen(false);
         setBillingActionMessage(change.status === "completed"
           ? `${selectedPlan.name} was already active in Whop and is now your synchronized Sauti plan.`
-          : `${selectedPlan.name} is scheduled to start at the end of your current paid period.`);
+          : change.collectionMethod === "send_invoice"
+            ? `Your current plan stays active for the rest of its paid period. Whop will then email a secure ${selectedPlan.name} invoice; the new plan activates only after that invoice is paid.`
+            : `${selectedPlan.name} will take effect only after your current subscription ends.`);
         setReloadKey((key) => key + 1);
         return;
       }
@@ -291,7 +294,15 @@ export function BillingPage() {
 
       {account?.pendingPlanChange && <section className={styles.pendingPlanChange} role="status">
         <Clock3 size={18} />
-        <div><strong>{account.pendingPlanChange.status === "scheduled" ? "Plan change scheduled" : "Plan change is being prepared"}</strong><span>Your {planById(account.pendingPlanChange.currentPlan).name} plan remains active until {account.pendingPlanChange.effectiveAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.pendingPlanChange.effectiveAt)) : "the end of the paid period"}. {planById(account.pendingPlanChange.targetPlan).name} ({account.pendingPlanChange.targetInterval}) will start automatically; there is no Whop page to complete.</span></div>
+        <div>
+          <strong>{account.pendingPlanChange.collectionMethod === "send_invoice" ? "Plan change awaiting renewal payment" : account.pendingPlanChange.status === "scheduled" ? "Plan change scheduled" : "Plan change is being prepared"}</strong>
+          <span>
+            Your {planById(account.pendingPlanChange.currentPlan).name} plan remains active until {account.pendingPlanChange.effectiveAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.pendingPlanChange.effectiveAt)) : "the end of the paid period"}.{" "}
+            {account.pendingPlanChange.collectionMethod === "send_invoice"
+              ? `Only after that subscription ends, Whop will email the ${planById(account.pendingPlanChange.targetPlan).name} invoice. The new plan activates after the secure invoice is paid; it cannot start early.`
+              : `Only after that subscription ends, ${planById(account.pendingPlanChange.targetPlan).name} (${account.pendingPlanChange.targetInterval}) will take effect automatically.`}
+          </span>
+        </div>
       </section>}
 
       {error && (
@@ -349,7 +360,7 @@ export function BillingPage() {
               activeAddOns={account?.addOns ?? []}
               addOnCheckoutError={addOnCheckoutError}
               addOnCheckoutLoading={addOnCheckoutLoading}
-              hasSubscription={account?.subscription != null}
+              hasSubscription={hasPaidSubscription}
               subscription={account?.subscription ?? null}
               isSandbox={isSandbox}
               resumeLoading={resumeLoading}
@@ -367,23 +378,26 @@ export function BillingPage() {
             <button aria-label="Close preview" className={styles.dialogClose} onClick={() => setPreviewOpen(false)} ref={closeButtonRef} type="button"><X size={18} /></button>
             <span className={styles.dialogIcon}><ShieldCheck size={23} /></span>
             <small>{isSandbox ? "Whop sandbox billing" : "Secure subscription management"}</small>
-            <h2 id="preview-title">{account?.subscription
+            <h2 id="preview-title">{hasPaidSubscription && account?.subscription
               ? managementIntent === "cancel" ? `Cancel your ${currentPlan.name} plan?` : `Change ${currentPlan.name} to ${selectedPlan.name}`
               : `Review your ${isSandbox ? "test " : ""}checkout`}</h2>
-            <p id="preview-description">{account?.subscription
+            <p id="preview-description">{hasPaidSubscription && account?.subscription
               ? managementIntent === "cancel"
                 ? `You will keep access until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of the paid billing period"}. Sauti will cancel the exact synchronized Whop membership; no provider selection is required.`
-                : `Sauti will schedule ${selectedPlan.name} for the end of your current paid period using the payment method already stored securely by Whop. If that plan is already active in Whop, Sauti will reuse it instead of creating another subscription.`
+                : `Your ${currentPlan.name} plan remains active until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of its paid period"}. ${selectedPlan.name} takes effect only after the current subscription ends. If Whop cannot collect automatically, it will email a secure invoice that must be paid before the new plan activates.`
               : `Continuing opens ${checkoutProvider}. ${isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.`}</p>
             <div className={styles.dialogRows}>
-              <span><em>{account?.subscription && managementIntent === "change" ? "New plan" : "Plan"}</em><strong>{account?.subscription && managementIntent === "cancel" ? currentPlan.name : selectedPlan.name}</strong></span>
-              {account?.subscription && managementIntent === "cancel" ? (
+              <span><em>{hasPaidSubscription && account?.subscription && managementIntent === "change" ? "New plan" : "Plan"}</em><strong>{hasPaidSubscription && account?.subscription && managementIntent === "cancel" ? currentPlan.name : selectedPlan.name}</strong></span>
+              {hasPaidSubscription && account?.subscription && managementIntent === "cancel" ? (
                 <>
                   <span><em>Current price</em><strong>{currentMembershipPrice}</strong></span>
                   <span><em>Access ends</em><strong>{account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "End of billing period"}</strong></span>
                 </>
               ) : (
                 <>
+                  {hasPaidSubscription && account?.subscription && managementIntent === "change" && (
+                    <span><em>New plan takes effect</em><strong>{account.subscription.renewsAt ? `After ${new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt))}` : "After the current period"}</strong></span>
+                  )}
                   <span><em>Projected usage</em><strong>{projectedMinutes.toLocaleString()} minutes</strong></span>
                   <span><em>Estimated monthly total</em><strong>{money(modelProjection.total)}</strong></span>
                 </>
@@ -392,7 +406,7 @@ export function BillingPage() {
             {checkoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {checkoutError}</p>}
             <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
               {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
-              {checkoutLoading ? "Updating billing…" : account?.subscription
+              {checkoutLoading ? "Updating billing…" : hasPaidSubscription && account?.subscription
                 ? managementIntent === "cancel" ? "Schedule cancellation" : "Schedule plan change"
                 : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
             </button>
@@ -402,6 +416,13 @@ export function BillingPage() {
       )}
     </main>
   );
+}
+
+function subscriptionAllowsCalls(subscription: BillingAccount["subscription"]) {
+  if (!subscription) return false;
+  if (["active", "trialing"].includes(subscription.status)) return true;
+  if (!["canceling", "canceled", "completed"].includes(subscription.status)) return false;
+  return subscription.renewsAt != null && new Date(subscription.renewsAt).getTime() > Date.now();
 }
 
 function OverviewTab({
@@ -539,7 +560,7 @@ function CommunicationCostOverview({ account }: { account: BillingAccount }) {
       <footer>
         <span><Check size={15} /> {account.reconciliation.reconciled.toLocaleString()} provider-confirmed</span>
         <span><Clock3 size={15} /> {account.reconciliation.estimated.toLocaleString()} rate-card estimates</span>
-        <span><Info size={15} /> Charging remains {account.enforcementMode === "observe" ? "disabled" : "enabled"}</span>
+        <span><Info size={15} /> Subscription call access is {account.enforcementMode === "observe" ? "being observed" : "actively protected"}</span>
       </footer>
     </article>
   );
@@ -700,7 +721,7 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
         <div className={styles.planRows}>
           {pricingPlans.map((plan) => (
             <button aria-pressed={selectedPlanId === plan.id} className={selectedPlanId === plan.id ? styles.activePlan : ""} key={plan.id} onClick={() => setSelectedPlanId(plan.id)} type="button">
-              <span><strong>{plan.name}{currentPlanId === plan.id && <em>Current</em>}</strong><small>{plan.includedMinutes.toLocaleString()} AI minutes / month</small><small>{plan.concurrentCalls} concurrent {plan.concurrentCalls === 1 ? "line" : "lines"}</small></span>
+              <span><strong>{plan.name}{currentPlanId === plan.id && <em>{hasSubscription ? "Current" : "Previous"}</em>}</strong><small>{plan.includedMinutes.toLocaleString()} AI minutes / month</small><small>{plan.concurrentCalls} concurrent {plan.concurrentCalls === 1 ? "line" : "lines"}</small></span>
               <strong className={styles.planPrice}>{money(interval === "annual" ? plan.monthlyPrice * 0.9 : plan.monthlyPrice)}<em>/ month</em></strong>
               {selectedPlanId === plan.id && <Check className={styles.planCheck} size={15} />}
             </button>

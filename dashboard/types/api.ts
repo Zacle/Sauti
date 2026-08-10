@@ -733,6 +733,7 @@ export type BillingPlanChange = {
   targetPlan: "launch" | "growth" | "scale";
   targetInterval: "monthly" | "annual";
   effectiveAt: string | null;
+  collectionMethod: "charge_automatically" | "send_invoice" | null;
 };
 
 export type BillingCheckout = {

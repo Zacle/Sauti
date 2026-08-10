@@ -22,6 +22,7 @@ public class BillingPlanChangeRequest extends Auditable {
     @Column(length = 100) private String providerInvoiceId;
     @Column(length = 100) private String providerTargetPlanId;
     @Column(length = 100) private String providerGeneratedPlanId;
+    @Column(length = 30) private String collectionMethod;
 
     protected BillingPlanChangeRequest() { }
 
@@ -43,13 +44,20 @@ public class BillingPlanChangeRequest extends Auditable {
         this.providerInvoiceId = null;
         this.providerTargetPlanId = null;
         this.providerGeneratedPlanId = null;
+        this.collectionMethod = null;
     }
 
     public void schedule(String providerInvoiceId, String providerTargetPlanId,
                          String providerGeneratedPlanId) {
+        schedule(providerInvoiceId, providerTargetPlanId, providerGeneratedPlanId, "charge_automatically");
+    }
+
+    public void schedule(String providerInvoiceId, String providerTargetPlanId,
+                         String providerGeneratedPlanId, String collectionMethod) {
         this.providerInvoiceId = required(providerInvoiceId);
         this.providerTargetPlanId = required(providerTargetPlanId);
         this.providerGeneratedPlanId = required(providerGeneratedPlanId);
+        this.collectionMethod = required(collectionMethod);
         this.status = "scheduled";
     }
 
@@ -66,6 +74,7 @@ public class BillingPlanChangeRequest extends Auditable {
     public String getProviderInvoiceId() { return providerInvoiceId; }
     public String getProviderTargetPlanId() { return providerTargetPlanId; }
     public String getProviderGeneratedPlanId() { return providerGeneratedPlanId; }
+    public String getCollectionMethod() { return collectionMethod; }
 
     private static String required(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("Plan change value is required");

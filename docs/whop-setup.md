@@ -22,9 +22,13 @@ Once a workspace has a Whop membership, Sauti no longer sends upgrades or
 downgrades to Whop's generic membership portal. It first looks for one active,
 renewing same-customer membership on the exact target plan and safely reuses it
 when present. A membership with `cancel_at_period_end=true` is never reused.
-Otherwise Sauti schedules a future automatic invoice for the target
-plan, anchored to the current renewal date, and ends only the synchronized
-source membership then. No support operator or plan-change email is involved.
+Otherwise Sauti first tries to schedule an automatic invoice for the target
+plan, anchored to the current renewal date. If Whop reports that automatic
+collection is unsupported for the company, Sauti schedules a `send_invoice`
+invoice instead. Whop emails that secure invoice at renewal and the customer
+must pay it to activate the new plan. The replacement plan never takes effect
+before the current paid subscription ends. Sauti ends only the synchronized source
+membership at the paid-period boundary; no support operator is involved.
 
 Whop's documented membership update API accepts metadata but does not expose a
 target-plan mutation. Sauti therefore uses Whop's saved-payment and invoice APIs
@@ -204,8 +208,13 @@ and multiple matches produce a clear conflict that requires duplicate cleanup.
    past-due/failed payment, expiration, refund, and dispute journeys.
 7. Confirm webhook failures are visible in the Admin Analytics billing-event
    queue.
-8. Keep every billing account in `observe` until refund/dispute ledger handling
-   and production lifecycle evidence receive a separate review.
+8. Confirm a signed active Whop membership moves that workspace to call-access
+   `enforce`, cancel-at-period-end remains callable through its paid-through
+   timestamp, and expired, past-due, or unpaid access returns HTTP 402 for new
+   browser/web sessions. Inbound calls must hang up before the AI assistant is
+   started, while historical calls remain readable. Workspaces without a Whop
+   lifecycle remain in `observe`; refund/dispute financial enforcement still
+   requires a separate review.
 
 The older 2Checkout and Lemon Squeezy adapters remain dormant rollback code.
 Do not configure their secrets or select them in production unless a later

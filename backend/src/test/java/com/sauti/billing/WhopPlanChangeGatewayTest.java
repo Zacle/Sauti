@@ -8,6 +8,7 @@ import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +17,7 @@ class WhopPlanChangeGatewayTest {
     void schedulesTargetAtRenewalAndCancelsOnlyTheCurrentMembership() throws Exception {
         var invoiceBody = new AtomicReference<String>();
         var cancelBody = new AtomicReference<String>();
+        var invoiceAttempts = new AtomicInteger();
         var server = HttpServer.create(new InetSocketAddress(0), 0);
         respond(server, "/api/v1/memberships/mem_scale", """
                 {"id":"mem_scale","status":"active","cancel_at_period_end":false,
@@ -34,6 +36,10 @@ class WhopPlanChangeGatewayTest {
                 """);
         server.createContext("/api/v1/invoices", exchange -> {
             invoiceBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            if (invoiceAttempts.getAndIncrement() == 0) {
+                write(exchange, 422, "{\"error\":{\"message\":\"Automatic collection is not supported for this company. Please contact support with any questions.\"}}");
+                return;
+            }
             write(exchange, 201, "{\"id\":\"inv_change\",\"current_plan\":{\"id\":\"plan_generated\"}}");
         });
         server.createContext("/api/v1/memberships/mem_scale/cancel", exchange -> {
@@ -55,11 +61,13 @@ class WhopPlanChangeGatewayTest {
             assertThat(result.kind()).isEqualTo("scheduled");
             assertThat(result.invoiceId()).isEqualTo("inv_change");
             assertThat(result.generatedPlanId()).isEqualTo("plan_generated");
+            assertThat(result.collectionMethod()).isEqualTo("send_invoice");
+            assertThat(invoiceAttempts.get()).isEqualTo(2);
             var body = mapper.readTree(invoiceBody.get());
             assertThat(body.path("product_id").asText()).isEqualTo("prod_sauti");
             assertThat(body.path("member_id").asText()).isEqualTo("mber_1");
-            assertThat(body.path("payment_method_id").asText()).isEqualTo("pmt_1");
-            assertThat(body.path("collection_method").asText()).isEqualTo("charge_automatically");
+            assertThat(body.has("payment_method_id")).isFalse();
+            assertThat(body.path("collection_method").asText()).isEqualTo("send_invoice");
             assertThat(body.path("automatically_finalizes_at").asText()).isEqualTo(effectiveAt.toString());
             assertThat(body.path("plan").path("renewal_price").decimalValue()).isEqualByComparingTo("149");
             assertThat(body.path("plan").path("currency").asText()).isEqualTo("usd");

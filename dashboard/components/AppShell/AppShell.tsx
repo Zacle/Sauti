@@ -21,6 +21,7 @@ import {
   Plug,
   Search,
   Settings,
+  ShieldAlert,
   Sparkles,
   X,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import { NotificationMenu } from "@/features/notifications/presentation/NotificationMenu";
+import { loadBillingAccount } from "@/lib/api/billing";
 
 const navigation = [
   { label: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -44,6 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [paidCallingBlocked, setPaidCallingBlocked] = useState(false);
   const { session, logout } = useAuth();
   const tenant = session?.tenant;
   const isAgentStudio = pathname === "/agents/new" || /^\/agents\/[^/]+$/.test(pathname);
@@ -53,6 +56,17 @@ export function AppShell({ children }: { children: ReactNode }) {
       ?? window.localStorage.getItem("sauti-agents-sidebar-collapsed");
     setSidebarCollapsed(savedPreference === "true");
   }, []);
+
+  useEffect(() => {
+    if (!session?.tenant) return;
+    let active = true;
+    loadBillingAccount()
+      .then((account) => active && setPaidCallingBlocked(
+        account.enforcementMode === "enforce" && !account.paidResourcesAllowed
+      ))
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [session?.tenant]);
 
   function toggleSidebar() {
     setSidebarCollapsed((collapsed) => {
@@ -113,10 +127,20 @@ export function AppShell({ children }: { children: ReactNode }) {
           <label className="console-search"><Search size={17} /><input aria-label="Search workspace" placeholder="Search calls, agents, bookings..." /><kbd>⌘ K</kbd></label>
           <div className="console-top-actions">
             <NotificationMenu />
-            <Link className="test-agent-button" href="/agents/new"><Sparkles size={16} /> Test agent</Link>
+            <Link className="test-agent-button" href={paidCallingBlocked ? "/billing" : "/agents/new"}>
+              {paidCallingBlocked ? <CreditCard size={16} /> : <Sparkles size={16} />}
+              {paidCallingBlocked ? "Restore calling" : "Test agent"}
+            </Link>
             <span className="profile-avatar">{tenant?.businessName?.slice(0, 1).toUpperCase() ?? "S"}</span>
           </div>
         </header>
+        {paidCallingBlocked && (
+          <section className="billing-access-banner" role="alert">
+            <ShieldAlert size={18} />
+            <div><strong>AI calling is paused</strong><span>Your workspace remains available, including agents and call history. Reactivate a plan to start new browser, web, inbound, or outbound calls.</span></div>
+            <Link href="/billing">Review billing</Link>
+          </section>
+        )}
         <div className="console-content">{children}</div>
       </section>
     </main>

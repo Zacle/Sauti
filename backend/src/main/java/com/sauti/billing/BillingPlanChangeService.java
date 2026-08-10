@@ -64,7 +64,8 @@ public class BillingPlanChangeService {
         if ("adopt".equals(transition.kind())) {
             adopt(tenant, subscription, request, selection, transition.membership());
         } else {
-            request.schedule(transition.invoiceId(), selection.planId(), transition.generatedPlanId());
+            request.schedule(transition.invoiceId(), selection.planId(), transition.generatedPlanId(),
+                    transition.collectionMethod());
             requests.save(request);
         }
         return PlanChangeResponse.from(request);
@@ -79,10 +80,12 @@ public class BillingPlanChangeService {
     public record PlanChangeCommand(String plan, String interval) { }
 
     public record PlanChangeResponse(UUID id, String status, String currentPlan, String targetPlan,
-                                     String targetInterval, java.time.OffsetDateTime effectiveAt) {
+                                     String targetInterval, java.time.OffsetDateTime effectiveAt,
+                                     String collectionMethod) {
         static PlanChangeResponse from(BillingPlanChangeRequest request) {
             return new PlanChangeResponse(request.getId(), request.getStatus(), request.getCurrentPlan(),
-                    request.getTargetPlan(), request.getTargetInterval(), request.getEffectiveAt());
+                    request.getTargetPlan(), request.getTargetInterval(), request.getEffectiveAt(),
+                    request.getCollectionMethod());
         }
     }
 
@@ -105,7 +108,7 @@ public class BillingPlanChangeService {
                 subscription.getProviderCustomerId());
         tenants.save(tenant);
         var account = ledger.account(tenant.getId());
-        account.configure("active", "observe", account.getBillingCurrency(),
+        account.configure("active", "enforce", account.getBillingCurrency(),
                 account.getMonthlySpendingLimit(), account.getLowBalanceThreshold());
     }
 

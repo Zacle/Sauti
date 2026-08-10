@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -72,6 +73,14 @@ public class BillingSubscription extends Auditable {
         this.providerUpdatedAt = null;
     }
 
+    public boolean permitsPaidAccessAt(OffsetDateTime now) {
+        var checkedAt = now == null ? OffsetDateTime.now() : now;
+        if (List.of("active", "trialing").contains(providerStatus)) return true;
+        if (!List.of("canceling", "canceled", "completed").contains(providerStatus)) return false;
+        var paidThrough = endsAt != null ? endsAt : renewsAt;
+        return paidThrough != null && checkedAt.isBefore(paidThrough);
+    }
+
     public UUID getTenantId() { return tenantId; }
     public String getProvider() { return provider; }
     public String getProviderSubscriptionId() { return providerSubscriptionId; }
@@ -83,6 +92,8 @@ public class BillingSubscription extends Auditable {
     public String getPlan() { return plan; }
     public String getBillingInterval() { return billingInterval; }
     public OffsetDateTime getRenewsAt() { return renewsAt; }
+    public OffsetDateTime getEndsAt() { return endsAt; }
+    public OffsetDateTime getTrialEndsAt() { return trialEndsAt; }
     public String getUpdatePaymentMethodUrl() { return updatePaymentMethodUrl; }
 
     private static String required(String value) {

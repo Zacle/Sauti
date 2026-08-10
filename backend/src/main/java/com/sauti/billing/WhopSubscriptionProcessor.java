@@ -144,10 +144,16 @@ public class WhopSubscriptionProcessor {
                     && membershipId.equals(request.getProviderSubscriptionId())) {
                 return;
             }
-            requireReplacement(request, subscription, membershipId, selection, data);
+            var signedReactivation = !subscription.permitsPaidAccessAt(OffsetDateTime.now())
+                    && validTenantReference(data, tenantId);
+            if (!signedReactivation) {
+                requireReplacement(request, subscription, membershipId, selection, data);
+            }
             subscription.replaceProviderSubscription(membershipId);
-            request.complete();
-            planChangeRequests.save(request);
+            if (request != null && List.of("requested", "scheduled").contains(request.getStatus())) {
+                request.complete();
+                planChangeRequests.save(request);
+            }
         }
         var providerUpdatedAt = timestamp(data.path("updated_at"));
         if (!subscription.isNewerThan(providerUpdatedAt)) return;
@@ -165,7 +171,7 @@ public class WhopSubscriptionProcessor {
                 renewsAt, customerId);
         tenants.save(tenant);
         var account = ledger.account(tenantId);
-        account.configure(accountStatus(status), "observe", account.getBillingCurrency(),
+        account.configure(accountStatus(status, renewsAt), "enforce", account.getBillingCurrency(),
                 account.getMonthlySpendingLimit(), account.getLowBalanceThreshold());
     }
 
@@ -200,6 +206,11 @@ public class WhopSubscriptionProcessor {
 
     private static UUID throwMissingAddOnReference() {
         throw new IllegalArgumentException("Whop workspace reference is missing");
+    }
+
+    private boolean validTenantReference(JsonNode data, UUID tenantId) {
+        var reference = data.path("metadata").path("sauti_tenant_reference").asText("");
+        return !reference.isBlank() && tenantId.equals(tenantReferences.verify(reference));
     }
 
     private UUID tenantId(JsonNode data, BillingSubscription existing, WhopPlanCatalog.Plan selection) {
@@ -278,11 +289,14 @@ public class WhopSubscriptionProcessor {
                 && List.of("active", "trialing").contains(status) ? "canceling" : status;
     }
 
-    private static String accountStatus(String status) {
+    private static String accountStatus(String status, OffsetDateTime paidThrough) {
         return switch (status) {
             case "trialing" -> "trialing";
-            case "active", "completed", "canceling", "canceled" -> "active";
-            case "past_due", "expired", "unresolved" -> "past_due";
+            case "active", "canceling" -> "active";
+            case "completed", "canceled" -> paidThrough != null && OffsetDateTime.now().isBefore(paidThrough)
+                    ? "active" : "cancelled";
+            case "past_due", "unresolved" -> "past_due";
+            case "expired" -> "cancelled";
             default -> throw new IllegalArgumentException("Unsupported Whop membership status");
         };
     }

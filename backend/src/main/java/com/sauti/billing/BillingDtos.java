@@ -62,10 +62,13 @@ public final class BillingDtos {
                                            List<UnpricedUsageResponse> unpricedUsage,
                                            ReconciliationHealthResponse reconciliation,
                                            List<CommunicationLedgerEntry> recentEntries) {
-            var blocked = List.of("suspended", "cancelled").contains(account.getStatus());
+            var subscriptionAllowsAccess = subscription != null
+                    && subscription.permitsPaidAccessAt(OffsetDateTime.now());
+            var blocked = List.of("suspended", "cancelled").contains(account.getStatus())
+                    || (account.isEnforced() && !subscriptionAllowsAccess);
             var entitledStatus = List.of("active", "trialing").contains(account.getStatus());
-            var hasBalance = balances.getOrDefault(account.getBillingCurrency(), BigDecimal.ZERO).signum() > 0;
-            var paidResourcesAllowed = !blocked && (!account.isEnforced() || (entitledStatus && hasBalance));
+            var paidResourcesAllowed = !blocked && (!account.isEnforced()
+                    || (entitledStatus && subscriptionAllowsAccess));
             return new BillingAccountResponse(
                     account.getId(), account.getStatus(), account.getEnforcementMode(),
                     account.getBillingCurrency(), account.getMonthlySpendingLimit(),
@@ -105,11 +108,12 @@ public final class BillingDtos {
     public record AddOnResponse(String addOn, int quantity, String status, String manageUrl) { }
 
     public record PlanChangeResponse(UUID id, String status, String currentPlan, String targetPlan,
-                                     String targetInterval, OffsetDateTime effectiveAt) {
+                                     String targetInterval, OffsetDateTime effectiveAt,
+                                     String collectionMethod) {
         static PlanChangeResponse from(BillingPlanChangeRequest request) {
             return request == null ? null : new PlanChangeResponse(request.getId(), request.getStatus(),
                     request.getCurrentPlan(), request.getTargetPlan(), request.getTargetInterval(),
-                    request.getEffectiveAt());
+                    request.getEffectiveAt(), request.getCollectionMethod());
         }
     }
 

@@ -6,6 +6,7 @@ import com.sauti.agent.TelnyxTelephonyProvider;
 import com.sauti.call.CallPipelineService;
 import com.sauti.call.CallQueryService;
 import com.sauti.billing.ProviderCostReconciliationService;
+import com.sauti.billing.BillingAccessPolicy;
 import jakarta.annotation.PreDestroy;
 import java.time.OffsetDateTime;
 import java.util.concurrent.ExecutorService;
@@ -28,6 +29,7 @@ public class TelnyxCallControlService {
     private final CallQueryService callQueryService;
     private final ProviderCostReconciliationService costReconciliation;
     private final PilotProvisioningPolicyService provisioningPolicies;
+    private final BillingAccessPolicy billingAccess;
     private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
         var thread = new Thread(runnable, "telnyx-call-control");
         thread.setDaemon(true);
@@ -41,7 +43,8 @@ public class TelnyxCallControlService {
             TelnyxTelephonyProvider telephonyProvider,
             CallQueryService callQueryService,
             ProviderCostReconciliationService costReconciliation,
-            PilotProvisioningPolicyService provisioningPolicies
+            PilotProvisioningPolicyService provisioningPolicies,
+            BillingAccessPolicy billingAccess
     ) {
         this.objectMapper = objectMapper;
         this.eventRepository = eventRepository;
@@ -50,6 +53,7 @@ public class TelnyxCallControlService {
         this.callQueryService = callQueryService;
         this.costReconciliation = costReconciliation;
         this.provisioningPolicies = provisioningPolicies;
+        this.billingAccess = billingAccess;
     }
 
     public void accept(String rawPayload) {
@@ -108,6 +112,8 @@ public class TelnyxCallControlService {
             return;
         }
         var call = callPipelineService.startInboundCall(to, callControlId, from);
+        try { billingAccess.requirePaidCommunication(call.getTenant().getId()); }
+        catch (RuntimeException blocked) { telephonyProvider.hangup(callControlId); throw blocked; }
         try { provisioningPolicies.authorize(call.getTenant().getId(), "live_calling"); }
         catch (IllegalStateException blocked) { telephonyProvider.hangup(callControlId); throw blocked; }
         var greeting = callQueryService.firstAgentResponse(call.getTenant().getId(), call.getId());

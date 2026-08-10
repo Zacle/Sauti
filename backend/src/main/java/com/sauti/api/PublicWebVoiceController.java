@@ -14,6 +14,7 @@ import com.sauti.call.WebVoiceTokenService;
 import com.sauti.call.TelnyxAiBrowserVoiceRuntimeService;
 import com.sauti.call.CallDtos.StartupLatencyRequest;
 import com.sauti.reliability.VoiceStartupMeasurementService;
+import com.sauti.billing.BillingAccessPolicy;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,6 +34,7 @@ public class PublicWebVoiceController {
     private final WebVoiceTokenService tokenService;
     private final TelnyxAiBrowserVoiceRuntimeService telnyxRuntime;
     private final VoiceStartupMeasurementService startupMeasurements;
+    private final BillingAccessPolicy billingAccess;
 
     public PublicWebVoiceController(
             PublicWebVoiceAccessService accessService,
@@ -40,7 +42,8 @@ public class PublicWebVoiceController {
             CallPipelineService callPipelineService,
             WebVoiceTokenService tokenService,
             TelnyxAiBrowserVoiceRuntimeService telnyxRuntime,
-            VoiceStartupMeasurementService startupMeasurements
+            VoiceStartupMeasurementService startupMeasurements,
+            BillingAccessPolicy billingAccess
     ) {
         this.accessService = accessService;
         this.rateLimitService = rateLimitService;
@@ -48,6 +51,7 @@ public class PublicWebVoiceController {
         this.tokenService = tokenService;
         this.telnyxRuntime = telnyxRuntime;
         this.startupMeasurements = startupMeasurements;
+        this.billingAccess = billingAccess;
     }
 
     @GetMapping("/agents/{publicId}")
@@ -72,6 +76,7 @@ public class PublicWebVoiceController {
     ) {
         rateLimitService.checkSessionStart(publicId, clientAddress(httpRequest));
         var agent = publicAgent(publicId);
+        billingAccess.requirePaidCommunication(agent.getTenant().getId());
         validateSessionRequest(agent, request);
         if (!telnyxRuntime.isConfigured()) {
             throw new com.sauti.call.VoiceRuntimeUnavailableException(

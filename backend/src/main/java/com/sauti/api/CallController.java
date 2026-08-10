@@ -21,6 +21,7 @@ import com.sauti.call.WebVoiceTokenService;
 import com.sauti.reliability.VoiceStartupMeasurementService;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptResponse;
+import com.sauti.billing.BillingAccessPolicy;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
@@ -44,6 +45,7 @@ public class CallController {
     private final TelnyxAiBrowserVoiceRuntimeService telnyxRuntime;
     private final BrowserVoiceRuntimePreparationService runtimePreparation;
     private final VoiceStartupMeasurementService startupMeasurements;
+    private final BillingAccessPolicy billingAccess;
 
     public CallController(
             CallQueryService callQueryService,
@@ -52,7 +54,8 @@ public class CallController {
             WebVoiceTokenService webVoiceTokenService,
             TelnyxAiBrowserVoiceRuntimeService telnyxRuntime,
             BrowserVoiceRuntimePreparationService runtimePreparation,
-            VoiceStartupMeasurementService startupMeasurements
+            VoiceStartupMeasurementService startupMeasurements,
+            BillingAccessPolicy billingAccess
     ) {
         this.callQueryService = callQueryService;
         this.callPipelineService = callPipelineService;
@@ -61,6 +64,7 @@ public class CallController {
         this.telnyxRuntime = telnyxRuntime;
         this.runtimePreparation = runtimePreparation;
         this.startupMeasurements = startupMeasurements;
+        this.billingAccess = billingAccess;
     }
 
     @GetMapping
@@ -78,6 +82,7 @@ public class CallController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody StartTestCallRequest request
     ) {
+        billingAccess.requirePaidCommunication(user.tenantId());
         requireTelnyx();
         var call = callPipelineService.startTestCall(
                 user.tenantId(), request.agentId(), request.ttsVoiceId(), request.language()
@@ -102,6 +107,7 @@ public class CallController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @RequestBody StartTestCallRequest request
     ) {
+        billingAccess.requirePaidCommunication(user.tenantId());
         requireTelnyx();
         return runtimePreparation.prepare(
                 user.tenantId(),

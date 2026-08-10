@@ -10,6 +10,7 @@ import com.sauti.call.VoiceRuntimeUnavailableException;
 import com.sauti.demo.DemoRequestRateLimitExceededException;
 import com.sauti.demo.PublicDemoVoiceLimitExceededException;
 import com.sauti.demo.PilotInvitationUnavailableException;
+import com.sauti.billing.PaidAccessRequiredException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -19,6 +20,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(PaidAccessRequiredException.class)
+    ResponseEntity<ApiError> paidAccessRequired(PaidAccessRequiredException exception) {
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
+                .body(new ApiError("paid_access_required", exception.getMessage()));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ApiError> badRequest(IllegalArgumentException exception) {
         return ResponseEntity.badRequest().body(new ApiError("bad_request", exception.getMessage()));

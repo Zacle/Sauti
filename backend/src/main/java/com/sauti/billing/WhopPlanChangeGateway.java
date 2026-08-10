@@ -78,7 +78,8 @@ public class WhopPlanChangeGateway {
         var memberId = required(current.path("member").path("id"), "membership member");
         var paymentMethodId = latestPaymentMethod(memberId);
         var targetPlan = get("/plans/" + safeId(target.planId()));
-        var invoice = createInvoice(targetPlan, memberId, paymentMethodId, effectiveAt);
+        var invoiceResult = createInvoice(targetPlan, memberId, paymentMethodId, effectiveAt);
+        var invoice = invoiceResult.invoice();
         try {
             cancelAtPeriodEndIfNeeded(current);
             voidReplacedInvoice(replacedInvoiceId);
@@ -87,7 +88,8 @@ public class WhopPlanChangeGateway {
             throw exception;
         }
         return PlanTransition.scheduled(required(invoice.path("id"), "invoice id"),
-                required(invoice.path("current_plan").path("id"), "invoice plan id"));
+                required(invoice.path("current_plan").path("id"), "invoice plan id"),
+                invoiceResult.collectionMethod());
     }
 
     private List<JsonNode> matchingMemberships(String userId, String planId) {
@@ -102,14 +104,29 @@ public class WhopPlanChangeGateway {
 
     private String latestPaymentMethod(String memberId) {
         var data = get("/payment_methods?member_id=" + encoded(memberId) + "&first=10&direction=desc").path("data");
-        if (!data.isArray() || data.isEmpty()) {
-            throw new IllegalStateException("No saved Whop payment method is available for this plan change");
-        }
+        if (!data.isArray()) throw new IllegalStateException("Whop returned an invalid payment-method list");
+        if (data.isEmpty()) return null;
         return required(data.get(0).path("id"), "payment method");
     }
 
+    private InvoiceResult createInvoice(JsonNode plan, String memberId, String paymentMethodId,
+                                        OffsetDateTime effectiveAt) {
+        if (paymentMethodId == null || paymentMethodId.isBlank()) {
+            return new InvoiceResult(createInvoice(plan, memberId, null, effectiveAt, "send_invoice"),
+                    "send_invoice");
+        }
+        try {
+            return new InvoiceResult(createInvoice(plan, memberId, paymentMethodId, effectiveAt,
+                    "charge_automatically"), "charge_automatically");
+        } catch (WhopRequestException exception) {
+            if (!exception.automaticCollectionUnsupported()) throw exception;
+            return new InvoiceResult(createInvoice(plan, memberId, null, effectiveAt, "send_invoice"),
+                    "send_invoice");
+        }
+    }
+
     private JsonNode createInvoice(JsonNode plan, String memberId, String paymentMethodId,
-                                   OffsetDateTime effectiveAt) {
+                                   OffsetDateTime effectiveAt, String collectionMethod) {
         var productId = required(plan.path("product").path("id"), "plan product");
         var planInput = new LinkedHashMap<String, Object>();
         planInput.put("initial_price", 0);
@@ -125,9 +142,11 @@ public class WhopPlanChangeGateway {
         payload.put("company_id", companyId);
         payload.put("product_id", productId);
         payload.put("plan", planInput);
-        payload.put("collection_method", "charge_automatically");
+        payload.put("collection_method", collectionMethod);
         payload.put("member_id", memberId);
-        payload.put("payment_method_id", paymentMethodId);
+        if (paymentMethodId != null && !paymentMethodId.isBlank()) {
+            payload.put("payment_method_id", paymentMethodId);
+        }
         payload.put("automatically_finalizes_at", effectiveAt.toString());
         payload.put("due_date", effectiveAt.toString());
         payload.put("subscription_billing_anchor_at", effectiveAt.toString());
@@ -187,7 +206,7 @@ public class WhopPlanChangeGateway {
                     : builder.GET().build();
             var response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException(providerMessage(response.statusCode(), response.body()));
+                throw providerException(response.statusCode(), response.body());
             }
             return response.body() == null || response.body().isBlank()
                     ? objectMapper.createObjectNode() : objectMapper.readTree(response.body());
@@ -202,9 +221,7 @@ public class WhopPlanChangeGateway {
     }
 
     private String providerMessage(int status, String body) {
-        var detail = "";
-        try { detail = objectMapper.readTree(body).path("error").path("message").asText(""); }
-        catch (Exception ignored) { }
+        var detail = providerDetail(body);
         return switch (status) {
             case 401 -> "Whop rejected the billing API key";
             case 403 -> "The Whop API key needs membership, plan, payment-method, and invoice permissions";
@@ -212,6 +229,15 @@ public class WhopPlanChangeGateway {
             case 400, 422 -> detail.isBlank() ? "Whop rejected the scheduled plan change" : "Whop rejected the plan change: " + detail;
             default -> "Whop plan changes are temporarily unavailable";
         };
+    }
+
+    private WhopRequestException providerException(int status, String body) {
+        return new WhopRequestException(status, providerDetail(body), providerMessage(status, body));
+    }
+
+    private String providerDetail(String body) {
+        try { return objectMapper.readTree(body).path("error").path("message").asText(""); }
+        catch (Exception ignored) { return ""; }
     }
 
     private void requireConfigured() {
@@ -241,13 +267,36 @@ public class WhopPlanChangeGateway {
     private static String encoded(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
     private static String clean(String value) { return value == null ? "" : value.trim(); }
 
+    private record InvoiceResult(JsonNode invoice, String collectionMethod) { }
+
+    private static final class WhopRequestException extends IllegalStateException {
+        private final int status;
+        private final String providerDetail;
+
+        private WhopRequestException(int status, String providerDetail, String message) {
+            super(message);
+            this.status = status;
+            this.providerDetail = providerDetail == null ? "" : providerDetail;
+        }
+
+        private boolean automaticCollectionUnsupported() {
+            return (status == 400 || status == 422)
+                    && providerDetail.toLowerCase(java.util.Locale.ROOT)
+                    .contains("automatic collection is not supported");
+        }
+    }
+
     public record PlanTransition(String kind, String invoiceId, String generatedPlanId,
+                                 String collectionMethod,
                                  JsonNode membership) {
         static PlanTransition scheduled(String invoiceId, String generatedPlanId) {
-            return new PlanTransition("scheduled", invoiceId, generatedPlanId, null);
+            return scheduled(invoiceId, generatedPlanId, "charge_automatically");
+        }
+        static PlanTransition scheduled(String invoiceId, String generatedPlanId, String collectionMethod) {
+            return new PlanTransition("scheduled", invoiceId, generatedPlanId, collectionMethod, null);
         }
         static PlanTransition adopt(JsonNode membership) {
-            return new PlanTransition("adopt", null, null, membership);
+            return new PlanTransition("adopt", null, null, null, membership);
         }
     }
 }

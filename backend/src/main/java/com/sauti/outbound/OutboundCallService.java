@@ -14,6 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.sauti.provisioning.PilotProvisioningPolicyService;
+import com.sauti.billing.BillingAccessPolicy;
 
 @Service
 public class OutboundCallService {
@@ -24,6 +25,7 @@ public class OutboundCallService {
     private final boolean enabled;
     private final String defaultFromNumber;
     private final PilotProvisioningPolicyService provisioningPolicies;
+    private final BillingAccessPolicy billingAccess;
 
     public OutboundCallService(
             ScheduledCallRepository scheduledCallRepository,
@@ -32,7 +34,8 @@ public class OutboundCallService {
             ObjectProvider<CallPipelineService> callPipelineService,
             @Value("${sauti.telnyx.outbound.enabled:false}") boolean enabled,
             @Value("${sauti.telnyx.outbound.from-number:}") String defaultFromNumber,
-            PilotProvisioningPolicyService provisioningPolicies
+            PilotProvisioningPolicyService provisioningPolicies,
+            BillingAccessPolicy billingAccess
     ) {
         this.scheduledCallRepository = scheduledCallRepository;
         this.agentRepository = agentRepository;
@@ -41,6 +44,7 @@ public class OutboundCallService {
         this.enabled = enabled;
         this.defaultFromNumber = defaultFromNumber;
         this.provisioningPolicies = provisioningPolicies;
+        this.billingAccess = billingAccess;
     }
 
     @Transactional
@@ -83,6 +87,7 @@ public class OutboundCallService {
 
     private void initiate(ScheduledCall scheduledCall) {
         try {
+            billingAccess.requirePaidCommunication(scheduledCall.getAgent().getTenant().getId());
             provisioningPolicies.authorize(scheduledCall.getAgent().getTenant().getId(), "live_calling");
             var from = scheduledCall.getAgent().getTwilioPhoneNumber();
             if (from == null || from.isBlank()) from = defaultFromNumber;

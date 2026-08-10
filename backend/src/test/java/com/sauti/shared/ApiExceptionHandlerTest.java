@@ -4,9 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sauti.call.VoiceRuntimeUnavailableException;
 import com.sauti.call.ManagedVoiceProviderException;
+import com.sauti.billing.PaidAccessRequiredException;
 import org.junit.jupiter.api.Test;
 
 class ApiExceptionHandlerTest {
+    @Test
+    void returnsPaymentRequiredWhenAWorkspaceCannotStartNewCalls() {
+        var response = new ApiExceptionHandler().paidAccessRequired(
+                new PaidAccessRequiredException("Reactivate a plan to start new AI calls.")
+        );
+
+        assertThat(response.getStatusCode().value()).isEqualTo(402);
+        assertThat(response.getBody()).isEqualTo(new ApiError(
+                "paid_access_required", "Reactivate a plan to start new AI calls."
+        ));
+    }
+
     @Test
     void returnsAUsefulServiceUnavailableResponseForVoiceRuntimeConfiguration() {
         var response = new ApiExceptionHandler().voiceRuntimeUnavailable(

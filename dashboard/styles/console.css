@@ -1648,3 +1648,39 @@
     animation: none;
   }
 }
+.billing-access-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 28px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 172, 82, .34);
+  border-radius: 13px;
+  color: #ffb760;
+  background: rgba(92, 48, 18, .24);
+}
+
+.billing-access-banner > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.billing-access-banner strong { color: #ffe2bd; font-size: .78rem; }
+.billing-access-banner span { color: #c7a784; font-size: .7rem; line-height: 1.45; }
+.billing-access-banner a {
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 184, 96, .35);
+  border-radius: 9px;
+  color: #ffd29c;
+  font-size: .7rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .billing-access-banner { grid-template-columns: auto 1fr; margin: 10px 14px 0; }
+  .billing-access-banner a { grid-column: 2; justify-self: start; }
+}

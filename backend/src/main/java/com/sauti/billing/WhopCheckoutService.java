@@ -92,7 +92,9 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
             if (!provider().equals(existing.getProvider())) {
                 throw new IllegalStateException("This workspace subscription belongs to a different billing provider");
             }
-            throw new IllegalStateException("Use the Sauti plan change request for an existing subscription");
+            if (existing.permitsPaidAccessAt(java.time.OffsetDateTime.now())) {
+                throw new IllegalStateException("Use the Sauti plan change request for an existing subscription");
+            }
         }
         var url = createHostedCheckout(selection.planId(), Map.of(
                 "sauti_tenant_reference", tenantReferences.create(tenant.getId()),
@@ -108,6 +110,9 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
                 .orElseThrow(() -> new IllegalStateException("Choose a base plan before purchasing add-ons"));
         if (!provider().equals(baseSubscription.getProvider())) {
             throw new IllegalStateException("This workspace subscription belongs to a different billing provider");
+        }
+        if (!baseSubscription.permitsPaidAccessAt(java.time.OffsetDateTime.now())) {
+            throw new IllegalStateException("Reactivate a base plan before purchasing add-ons");
         }
         var selection = addOns.checkoutSelection(request.addOn());
         var existing = addOnSubscriptions.findAllByTenantId(tenantId).stream()

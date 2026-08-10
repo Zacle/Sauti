@@ -11766,6 +11766,32 @@ Expected:
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and normal CI/CD.
 
+### 2026-08-10 - Whop manual-invoice plan-change fallback
+
+- Diagnosed the provider response `Automatic collection is not supported for
+  this company`. Whop supports `send_invoice` as the documented alternative
+  when a company cannot charge a stored payment method automatically.
+- Plan changes now try automatic collection first and retry safely with
+  `send_invoice` only for that specific Whop capability rejection. Workspaces
+  without a saved payment method go directly to the emailed-invoice path.
+- Persisted the collection method on the tenant-scoped plan-change request via
+  Flyway `V66` and exposed it through billing responses. The dashboard now says
+  that renewal payment is required instead of claiming the target plan will
+  start automatically.
+- Strengthened the confirmation dialog, success notice, and pending-change
+  notice to state that the selected plan cannot take effect before the current
+  paid subscription ends. The dialog also exposes the effective boundary date
+  and explains the Whop invoice requirement before the customer confirms.
+- Files touched: Whop plan-change gateway/request/service and DTOs, Flyway V66,
+  focused tests, dashboard billing types/presentation, Whop setup documentation,
+  and this handoff.
+- Verification: focused plan-change gateway/service and billing service tests
+  passed; complete `:backend:test` passed; dashboard `npm.cmd run typecheck`,
+  `npm.cmd run lint`, and `npm.cmd run build` passed with all 61 pages generated;
+  `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.
+
 ### 2026-08-10 - Reliable Whop downgrade recovery
 
 - Fixed Growth-to-Launch conflicts caused by treating an active Whop membership
@@ -11787,5 +11813,41 @@ Expected:
   `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build` passed
   with all 61 pages generated; `git diff --check` passed (line-ending notices
   only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.
+
+### 2026-08-11 - Paid-through call access enforcement
+
+- Added one tenant-scoped billing access policy for new AI communication. Whop
+  workspaces move to `enforce` only after a verified membership lifecycle; old
+  pilot workspaces without that lifecycle remain in `observe`.
+- Added Flyway `V67` so already-synchronized Whop workspaces receive the same
+  call-access enforcement after deployment instead of waiting for another
+  provider webhook. Accounts with no verified Whop subscription are untouched.
+- A canceling/canceled membership retains calling until its provider paid-through
+  timestamp. After expiration, past-due, or unpaid status, authenticated browser
+  tests, embedded web voice sessions, inbound Telnyx AI answering, and scheduled
+  outbound calls are blocked. Existing active calls are never interrupted.
+- Kept all dashboard reads, agents, historical calls, recordings, bookings, and
+  analytics available. The console displays a global paused-calling banner and
+  routes the Test agent action to billing instead of hiding customer data.
+- Added ended-subscription reactivation checkout support. A signed replacement
+  Whop membership can safely replace only an ended tenant subscription and
+  restores enforced call access; an active membership still requires the normal
+  plan-change path.
+- Added HTTP 402 `paid_access_required`, paid-period boundary tests, Whop
+  reactivation checkout/webhook tests, and updated the billing confirmation and
+  plan labels for expired subscriptions.
+- Financial refund/dispute enforcement, balances, and plan capacity limits are
+  intentionally not broadened by this slice.
+- Files touched: billing access/subscription/processor/checkout/DTO services and
+  Flyway `V67`,
+  call entry controllers/services, shared API errors, dashboard shell/billing
+  UI and console styles, focused tests, Whop/production documentation, and this
+  handoff.
+- Verification: focused lifecycle tests passed; complete `:backend:test` passed;
+  dashboard `npm.cmd run typecheck`, `npm.cmd run lint`, and `npm.cmd run build`
+  passed with all 61 pages generated; `git diff --check` passed (line-ending
+  notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and normal CI/CD.

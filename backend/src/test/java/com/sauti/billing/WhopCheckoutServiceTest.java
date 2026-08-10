@@ -124,6 +124,44 @@ class WhopCheckoutServiceTest {
     }
 
     @Test
+    void createsAReactivationCheckoutAfterPaidAccessHasEnded() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/api/v1/checkout_configurations", exchange -> {
+            var response = "{\"id\":\"ch_reactivate\",\"purchase_url\":\"https://whop.com/checkout/plan_launch?session=ch_reactivate\"}";
+            exchange.sendResponseHeaders(201, response.getBytes(StandardCharsets.UTF_8).length);
+            exchange.getResponseBody().write(response.getBytes(StandardCharsets.UTF_8));
+            exchange.close();
+        });
+        server.start();
+        try {
+            var tenants = mock(TenantRepository.class);
+            var subscriptions = mock(BillingSubscriptionRepository.class);
+            var tenant = new Tenant("Clinic", "owner@example.com", "GB");
+            var ended = new BillingSubscription(tenant.getId(), "whop", "mem_ended");
+            ended.synchronize("user_1", "mem_ended", "prod_sauti", "plan_growth_monthly",
+                    "growth", "monthly", "expired", true,
+                    java.time.OffsetDateTime.parse("2026-08-01T10:00:00Z"),
+                    java.time.OffsetDateTime.parse("2026-08-01T10:00:00Z"), null,
+                    java.time.OffsetDateTime.parse("2026-08-01T10:00:00Z"), "", "", "");
+            when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+            when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(ended));
+            var service = new WhopCheckoutService(tenants, plans(), addOns(), subscriptions,
+                    mock(BillingAddOnSubscriptionRepository.class), new ObjectMapper(), HttpClient.newHttpClient(),
+                    "api-key", "biz_sauti", "reference-secret",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/api/v1",
+                    "2026-07-20", "https://sauti.uk/billing?checkout=success");
+
+            var response = service.create(tenant.getId(),
+                    new BillingCheckoutGateway.CheckoutRequest("launch", "monthly"));
+
+            assertThat(response.url()).contains("ch_reactivate");
+            assertThat(response.plan()).isEqualTo("launch");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void createsCheckoutConfigurationWithServerPlanAndSignedWorkspaceMetadata() throws Exception {
         var captured = new AtomicReference<String>();
         var version = new AtomicReference<String>();

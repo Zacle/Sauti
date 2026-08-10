@@ -18,7 +18,7 @@ import org.mockito.ArgumentCaptor;
 
 class WhopSubscriptionProcessorTest {
     @Test
-    void surfacesCancelAtPeriodEndWhileKeepingObserveAccess() throws Exception {
+    void surfacesCancelAtPeriodEndWhileKeepingPaidAccessEnforced() throws Exception {
         var events = mock(BillingProviderEventRepository.class);
         var subscriptions = mock(BillingSubscriptionRepository.class);
         var tenants = mock(TenantRepository.class);
@@ -58,7 +58,7 @@ class WhopSubscriptionProcessorTest {
 
         assertThat(event.getStatus()).isEqualTo("processed");
         assertThat(tenant.getPlan()).isEqualTo("launch");
-        assertThat(account.getEnforcementMode()).isEqualTo("observe");
+        assertThat(account.getEnforcementMode()).isEqualTo("enforce");
         var subscription = ArgumentCaptor.forClass(BillingSubscription.class);
         verify(subscriptions).save(subscription.capture());
         assertThat(subscription.getValue().getProvider()).isEqualTo("whop");
@@ -81,6 +81,58 @@ class WhopSubscriptionProcessorTest {
         processor.processDue();
 
         assertThat(event.getStatus()).isEqualTo("deferred");
+    }
+
+    @Test
+    void signedCheckoutReactivatesAnEndedWorkspaceWithTheNewMembership() throws Exception {
+        var events = mock(BillingProviderEventRepository.class);
+        var subscriptions = mock(BillingSubscriptionRepository.class);
+        var tenants = mock(TenantRepository.class);
+        var ledger = mock(BillingLedgerService.class);
+        var tenant = new Tenant("Clinic", "owner@example.com", "GB");
+        var account = new BillingAccount(tenant.getId());
+        var ended = new BillingSubscription(tenant.getId(), "whop", "mem_ended");
+        ended.synchronize("user_1", "mem_ended", "prod_sauti", "plan_growth_monthly",
+                "growth", "monthly", "expired", true,
+                OffsetDateTime.parse("2026-08-01T12:00:00Z"),
+                OffsetDateTime.parse("2026-08-01T12:00:00Z"), null,
+                OffsetDateTime.parse("2026-08-01T12:00:00Z"), "", "", "");
+        var reference = new WhopTenantReference("reference-secret").create(tenant.getId());
+        var payload = new ObjectMapper().writeValueAsString(java.util.Map.of(
+                "id", "msg_reactivate", "type", "membership.activated", "company_id", "biz_sauti",
+                "data", java.util.Map.ofEntries(
+                        java.util.Map.entry("id", "mem_new"),
+                        java.util.Map.entry("status", "active"),
+                        java.util.Map.entry("updated_at", "2026-08-10T12:00:00Z"),
+                        java.util.Map.entry("renewal_period_end", "2026-09-10T12:00:00Z"),
+                        java.util.Map.entry("metadata", java.util.Map.of("sauti_tenant_reference", reference)),
+                        java.util.Map.entry("plan", java.util.Map.of("id", "plan_launch_monthly")),
+                        java.util.Map.entry("product", java.util.Map.of("id", "prod_sauti")),
+                        java.util.Map.entry("user", java.util.Map.of("id", "user_1")),
+                        java.util.Map.entry("manage_url", "https://whop.com/billing/manage/mem_new")
+                )));
+        var event = new BillingProviderEvent("whop", "9".repeat(64), "membership.activated", payload);
+        when(events.findTop20ByProviderAndStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
+                any(), anyList(), any(OffsetDateTime.class))).thenReturn(List.of(event));
+        when(subscriptions.findByProviderAndProviderSubscriptionId("whop", "mem_new"))
+                .thenReturn(Optional.empty());
+        when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(ended));
+        when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        when(ledger.account(tenant.getId())).thenReturn(account);
+        var processor = new WhopSubscriptionProcessor(events, subscriptions,
+                mock(BillingAddOnSubscriptionRepository.class),
+                mock(BillingPaymentNotificationRepository.class),
+                mock(BillingPlanChangeRequestRepository.class), tenants, ledger,
+                new WhopPlanCatalog("plan_launch_monthly", "", "", "", "", ""), addOns(),
+                new ObjectMapper(), "reference-secret", true);
+
+        processor.processDue();
+
+        assertThat(event.getStatus()).isEqualTo("processed");
+        assertThat(ended.getProviderSubscriptionId()).isEqualTo("mem_new");
+        assertThat(ended.getProviderStatus()).isEqualTo("active");
+        assertThat(tenant.getPlan()).isEqualTo("launch");
+        assertThat(account.getEnforcementMode()).isEqualTo("enforce");
     }
 
     @Test

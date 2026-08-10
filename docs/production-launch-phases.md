@@ -185,9 +185,11 @@ adapter, prove the full lifecycle, and only then review enforcement.
   ownership are validated before events enter the durable, idempotent provider
   inbox. Processing is asynchronous because Whop delivery is at-least-once and
   unordered.
-- Membership activation and deactivation synchronize plan state while billing
-  remains in `observe`. Older or undated events cannot overwrite a newer
-  provider state.
+- Membership activation and deactivation synchronize plan state. A verified
+  Whop membership now enables call-access enforcement for that workspace;
+  cancellation retains access through the paid-through timestamp, and ended or
+  unpaid memberships block only new AI calls. Older or undated events cannot
+  overwrite a newer provider state.
 - Payment, refund, and dispute events are accepted into the provider inbox and
   explicitly marked `deferred` for the next immutable transaction-evidence
   slice; they are not mislabeled as reconciled and cannot enable lockouts.
@@ -198,9 +200,9 @@ adapter, prove the full lifecycle, and only then review enforcement.
    evidence without exposing raw provider payloads in the admin console.
 2. Add a platform-admin readiness matrix and complete the Whop sandbox
    lifecycle run for all six plans.
-3. Reconcile live settlement/refund/dispute evidence and design a reviewed,
-   reversible enforcement rollout. Enforcement remains out of scope until
-   these checks pass.
+3. Reconcile live settlement/refund/dispute evidence before extending the
+   current membership-lifecycle call gate to financial-dispute enforcement,
+   balances, capacity limits, or destructive workspace restrictions.
 
 ## Later phases
 
