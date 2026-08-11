@@ -36,21 +36,27 @@ export type AdminBillingReadiness = {
   plansConfigured: boolean;
   addOnsConfigured: boolean;
   configuredPlans: number;
-  acceptedPlans: number;
   normalizedSandboxEvents: number;
   retryingProviderEvents: number;
   failedProviderEvents: number;
   lastSandboxEvidenceAt: string | null;
   generatedAt: string;
+  representativeLifecycle: {
+    status: "not_started" | "awaiting_payment" | "awaiting_cancellation" | "accepted" | string;
+    plan: string | null;
+    interval: string | null;
+    membershipReference: string | null;
+    membershipActivatedAt: string | null;
+    paymentSucceededAt: string | null;
+    cancellationObservedAt: string | null;
+  };
   variants: Array<{
     plan: string;
     interval: string;
     configured: boolean;
     planReference: string | null;
-    status: "configuration_missing" | "awaiting_activation" | "awaiting_payment" | "awaiting_cancellation" | "accepted" | string;
-    membershipActivatedAt: string | null;
-    paymentSucceededAt: string | null;
-    cancellationObservedAt: string | null;
+    status: "configuration_missing" | "configured" | string;
+    sandboxEvidenceAt: string | null;
   }>;
 };
 

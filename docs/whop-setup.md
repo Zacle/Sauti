@@ -176,17 +176,20 @@ Platform administrators can review the evidence-derived acceptance matrix at
 Whop. It shows credential/webhook/signing presence as booleans, masks plan
 references, and never returns secrets or raw provider payloads.
 
-For each Launch, Growth, and Scale monthly/annual variant, the sandbox run is
-accepted only after Sauti has stored all three events for that configured plan:
+The matrix requires all six Launch, Growth, and Scale monthly/annual plan IDs to
+be configured, but it does not require six purchases. One representative new
+sandbox subscription must store all three lifecycle events:
 
 1. `membership.activated`;
 2. `payment.succeeded`;
 3. `membership.cancel_at_period_end_changed` or `membership.deactivated`.
 
-Purchase one remaining variant at a time with Whop Sandbox test payment details,
-wait for the worker to process its signed webhooks, schedule cancellation, then
-refresh the matrix. There is no manual pass button, so acceptance cannot be
-recorded without provider evidence.
+Purchase one configured variant with Whop Sandbox test payment details, wait for
+the worker to process its signed activation and payment webhooks, then schedule
+cancellation for that exact membership and refresh the matrix. Do not purchase
+all six variants and do not use an upgrade/downgrade as an acceptance shortcut.
+Whop's unsupported automatic-collection path is not a blocker for this test;
+Sauti applies customer plan changes only at the paid-period boundary.
 
 For `payment.succeeded`, Sauti additionally resolves the payment through its
 verified membership ownership and queues a payment confirmation to the

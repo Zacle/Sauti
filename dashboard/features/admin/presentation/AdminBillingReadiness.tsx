@@ -46,8 +46,8 @@ export function AdminBillingReadiness() {
           <span>PHASE 3 ACCEPTANCE</span>
           <h1>Billing readiness</h1>
           <p>
-            Stored Whop sandbox evidence for every sellable base plan.
-            Refreshing this page never contacts Whop or creates a charge.
+            Six-plan configuration plus one safe representative subscription
+            lifecycle. Refreshing never contacts Whop or creates a charge.
           </p>
         </div>
         <button disabled={loading} onClick={() => void load()} type="button">
@@ -72,7 +72,7 @@ export function AdminBillingReadiness() {
               <p>{summary(data)}</p>
             </div>
             <b>
-              {data.acceptedPlans} / {data.variants.length} accepted
+              {data.configuredPlans} / {data.variants.length} plans configured
             </b>
           </section>
           <section
@@ -124,15 +124,39 @@ export function AdminBillingReadiness() {
               <strong>{when(data.lastSandboxEvidenceAt)}</strong>
             </div>
           </section>
+          <section className={styles.lifecycle}>
+            <header>
+              <div>
+                <span>REPRESENTATIVE LIFECYCLE</span>
+                <h2>
+                  {data.representativeLifecycle.plan
+                    ? `${human(data.representativeLifecycle.plan)} · ${human(data.representativeLifecycle.interval ?? "")}`
+                    : "One new sandbox subscription"}
+                </h2>
+                <p>
+                  Membership {data.representativeLifecycle.membershipReference ?? "not created"}
+                </p>
+              </div>
+              <b className={styles[data.representativeLifecycle.status] ?? ""}>
+                {statusLabel(data.representativeLifecycle.status)}
+              </b>
+            </header>
+            <div>
+              <Step label="Activated" value={data.representativeLifecycle.membershipActivatedAt}/>
+              <Step label="Paid" value={data.representativeLifecycle.paymentSucceededAt}/>
+              <Step label="Cancellation scheduled" value={data.representativeLifecycle.cancellationObservedAt}/>
+            </div>
+            <p>Upgrade and downgrade collection are deliberately excluded from this test. Sauti handles plan changes at the paid-period boundary instead of creating duplicate memberships.</p>
+          </section>
           <section className={styles.matrix}>
             <header>
               <div>
                 <span>ACCEPTANCE MATRIX</span>
-                <h2>Base plan lifecycle</h2>
+                <h2>Base plan configuration</h2>
               </div>
               <p>
-                A variant passes only after activation, successful payment, and
-                cancellation evidence are stored.
+                All six plan IDs must be present. They do not each require a
+                paid membership or cancellation cycle.
               </p>
             </header>
             <div className={styles.rows}>
@@ -150,15 +174,7 @@ export function AdminBillingReadiness() {
                       </small>
                     </div>
                   </div>
-                  <Step
-                    label="Activated"
-                    value={variant.membershipActivatedAt}
-                  />
-                  <Step label="Paid" value={variant.paymentSucceededAt} />
-                  <Step
-                    label="Cancellation"
-                    value={variant.cancellationObservedAt}
-                  />
+                  <Step label="Historical sandbox evidence" value={variant.sandboxEvidenceAt}/>
                   <span
                     className={`${styles.badge} ${styles[variant.status] ?? ""}`}
                   >
@@ -173,11 +189,10 @@ export function AdminBillingReadiness() {
             <div>
               <strong>How to complete acceptance</strong>
               <p>
-                In Whop Sandbox, purchase each remaining variant using test
-                payment details, wait for Sauti to record activation and
-                payment, then schedule cancellation. Return here and refresh
-                after the signed webhooks are processed. Do not mark a row
-                manually.
+                Use one configured plan to create one new sandbox subscription,
+                complete its test payment, and schedule cancellation for that
+                exact membership. Do not purchase all six variants and do not
+                use upgrade or downgrade as an acceptance shortcut.
               </p>
             </div>
           </section>
@@ -248,8 +263,8 @@ function summary(data: Readiness) {
   if (data.status === "attention")
     return "At least one provider event exhausted its retries and needs investigation.";
   if (data.status === "ready")
-    return "All six base-plan lifecycles have verified sandbox evidence.";
-  return "Continue the sandbox lifecycle for the variants still waiting below.";
+    return "All six plan IDs are configured and one complete sandbox lifecycle is recorded.";
+  return "Complete one representative purchase and cancellation lifecycle below.";
 }
 function when(value: string | null) {
   return value ? new Date(value).toLocaleString() : "Not recorded";

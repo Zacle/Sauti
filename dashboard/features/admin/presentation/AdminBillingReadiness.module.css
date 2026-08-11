@@ -177,6 +177,33 @@
   margin-top: 5px;
   font-size: 0.84rem;
 }
+.lifecycle {
+  overflow: hidden;
+  border: 1px solid #245268;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(8, 38, 53, 0.95), rgba(5, 27, 41, 0.92));
+}
+.lifecycle > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 21px 24px;
+  border-bottom: 1px solid #173c50;
+}
+.lifecycle > header span {
+  color: #35ddd2;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+.lifecycle h2 { margin: 6px 0 3px; font-size: 1.25rem; }
+.lifecycle header p,
+.lifecycle > p { margin: 0; color: #8299a7; font-size: 0.78rem; line-height: 1.55; }
+.lifecycle > header > b { padding: 8px 11px; border-radius: 999px; color: #a8c1cb; background: #102f3d; font-size: 0.68rem; }
+.lifecycle > header > b.accepted { color: #82e8b8; background: #123b30; }
+.lifecycle > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 20px 24px 14px; }
+.lifecycle > p { padding: 0 24px 20px; }
 .danger {
   color: #ff9a92;
 }
@@ -207,10 +234,7 @@
 }
 .rows article {
   display: grid;
-  grid-template-columns: minmax(220px, 1.4fr) repeat(
-      3,
-      minmax(145px, 1fr)
-    ) minmax(145px, auto);
+  grid-template-columns: minmax(220px, 1.4fr) minmax(220px, 1fr) minmax(145px, auto);
   align-items: center;
   gap: 12px;
   padding: 18px 22px;
@@ -236,6 +260,7 @@
   color: #72e3ad;
   background: #123b30;
 }
+.plan > span.configured { color: #72e3ad; background: #123b30; }
 .plan > span.configuration_missing {
   color: #ffc484;
   background: #3d2b1c;
@@ -287,6 +312,7 @@
   color: #82e8b8;
   background: #123b30;
 }
+.badge.configured { color: #82e8b8; background: #123b30; }
 .badge.configuration_missing {
   color: #ffc484;
   background: #3d2b1c;
@@ -347,12 +373,13 @@
     border-top: 1px solid #173c50;
   }
   .rows article {
-    grid-template-columns: minmax(210px, 1.3fr) repeat(2, minmax(140px, 1fr));
+    grid-template-columns: minmax(210px, 1.3fr) minmax(180px, 1fr) auto;
   }
 }
 @media (max-width: 720px) {
   .heading,
-  .matrix > header {
+  .matrix > header,
+  .lifecycle > header {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -371,6 +398,7 @@
   .rows article {
     grid-template-columns: 1fr;
   }
+  .lifecycle > div { grid-template-columns: 1fr; }
   .badge {
     justify-self: start;
   }

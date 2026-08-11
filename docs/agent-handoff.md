@@ -11885,11 +11885,11 @@ Expected:
   `/api/v1/admin/billing/readiness` endpoint. The endpoint is read-only, makes
   no provider request, and exposes only configuration-presence booleans, masked
   plan references, aggregate queue counts, and normalized sandbox timestamps.
-- Added an automatic six-variant matrix for Launch, Growth, and Scale monthly
-  and annual plans. A row becomes accepted only after stored sandbox evidence
-  proves membership activation, successful payment, and cancellation
-  scheduling/deactivation for its exact configured plan ID. There is no manual
-  pass control.
+- Added an automatic six-variant configuration matrix for Launch, Growth, and
+  Scale monthly and annual plans, plus one representative lifecycle check.
+  Readiness requires all six IDs and one membership with stored activation,
+  successful payment, and cancellation evidence; it does not require six paid
+  memberships.
 - Added global readiness states for missing configuration, in-progress
   acceptance, exhausted-event attention, and all-six-ready. The screen also
   explains the safe sandbox procedure and clearly distinguishes normalized
@@ -11906,8 +11906,31 @@ Expected:
   optimized production build passed with all 62 pages generated.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and normal CI/CD.
-- Required live acceptance: after deployment, run each of the six Whop Sandbox
-  variants through payment, activation, and cancellation until the admin matrix
-  reports `6 / 6 accepted`. Do not claim completion from local tests alone.
+- Required live acceptance: after deployment, confirm `6 / 6 plans configured`,
+  then run one new Whop Sandbox membership through payment, activation, and
+  cancellation until the representative lifecycle reports accepted.
 - Next Phase 3 engineering slice: settlement/refund/dispute reconciliation and
   financial enforcement review after the sandbox matrix is complete.
+
+### 2026-08-11 - Correct infeasible six-membership Whop acceptance
+
+- Corrected the readiness criteria after identifying that six full lifecycle
+  tests cannot safely run through one Sauti workspace. Repeated checkout would
+  create duplicate memberships, cancellation retains paid-through access, and
+  upgrade/downgrade can enter Whop's unsupported automatic-collection path.
+- The admin matrix now separates catalog configuration from transaction
+  acceptance: all six plan IDs must be configured, while only one representative
+  new sandbox subscription must prove activation, payment, and exact-membership
+  cancellation. Historical evidence remains visible per plan but is not a
+  requirement to purchase every variant.
+- Explicitly excluded upgrade/downgrade from the lifecycle test. Sauti's
+  customer-facing plan-change contract remains an end-of-paid-period transition
+  and must not create a duplicate membership as an acceptance shortcut.
+- Files touched: billing readiness evidence query/service/tests, admin billing
+  API type and presentation, Phase 3/Whop documentation, and this handoff.
+- Verification: focused billing readiness and admin security tests passed;
+  complete `:backend:test` passed; dashboard typecheck, zero-warning lint, and
+  optimized production build passed with all 62 pages generated;
+  `git diff --check` passed with line-ending notices only.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.

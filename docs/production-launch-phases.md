@@ -200,11 +200,12 @@ adapter, prove the full lifecycle, and only then review enforcement.
 
 ### Remaining Phase 3 slices
 
-1. Deploy the platform-admin billing readiness matrix, then complete the Whop
-   sandbox lifecycle run for all six plans. The matrix is implemented at
-   `/admin/billing` and automatically requires stored activation, successful
-   payment, and cancellation evidence for each monthly/annual variant; the live
-   provider run cannot be claimed against an undeployed revision.
+1. Deploy the platform-admin billing readiness matrix, confirm all six plan IDs
+   are configured, then complete one representative Whop Sandbox lifecycle with
+   stored activation, successful payment, and cancellation evidence. Requiring
+   six paid memberships would create duplicates and paid-through waiting
+   periods, so it is explicitly not part of acceptance. Upgrade/downgrade is
+   handled as an end-of-period transition and is not used as a lifecycle test.
 2. Reconcile live settlement/refund/dispute evidence before extending the
    current membership-lifecycle call gate to financial-dispute enforcement,
    balances, capacity limits, or destructive workspace restrictions.

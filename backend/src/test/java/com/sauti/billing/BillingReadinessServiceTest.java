@@ -4,47 +4,66 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class BillingReadinessServiceTest {
     @Test
-    void requiresStoredSandboxLifecycleEvidenceForEveryVariant() {
+    void requiresOneRepresentativeLifecycleWithoutRequiringSixPaidMemberships() {
         var evidence = mock(BillingProviderEvidenceRepository.class);
         var events = mock(BillingProviderEventRepository.class);
-        var plans = new WhopPlanCatalog("launch_m", "launch_a", "growth_m", "growth_a", "scale_m", "scale_a");
-        var observedAt = OffsetDateTime.parse("2026-08-11T08:00:00Z");
-        var record = evidence(observedAt);
-        when(evidence.findFirstByProviderAndTestModeAndProviderPlanIdAndEventNameOrderByOccurredAtDesc(
-                "whop", true, "launch_m", "membership.activated")).thenReturn(Optional.of(record));
-        when(evidence.findFirstByProviderAndTestModeAndProviderPlanIdAndEventNameOrderByOccurredAtDesc(
-                "whop", true, "launch_m", "payment.succeeded")).thenReturn(Optional.of(record));
-        when(evidence.findFirstByProviderAndTestModeAndProviderPlanIdAndEventNameInOrderByOccurredAtDesc(
-                org.mockito.ArgumentMatchers.eq("whop"), org.mockito.ArgumentMatchers.eq(true),
-                org.mockito.ArgumentMatchers.eq("launch_m"), org.mockito.ArgumentMatchers.anyCollection()))
-                .thenReturn(Optional.of(record));
-        when(evidence.countByProviderAndTestMode("whop", true)).thenReturn(3L);
+        var plans = plans();
+        var activated = evidence("membership.activated", "membership", "mem_1", "launch_m", "active",
+                "2026-08-11T08:00:00Z");
+        var paid = evidence("payment.succeeded", "payment", "mem_1", "launch_m", "succeeded",
+                "2026-08-11T08:01:00Z");
+        var canceled = evidence("membership.cancel_at_period_end_changed", "membership", "mem_1",
+                "launch_m", "canceling", "2026-08-11T08:02:00Z");
+        when(evidence.findAllByProviderAndTestModeOrderByOccurredAtAsc("whop", true))
+                .thenReturn(List.of(activated, paid, canceled));
         var service = new BillingReadinessService(plans, addOns(), evidence, events,
                 "whop", true, "key", "company", "webhook", "reference");
 
         var result = service.readiness();
 
-        assertThat(result.status()).isEqualTo("in_progress");
+        assertThat(result.status()).isEqualTo("ready");
         assertThat(result.configuredPlans()).isEqualTo(6);
-        assertThat(result.acceptedPlans()).isEqualTo(1);
-        assertThat(result.variants().get(0).status()).isEqualTo("accepted");
-        assertThat(result.variants().get(1).status()).isEqualTo("awaiting_activation");
-        assertThat(result.variants().get(0).planReference()).endsWith("launch_m");
+        assertThat(result.representativeLifecycle().status()).isEqualTo("accepted");
+        assertThat(result.representativeLifecycle().plan()).isEqualTo("launch");
+        assertThat(result.variants()).allMatch(item -> "configured".equals(item.status()));
+        assertThat(result.variants().get(0).sandboxEvidenceAt()).isNotNull();
+        assertThat(result.variants().get(1).sandboxEvidenceAt()).isNull();
+    }
+
+    @Test
+    void keepsCancellationAsTheOnlyOutstandingRepresentativeStep() {
+        var evidence = mock(BillingProviderEvidenceRepository.class);
+        when(evidence.findAllByProviderAndTestModeOrderByOccurredAtAsc("whop", true))
+                .thenReturn(List.of(
+                        evidence("membership.activated", "membership", "mem_1", "growth_m", "active",
+                                "2026-08-11T08:00:00Z"),
+                        evidence("payment.succeeded", "payment", "mem_1", "growth_m", "succeeded",
+                                "2026-08-11T08:01:00Z")));
+        var service = new BillingReadinessService(plans(), addOns(), evidence,
+                mock(BillingProviderEventRepository.class),
+                "whop", true, "key", "company", "webhook", "reference");
+
+        var result = service.readiness();
+
+        assertThat(result.status()).isEqualTo("in_progress");
+        assertThat(result.representativeLifecycle().status()).isEqualTo("awaiting_cancellation");
     }
 
     @Test
     void reportsMissingConfigurationWithoutExposingCredentialValues() {
+        var evidence = mock(BillingProviderEvidenceRepository.class);
+        when(evidence.findAllByProviderAndTestModeOrderByOccurredAtAsc("whop", true)).thenReturn(List.of());
         var service = new BillingReadinessService(
-                new WhopPlanCatalog("", "", "", "", "", ""), addOns(),
-                mock(BillingProviderEvidenceRepository.class), mock(BillingProviderEventRepository.class),
-                "whop", true, "", "", "", "");
+                new WhopPlanCatalog("", "", "", "", "", ""), addOns(), evidence,
+                mock(BillingProviderEventRepository.class), "whop", true, "", "", "", "");
 
         var result = service.readiness();
 
@@ -54,10 +73,17 @@ class BillingReadinessServiceTest {
         assertThat(result.variants()).allMatch(item -> item.planReference() == null);
     }
 
-    private static BillingProviderEvidence evidence(OffsetDateTime occurredAt) {
-        return new BillingProviderEvidence(UUID.randomUUID(), UUID.randomUUID(), "whop", "membership",
-                "membership.activated", "mem_1", null, "mem_1", "launch_m",
-                "active", null, null, true, occurredAt);
+    private static BillingProviderEvidence evidence(String eventName, String type, String membershipId,
+                                                     String planId, String status, String occurredAt) {
+        return new BillingProviderEvidence(UUID.randomUUID(), UUID.randomUUID(), "whop", type,
+                eventName, type + "_1", "payment".equals(type) ? "pay_1" : null,
+                membershipId, planId, status,
+                "payment".equals(type) ? new BigDecimal("49.00") : null,
+                "payment".equals(type) ? "USD" : null, true, OffsetDateTime.parse(occurredAt));
+    }
+
+    private static WhopPlanCatalog plans() {
+        return new WhopPlanCatalog("launch_m", "launch_a", "growth_m", "growth_a", "scale_m", "scale_a");
     }
 
     private static WhopAddOnCatalog addOns() {
