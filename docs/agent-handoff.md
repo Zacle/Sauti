@@ -11934,3 +11934,31 @@ Expected:
   `git diff --check` passed with line-ending notices only.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and normal CI/CD.
+
+### 2026-08-11 - Phase 3 observe-only financial reconciliation
+
+- Added a deterministic financial projection over immutable Whop evidence.
+  Each payment is reconciled from the newest payment plus the newest state of
+  each refund and dispute resource, preventing retries and `updated` events
+  from double-counting money.
+- Added separate Sandbox and Live summaries to the platform-admin billing
+  readiness response and screen. Administrators can see paid, partial/full
+  refund, open-dispute, lost-dispute, unresolved counts, plus gross, refunded,
+  dispute-loss, net, and at-risk amounts per currency.
+- Inconsistent currency or impossible deduction evidence fails closed as
+  unresolved and is excluded from aggregate totals. Payment references remain
+  masked and no customer data or raw webhook payload is exposed.
+- Kept this layer observe-only: it does not create communication balance,
+  suspend calls, modify memberships, contact Whop on refresh, or claim bank
+  settlement. Those controls require live comparison and a separate approval.
+- Files touched: financial reconciliation service/tests, billing readiness
+  response/tests, platform-admin billing types/presentation/styles, Phase 3 and
+  Whop documentation, and this handoff.
+- Verification: focused backend reconciliation/readiness tests passed; complete
+  `:backend:test` passed; dashboard typecheck, zero-warning lint, and optimized
+  production build passed with all 62 pages generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.
+- Next Phase 3 step: deploy through CI/CD, run one representative Sandbox refund
+  and dispute update, compare the resulting projection with Whop, then observe
+  live evidence before considering any financial enforcement.

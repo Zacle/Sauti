@@ -58,6 +58,40 @@ export type AdminBillingReadiness = {
     status: "configuration_missing" | "configured" | string;
     sandboxEvidenceAt: string | null;
   }>;
+  sandboxFinancial: AdminBillingFinancialSummary;
+  liveFinancial: AdminBillingFinancialSummary;
+};
+
+export type AdminBillingFinancialSummary = {
+  environment: "sandbox" | "live" | string;
+  payments: number;
+  paid: number;
+  partiallyRefunded: number;
+  refunded: number;
+  openDisputes: number;
+  disputeLost: number;
+  unresolved: number;
+  totals: Array<{
+    currency: string;
+    gross: number;
+    refunded: number;
+    disputeLoss: number;
+    net: number;
+    openDisputeExposure: number;
+  }>;
+  recentPositions: Array<{
+    paymentReference: string;
+    state: string;
+    currency: string | null;
+    gross: number;
+    refunded: number;
+    disputeLoss: number;
+    net: number;
+    openDisputeExposure: number;
+    unresolved: boolean;
+    lastEvidenceAt: string;
+  }>;
+  lastReconciledAt: string | null;
 };
 
 export type AdminDemoRequest = {

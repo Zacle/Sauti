@@ -195,8 +195,14 @@ adapter, prove the full lifecycle, and only then review enforcement.
   references, status, amount/currency, and timestamps without copying customer
   details or raw webhook JSON. Deferred financial events received before this
   slice are replayed idempotently after migration.
-- Normalized financial evidence is acceptance proof, not settlement
-  reconciliation. It cannot independently enable lockouts or change access.
+- Normalized financial evidence now feeds an idempotent, observe-only financial
+  projection. The newest event for each payment, refund, and dispute resource
+  wins, so retries and update events are not double-counted. Sandbox and live
+  totals remain separate, currencies are never combined, and inconsistent
+  evidence is flagged as unresolved instead of being presented as settled.
+- This projection is webhook reconciliation, not confirmation of bank payout or
+  settlement. It cannot independently enable lockouts, grant communication
+  balance, or change access.
 
 ### Remaining Phase 3 slices
 
@@ -206,9 +212,10 @@ adapter, prove the full lifecycle, and only then review enforcement.
    six paid memberships would create duplicates and paid-through waiting
    periods, so it is explicitly not part of acceptance. Upgrade/downgrade is
    handled as an end-of-period transition and is not used as a lifecycle test.
-2. Reconcile live settlement/refund/dispute evidence before extending the
-   current membership-lifecycle call gate to financial-dispute enforcement,
-   balances, capacity limits, or destructive workspace restrictions.
+2. Deploy and observe the financial projection through representative refund
+   and dispute updates. Compare live evidence with Whop before deciding whether
+   any financial-dispute enforcement is justified. Bank settlement, balances,
+   capacity limits, and destructive workspace restrictions remain out of scope.
 
 ## Later phases
 

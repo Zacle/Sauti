@@ -18,6 +18,7 @@ public class BillingReadinessService {
     private final WhopAddOnCatalog addOns;
     private final BillingProviderEvidenceRepository evidence;
     private final BillingProviderEventRepository events;
+    private final BillingFinancialReconciliationService financialReconciliation;
     private final String activeProvider;
     private final boolean sandbox;
     private final boolean apiConfigured;
@@ -27,6 +28,7 @@ public class BillingReadinessService {
     public BillingReadinessService(
             WhopPlanCatalog plans, WhopAddOnCatalog addOns,
             BillingProviderEvidenceRepository evidence, BillingProviderEventRepository events,
+            BillingFinancialReconciliationService financialReconciliation,
             @Value("${sauti.billing.provider:whop}") String activeProvider,
             @Value("${sauti.billing.whop.sandbox:false}") boolean sandbox,
             @Value("${sauti.billing.whop.api-key:}") String apiKey,
@@ -37,6 +39,7 @@ public class BillingReadinessService {
         this.addOns = addOns;
         this.evidence = evidence;
         this.events = events;
+        this.financialReconciliation = financialReconciliation;
         this.activeProvider = clean(activeProvider).toLowerCase();
         this.sandbox = sandbox;
         this.apiConfigured = configured(apiKey) && configured(companyId);
@@ -58,11 +61,13 @@ public class BillingReadinessService {
                 : failed > 0 ? "attention"
                 : "accepted".equals(lifecycle.status()) ? "ready" : "in_progress";
         var lastEvidenceAt = stored.isEmpty() ? null : stored.get(stored.size() - 1).getOccurredAt();
+        var sandboxFinancial = financialReconciliation.summarize(true);
+        var liveFinancial = financialReconciliation.summarize(false);
         return new Readiness(PROVIDER, sandbox ? "sandbox" : "live", status,
                 apiConfigured, webhookConfigured, tenantSigningConfigured,
                 plans.fullyConfigured(), addOns.fullyConfigured(), configuredPlans,
                 stored.size(), retrying, failed, lastEvidenceAt, lifecycle,
-                variants, OffsetDateTime.now());
+                variants, sandboxFinancial, liveFinancial, OffsetDateTime.now());
     }
 
     private PlanVariant variant(WhopPlanCatalog.Plan plan, List<BillingProviderEvidence> stored) {
@@ -143,7 +148,10 @@ public class BillingReadinessService {
                             long normalizedSandboxEvents, long retryingProviderEvents,
                             long failedProviderEvents, OffsetDateTime lastSandboxEvidenceAt,
                             RepresentativeLifecycle representativeLifecycle,
-                            List<PlanVariant> variants, OffsetDateTime generatedAt) { }
+                            List<PlanVariant> variants,
+                            BillingFinancialReconciliationService.FinancialSummary sandboxFinancial,
+                            BillingFinancialReconciliationService.FinancialSummary liveFinancial,
+                            OffsetDateTime generatedAt) { }
 
     public record RepresentativeLifecycle(String status, String plan, String interval,
                                           String membershipReference,

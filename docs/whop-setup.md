@@ -167,14 +167,25 @@ provider inbox and are not exposed through an admin API. Events received before
 this evidence layer are replayed idempotently by Flyway migration `V68`.
 
 Evidence means Sauti received and attributed a correctly signed provider event.
-It does not prove bank settlement, does not adjust a balance, and does not by
-itself suspend a workspace after a refund or dispute. Financial enforcement
-remains out of scope until live reconciliation is accepted separately.
+Sauti deterministically reconciles that evidence into a current payment
+position: the newest state for each refund or dispute resource wins, successful
+refunds are deducted once, open disputes are reported as exposure, and lost
+disputes are reported as loss. Currency mismatches and impossible deductions
+are marked unresolved and excluded from aggregate totals.
+
+This projection does not prove bank settlement, does not adjust communication
+balance, and does not suspend a workspace after a refund or dispute. Financial
+enforcement remains out of scope until representative live evidence has been
+compared with Whop and explicitly approved.
 
 Platform administrators can review the evidence-derived acceptance matrix at
 `https://admin.sauti.uk/admin/billing`. The page is read-only and never calls
 Whop. It shows credential/webhook/signing presence as booleans, masks plan
 references, and never returns secrets or raw provider payloads.
+
+The page also shows separate Sandbox and Live financial summaries by currency.
+Refreshing derives them only from stored normalized evidence and never makes a
+provider request. Customer data and full payment references are not exposed.
 
 The matrix requires all six Launch, Growth, and Scale monthly/annual plan IDs to
 be configured, but it does not require six purchases. One representative new

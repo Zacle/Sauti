@@ -15,6 +15,7 @@ class BillingReadinessServiceTest {
     void requiresOneRepresentativeLifecycleWithoutRequiringSixPaidMemberships() {
         var evidence = mock(BillingProviderEvidenceRepository.class);
         var events = mock(BillingProviderEventRepository.class);
+        var financial = mock(BillingFinancialReconciliationService.class);
         var plans = plans();
         var activated = evidence("membership.activated", "membership", "mem_1", "launch_m", "active",
                 "2026-08-11T08:00:00Z");
@@ -24,7 +25,9 @@ class BillingReadinessServiceTest {
                 "launch_m", "canceling", "2026-08-11T08:02:00Z");
         when(evidence.findAllByProviderAndTestModeOrderByOccurredAtAsc("whop", true))
                 .thenReturn(List.of(activated, paid, canceled));
-        var service = new BillingReadinessService(plans, addOns(), evidence, events,
+        when(financial.summarize(true)).thenReturn(summary("sandbox"));
+        when(financial.summarize(false)).thenReturn(summary("live"));
+        var service = new BillingReadinessService(plans, addOns(), evidence, events, financial,
                 "whop", true, "key", "company", "webhook", "reference");
 
         var result = service.readiness();
@@ -47,8 +50,11 @@ class BillingReadinessServiceTest {
                                 "2026-08-11T08:00:00Z"),
                         evidence("payment.succeeded", "payment", "mem_1", "growth_m", "succeeded",
                                 "2026-08-11T08:01:00Z")));
+        var financial = mock(BillingFinancialReconciliationService.class);
+        when(financial.summarize(true)).thenReturn(summary("sandbox"));
+        when(financial.summarize(false)).thenReturn(summary("live"));
         var service = new BillingReadinessService(plans(), addOns(), evidence,
-                mock(BillingProviderEventRepository.class),
+                mock(BillingProviderEventRepository.class), financial,
                 "whop", true, "key", "company", "webhook", "reference");
 
         var result = service.readiness();
@@ -61,9 +67,13 @@ class BillingReadinessServiceTest {
     void reportsMissingConfigurationWithoutExposingCredentialValues() {
         var evidence = mock(BillingProviderEvidenceRepository.class);
         when(evidence.findAllByProviderAndTestModeOrderByOccurredAtAsc("whop", true)).thenReturn(List.of());
+        var financial = mock(BillingFinancialReconciliationService.class);
+        when(financial.summarize(true)).thenReturn(summary("sandbox"));
+        when(financial.summarize(false)).thenReturn(summary("live"));
         var service = new BillingReadinessService(
                 new WhopPlanCatalog("", "", "", "", "", ""), addOns(), evidence,
-                mock(BillingProviderEventRepository.class), "whop", true, "", "", "", "");
+                mock(BillingProviderEventRepository.class), financial,
+                "whop", true, "", "", "", "");
 
         var result = service.readiness();
 
@@ -88,5 +98,10 @@ class BillingReadinessServiceTest {
 
     private static WhopAddOnCatalog addOns() {
         return new WhopAddOnCatalog("agent", "line", "number", "voice", "messaging");
+    }
+
+    private static BillingFinancialReconciliationService.FinancialSummary summary(String environment) {
+        return new BillingFinancialReconciliationService.FinancialSummary(environment, 0, 0, 0, 0,
+                0, 0, 0, List.of(), List.of(), null);
     }
 }

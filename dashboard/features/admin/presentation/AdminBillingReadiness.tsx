@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { getAdminBillingReadiness } from "@/lib/api/admin";
 import type { AdminBillingReadiness as Readiness } from "@/types/api";
+import type { AdminBillingFinancialSummary } from "@/types/api";
 import styles from "./AdminBillingReadiness.module.css";
 
 export function AdminBillingReadiness() {
@@ -148,6 +149,22 @@ export function AdminBillingReadiness() {
             </div>
             <p>Upgrade and downgrade collection are deliberately excluded from this test. Sauti handles plan changes at the paid-period boundary instead of creating duplicate memberships.</p>
           </section>
+          <section className={styles.financial}>
+            <header>
+              <div>
+                <span>FINANCIAL RECONCILIATION</span>
+                <h2>Current evidence-derived position</h2>
+              </div>
+              <p>
+                Observe only. Refunds and disputes are visible here but never
+                disable calls or create communication credit automatically.
+              </p>
+            </header>
+            <div className={styles.financialEnvironments}>
+              <FinancialEnvironment summary={data.sandboxFinancial} />
+              <FinancialEnvironment summary={data.liveFinancial} />
+            </div>
+          </section>
           <section className={styles.matrix}>
             <header>
               <div>
@@ -210,6 +227,60 @@ export function AdminBillingReadiness() {
       )}
     </div>
   );
+}
+
+function FinancialEnvironment({ summary }: { summary: AdminBillingFinancialSummary }) {
+  return (
+    <article>
+      <header>
+        <div>
+          <small>{summary.environment.toUpperCase()}</small>
+          <strong>{summary.payments} payment{summary.payments === 1 ? "" : "s"}</strong>
+        </div>
+        <span className={summary.unresolved || summary.openDisputes ? styles.warning : styles.clear}>
+          {summary.unresolved
+            ? `${summary.unresolved} unresolved`
+            : summary.openDisputes
+              ? `${summary.openDisputes} open dispute${summary.openDisputes === 1 ? "" : "s"}`
+              : "No unresolved exposure"}
+        </span>
+      </header>
+      <div className={styles.financialStats}>
+        <Metric label="Paid" value={summary.paid} />
+        <Metric label="Partial refunds" value={summary.partiallyRefunded} />
+        <Metric label="Full refunds" value={summary.refunded} />
+        <Metric label="Disputes lost" value={summary.disputeLost} />
+      </div>
+      {summary.totals.length > 0 ? (
+        <div className={styles.currencyTotals}>
+          {summary.totals.map((total) => (
+            <div key={total.currency}>
+              <span>{total.currency}</span>
+              <small>Gross {money(total.gross, total.currency)}</small>
+              <small>Refunded {money(total.refunded, total.currency)}</small>
+              <strong>Net {money(total.net, total.currency)}</strong>
+              {total.openDisputeExposure > 0 && (
+                <small className={styles.danger}>
+                  At risk {money(total.openDisputeExposure, total.currency)}
+                </small>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className={styles.emptyFinancial}>No normalized financial evidence yet.</p>
+      )}
+      <small className={styles.reconciledAt}>Last evidence: {when(summary.lastReconciledAt)}</small>
+    </article>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: number }) {
+  return <div><small>{label}</small><strong>{value}</strong></div>;
+}
+
+function money(value: number, currency: string) {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(value);
 }
 
 function Setup({
