@@ -171,6 +171,23 @@ It does not prove bank settlement, does not adjust a balance, and does not by
 itself suspend a workspace after a refund or dispute. Financial enforcement
 remains out of scope until live reconciliation is accepted separately.
 
+Platform administrators can review the evidence-derived acceptance matrix at
+`https://admin.sauti.uk/admin/billing`. The page is read-only and never calls
+Whop. It shows credential/webhook/signing presence as booleans, masks plan
+references, and never returns secrets or raw provider payloads.
+
+For each Launch, Growth, and Scale monthly/annual variant, the sandbox run is
+accepted only after Sauti has stored all three events for that configured plan:
+
+1. `membership.activated`;
+2. `payment.succeeded`;
+3. `membership.cancel_at_period_end_changed` or `membership.deactivated`.
+
+Purchase one remaining variant at a time with Whop Sandbox test payment details,
+wait for the worker to process its signed webhooks, schedule cancellation, then
+refresh the matrix. There is no manual pass button, so acceptance cannot be
+recorded without provider evidence.
+
 For `payment.succeeded`, Sauti additionally resolves the payment through its
 verified membership ownership and queues a payment confirmation to the
 workspace account email. The email outbox is provider-payment idempotent and

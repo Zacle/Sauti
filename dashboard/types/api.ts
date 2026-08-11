@@ -26,6 +26,34 @@ export type AdminOverview = {
   activatedPilots: number;
 };
 
+export type AdminBillingReadiness = {
+  provider: string;
+  environment: "sandbox" | "live" | string;
+  status: "configuration_missing" | "in_progress" | "attention" | "ready" | string;
+  apiConfigured: boolean;
+  webhookConfigured: boolean;
+  tenantSigningConfigured: boolean;
+  plansConfigured: boolean;
+  addOnsConfigured: boolean;
+  configuredPlans: number;
+  acceptedPlans: number;
+  normalizedSandboxEvents: number;
+  retryingProviderEvents: number;
+  failedProviderEvents: number;
+  lastSandboxEvidenceAt: string | null;
+  generatedAt: string;
+  variants: Array<{
+    plan: string;
+    interval: string;
+    configured: boolean;
+    planReference: string | null;
+    status: "configuration_missing" | "awaiting_activation" | "awaiting_payment" | "awaiting_cancellation" | "accepted" | string;
+    membershipActivatedAt: string | null;
+    paymentSucceededAt: string | null;
+    cancellationObservedAt: string | null;
+  }>;
+};
+
 export type AdminDemoRequest = {
   id: string;
   businessName: string;

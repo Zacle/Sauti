@@ -24,6 +24,7 @@ interface BillingProviderEventRepository extends JpaRepository<BillingProviderEv
     List<BillingProviderEvent> findTop20ByProviderAndStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
             String provider, List<String> statuses, OffsetDateTime dueAt);
     long countByStatus(String status);
+    long countByProviderAndStatus(String provider, String status);
     Optional<BillingProviderEvent> findFirstByStatusInOrderByCreatedAtAsc(List<String> statuses);
 }
 

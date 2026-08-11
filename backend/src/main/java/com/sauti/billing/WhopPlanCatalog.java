@@ -2,6 +2,7 @@ package com.sauti.billing;
 
 import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,6 +46,12 @@ public class WhopPlanCatalog {
 
     public boolean fullyConfigured() {
         return plans.size() == 6 && plans.values().stream().noneMatch(plan -> plan.planId().isBlank());
+    }
+
+    public List<Plan> all() {
+        return List.of(plans.get("launch:monthly"), plans.get("launch:annual"),
+                plans.get("growth:monthly"), plans.get("growth:annual"),
+                plans.get("scale:monthly"), plans.get("scale:annual"));
     }
 
     private static void add(Map<String, Plan> target, String plan, String interval, String planId) {

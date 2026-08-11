@@ -11878,3 +11878,36 @@ Expected:
   review and normal CI/CD.
 - Next Phase 3 slice: expose a non-sensitive platform-admin billing readiness
   matrix and execute/record the six-plan Whop sandbox lifecycle acceptance.
+
+### 2026-08-11 - Phase 3 Whop acceptance readiness matrix
+
+- Added the platform-admin-only `/admin/billing` readiness screen and
+  `/api/v1/admin/billing/readiness` endpoint. The endpoint is read-only, makes
+  no provider request, and exposes only configuration-presence booleans, masked
+  plan references, aggregate queue counts, and normalized sandbox timestamps.
+- Added an automatic six-variant matrix for Launch, Growth, and Scale monthly
+  and annual plans. A row becomes accepted only after stored sandbox evidence
+  proves membership activation, successful payment, and cancellation
+  scheduling/deactivation for its exact configured plan ID. There is no manual
+  pass control.
+- Added global readiness states for missing configuration, in-progress
+  acceptance, exhausted-event attention, and all-six-ready. The screen also
+  explains the safe sandbox procedure and clearly distinguishes normalized
+  acceptance evidence from live settlement reconciliation.
+- Extended the platform-admin security acceptance test to prove tenant owners
+  cannot access billing readiness. Added focused service tests for evidence
+  requirements and secret-safe missing-configuration behavior.
+- Files touched: Whop plan catalog, billing evidence/event repositories,
+  billing readiness service and admin controller/tests; admin API/types,
+  navigation, page/component/styles; Phase 3/Whop documentation; and this
+  handoff.
+- Verification: focused billing readiness and admin security tests passed;
+  complete `:backend:test` passed; dashboard typecheck, zero-warning lint, and
+  optimized production build passed with all 62 pages generated.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.
+- Required live acceptance: after deployment, run each of the six Whop Sandbox
+  variants through payment, activation, and cancellation until the admin matrix
+  reports `6 / 6 accepted`. Do not claim completion from local tests alone.
+- Next Phase 3 engineering slice: settlement/refund/dispute reconciliation and
+  financial enforcement review after the sandbox matrix is complete.

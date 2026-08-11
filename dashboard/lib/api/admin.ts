@@ -1,8 +1,12 @@
-import type { AdminAuditPage, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityDrill, AdminReliabilityIncident, AdminSlo, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
+import type { AdminAuditPage, AdminBillingReadiness, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityDrill, AdminReliabilityIncident, AdminSlo, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
 import { apiRequest } from "./client";
 
 export function getAdminOverview() {
   return apiRequest<AdminOverview>("/admin/overview");
+}
+
+export function getAdminBillingReadiness() {
+  return apiRequest<AdminBillingReadiness>("/admin/billing/readiness");
 }
 
 export function getAdminDemoRequests(page = 0, pageSize = 25) {
