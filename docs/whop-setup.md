@@ -159,10 +159,17 @@ returns quickly. A durable worker applies membership state afterward. Whop
 does not guarantee event ordering, so provider timestamps prevent an older
 event from overwriting a newer subscription.
 
-Until the next Phase 3 slice adds normalized financial evidence, verified
-payment, refund, and dispute events are retained with the explicit `deferred`
-state. This avoids claiming that money movement has been reconciled while also
-preserving the signed input for an idempotent backfill.
+Verified membership, payment, refund, and dispute events are normalized by the
+durable worker into immutable, tenant-owned acceptance evidence. These records
+contain only operational references, normalized status, amount/currency, and
+timestamps; customer details and raw webhook JSON remain in the private
+provider inbox and are not exposed through an admin API. Events received before
+this evidence layer are replayed idempotently by Flyway migration `V68`.
+
+Evidence means Sauti received and attributed a correctly signed provider event.
+It does not prove bank settlement, does not adjust a balance, and does not by
+itself suspend a workspace after a refund or dispute. Financial enforcement
+remains out of scope until live reconciliation is accepted separately.
 
 For `payment.succeeded`, Sauti additionally resolves the payment through its
 verified membership ownership and queues a payment confirmation to the

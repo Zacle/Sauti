@@ -11851,3 +11851,30 @@ Expected:
   notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and normal CI/CD.
+
+### 2026-08-11 - Phase 3 normalized Whop billing evidence
+
+- Added immutable, tenant-owned acceptance evidence for verified Whop
+  membership, payment, refund, and dispute events. Records include only
+  provider references, normalized status, amount/currency, test mode, and event
+  time; they do not copy customer data or raw webhook payloads.
+- Kept raw signed events in the private provider inbox. Financial ownership is
+  resolved through the synchronized base/add-on membership or a previously
+  normalized payment, so unordered refund/dispute events retry safely instead
+  of being attached to the wrong workspace.
+- Changed recognized financial events from `deferred` to `processed` only after
+  evidence persistence. Payment-success emails remain independently
+  idempotent. Flyway `V68` requeues previously deferred Whop financial events
+  for an idempotent backfill.
+- This is acceptance evidence, not settlement reconciliation: refunds and
+  disputes do not yet change balances or calling access.
+- Files touched: billing provider evidence entity/repository/normalizer,
+  Whop processor and focused tests, Flyway `V68`, Phase 3/Whop documentation,
+  and this handoff.
+- Verification: focused Whop evidence and subscription processor tests passed;
+  the complete `:backend:test` suite passed; `git diff --check` passed with
+  line-ending notices only.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.
+- Next Phase 3 slice: expose a non-sensitive platform-admin billing readiness
+  matrix and execute/record the six-plan Whop sandbox lifecycle acceptance.

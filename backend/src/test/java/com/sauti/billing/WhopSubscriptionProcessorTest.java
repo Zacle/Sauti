@@ -52,7 +52,7 @@ class WhopSubscriptionProcessorTest {
                 mock(BillingPaymentNotificationRepository.class),
                 mock(BillingPlanChangeRequestRepository.class), tenants, ledger,
                 new WhopPlanCatalog("plan_launch_monthly", "", "", "", "", ""), addOns(),
-                new ObjectMapper(), "reference-secret", true);
+                new ObjectMapper(), mock(WhopEvidenceService.class), "reference-secret", true);
 
         processor.processDue();
 
@@ -66,7 +66,7 @@ class WhopSubscriptionProcessorTest {
     }
 
     @Test
-    void retainsFinancialEventsAsDeferredInsteadOfClaimingReconciliation() {
+    void marksFinancialEventsProcessedAfterEvidenceIsPersisted() {
         var events = mock(BillingProviderEventRepository.class);
         var event = new BillingProviderEvent("whop", "d".repeat(64), "refund.created", "{}");
         when(events.findTop20ByProviderAndStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
@@ -76,11 +76,11 @@ class WhopSubscriptionProcessorTest {
                 mock(BillingPaymentNotificationRepository.class),
                 mock(BillingPlanChangeRequestRepository.class), mock(TenantRepository.class),
                 mock(BillingLedgerService.class), new WhopPlanCatalog("", "", "", "", "", ""),
-                addOns(), new ObjectMapper(), "reference-secret", true);
+                addOns(), new ObjectMapper(), mock(WhopEvidenceService.class), "reference-secret", true);
 
         processor.processDue();
 
-        assertThat(event.getStatus()).isEqualTo("deferred");
+        assertThat(event.getStatus()).isEqualTo("processed");
     }
 
     @Test
@@ -124,7 +124,7 @@ class WhopSubscriptionProcessorTest {
                 mock(BillingPaymentNotificationRepository.class),
                 mock(BillingPlanChangeRequestRepository.class), tenants, ledger,
                 new WhopPlanCatalog("plan_launch_monthly", "", "", "", "", ""), addOns(),
-                new ObjectMapper(), "reference-secret", true);
+                new ObjectMapper(), mock(WhopEvidenceService.class), "reference-secret", true);
 
         processor.processDue();
 
@@ -168,7 +168,7 @@ class WhopSubscriptionProcessorTest {
                 mock(BillingPaymentNotificationRepository.class),
                 mock(BillingPlanChangeRequestRepository.class), tenants, mock(BillingLedgerService.class),
                 new WhopPlanCatalog("", "", "", "", "", ""), addOns(),
-                new ObjectMapper(), "reference-secret", true);
+                new ObjectMapper(), mock(WhopEvidenceService.class), "reference-secret", true);
 
         processor.processDue();
 
@@ -222,7 +222,7 @@ class WhopSubscriptionProcessorTest {
                 mock(BillingPaymentNotificationRepository.class),
                 planChanges, tenants, ledger,
                 new WhopPlanCatalog("", "", "", "", "plan_scale_monthly", ""), addOns(),
-                new ObjectMapper(), "reference-secret", true);
+                new ObjectMapper(), mock(WhopEvidenceService.class), "reference-secret", true);
 
         processor.processDue();
 
@@ -300,7 +300,7 @@ class WhopSubscriptionProcessorTest {
                 mock(BillingAddOnSubscriptionRepository.class),
                 mock(BillingPaymentNotificationRepository.class), planChanges, tenants, ledger,
                 new WhopPlanCatalog("", "", "plan_growth_monthly", "", "plan_scale_monthly", ""),
-                addOns(), new ObjectMapper(), "reference-secret", true);
+                addOns(), new ObjectMapper(), mock(WhopEvidenceService.class), "reference-secret", true);
 
         processor.processDue();
 
@@ -344,11 +344,11 @@ class WhopSubscriptionProcessorTest {
                 notifications, mock(BillingPlanChangeRequestRepository.class),
                 tenants, mock(BillingLedgerService.class),
                 new WhopPlanCatalog("", "", "plan_growth_monthly", "", "", ""), addOns(),
-                new ObjectMapper(), "reference-secret", true);
+                new ObjectMapper(), mock(WhopEvidenceService.class), "reference-secret", true);
 
         processor.processDue();
 
-        assertThat(event.getStatus()).isEqualTo("deferred");
+        assertThat(event.getStatus()).isEqualTo("processed");
         var captured = ArgumentCaptor.forClass(BillingPaymentNotification.class);
         verify(notifications).save(captured.capture());
         assertThat(captured.getValue().getRecipientEmail()).isEqualTo("owner@example.com");

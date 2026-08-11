@@ -26,6 +26,7 @@ public class WhopSubscriptionProcessor {
     private final WhopAddOnCatalog addOns;
     private final ObjectMapper objectMapper;
     private final WhopTenantReference tenantReferences;
+    private final WhopEvidenceService evidence;
     private final boolean sandbox;
 
     public WhopSubscriptionProcessor(
@@ -35,6 +36,7 @@ public class WhopSubscriptionProcessor {
             BillingPlanChangeRequestRepository planChangeRequests,
             TenantRepository tenants, BillingLedgerService ledger, WhopPlanCatalog plans,
             WhopAddOnCatalog addOns, ObjectMapper objectMapper,
+            WhopEvidenceService evidence,
             @Value("${sauti.billing.whop.tenant-reference-secret:}") String tenantReferenceSecret,
             @Value("${sauti.billing.whop.sandbox:false}") boolean sandbox) {
         this.events = events;
@@ -47,6 +49,7 @@ public class WhopSubscriptionProcessor {
         this.plans = plans;
         this.addOns = addOns;
         this.objectMapper = objectMapper;
+        this.evidence = evidence;
         this.tenantReferences = new WhopTenantReference(tenantReferenceSecret);
         this.sandbox = sandbox;
     }
@@ -60,15 +63,17 @@ public class WhopSubscriptionProcessor {
             try {
                 if (event.getEventName().startsWith("membership.")) {
                     process(event);
+                    evidence.record(event, sandbox);
                     event.processed();
-                } else if ("payment.succeeded".equals(event.getEventName())) {
-                    enqueuePaymentConfirmation(event);
-                    // Financial reconciliation remains deferred; only the verified
-                    // customer confirmation is queued by this slice.
-                    event.deferred();
+                } else if (event.getEventName().startsWith("payment.")
+                        || event.getEventName().startsWith("refund.")
+                        || event.getEventName().startsWith("dispute.")) {
+                    evidence.record(event, sandbox);
+                    if ("payment.succeeded".equals(event.getEventName())) {
+                        enqueuePaymentConfirmation(event);
+                    }
+                    event.processed();
                 } else {
-                    // Retain signed payment/refund/dispute events for the normalized
-                    // financial-evidence slice without claiming they were reconciled.
                     event.deferred();
                 }
             } catch (Exception exception) {

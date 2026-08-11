@@ -190,17 +190,19 @@ adapter, prove the full lifecycle, and only then review enforcement.
   cancellation retains access through the paid-through timestamp, and ended or
   unpaid memberships block only new AI calls. Older or undated events cannot
   overwrite a newer provider state.
-- Payment, refund, and dispute events are accepted into the provider inbox and
-  explicitly marked `deferred` for the next immutable transaction-evidence
-  slice; they are not mislabeled as reconciled and cannot enable lockouts.
+- Verified membership, payment, refund, and dispute events are normalized into
+  immutable, tenant-owned evidence records. The evidence stores provider
+  references, status, amount/currency, and timestamps without copying customer
+  details or raw webhook JSON. Deferred financial events received before this
+  slice are replayed idempotently after migration.
+- Normalized financial evidence is acceptance proof, not settlement
+  reconciliation. It cannot independently enable lockouts or change access.
 
 ### Remaining Phase 3 slices
 
-1. Persist normalized payment, refund, dispute, and lifecycle acceptance
-   evidence without exposing raw provider payloads in the admin console.
-2. Add a platform-admin readiness matrix and complete the Whop sandbox
+1. Add a platform-admin readiness matrix and complete the Whop sandbox
    lifecycle run for all six plans.
-3. Reconcile live settlement/refund/dispute evidence before extending the
+2. Reconcile live settlement/refund/dispute evidence before extending the
    current membership-lifecycle call gate to financial-dispute enforcement,
    balances, capacity limits, or destructive workspace restrictions.
 
