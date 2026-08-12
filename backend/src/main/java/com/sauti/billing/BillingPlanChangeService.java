@@ -36,7 +36,8 @@ public class BillingPlanChangeService {
 
     @Transactional
     public PlanChangeResponse request(UUID tenantId, PlanChangeCommand command) {
-        var tenant = tenants.findById(tenantId).orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
+        var tenant = tenants.findByIdForBillingUpdate(tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
         var subscription = subscriptions.findByTenantId(tenantId)
                 .orElseThrow(() -> new IllegalStateException("Choose a base plan before requesting a plan change"));
         if (!"whop".equals(subscription.getProvider())) {
@@ -50,17 +51,18 @@ public class BillingPlanChangeService {
         if (targetPlan.equals(subscription.getPlan()) && targetInterval.equals(subscription.getBillingInterval())) {
             throw new IllegalArgumentException("This workspace is already on the selected plan");
         }
+        var existing = requests.findByTenantId(tenantId).orElse(null);
+        if (existing != null && List.of("requested", "scheduled").contains(existing.getStatus())) {
+            throw new IllegalStateException(pendingMessage(existing));
+        }
         var selection = plans.checkoutSelection(targetPlan, targetInterval);
-        var request = requests.findByTenantId(tenantId)
-                .orElseGet(() -> new BillingPlanChangeRequest(tenantId,
-                        subscription.getProviderSubscriptionId(), subscription.getPlan(),
-                        targetPlan, targetInterval, subscription.getRenewsAt()));
-        var replacedInvoiceId = "scheduled".equals(request.getStatus())
-                ? request.getProviderInvoiceId() : null;
+        var request = existing != null ? existing : new BillingPlanChangeRequest(tenantId,
+                subscription.getProviderSubscriptionId(), subscription.getPlan(),
+                targetPlan, targetInterval, subscription.getRenewsAt());
         request.retarget(subscription.getProviderSubscriptionId(), subscription.getPlan(),
                 targetPlan, targetInterval, subscription.getRenewsAt());
         requests.save(request);
-        var transition = whop.prepare(subscription, selection, subscription.getRenewsAt(), replacedInvoiceId);
+        var transition = whop.prepare(subscription, selection, subscription.getRenewsAt(), null);
         if ("adopt".equals(transition.kind())) {
             adopt(tenant, subscription, request, selection, transition.membership());
         } else {
@@ -131,5 +133,15 @@ public class BillingPlanChangeService {
 
     private static String normalized(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String pendingMessage(BillingPlanChangeRequest request) {
+        var target = Character.toUpperCase(request.getTargetPlan().charAt(0))
+                + request.getTargetPlan().substring(1);
+        var timing = request.getEffectiveAt() == null ? "at the end of the current paid period"
+                : "on " + request.getEffectiveAt().toLocalDate();
+        return "A plan change to " + target + " (" + request.getTargetInterval()
+                + ") is already pending for " + timing
+                + ". Wait for it to complete before requesting another plan change.";
     }
 }

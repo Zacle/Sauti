@@ -12009,3 +12009,27 @@ Expected:
 - Next Phase 3 step: deploy through CI/CD, run one representative Sandbox refund
   and dispute update, compare the resulting projection with Whop, then observe
   live evidence before considering any financial enforcement.
+
+### 2026-08-12 - Enforce one pending billing plan transition
+
+- Fixed scheduled plan changes being silently retargeted when a customer made
+  another upgrade or downgrade request while the current paid plan remained
+  active. An existing `requested` or `scheduled` transition is now authoritative
+  and the backend returns HTTP 409 with its target and effective date before
+  making any new Whop request.
+- Added a tenant-row pessimistic lock around plan-change creation so concurrent
+  clicks for the same workspace serialize and cannot create competing provider
+  operations.
+- The billing page now names the pending target, explicitly says another plan
+  change cannot be requested until completion, disables the plan-change action,
+  and guards an already-open confirmation dialog against stale submission.
+- Updated the focused service regression to prove the original Whop invoice is
+  preserved and no provider call occurs for a second plan request.
+- Files touched: tenant repository, billing plan-change service/test, billing
+  page, Whop setup documentation, and this handoff.
+- Verification: focused billing plan-change tests passed; complete
+  `:backend:test` passed; dashboard typecheck, zero-warning lint, and optimized
+  production build passed with all 62 pages generated; `git diff --check`
+  passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.

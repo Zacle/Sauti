@@ -229,6 +229,10 @@ After a base membership has synchronized, Sauti rejects another base checkout
 for that workspace. Selecting another plan stays inside Sauti. One verified
 existing target membership is adopted; no match creates a renewal-date invoice;
 and multiple matches produce a clear conflict that requires duplicate cleanup.
+Once a plan transition is requested or scheduled, it is the workspace's only
+pending transition. Sauti shows its target and effective date and rejects any
+additional upgrade or downgrade before contacting Whop. The existing request
+must complete before another plan change can be requested.
 
 1. Start in Whop sandbox and create all six plans there.
 2. Complete the first base checkout, then request Growth to Scale in Sauti.

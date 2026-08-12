@@ -215,6 +215,14 @@ export function BillingPage() {
         return;
       }
       if (hasPaidSubscription && account?.subscription) {
+        if (account.pendingPlanChange) {
+          setPreviewOpen(false);
+          setBillingActionMessage(
+            `${planById(account.pendingPlanChange.targetPlan).name} is already pending for ${account.pendingPlanChange.effectiveAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.pendingPlanChange.effectiveAt)) : "the end of the current paid period"}. Wait for that change to complete before requesting another one.`,
+          );
+          setCheckoutLoading(false);
+          return;
+        }
         const change = await requestBillingPlanChange(selectedPlan.id, interval);
         setPreviewOpen(false);
         setBillingActionMessage(change.status === "completed"
@@ -295,12 +303,13 @@ export function BillingPage() {
       {account?.pendingPlanChange && <section className={styles.pendingPlanChange} role="status">
         <Clock3 size={18} />
         <div>
-          <strong>{account.pendingPlanChange.collectionMethod === "send_invoice" ? "Plan change awaiting renewal payment" : account.pendingPlanChange.status === "scheduled" ? "Plan change scheduled" : "Plan change is being prepared"}</strong>
+          <strong>{account.pendingPlanChange.collectionMethod === "send_invoice" ? "Plan change awaiting renewal payment" : account.pendingPlanChange.status === "scheduled" ? `${planById(account.pendingPlanChange.targetPlan).name} plan change scheduled` : `${planById(account.pendingPlanChange.targetPlan).name} plan change is being prepared`}</strong>
           <span>
             Your {planById(account.pendingPlanChange.currentPlan).name} plan remains active until {account.pendingPlanChange.effectiveAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.pendingPlanChange.effectiveAt)) : "the end of the paid period"}.{" "}
             {account.pendingPlanChange.collectionMethod === "send_invoice"
               ? `Only after that subscription ends, Whop will email the ${planById(account.pendingPlanChange.targetPlan).name} invoice. The new plan activates after the secure invoice is paid; it cannot start early.`
               : `Only after that subscription ends, ${planById(account.pendingPlanChange.targetPlan).name} (${account.pendingPlanChange.targetInterval}) will take effect automatically.`}
+            {" "}You cannot request another plan change until this one completes.
           </span>
         </div>
       </section>}
@@ -358,6 +367,7 @@ export function BillingPage() {
               checkoutConfigured={checkoutConfigured}
               addOnsConfigured={checkoutStatus?.addOnsConfigured === true}
               activeAddOns={account?.addOns ?? []}
+              pendingPlanChange={account?.pendingPlanChange ?? null}
               addOnCheckoutError={addOnCheckoutError}
               addOnCheckoutLoading={addOnCheckoutLoading}
               hasSubscription={hasPaidSubscription}
@@ -648,7 +658,7 @@ function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab
   );
 }
 
-function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, openPlanDialog, projection, projectedMinutes, resetModel, resumeLoading, resumeSubscription, selectedPlanId, setInterval, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout, subscription }: {
+function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, openPlanDialog, pendingPlanChange, projection, projectedMinutes, resetModel, resumeLoading, resumeSubscription, selectedPlanId, setInterval, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout, subscription }: {
   activeAddOns: NonNullable<BillingAccount["addOns"]>;
   addOnCheckoutError: string;
   addOnCheckoutLoading: BillingAddOnId | null;
@@ -662,6 +672,7 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
   projection: ReturnType<typeof projectBilling>;
   projectedMinutes: number;
   openPlanDialog: (intent: "change" | "cancel") => void;
+  pendingPlanChange: BillingAccount["pendingPlanChange"];
   resetModel: () => void;
   resumeLoading: boolean;
   resumeSubscription: () => void;
@@ -757,8 +768,9 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
         <LedgerRow label="Active add-ons" note={`${activeAddOns.length} currently enabled`} value={money(projection.addOnCost)} />
         <div className={styles.ledgerTotal}><div><strong>Estimated total / month</strong><span>Plan + overage + activated add-ons</span></div><strong>{money(projection.total)}</strong></div>
         <p><Info size={15} /> If a higher plan produces a lower total for your model, Sauti will explain the arithmetic instead of forcing a recommendation.</p>
-        <button disabled={!checkoutConfigured || (hasSubscription && selectedPlanId === currentPlanId)} onClick={() => openPlanDialog("change")} type="button"><ShieldCheck size={16} /> {!checkoutConfigured ? "Whop setup required" : hasSubscription ? selectedPlanId === currentPlanId ? "Current plan selected" : `Change to ${selectedPlan.name}` : isSandbox ? "Continue to sandbox checkout" : "Continue to secure checkout"}</button>
-        {hasSubscription && subscriptionState !== "Cancellation scheduled" && subscriptionState !== "Ended" && <button className={styles.cancelPlanButton} onClick={() => openPlanDialog("cancel")} type="button">Cancel subscription</button>}
+        <button disabled={!checkoutConfigured || pendingPlanChange != null || (hasSubscription && selectedPlanId === currentPlanId)} onClick={() => openPlanDialog("change")} type="button"><ShieldCheck size={16} /> {!checkoutConfigured ? "Whop setup required" : pendingPlanChange ? `${planById(pendingPlanChange.targetPlan).name} change pending` : hasSubscription ? selectedPlanId === currentPlanId ? "Current plan selected" : `Change to ${selectedPlan.name}` : isSandbox ? "Continue to sandbox checkout" : "Continue to secure checkout"}</button>
+        {pendingPlanChange && <p className={styles.addOnCheckoutNote}>Your existing plan change must complete before another upgrade or downgrade can be requested.</p>}
+        {hasSubscription && !pendingPlanChange && subscriptionState !== "Cancellation scheduled" && subscriptionState !== "Ended" && <button className={styles.cancelPlanButton} onClick={() => openPlanDialog("cancel")} type="button">Cancel subscription</button>}
         <button className={styles.resetButton} onClick={resetModel} type="button"><RotateCcw size={15} /> Reset model</button>
         <footer>Sauti guides the change; {checkoutProvider} securely authorizes billing.</footer>
       </article>

@@ -30,7 +30,7 @@ class BillingPlanChangeServiceTest {
         var tenant = new Tenant("Clinic", "owner@example.com", "GB");
         var renewal = OffsetDateTime.parse("2026-09-10T10:00:00Z");
         var subscription = subscription(tenant, renewal);
-        when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        when(tenants.findByIdForBillingUpdate(tenant.getId())).thenReturn(Optional.of(tenant));
         when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(subscription));
         when(requests.findByTenantId(tenant.getId())).thenReturn(Optional.empty());
         when(requests.save(any(BillingPlanChangeRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -48,33 +48,30 @@ class BillingPlanChangeServiceTest {
     }
 
     @Test
-    void replacesThePreviouslyScheduledInvoiceWhenTheTargetChanges() {
+    void refusesToReplaceAPendingPlanChange() {
         var tenant = new Tenant("Clinic", "owner@example.com", "GB");
         var renewal = OffsetDateTime.parse("2026-09-10T10:00:00Z");
         var subscription = subscription(tenant, renewal);
         var existing = new BillingPlanChangeRequest(tenant.getId(), "mem_growth", "growth",
                 "scale", "monthly", renewal);
         existing.schedule("inv_old", "plan_scale_monthly", "plan_generated_old");
-        when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        when(tenants.findByIdForBillingUpdate(tenant.getId())).thenReturn(Optional.of(tenant));
         when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(subscription));
         when(requests.findByTenantId(tenant.getId())).thenReturn(Optional.of(existing));
-        when(requests.save(any(BillingPlanChangeRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(whop.prepare(subscription, plans.checkoutSelection("launch", "monthly"), renewal, "inv_old"))
-                .thenReturn(WhopPlanChangeGateway.PlanTransition.scheduled("inv_new", "plan_generated_new"));
-
-        var result = service.request(tenant.getId(),
-                new BillingPlanChangeService.PlanChangeCommand("launch", "monthly"));
-
-        assertThat(result.status()).isEqualTo("scheduled");
-        assertThat(result.targetPlan()).isEqualTo("launch");
-        assertThat(existing.getProviderInvoiceId()).isEqualTo("inv_new");
-        verify(whop).prepare(subscription, plans.checkoutSelection("launch", "monthly"), renewal, "inv_old");
+        assertThatThrownBy(() -> service.request(tenant.getId(),
+                new BillingPlanChangeService.PlanChangeCommand("launch", "monthly")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("change to Scale")
+                .hasMessageContaining("already pending")
+                .hasMessageContaining("2026-09-10");
+        verify(whop, org.mockito.Mockito.never()).prepare(any(), any(), any(), any());
+        assertThat(existing.getProviderInvoiceId()).isEqualTo("inv_old");
     }
 
     @Test
     void refusesARequestForTheCurrentPlanAndInterval() {
         var tenant = new Tenant("Clinic", "owner@example.com", "GB");
-        when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        when(tenants.findByIdForBillingUpdate(tenant.getId())).thenReturn(Optional.of(tenant));
         when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(subscription(tenant, null)));
 
         assertThatThrownBy(() -> service.request(tenant.getId(),
@@ -95,7 +92,7 @@ class BillingPlanChangeServiceTest {
                  "user":{"id":"user_1"},"product":{"id":"prod_sauti"},
                  "manage_url":"https://whop.com/billing/manage/mem_scale_existing"}
                 """);
-        when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+        when(tenants.findByIdForBillingUpdate(tenant.getId())).thenReturn(Optional.of(tenant));
         when(subscriptions.findByTenantId(tenant.getId())).thenReturn(Optional.of(subscription));
         when(requests.findByTenantId(tenant.getId())).thenReturn(Optional.empty());
         when(requests.save(any(BillingPlanChangeRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
