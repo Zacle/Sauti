@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { BarChart3, Building2, ChevronDown, ChevronRight, ClipboardList, CreditCard, LayoutDashboard, LogOut, MessageSquareText, ShieldCheck, UserRound, Users } from "lucide-react";
+import { BarChart3, Building2, ChevronDown, ChevronRight, ClipboardList, CreditCard, LayoutDashboard, LogOut, MessageSquareText, Rocket, ShieldCheck, UserRound, Users } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
 import { useAuth } from "@/hooks/useAuth";
 import styles from "./AdminShell.module.css";
@@ -15,6 +15,7 @@ const links = [
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/admin/billing", label: "Billing readiness", icon: CreditCard },
+  { href: "/admin/launch-readiness", label: "Launch readiness", icon: Rocket },
   { href: "/admin/audit", label: "Audit history", icon: ClipboardList },
 ];
 

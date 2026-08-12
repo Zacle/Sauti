@@ -94,6 +94,30 @@ export type AdminBillingFinancialSummary = {
   lastReconciledAt: string | null;
 };
 
+export type AdminLaunchReadiness = {
+  status: "blocked" | "review_pending" | "approved" | string;
+  automatedBlockingChecks: number;
+  manualBlockingChecks: number;
+  automatedChecks: Array<{
+    key: string;
+    label: string;
+    passed: boolean;
+    status: "ready" | "blocked" | string;
+    action: string;
+  }>;
+  manualReview: {
+    securityReviewCompleted: boolean;
+    privacyLegalReviewCompleted: boolean;
+    googleVerificationCompleted: boolean;
+    liveAcceptanceCompleted: boolean;
+    generalAvailabilityApproved: boolean;
+    notes: string | null;
+    reviewedBy: string | null;
+    reviewedAt: string | null;
+  };
+  generatedAt: string;
+};
+
 export type AdminDemoRequest = {
   id: string;
   businessName: string;

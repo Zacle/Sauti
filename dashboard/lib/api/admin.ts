@@ -1,4 +1,4 @@
-import type { AdminAuditPage, AdminBillingReadiness, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityDrill, AdminReliabilityIncident, AdminSlo, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
+import type { AdminAuditPage, AdminBillingReadiness, AdminCustomerDetail, AdminCustomerPage, AdminDemoRequest, AdminDemoRequestPage, AdminLaunchReadiness, AdminOverview, AdminPilotReadiness, AdminPlatformAnalytics, AdminQueueHealth, AdminReliabilityDrill, AdminReliabilityIncident, AdminSlo, AdminWorkspace, AdminWorkspacePage } from "@/types/api";
 import { apiRequest } from "./client";
 
 export function getAdminOverview() {
@@ -7,6 +7,25 @@ export function getAdminOverview() {
 
 export function getAdminBillingReadiness() {
   return apiRequest<AdminBillingReadiness>("/admin/billing/readiness");
+}
+
+export function getAdminLaunchReadiness() {
+  return apiRequest<AdminLaunchReadiness>("/admin/launch-readiness");
+}
+
+export function updateAdminLaunchReadiness(review: {
+  securityReviewCompleted: boolean;
+  privacyLegalReviewCompleted: boolean;
+  googleVerificationCompleted: boolean;
+  liveAcceptanceCompleted: boolean;
+  generalAvailabilityApproved: boolean;
+  confirmation: string;
+  notes: string;
+}) {
+  return apiRequest<AdminLaunchReadiness>("/admin/launch-readiness", {
+    method: "PATCH",
+    body: JSON.stringify(review),
+  });
 }
 
 export function getAdminDemoRequests(page = 0, pageSize = 25) {

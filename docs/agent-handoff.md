@@ -12033,3 +12033,33 @@ Expected:
   passed (line-ending notices only).
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and normal CI/CD.
+
+### 2026-08-12 - Phase 4 platform launch-readiness gate
+
+- Marked Phase 3 completed and started Phase 4 with an evidence-backed global
+  launch gate at `admin.sauti.uk/admin/launch-readiness`.
+- Added eight non-sensitive automated checks: production profile, closed public
+  registration, hidden development tokens, explicit HTTPS CORS origins,
+  configured platform administration and support email, completed reliability
+  drill email lifecycle, and accepted billing lifecycle evidence.
+- Added auditable human attestations for security/tenant isolation, privacy and
+  legal review, Google OAuth verification, and controlled live acceptance.
+  General availability requires all checks plus an exact approval command.
+- Review state is stored as a singleton platform record under Flyway `V69`.
+  Every review and approval records the administrator in immutable audit
+  history. Editing an approved review reopens it so stale approval cannot
+  survive changed evidence.
+- Extended the platform-admin API security acceptance test to prove tenant
+  owners cannot read launch readiness. Added focused tests for secret-safe
+  output, automated blockers, and guarded approval.
+- Files touched: platform launch readiness entity/repository/service/controller,
+  Flyway `V69`, admin security and focused service tests, admin API types/client,
+  navigation/page/presentation/styles, production roadmap, and this handoff.
+- Verification: focused backend launch-readiness/admin-security tests passed;
+  complete `:backend:test` passed; dashboard typecheck, zero-warning lint, and
+  optimized production build passed with all 63 pages generated;
+  `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.
+- Next Phase 4 slice: execute the security and tenant-isolation review, fix
+  evidence-backed findings, and feed the completed review into this gate.

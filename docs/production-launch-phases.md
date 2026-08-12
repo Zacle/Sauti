@@ -168,7 +168,7 @@ without relying on a customer to report them first.
    retain its database/audit evidence. No provider or customer operation is part
    of the drill.
 
-## Phase 3 — Whop billing lifecycle acceptance (in progress)
+## Phase 3 — Whop billing lifecycle acceptance (completed 2026-08-12)
 
 Goal: accept hosted subscription payments through a replaceable provider
 adapter, prove the full lifecycle, and only then review enforcement.
@@ -204,20 +204,47 @@ adapter, prove the full lifecycle, and only then review enforcement.
   settlement. It cannot independently enable lockouts, grant communication
   balance, or change access.
 
-### Remaining Phase 3 slices
+### Phase 3 acceptance completed
 
-1. Deploy the platform-admin billing readiness matrix, confirm all six plan IDs
-   are configured, then complete one representative Whop Sandbox lifecycle with
-   stored activation, successful payment, and cancellation evidence. Requiring
-   six paid memberships would create duplicates and paid-through waiting
-   periods, so it is explicitly not part of acceptance. Upgrade/downgrade is
-   handled as an end-of-period transition and is not used as a lifecycle test.
-2. Deploy and observe the financial projection through representative refund
-   and dispute updates. Compare live evidence with Whop before deciding whether
-   any financial-dispute enforcement is justified. Bank settlement, balances,
-   capacity limits, and destructive workspace restrictions remain out of scope.
+- All six plan IDs and one representative Whop lifecycle were accepted through
+  the platform-admin billing matrix. Six duplicate paid memberships and an
+  upgrade/downgrade lifecycle were intentionally not required.
+- Payment, refund, and dispute evidence now has a separate observe-only
+  projection. Bank settlement, automatic financial-dispute enforcement,
+  balances, capacity limits, and destructive workspace restrictions remain
+  explicit later decisions rather than hidden Phase 3 requirements.
 
-## Later phases
+## Phase 4 — controlled general availability (in progress)
 
-- Phase 4: security/privacy review, Google verification completion, legal
-  readiness, and controlled general availability.
+Goal: make launch approval evidence-based, review the legal and security
+commitments behind the product, and move from controlled pilots to a gradual
+public release without bypassing operational gates.
+
+### Slice 1: platform launch-readiness gate
+
+- The isolated platform console exposes `/admin/launch-readiness` and a
+  platform-admin-only API. It returns pass/fail evidence, never configuration
+  values or secrets.
+- Automated gates verify the production profile, closed public registration,
+  hidden development tokens, explicit HTTPS CORS origins, a configured
+  platform administrator and support email, a fully completed reliability
+  drill, and accepted Phase 3 billing evidence.
+- Human attestations separately cover the security/tenant-isolation review,
+  privacy and legal review, Google OAuth verification, and one controlled live
+  end-to-end acceptance journey.
+- General availability cannot be approved while any gate is incomplete.
+  Approval and every review update record the administrator in immutable audit
+  history. Editing an approved review reopens it and requires approval again.
+
+### Remaining Phase 4 slices
+
+1. Perform the security and tenant-isolation review, remediate findings, and
+   retain the reviewed test evidence.
+2. Finalize launch-country privacy, retention, recording/AI disclosure, terms,
+   cancellation, refund, and acceptable-use commitments with qualified legal
+   review where required.
+3. Complete Google OAuth verification for the production Calendar and Sheets
+   scopes and record the decision.
+4. Deploy through CI/CD, complete the production reliability drill and one
+   consented live acceptance journey for every enabled channel, then approve a
+   limited general-availability cohort from the launch-readiness screen.

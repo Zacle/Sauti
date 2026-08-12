@@ -58,6 +58,16 @@ class AdminApiSecurityTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.provider").value("whop"))
                 .andExpect(jsonPath("$.variants.length()").value(6));
+
+        mvc.perform(get("/api/v1/admin/launch-readiness")
+                        .header("Authorization", "Bearer " + jwt.issueAccessToken(owner)))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(get("/api/v1/admin/launch-readiness")
+                        .header("Authorization", "Bearer " + jwt.issueAccessToken(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").isString())
+                .andExpect(jsonPath("$.automatedChecks.length()").value(8));
     }
 
     @Test
