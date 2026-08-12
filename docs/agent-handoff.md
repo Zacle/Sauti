@@ -2,6 +2,53 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-12: Google Sheets setup feedback and OAuth dialog dismissal
+
+- Google Sheets setup now returns a clear client-facing validation response when
+  the selected spreadsheet is unavailable to the connected Google account,
+  instead of leaking an Internal Server Error. The message explains that Google
+  may hide unshared sheets as not found and tells the user to verify the ID or
+  share it with the connected account.
+- Prevented the Google Sheets (and Calendar) OAuth setup dialog from reopening
+  after a successful save refreshes marketplace data; each OAuth callback can
+  auto-open its configuration dialog once per page load.
+- Files touched:
+  - `backend/src/main/java/com/sauti/api/IntegrationController.java`;
+  - `backend/src/main/java/com/sauti/integration/GoogleSheetsApiClient.java`;
+  - `backend/src/test/java/com/sauti/integration/GoogleSheetsApiClientTest.java`;
+  - `dashboard/features/integrations/IntegrationsPage/IntegrationsPage.tsx`;
+  - `docs/agent-handoff.md`.
+- Verification: focused `GoogleSheetsApiClientTest` passed (4 tests, including
+  the unavailable-sheet regression); dashboard `npm.cmd run typecheck` and
+  `npm.cmd run build` passed, with the production build generating all 62
+  pages. `git diff --check` passed (Git reported only line-ending notices).
+- Deployment status: not deployed; changes remain uncommitted for review.
+
+### 2026-08-11: YouTube Billing System episode polish
+
+- Built a 16:20, 1920x1080 HyperFrames composition for `Sauti 2.mp4` using the
+  supplied introductory transcript. The edit preserves the full screen-recorded
+  billing-system episode and adds a designed intro, animated title treatment,
+  transcript captions for the opening, a billing chapter card, timed chapter
+  callouts, a persistent lower-third, and a branded outro.
+- Files touched:
+  - `video/sauti-youtube-billing-edit/index.html`;
+  - `video/sauti-youtube-billing-edit/BRIEF.md`;
+  - `video/sauti-youtube-billing-edit/Sauti 2.mp4`;
+  - `docs/agent-handoff.md`.
+- Verification: `npx.cmd hyperframes lint --json` passed with 0 errors and 2
+  maintainability warnings for dense caption/callout tracks. The full local
+  render was attempted, but HyperFrames deterministic frame extraction stopped
+  after reporting insufficient temporary disk space. A retry was blocked by the
+  same low-space guard; no final MP4 was produced.
+- Deployment status: not applicable. Video/source files remain uncommitted for
+  review; no application deployment was performed.
+- Known follow-up: free several GB in the Windows temporary drive, then run
+  `npx.cmd hyperframes render --quality standard --workers 4 --browser-timeout
+  180 --output sauti-youtube-billing-final.mp4` from the edit directory. The
+  designed captions cover the supplied intro transcript; timed chapter markers
+  cover the remainder of the long tutorial.
+
 ### 2026-08-10: TikTok/Instagram founder-build Reel
 
 - Edited the supplied `tiktok.mp4` into a 33-second, 1080x1920 founder Reel for

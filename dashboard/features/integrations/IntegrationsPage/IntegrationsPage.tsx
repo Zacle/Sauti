@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot, CalendarDays, Check, ChevronDown, CircleAlert, Database, LoaderCircle, MessageSquare,
   Plug, Search, Settings2, ShieldCheck, TableProperties, TestTube2, Trash2, WalletCards, X,
@@ -128,6 +128,7 @@ export function IntegrationsPage() {
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const openedOAuthProvider = useRef<string | null>(null);
 
   const refresh = useCallback(async (selected = agentId) => {
     const [nextCatalog, nextConnections] = await Promise.all([
@@ -155,10 +156,15 @@ export function IntegrationsPage() {
   }, [agentId, loading]);
 
   useEffect(() => {
-    if (!loading && agentId && searchParams.get("provider") === "google_calendar") {
+    const provider = searchParams.get("provider");
+    if (!loading && agentId && provider === "google_calendar"
+        && openedOAuthProvider.current !== provider) {
+      openedOAuthProvider.current = provider;
       setCalendarEditing(true);
     }
-    if (!loading && agentId && searchParams.get("provider") === "google_sheets") {
+    if (!loading && agentId && provider === "google_sheets"
+        && openedOAuthProvider.current !== provider) {
+      openedOAuthProvider.current = provider;
       const sheets = catalog.find((entry) => entry.provider === "google_sheets");
       if (sheets) setEditing(sheets);
     }

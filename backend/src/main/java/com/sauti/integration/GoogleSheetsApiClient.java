@@ -192,8 +192,10 @@ public class GoogleSheetsApiClient {
         var reason = googleReason(response.body());
         var message = switch (status) {
             case 401 -> "Google Sheets authorization expired; reconnect Google Sheets";
-            case 403 -> "The connected Google account cannot access this spreadsheet";
-            case 404 -> "The configured spreadsheet or range was not found";
+            case 403 -> "The connected Google account cannot access this spreadsheet. Share it with that account, then try again";
+            // Google returns 404 rather than disclosing a spreadsheet that the
+            // signed-in account is not allowed to see, so cover both cases.
+            case 404 -> "Google Sheets could not find this spreadsheet. Check its ID and make sure it is shared with the connected Google account";
             case 429 -> "Google Sheets is temporarily busy; try again shortly";
             default -> "Google Sheets request failed with HTTP " + status;
         };

@@ -1,6 +1,7 @@
 package com.sauti.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -124,6 +125,26 @@ class GoogleSheetsApiClientTest {
                 .doesNotContain("\"title\":\"Customers\"");
         assertThat(bodies.get(paths.indexOf("/v4/spreadsheets/sheet-1/values/Calls%21A1%3AF1")))
                 .isEqualTo("{\"values\":[[\"Call ID\",\"Started At\",\"Caller Phone\",\"Outcome\",\"Summary\",\"Sentiment\"]]}");
+    }
+
+    @Test
+    void explainsThatAnUnavailableSpreadsheetMustBeSharedWithTheConnectedAccount() throws Exception {
+        var server = server(exchange -> {
+            var body = "{\"error\":{\"status\":\"NOT_FOUND\"}}";
+            exchange.sendResponseHeaders(404, body.getBytes(StandardCharsets.UTF_8).length);
+            exchange.getResponseBody().write(body.getBytes(StandardCharsets.UTF_8));
+            exchange.close();
+        });
+        var oauth = mock(ProviderOAuthService.class);
+        var tenantId = UUID.randomUUID();
+        var agentId = UUID.randomUUID();
+        when(oauth.accessToken(tenantId, agentId, "google_sheets")).thenReturn("token");
+        var client = client(server, oauth);
+
+        assertThatThrownBy(() -> client.initialize(tenantId, agentId, "another-account-sheet"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Check its ID")
+                .hasMessageContaining("shared with the connected Google account");
     }
 
     private GoogleSheetsApiClient client(HttpServer server, ProviderOAuthService oauth) {

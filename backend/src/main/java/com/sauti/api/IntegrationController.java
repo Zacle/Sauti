@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.view.RedirectView;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -119,12 +120,16 @@ public class IntegrationController {
             @AuthenticationPrincipal AuthenticatedUser user,
             @PathVariable UUID agentId
     ) {
-        var runtime = service.runtime(user.tenantId(), agentId, "google_sheets");
-        return googleSheets.initialize(
-                user.tenantId(),
-                agentId,
-                String.valueOf(runtime.configuration().getOrDefault("spreadsheetId", ""))
-        );
+        try {
+            var runtime = service.runtime(user.tenantId(), agentId, "google_sheets");
+            return googleSheets.initialize(
+                    user.tenantId(),
+                    agentId,
+                    String.valueOf(runtime.configuration().getOrDefault("spreadsheetId", ""))
+            );
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage());
+        }
     }
 
     @GetMapping("/agents/{agentId}/integrations")
