@@ -15,6 +15,7 @@ import com.sauti.call.TelnyxAiBrowserVoiceRuntimeService;
 import com.sauti.call.CallDtos.StartupLatencyRequest;
 import com.sauti.reliability.VoiceStartupMeasurementService;
 import com.sauti.billing.BillingAccessPolicy;
+import com.sauti.shared.ClientAddressResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,6 +36,7 @@ public class PublicWebVoiceController {
     private final TelnyxAiBrowserVoiceRuntimeService telnyxRuntime;
     private final VoiceStartupMeasurementService startupMeasurements;
     private final BillingAccessPolicy billingAccess;
+    private final ClientAddressResolver clientAddresses;
 
     public PublicWebVoiceController(
             PublicWebVoiceAccessService accessService,
@@ -43,7 +45,8 @@ public class PublicWebVoiceController {
             WebVoiceTokenService tokenService,
             TelnyxAiBrowserVoiceRuntimeService telnyxRuntime,
             VoiceStartupMeasurementService startupMeasurements,
-            BillingAccessPolicy billingAccess
+            BillingAccessPolicy billingAccess,
+            ClientAddressResolver clientAddresses
     ) {
         this.accessService = accessService;
         this.rateLimitService = rateLimitService;
@@ -52,6 +55,7 @@ public class PublicWebVoiceController {
         this.telnyxRuntime = telnyxRuntime;
         this.startupMeasurements = startupMeasurements;
         this.billingAccess = billingAccess;
+        this.clientAddresses = clientAddresses;
     }
 
     @GetMapping("/agents/{publicId}")
@@ -74,7 +78,7 @@ public class PublicWebVoiceController {
             @RequestBody(required = false) StartWebVoiceSessionRequest request,
             HttpServletRequest httpRequest
     ) {
-        rateLimitService.checkSessionStart(publicId, clientAddress(httpRequest));
+        rateLimitService.checkSessionStart(publicId, clientAddresses.resolve(httpRequest));
         var agent = publicAgent(publicId);
         billingAccess.requirePaidCommunication(agent.getTenant().getId());
         validateSessionRequest(agent, request);
@@ -185,13 +189,6 @@ public class PublicWebVoiceController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Invalid Web Voice session token");
         }
         return accessService.requireActiveCall(sessionId, principal.publicAgentId());
-    }
-
-    private String clientAddress(HttpServletRequest request) {
-        var forwarded = request.getHeader("X-Forwarded-For");
-        return forwarded == null || forwarded.isBlank()
-                ? request.getRemoteAddr()
-                : forwarded.split(",")[0].trim();
     }
 
     private WebVoiceTokenService.WebVoicePrincipal verifyBearer(HttpServletRequest request) {

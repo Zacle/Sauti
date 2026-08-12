@@ -238,13 +238,24 @@ public release without bypassing operational gates.
 
 ### Remaining Phase 4 slices
 
-1. Perform the security and tenant-isolation review, remediate findings, and
-   retain the reviewed test evidence.
-2. Finalize launch-country privacy, retention, recording/AI disclosure, terms,
+1. Finalize launch-country privacy, retention, recording/AI disclosure, terms,
    cancellation, refund, and acceptable-use commitments with qualified legal
    review where required.
-3. Complete Google OAuth verification for the production Calendar and Sheets
+2. Complete Google OAuth verification for the production Calendar and Sheets
    scopes and record the decision.
-4. Deploy through CI/CD, complete the production reliability drill and one
+3. Deploy through CI/CD, complete the production reliability drill and one
    consented live acceptance journey for every enabled channel, then approve a
    limited general-availability cohort from the launch-readiness screen.
+
+### Slice 2: security and tenant-isolation review (engineering complete)
+
+- The reviewed boundary inventory and operational acceptance steps are in
+  `docs/security-tenant-isolation-review.md`.
+- Public rate limits no longer trust raw forwarded-for headers, production
+  requires native trusted-proxy processing and explicit HTTPS WebSocket
+  origins, normal API bearer tokens are no longer placed in dashboard socket
+  URLs, and M-Pesa callbacks require a connection-bound signature.
+- The launch-readiness browser-boundary check now covers CORS, WebSocket
+  origins, and trusted-proxy processing. The human security attestation remains
+  intentionally unchecked until deployment and the documented two-workspace
+  and provider smoke tests are retained.

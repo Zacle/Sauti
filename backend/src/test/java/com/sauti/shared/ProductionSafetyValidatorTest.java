@@ -52,8 +52,22 @@ class ProductionSafetyValidatorTest {
                 .withProperty("spring.h2.console.enabled", "false")
                 .withProperty("spring.datasource.url", "jdbc:postgresql://db/sauti")
                 .withProperty("sauti.dashboard.base-url", "https://sauti.uk")
+                .withProperty("server.forward-headers-strategy", "native")
                 .withProperty("sauti.web-voice.public-websocket-base-url", "wss://sauti.uk")
                 .withProperty("sauti.cors.allowed-origins", "https://sauti.uk")
+                .withProperty("sauti.websocket.allowed-origin-patterns", "https://sauti.uk")
                 .withProperty("sauti.telnyx.validate-signature", "true");
+    }
+
+    @Test
+    void rejectsWildcardWebSocketOriginsAndUntrustedForwardingMode() {
+        var environment = safeEnvironment()
+                .withProperty("sauti.websocket.allowed-origin-patterns", "*")
+                .withProperty("server.forward-headers-strategy", "framework");
+
+        assertThatThrownBy(new ProductionSafetyValidator(environment)::validate)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sauti.websocket.allowed-origin-patterns")
+                .hasMessageContaining("server.forward-headers-strategy");
     }
 }

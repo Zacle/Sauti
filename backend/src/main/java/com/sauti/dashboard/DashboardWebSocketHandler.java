@@ -1,7 +1,6 @@
 package com.sauti.dashboard;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sauti.auth.JwtService;
 import com.sauti.dashboard.DashboardDtos.DashboardEvent;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -20,30 +19,30 @@ public class DashboardWebSocketHandler extends AbstractWebSocketHandler {
     private static final String TENANT_ID_ATTRIBUTE = "dashboardTenantId";
 
     private final ObjectMapper objectMapper;
-    private final JwtService jwtService;
+    private final DashboardSocketTicketService socketTickets;
     private final Map<UUID, Set<WebSocketSession>> sessionsByTenant = new ConcurrentHashMap<>();
 
-    public DashboardWebSocketHandler(ObjectMapper objectMapper, JwtService jwtService) {
+    public DashboardWebSocketHandler(ObjectMapper objectMapper, DashboardSocketTicketService socketTickets) {
         this.objectMapper = objectMapper;
-        this.jwtService = jwtService;
+        this.socketTickets = socketTickets;
     }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         var tenantId = tenantId(session);
-        var token = queryParams(session).getOrDefault("token", "");
-        if (token.isBlank()) {
-            session.close(CloseStatus.NOT_ACCEPTABLE.withReason("missing token"));
+        var ticket = queryParams(session).getOrDefault("ticket", "");
+        if (ticket.isBlank()) {
+            session.close(CloseStatus.NOT_ACCEPTABLE.withReason("missing ticket"));
             return;
         }
         try {
-            var user = jwtService.authenticate(token);
-            if (!tenantId.equals(user.tenantId())) {
+            var principal = socketTickets.verify(ticket);
+            if (!tenantId.equals(principal.tenantId())) {
                 session.close(CloseStatus.POLICY_VIOLATION.withReason("tenant mismatch"));
                 return;
             }
         } catch (RuntimeException exception) {
-            session.close(CloseStatus.POLICY_VIOLATION.withReason("invalid token"));
+            session.close(CloseStatus.POLICY_VIOLATION.withReason("invalid ticket"));
             return;
         }
         session.getAttributes().put(TENANT_ID_ATTRIBUTE, tenantId);

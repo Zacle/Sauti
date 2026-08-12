@@ -5,6 +5,7 @@ import com.sauti.demo.PublicDemoVoiceDtos.StartPublicDemoVoiceRequest;
 import com.sauti.demo.PublicDemoVoiceDtos.StartPublicDemoVoiceResponse;
 import com.sauti.demo.PublicDemoVoiceService;
 import com.sauti.call.CallDtos.StartupLatencyRequest;
+import com.sauti.shared.ClientAddressResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,9 +21,11 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/public/demo-voice")
 public class PublicDemoVoiceController {
     private final PublicDemoVoiceService service;
+    private final ClientAddressResolver clientAddresses;
 
-    public PublicDemoVoiceController(PublicDemoVoiceService service) {
+    public PublicDemoVoiceController(PublicDemoVoiceService service, ClientAddressResolver clientAddresses) {
         this.service = service;
+        this.clientAddresses = clientAddresses;
     }
 
     @GetMapping("/configuration")
@@ -45,7 +48,7 @@ public class PublicDemoVoiceController {
         var verifiedOrigin = headerOrigin == null || headerOrigin.isBlank() ? request.origin() : headerOrigin;
         return service.start(
                 verifiedOrigin,
-                clientAddress(servletRequest),
+                clientAddresses.resolve(servletRequest),
                 request.deviceId(),
                 request.consentAccepted()
         );
@@ -86,10 +89,4 @@ public class PublicDemoVoiceController {
         }
     }
 
-    private String clientAddress(HttpServletRequest request) {
-        var forwarded = request.getHeader("X-Forwarded-For");
-        return forwarded == null || forwarded.isBlank()
-                ? request.getRemoteAddr()
-                : forwarded.split(",")[0].trim();
-    }
 }

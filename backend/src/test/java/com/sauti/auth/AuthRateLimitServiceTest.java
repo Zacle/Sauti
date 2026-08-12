@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.sauti.shared.RedisRateLimiter;
+import com.sauti.shared.ClientAddressResolver;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
@@ -14,7 +15,8 @@ class AuthRateLimitServiceTest {
         var limiter = mock(RedisRateLimiter.class);
         when(limiter.tryAcquire("auth:reset", "owner@example.com", 10, Duration.ofMinutes(10))).thenReturn(true);
 
-        new AuthRateLimitService(limiter).checkResetPassword(" Owner@Example.com ");
+        new AuthRateLimitService(limiter, mock(ClientAddressResolver.class))
+                .checkResetPassword(" Owner@Example.com ");
 
         verify(limiter).tryAcquire("auth:reset", "owner@example.com", 10, Duration.ofMinutes(10));
     }

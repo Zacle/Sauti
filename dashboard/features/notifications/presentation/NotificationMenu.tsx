@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Bell, CalendarCheck2, CalendarClock, Check, CheckCheck, LoaderCircle, X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { listNotifications, markAllNotificationsRead, markNotificationRead } from "@/lib/api/notifications";
+import { createDashboardSocketTicket, listNotifications, markAllNotificationsRead, markNotificationRead } from "@/lib/api/notifications";
 import type { WorkspaceNotification } from "@/types/api";
 
 export function NotificationMenu() {
@@ -37,19 +37,27 @@ export function NotificationMenu() {
     if (!session) return;
     void refresh();
     const poll = window.setInterval(() => void refresh(true), 30_000);
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${protocol}//${window.location.host}/ws/dashboard/${session.tenant.id}?token=${encodeURIComponent(session.accessToken)}`);
-    socket.onmessage = (message) => {
-      try {
-        const event = JSON.parse(message.data) as { type?: string };
-        if (event.type === "booking.created") window.setTimeout(() => void refresh(true), 150);
-      } catch {
-        // Ignore unrelated or malformed dashboard events; polling remains the fallback.
-      }
-    };
+    let socket: WebSocket | null = null;
+    let stopped = false;
+    void createDashboardSocketTicket().then(({ ticket }) => {
+      if (stopped) return;
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      socket = new WebSocket(`${protocol}//${window.location.host}/ws/dashboard/${session.tenant.id}?ticket=${encodeURIComponent(ticket)}`);
+      socket.onmessage = (message) => {
+        try {
+          const event = JSON.parse(message.data) as { type?: string };
+          if (event.type === "booking.created") window.setTimeout(() => void refresh(true), 150);
+        } catch {
+          // Ignore unrelated or malformed dashboard events; polling remains the fallback.
+        }
+      };
+    }).catch(() => {
+      // Polling remains the fallback when a short-lived socket ticket cannot be issued.
+    });
     return () => {
+      stopped = true;
       window.clearInterval(poll);
-      socket.close();
+      socket?.close();
     };
   // refresh intentionally uses the current authenticated session.
   // eslint-disable-next-line react-hooks/exhaustive-deps

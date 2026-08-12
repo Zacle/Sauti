@@ -29,6 +29,8 @@ class PlatformLaunchReadinessServiceTest {
                 .withProperty("sauti.auth.public-registration-enabled", "false")
                 .withProperty("sauti.auth.expose-dev-tokens", "false")
                 .withProperty("sauti.cors.allowed-origins", "https://sauti.uk,https://admin.sauti.uk")
+                .withProperty("sauti.websocket.allowed-origin-patterns", "https://sauti.uk")
+                .withProperty("server.forward-headers-strategy", "native")
                 .withProperty("sauti.admin.emails", "support@sauti.uk")
                 .withProperty("sauti.email.reply-to", "support@sauti.uk");
         environment.setActiveProfiles("production");
@@ -70,6 +72,8 @@ class PlatformLaunchReadinessServiceTest {
                 .withProperty("sauti.auth.public-registration-enabled", "false")
                 .withProperty("sauti.auth.expose-dev-tokens", "false")
                 .withProperty("sauti.cors.allowed-origins", "https://sauti.uk,https://admin.sauti.uk")
+                .withProperty("sauti.websocket.allowed-origin-patterns", "https://sauti.uk")
+                .withProperty("server.forward-headers-strategy", "native")
                 .withProperty("sauti.admin.emails", "support@sauti.uk")
                 .withProperty("sauti.email.reply-to", "support@sauti.uk");
         environment.setActiveProfiles("production");

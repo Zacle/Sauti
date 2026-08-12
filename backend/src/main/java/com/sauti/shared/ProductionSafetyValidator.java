@@ -38,7 +38,9 @@ public class ProductionSafetyValidator implements ApplicationRunner {
         requireFalse(errors, "spring.h2.console.enabled");
         requirePrefix(errors, "spring.datasource.url", "jdbc:postgresql:");
         requirePrefix(errors, "sauti.dashboard.base-url", "https://");
+        requireValue(errors, "server.forward-headers-strategy", List.of("native"));
         validateOrigins(errors);
+        validateWebSocketOrigins(errors);
         validateProviderSignatures(errors);
         validatePublicDemo(errors);
 
@@ -48,14 +50,22 @@ public class ProductionSafetyValidator implements ApplicationRunner {
     }
 
     private void validateOrigins(List<String> errors) {
-        var value = property("sauti.cors.allowed-origins");
+        validateExplicitHttpsOrigins(errors, "sauti.cors.allowed-origins");
+    }
+
+    private void validateWebSocketOrigins(List<String> errors) {
+        validateExplicitHttpsOrigins(errors, "sauti.websocket.allowed-origin-patterns");
+    }
+
+    private void validateExplicitHttpsOrigins(List<String> errors, String key) {
+        var value = property(key);
         if (value.isBlank()) {
-            errors.add("sauti.cors.allowed-origins is required");
+            errors.add(key + " is required");
             return;
         }
         Arrays.stream(value.split(",")).map(String::trim).forEach(origin -> {
             if (!origin.startsWith("https://") || origin.contains("*") || origin.contains("localhost")) {
-                errors.add("sauti.cors.allowed-origins must contain only explicit HTTPS origins");
+                errors.add(key + " must contain only explicit HTTPS origins");
             }
         });
     }

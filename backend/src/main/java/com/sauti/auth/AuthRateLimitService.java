@@ -1,6 +1,7 @@
 package com.sauti.auth;
 
 import jakarta.servlet.http.HttpServletRequest;
+import com.sauti.shared.ClientAddressResolver;
 import com.sauti.shared.RedisRateLimiter;
 import java.time.Duration;
 import org.springframework.stereotype.Service;
@@ -8,13 +9,15 @@ import org.springframework.stereotype.Service;
 @Service
 public class AuthRateLimitService {
     private final RedisRateLimiter rateLimiter;
+    private final ClientAddressResolver clientAddresses;
 
-    public AuthRateLimitService(RedisRateLimiter rateLimiter) {
+    public AuthRateLimitService(RedisRateLimiter rateLimiter, ClientAddressResolver clientAddresses) {
         this.rateLimiter = rateLimiter;
+        this.clientAddresses = clientAddresses;
     }
 
     public void checkLogin(HttpServletRequest request) {
-        check("auth:login", clientIp(request), 5, Duration.ofMinutes(1));
+        check("auth:login", clientAddresses.resolve(request), 5, Duration.ofMinutes(1));
     }
 
     public void checkForgotPassword(String email) {
@@ -43,11 +46,4 @@ public class AuthRateLimitService {
         return email == null ? "unknown" : email.toLowerCase().trim();
     }
 
-    private String clientIp(HttpServletRequest request) {
-        var forwardedFor = request.getHeader("X-Forwarded-For");
-        if (forwardedFor != null && !forwardedFor.isBlank()) {
-            return forwardedFor.split(",")[0].trim();
-        }
-        return request.getRemoteAddr() == null ? "unknown" : request.getRemoteAddr();
-    }
 }

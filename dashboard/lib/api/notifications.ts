@@ -12,3 +12,7 @@ export function markNotificationRead(id: string) {
 export function markAllNotificationsRead() {
   return apiRequest<void>("/notifications/read-all", { method: "POST" });
 }
+
+export function createDashboardSocketTicket() {
+  return apiRequest<{ ticket: string; expiresAt: string }>("/dashboard/socket-ticket", { method: "POST" });
+}

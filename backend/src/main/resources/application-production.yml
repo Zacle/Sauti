@@ -1,3 +1,8 @@
+server:
+  # Let Tomcat resolve Forwarded/X-Forwarded-* only through its trusted-proxy
+  # rules. Controllers consume getRemoteAddr() and never trust raw headers.
+  forward-headers-strategy: native
+
 spring:
   h2:
     console:
@@ -16,3 +21,5 @@ sauti:
     mode: ${PROVIDER_MODE:live}
   auth:
     expose-dev-tokens: false
+  websocket:
+    allowed-origin-patterns: ${SAUTI_WEBSOCKET_ALLOWED_ORIGIN_PATTERNS:${SAUTI_CORS_ALLOWED_ORIGINS:}}

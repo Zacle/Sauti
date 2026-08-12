@@ -42,6 +42,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     private final WhatsAppTemplateParameterMapper whatsappTemplateParameters;
     private final CommunicationUsageMeteringService usageMetering;
     private final PilotProvisioningPolicyService provisioningPolicies;
+    private final MpesaCallbackTokenService mpesaCallbackTokens;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final String graphApiBase;
     private final String publicBaseUrl;
@@ -55,6 +56,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
                                             WhatsAppTemplateParameterMapper whatsappTemplateParameters,
                                             CommunicationUsageMeteringService usageMetering,
                                             PilotProvisioningPolicyService provisioningPolicies,
+                                            MpesaCallbackTokenService mpesaCallbackTokens,
                                             @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBase,
                                             @Value("${sauti.telnyx.public-base-url}") String publicBaseUrl) {
         this.integrations = integrations; this.googleSheets = googleSheets; this.payments = payments; this.objectMapper = objectMapper;
@@ -63,6 +65,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
         this.whatsappTemplateParameters = whatsappTemplateParameters;
         this.usageMetering = usageMetering;
         this.provisioningPolicies = provisioningPolicies;
+        this.mpesaCallbackTokens = mpesaCallbackTokens;
         this.graphApiBase = graphApiBase.replaceFirst("/+$", "");
         this.publicBaseUrl = publicBaseUrl.replaceFirst("/+$", "");
     }
@@ -217,7 +220,8 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
                     Map.entry("Timestamp", timestamp), Map.entry("TransactionType", "CustomerPayBillOnline"),
                     Map.entry("Amount", amount.setScale(0, RoundingMode.UNNECESSARY).intValueExact()), Map.entry("PartyA", phone),
                     Map.entry("PartyB", shortcode), Map.entry("PhoneNumber", phone),
-                    Map.entry("CallBackURL", publicBaseUrl + "/webhooks/mpesa/" + runtime.connectionId()),
+                    Map.entry("CallBackURL", publicBaseUrl + "/webhooks/mpesa/" + runtime.connectionId()
+                            + "?token=" + encode(mpesaCallbackTokens.issue(runtime.connectionId()))),
                     Map.entry("AccountReference", reference.substring(0, Math.min(12, reference.length()))),
                     Map.entry("TransactionDesc", description.substring(0, Math.min(13, description.length()))));
             var stk = send(HttpRequest.newBuilder(URI.create(base + "/mpesa/stkpush/v1/processrequest"))

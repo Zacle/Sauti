@@ -12063,3 +12063,45 @@ Expected:
   review and normal CI/CD.
 - Next Phase 4 slice: execute the security and tenant-isolation review, fix
   evidence-backed findings, and feed the completed review into this gate.
+
+### 2026-08-12 - Phase 4 security and tenant-isolation hardening
+
+- Completed the engineering portion of the Phase 4 security review and added
+  `docs/security-tenant-isolation-review.md` as the reviewed boundary,
+  remediation, regression, and operational-acceptance record.
+- Removed direct parsing of client-supplied `X-Forwarded-For` values from auth,
+  demo-request, public-demo, public Web Voice, and public analytics paths.
+  Production now requires Tomcat native trusted-proxy processing and all of
+  those consumers use the resolved servlet remote address.
+- Closed the production wildcard WebSocket-origin default. Startup and the
+  platform launch gate now require explicit HTTPS WebSocket origins in
+  addition to CORS; production Compose permits sockets only from the Sauti
+  customer host, while the admin Caddy host already rejects `/ws/*`.
+- Replaced the reusable API access token in the dashboard WebSocket URL with a
+  signed, purpose-bound, tenant-bound ticket that expires after 60 seconds.
+  Notification polling remains the fallback if ticket issuance or the socket
+  is unavailable.
+- Added an HMAC callback credential bound to the exact M-Pesa connection. New
+  STK callback URLs include it and the public controller rejects missing or
+  mismatched proof before invoking payment fulfillment. In-flight requests
+  created by an older release should expire rather than being trusted without
+  the credential.
+- Added focused regression tests for spoofed forwarded headers, unsafe
+  production proxy/WebSocket configuration, dashboard socket ticket
+  separation, and M-Pesa callback authorization. Existing tenant-scoped API
+  and service coverage was retained as evidence; no launch attestation was
+  automatically checked.
+- Files touched: shared client-address and production-safety configuration,
+  affected public/auth controllers, dashboard socket ticket/backend/frontend,
+  M-Pesa callback signing and tests, launch readiness evidence, production
+  environment examples, Phase 4 documentation, and this handoff.
+- Verification: focused backend security/readiness tests passed; the complete
+  backend suite passed in a clean single-worker Gradle run after terminating an
+  orphaned duplicate verifier; dashboard typecheck, zero-warning lint, and the
+  optimized production build passed with all 63 pages generated;
+  `git diff --check` passed (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.
+- Next Phase 4 slice: finalize the launch-country privacy/legal product
+  controls and disclosure evidence; separately perform the documented live
+  security acceptance after CI/CD deployment.

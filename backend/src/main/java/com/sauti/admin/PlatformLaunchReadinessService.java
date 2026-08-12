@@ -91,6 +91,11 @@ public class PlatformLaunchReadinessService {
         var explicitOrigins = !origins.isBlank() && Arrays.stream(origins.split(","))
                 .map(String::trim).allMatch(value -> value.startsWith("https://")
                         && !value.contains("*") && !value.contains("localhost"));
+        var socketOrigins = property("sauti.websocket.allowed-origin-patterns");
+        var explicitSocketOrigins = !socketOrigins.isBlank() && Arrays.stream(socketOrigins.split(","))
+                .map(String::trim).allMatch(value -> value.startsWith("https://")
+                        && !value.contains("*") && !value.contains("localhost"));
+        var trustedProxyForwarding = "native".equalsIgnoreCase(property("server.forward-headers-strategy"));
         var completedDrill = drills.recent().stream().anyMatch(drill -> "resolved".equals(drill.status())
                 && drill.detectionEmailSentAt() != null && drill.recoveryEmailSentAt() != null);
         var billingReady = "ready".equals(billing.readiness().status());
@@ -103,8 +108,9 @@ public class PlatformLaunchReadinessService {
                 check("dev_tokens_hidden", "Development tokens hidden",
                         !bool("sauti.auth.expose-dev-tokens", true),
                         "Development authentication tokens must never be exposed."),
-                check("https_origins", "Explicit HTTPS origins", explicitOrigins,
-                        "CORS must contain only explicit HTTPS origins."),
+                check("browser_boundaries", "Explicit browser origins and trusted proxy",
+                        explicitOrigins && explicitSocketOrigins && trustedProxyForwarding,
+                        "CORS and WebSocket origins must be explicit HTTPS origins, and trusted-proxy forwarding must be active."),
                 check("platform_admin", "Platform administrator configured",
                         configured("sauti.admin.emails"),
                         "At least one platform administrator email is required."),
