@@ -12221,3 +12221,34 @@ Expected:
   live acceptance run, obtain qualified launch-country/vertical legal review,
   and then approve the limited cohort only when every runtime and reviewed gate
   passes.
+
+### 2026-08-13 - Workspace Settings information architecture and UI
+
+- Replaced the narrow privacy-only Settings presentation with a complete
+  workspace control center grounded in the existing console design system.
+  The responsive page now has clear Workspace, Privacy & data, Developer, and
+  Security sections instead of presenting one isolated form as the whole
+  settings experience.
+- Workspace identity, access role, plan, and current usage are summarized from
+  the authenticated session. Provider connections and billing remain linked to
+  their dedicated working screens rather than being duplicated or represented
+  by non-functional controls.
+- Preserved the existing enforceable conversation/recording retention flow and
+  recording-consent acknowledgement, but reorganized it into clearer rows,
+  deletion-boundary guidance, feedback states, and a focused save action.
+- Exposed the existing tenant-scoped HTTPS webhook API through a real Developer
+  form. It reports whether a signing secret exists without returning the
+  secret, lets owners replace it, and allows disabling delivery by clearing the
+  destination URL.
+- Added practical account-security destinations for password reset, verified
+  support contact, and workspace-deletion requests. Legal identity fields stay
+  read-only because changing them can affect billing, number provisioning, and
+  compliance records.
+- Files touched: Settings presentation/styles, tenant API client, and this
+  handoff. No backend behavior or database schema changed for this slice.
+- Verification: dashboard typecheck, zero-warning lint, and optimized
+  production build passed with all 63 pages generated. Local visual inspection
+  reached the expected authentication boundary; an authenticated rendered pass
+  remains appropriate after deployment or with a supplied local test session.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
