@@ -32,11 +32,17 @@
 .checks small { margin-top: 4px; color: #7893a3; font-size: .68rem; line-height: 1.4; }
 .checks em { color: #819baa; font-size: .65rem; font-style: normal; }
 .manualChecks { display: grid; gap: 0; }
-.manualChecks label { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 18px 22px; border-bottom: 1px solid #123548; cursor: pointer; }
+.manualCheck { padding: 18px 22px; border-bottom: 1px solid #123548; }
+.manualCheck > label:first-child { display: grid; grid-template-columns: auto 1fr; gap: 12px; cursor: pointer; }
 .manualChecks input { width: 18px; height: 18px; accent-color: #35ddd2; }
 .manualChecks strong, .manualChecks small { display: block; }
 .manualChecks strong { font-size: .82rem; font-weight: 600; }
 .manualChecks small { margin-top: 5px; color: #7893a3; font-size: .7rem; line-height: 1.45; }
+.evidenceField { display: grid; gap: 7px; margin: 15px 0 0 30px; cursor: default; }
+.evidenceField > span { color: #b9cad2; font-size: .72rem; }
+.evidenceField input, .evidenceField textarea { width: 100%; padding: 11px 12px; border: 1px solid #21475b; border-radius: 10px; outline: 0; color: #e5f2f4; background: #081f2e; font: inherit; font-size: .75rem; line-height: 1.45; }
+.evidenceField textarea { min-height: 92px; resize: vertical; }
+.evidenceField input:focus, .evidenceField textarea:focus { border-color: #35ddd2; }
 .notes { display: grid; gap: 8px; padding: 20px 22px; }
 .notes > span { color: #b9cad2; font-size: .76rem; }
 .notes textarea { min-height: 105px; resize: vertical; padding: 13px; border: 1px solid #21475b; border-radius: 11px; outline: 0; color: #e5f2f4; background: #081f2e; font: inherit; font-size: .78rem; line-height: 1.5; }

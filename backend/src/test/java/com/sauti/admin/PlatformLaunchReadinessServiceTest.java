@@ -57,7 +57,8 @@ class PlatformLaunchReadinessServiceTest {
         when(billing.readiness()).thenReturn(billingStatus);
         when(reviews.findByIdForUpdate(PlatformLaunchReadiness.ID)).thenReturn(Optional.empty());
         var service = new PlatformLaunchReadinessService(reviews, audit, billing, drills, environment);
-        var command = new PlatformLaunchReadinessService.UpdateReview(true, true, true, true,
+        var command = new PlatformLaunchReadinessService.UpdateReview(true, true, true,
+                "Google approval retained", true, "Production journey retained",
                 true, PlatformLaunchReadinessService.APPROVAL_CONFIRMATION, "Reviewed");
 
         assertThatThrownBy(() -> service.update(command, "admin@sauti.uk"))
@@ -85,7 +86,9 @@ class PlatformLaunchReadinessServiceTest {
         var service = new PlatformLaunchReadinessService(reviews, audit, billing, drills, environment);
 
         var result = service.update(new PlatformLaunchReadinessService.UpdateReview(
-                true, true, true, true, true,
+                true, true, true, "Google approval retained",
+                true, "Voice, Calendar, Sheets, email, and billing passed",
+                true,
                 PlatformLaunchReadinessService.APPROVAL_CONFIRMATION, "All evidence retained"),
                 "admin@sauti.uk");
 
@@ -93,6 +96,25 @@ class PlatformLaunchReadinessServiceTest {
         assertThat(result.manualReview().generalAvailabilityApproved()).isTrue();
         verify(audit).record("admin@sauti.uk", "platform.launch.approved", "platform_launch",
                 PlatformLaunchReadiness.ID, "General availability approved after all launch gates passed");
+    }
+
+    @Test
+    void refusesUnexplainedGoogleOrLiveAcceptanceCheckboxes() {
+        var service = new PlatformLaunchReadinessService(
+                reviews, audit, billing, drills, new MockEnvironment());
+
+        assertThatThrownBy(() -> service.update(new PlatformLaunchReadinessService.UpdateReview(
+                true, true, true, " ", false, "", false, "", "Reviewed"),
+                "admin@sauti.uk"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Google verification evidence");
+
+        assertThatThrownBy(() -> service.update(new PlatformLaunchReadinessService.UpdateReview(
+                true, true, false, "", true, null, false, "", "Reviewed"),
+                "admin@sauti.uk"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Live acceptance evidence");
+        verify(reviews, never()).save(any());
     }
 
     private static ReliabilityDrillService.DrillView completedDrill() {

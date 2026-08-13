@@ -12193,3 +12193,31 @@ Expected:
   sensitive-scope verification, and record approval evidence in platform
   launch readiness. Qualified launch-country/vertical review and live Phase 4
   acceptance also remain external gates.
+
+### 2026-08-13 - Phase 4 evidence-backed final acceptance
+
+- Recorded the maintainer's report that Google has already approved Sauti's
+  production OAuth review and advanced Phase 4 to final acceptance. No Google
+  credentials, approval-email content, or reviewer data were stored.
+- Strengthened the platform launch gate so Google verification requires a
+  non-secret approval reference and controlled live acceptance requires a
+  written evidence reference covering voice, Calendar, Sheets, email, billing,
+  and every enabled messaging channel. The first evidence timestamp is retained
+  separately from later overall review edits.
+- Added Flyway `V71`. It introduces the evidence and timestamp fields and
+  deliberately reopens legacy bare Google/live checkboxes and any earlier GA
+  approval so the stronger evidence requirements cannot be bypassed.
+- Updated the admin launch-readiness UI, API types/client, service validation,
+  entity, tests, Phase 4 roadmap, Google verification record, and this handoff.
+- Verification: focused launch-readiness and application-context migration
+  tests passed; complete backend suite passed (`533` tests); dashboard
+  typecheck, zero-warning lint, and optimized production build passed with all
+  63 pages generated; `git diff --check` passed before this handoff update
+  (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+- Remaining external work: deploy the reviewed revision, record the Google
+  approval reference, complete the production reliability drill and controlled
+  live acceptance run, obtain qualified launch-country/vertical legal review,
+  and then approve the limited cohort only when every runtime and reviewed gate
+  passes.

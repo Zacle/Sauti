@@ -241,8 +241,8 @@ public release without bypassing operational gates.
 1. Obtain qualified launch-country legal review of the implemented privacy,
    recording/AI disclosure, retention, cancellation, refund, and acceptable-use
    controls, then retain that decision as launch evidence.
-2. Complete Google's external production review for Calendar and Sheets and
-   record the decision; the application-side verification controls are complete.
+2. Record the already-approved Google production review reference in the
+   launch-readiness screen after this evidence schema is deployed.
 3. Deploy through CI/CD, complete the production reliability drill and one
    consented live acceptance journey for every enabled channel, then approve a
    limited general-availability cohort from the launch-readiness screen.
@@ -297,3 +297,23 @@ public release without bypassing operational gates.
   `docs/google-oauth-production-verification.md`.
 - The human Google attestation remains unchecked until Google's production
   Verification Center accepts the branding and sensitive scopes.
+
+Google has accepted Sauti's production review according to the maintainer as
+of 2026-08-13. The approval still needs a non-secret reference recorded in the
+deployed platform launch-readiness screen; credentials, tokens, and reviewer
+account details must not be entered there.
+
+### Slice 5: evidence-backed final acceptance (engineering complete)
+
+- Google verification can no longer be represented by an unexplained checkbox.
+  Completing it requires a non-secret approval reference, and the platform
+  records when the approval evidence was first retained.
+- Controlled live acceptance similarly requires a written evidence reference
+  covering production voice, Calendar, Sheets, email, billing, and every
+  enabled messaging channel. Disabled channels must be explicitly identified
+  as not applicable rather than silently skipped.
+- Existing bare attestations and any earlier general-availability approval are
+  reopened by migration so the stronger evidence requirements cannot be
+  bypassed by legacy rows.
+- General-availability approval remains impossible until automated runtime
+  checks, all reviewed decisions, and both evidence records are complete.

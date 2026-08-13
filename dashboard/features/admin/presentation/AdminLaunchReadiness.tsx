@@ -25,6 +25,8 @@ export function AdminLaunchReadiness() {
     liveAcceptanceCompleted: false,
   });
   const [notes, setNotes] = useState("");
+  const [googleReference, setGoogleReference] = useState("");
+  const [liveEvidence, setLiveEvidence] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -43,6 +45,8 @@ export function AdminLaunchReadiness() {
         liveAcceptanceCompleted: result.manualReview.liveAcceptanceCompleted,
       });
       setNotes(result.manualReview.notes ?? "");
+      setGoogleReference(result.manualReview.googleVerificationReference ?? "");
+      setLiveEvidence(result.manualReview.liveAcceptanceEvidence ?? "");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load launch readiness.");
     } finally {
@@ -59,6 +63,8 @@ export function AdminLaunchReadiness() {
     try {
       const result = await updateAdminLaunchReadiness({
         ...form,
+        googleVerificationReference: googleReference,
+        liveAcceptanceEvidence: liveEvidence,
         notes,
         generalAvailabilityApproved: approve,
         confirmation: approve ? "APPROVE GENERAL AVAILABILITY" : "",
@@ -72,8 +78,9 @@ export function AdminLaunchReadiness() {
     }
   }
 
+  const evidenceComplete = googleReference.trim().length > 0 && liveEvidence.trim().length > 0;
   const canApprove = data != null && data.automatedBlockingChecks === 0 &&
-    Object.values(form).every(Boolean) && !data.manualReview.generalAvailabilityApproved;
+    Object.values(form).every(Boolean) && evidenceComplete && !data.manualReview.generalAvailabilityApproved;
 
   return <div className={styles.page}>
     <header className={styles.heading}>
@@ -103,10 +110,22 @@ export function AdminLaunchReadiness() {
 
       <section className={styles.panel}>
         <header><div><span>HUMAN ATTESTATIONS</span><h2>Reviewed launch decisions</h2></div><p>Check a decision only after retaining its supporting evidence. Every save records the administrator and time.</p></header>
-        <div className={styles.manualChecks}>{manualChecks.map((check) => <label key={check.key}>
-          <input checked={form[check.key]} onChange={(event) => setForm((current) => ({ ...current, [check.key]: event.target.checked }))} type="checkbox"/>
-          <span><strong>{check.label}</strong><small>{check.detail}</small></span>
-        </label>)}</div>
+        <div className={styles.manualChecks}>{manualChecks.map((check) => <div className={styles.manualCheck} key={check.key}>
+          <label>
+            <input checked={form[check.key]} onChange={(event) => setForm((current) => ({ ...current, [check.key]: event.target.checked }))} type="checkbox"/>
+            <span><strong>{check.label}</strong><small>{check.detail}</small></span>
+          </label>
+          {check.key === "googleVerificationCompleted" && form.googleVerificationCompleted && <label className={styles.evidenceField}>
+            <span>Approval evidence reference</span>
+            <input maxLength={500} onChange={(event) => setGoogleReference(event.target.value)} placeholder="Example: Google approval email date and Cloud project name (no secrets)" required value={googleReference}/>
+            {data.manualReview.googleVerifiedAt && <small>Recorded {when(data.manualReview.googleVerifiedAt)}</small>}
+          </label>}
+          {check.key === "liveAcceptanceCompleted" && form.liveAcceptanceCompleted && <label className={styles.evidenceField}>
+            <span>Live acceptance evidence</span>
+            <textarea maxLength={2000} onChange={(event) => setLiveEvidence(event.target.value)} placeholder="Record date and evidence location for voice, Calendar, Sheets, email, billing, and every enabled messaging channel. Mark disabled channels not applicable." required value={liveEvidence}/>
+            {data.manualReview.liveAcceptedAt && <small>Recorded {when(data.manualReview.liveAcceptedAt)}</small>}
+          </label>}
+        </div>)}</div>
         <label className={styles.notes}><span>Evidence notes</span><textarea maxLength={2000} onChange={(event) => setNotes(event.target.value)} placeholder="Reference review date, evidence location, remaining limitations, and launch countries." value={notes}/></label>
         <div className={styles.actions}>
           <button disabled={saving} onClick={() => void save(false)} type="button"><Save size={16}/>{saving ? "Saving…" : data.manualReview.generalAvailabilityApproved ? "Reopen and save review" : "Save review"}</button>

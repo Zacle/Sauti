@@ -39,10 +39,12 @@ public class PlatformLaunchReadinessService {
     @Transactional
     public Readiness update(UpdateReview command, String actor) {
         var now = OffsetDateTime.now(ZoneOffset.UTC);
+        validateEvidence(command);
         var review = reviews.findByIdForUpdate(PlatformLaunchReadiness.ID)
                 .orElseGet(() -> new PlatformLaunchReadiness(actor, now));
         review.review(command.securityReviewCompleted(), command.privacyLegalReviewCompleted(),
-                command.googleVerificationCompleted(), command.liveAcceptanceCompleted(),
+                command.googleVerificationCompleted(), command.googleVerificationReference(),
+                command.liveAcceptanceCompleted(), command.liveAcceptanceEvidence(),
                 command.notes(), actor, now);
         var checks = automatedChecks();
         if (command.generalAvailabilityApproved()) {
@@ -69,10 +71,12 @@ public class PlatformLaunchReadinessService {
     }
 
     private Readiness view(PlatformLaunchReadiness review, List<Check> checks) {
-        var manual = review == null ? new ManualReview(false, false, false, false,
-                false, null, null, null) : new ManualReview(
+        var manual = review == null ? new ManualReview(false, false, false, null, null,
+                false, null, null, false, null, null, null) : new ManualReview(
                 review.isSecurityReviewCompleted(), review.isPrivacyLegalReviewCompleted(),
-                review.isGoogleVerificationCompleted(), review.isLiveAcceptanceCompleted(),
+                googleEvidenceComplete(review), review.getGoogleVerificationReference(),
+                review.getGoogleVerifiedAt(), liveEvidenceComplete(review),
+                review.getLiveAcceptanceEvidence(), review.getLiveAcceptedAt(),
                 review.isGeneralAvailabilityApproved(), review.getNotes(),
                 review.getReviewedBy(), review.getReviewedAt());
         var automatedBlocking = checks.stream().filter(check -> !check.passed()).count();
@@ -125,7 +129,32 @@ public class PlatformLaunchReadinessService {
 
     private boolean manualComplete(PlatformLaunchReadiness review) {
         return review.isSecurityReviewCompleted() && review.isPrivacyLegalReviewCompleted()
-                && review.isGoogleVerificationCompleted() && review.isLiveAcceptanceCompleted();
+                && googleEvidenceComplete(review) && liveEvidenceComplete(review);
+    }
+
+    private boolean googleEvidenceComplete(PlatformLaunchReadiness review) {
+        return review.isGoogleVerificationCompleted()
+                && review.getGoogleVerificationReference() != null
+                && !review.getGoogleVerificationReference().isBlank();
+    }
+
+    private boolean liveEvidenceComplete(PlatformLaunchReadiness review) {
+        return review.isLiveAcceptanceCompleted()
+                && review.getLiveAcceptanceEvidence() != null
+                && !review.getLiveAcceptanceEvidence().isBlank();
+    }
+
+    private void validateEvidence(UpdateReview command) {
+        if (command.googleVerificationCompleted()
+                && (command.googleVerificationReference() == null
+                || command.googleVerificationReference().isBlank())) {
+            throw new IllegalArgumentException("Google verification evidence reference is required");
+        }
+        if (command.liveAcceptanceCompleted()
+                && (command.liveAcceptanceEvidence() == null
+                || command.liveAcceptanceEvidence().isBlank())) {
+            throw new IllegalArgumentException("Live acceptance evidence is required");
+        }
     }
 
     private Check check(String key, String label, boolean passed, String action) {
@@ -146,7 +175,9 @@ public class PlatformLaunchReadinessService {
     public record UpdateReview(boolean securityReviewCompleted,
                                boolean privacyLegalReviewCompleted,
                                boolean googleVerificationCompleted,
+                               String googleVerificationReference,
                                boolean liveAcceptanceCompleted,
+                               String liveAcceptanceEvidence,
                                boolean generalAvailabilityApproved,
                                String confirmation, String notes) { }
     public record Readiness(String status, long automatedBlockingChecks, long manualBlockingChecks,
@@ -154,7 +185,10 @@ public class PlatformLaunchReadinessService {
                             OffsetDateTime generatedAt) { }
     public record Check(String key, String label, boolean passed, String status, String action) { }
     public record ManualReview(boolean securityReviewCompleted, boolean privacyLegalReviewCompleted,
-                               boolean googleVerificationCompleted, boolean liveAcceptanceCompleted,
+                               boolean googleVerificationCompleted, String googleVerificationReference,
+                               OffsetDateTime googleVerifiedAt,
+                               boolean liveAcceptanceCompleted, String liveAcceptanceEvidence,
+                               OffsetDateTime liveAcceptedAt,
                                boolean generalAvailabilityApproved, String notes,
                                String reviewedBy, OffsetDateTime reviewedAt) { }
 }

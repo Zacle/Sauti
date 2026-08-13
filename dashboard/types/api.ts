@@ -109,7 +109,11 @@ export type AdminLaunchReadiness = {
     securityReviewCompleted: boolean;
     privacyLegalReviewCompleted: boolean;
     googleVerificationCompleted: boolean;
+    googleVerificationReference: string | null;
+    googleVerifiedAt: string | null;
     liveAcceptanceCompleted: boolean;
+    liveAcceptanceEvidence: string | null;
+    liveAcceptedAt: string | null;
     generalAvailabilityApproved: boolean;
     notes: string | null;
     reviewedBy: string | null;

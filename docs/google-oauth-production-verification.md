@@ -193,17 +193,23 @@ Reviewer credentials must be delivered only through Google's approved private
 submission channel. The account must not require phone verification, payment,
 or an invitation step that the reviewer cannot complete.
 
-## External acceptance still required
+## Approval status and retained evidence
+
+The maintainer reported on 2026-08-13 that Google has approved the production
+review. Do not store the approval email body, reviewer credentials, OAuth
+secrets, or tokens in the repository. After the evidence migration is deployed,
+a platform administrator must enter a short non-secret reference (for example,
+the approval date and Cloud project name) in `/admin/launch-readiness`.
 
 The engineering slice is complete when automated tests pass. The platform
-Google verification attestation remains unchecked until:
+Google verification attestation is complete only when:
 
 - the three production project/client boundaries and domain ownership are
   confirmed;
 - the deployed flows pass the synthetic Calendar and Sheets journey;
 - AI provider retention/training settings are confirmed for the exact deployed
   voice/model path;
-- Google accepts branding and every sensitive scope in the production
+- Google has accepted branding and every sensitive scope in the production
   Verification Center; and
-- a platform administrator records non-sensitive evidence in
+- a platform administrator has recorded non-sensitive evidence in
   `/admin/launch-readiness`.

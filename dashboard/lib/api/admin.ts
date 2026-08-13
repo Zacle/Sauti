@@ -17,7 +17,9 @@ export function updateAdminLaunchReadiness(review: {
   securityReviewCompleted: boolean;
   privacyLegalReviewCompleted: boolean;
   googleVerificationCompleted: boolean;
+  googleVerificationReference: string;
   liveAcceptanceCompleted: boolean;
+  liveAcceptanceEvidence: string;
   generalAvailabilityApproved: boolean;
   confirmation: string;
   notes: string;
