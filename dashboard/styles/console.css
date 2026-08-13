@@ -495,6 +495,11 @@
 .billing-console-shell .console-sidebar-footer { order: 0; }
 .billing-console-shell .console-content { width: min(1580px, 100%); padding-top: 20px; }
 
+.settings-console-shell .workspace-switcher { order: 0; margin: 20px 0 24px; }
+.settings-console-shell .console-nav { order: 0; }
+.settings-console-shell .console-sidebar-footer { order: 0; }
+.settings-console-shell .console-content { width: min(1580px, 100%); padding-top: 20px; }
+
 .dashboard-page-head {
   display: flex;
   align-items: flex-start;

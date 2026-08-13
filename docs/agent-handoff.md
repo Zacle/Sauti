@@ -12252,3 +12252,23 @@ Expected:
   remains appropriate after deployment or with a supplied local test session.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and the normal CI/CD path.
+
+### 2026-08-13 - Settings console theme correction
+
+- Corrected the authenticated Settings route after production-style visual
+  evidence showed dark Settings panels rendered inside the legacy light console
+  shell, leaving the page title nearly invisible and the screen visually split.
+- Added `/settings` to the shared dark workspace-shell route set and gave it a
+  dedicated route modifier with the same navigation order, content width, and
+  spacing conventions as Billing and Integrations. Settings now inherits the
+  dark top bar, page background, sidebar treatment, search field, and action
+  controls consistently instead of duplicating those colors in feature CSS.
+- Files touched: console shell routing, global console styles, and this handoff.
+- Verification: dashboard typecheck, zero-warning lint, and optimized
+  production build passed with all 63 pages generated. The supplied
+  authenticated screenshot established the mismatched route-shell state; local
+  authenticated recapture was not available without transmitting or inventing
+  account credentials, so final rendered confirmation remains a post-deploy
+  visual check.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
