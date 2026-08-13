@@ -3,6 +3,7 @@ package com.sauti.api;
 import com.sauti.auth.AuthenticatedUser;
 import com.sauti.integration.IntegrationCatalog;
 import com.sauti.integration.IntegrationService;
+import com.sauti.integration.IntegrationDisconnectionService;
 import com.sauti.integration.IntegrationService.BindingRequest;
 import com.sauti.integration.IntegrationService.BindingResponse;
 import com.sauti.integration.IntegrationService.ConnectionRequest;
@@ -41,12 +42,14 @@ public class IntegrationController {
     private final String dashboardBaseUrl;
     private final GoogleCalendarIntegrationService googleCalendar;
     private final GoogleSheetsApiClient googleSheets;
+    private final IntegrationDisconnectionService disconnections;
 
     public IntegrationController(IntegrationCatalog catalog, IntegrationService service,
                                  ProviderOAuthService oauth,
                                  WhatsAppEmbeddedSignupService whatsappSignup,
                                  GoogleCalendarIntegrationService googleCalendar,
                                  GoogleSheetsApiClient googleSheets,
+                                 IntegrationDisconnectionService disconnections,
                                  @Value("${sauti.dashboard.base-url}") String dashboardBaseUrl) {
         this.catalog = catalog;
         this.service = service;
@@ -54,6 +57,7 @@ public class IntegrationController {
         this.whatsappSignup = whatsappSignup;
         this.googleCalendar = googleCalendar;
         this.googleSheets = googleSheets;
+        this.disconnections = disconnections;
         this.dashboardBaseUrl = dashboardBaseUrl;
     }
 
@@ -87,9 +91,11 @@ public class IntegrationController {
     }
 
     @DeleteMapping("/integrations/connections/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    void disconnect(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id) {
-        service.disconnect(user.tenantId(), id);
+    IntegrationDisconnectionService.DisconnectResult disconnect(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @PathVariable UUID id
+    ) {
+        return disconnections.disconnect(user.tenantId(), id);
     }
 
     @PostMapping("/integrations/connections/{id}/test")

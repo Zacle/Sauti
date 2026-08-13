@@ -241,8 +241,8 @@ public release without bypassing operational gates.
 1. Obtain qualified launch-country legal review of the implemented privacy,
    recording/AI disclosure, retention, cancellation, refund, and acceptable-use
    controls, then retain that decision as launch evidence.
-2. Complete Google OAuth verification for the production Calendar and Sheets
-   scopes and record the decision.
+2. Complete Google's external production review for Calendar and Sheets and
+   record the decision; the application-side verification controls are complete.
 3. Deploy through CI/CD, complete the production reliability drill and one
    consented live acceptance journey for every enabled channel, then approve a
    limited general-availability cohort from the launch-readiness screen.
@@ -279,3 +279,21 @@ public release without bypassing operational gates.
 - The evidence and unresolved legal decisions are recorded in
   `docs/privacy-legal-review.md`. Engineering completion does not satisfy the
   human legal attestation; qualified launch-country review remains required.
+
+### Slice 4: Google OAuth verification readiness (engineering complete)
+
+- Calendar and Sheets retain separate contextual authorization flows and exact
+  least-privilege scope sets. OAuth callbacks now verify the scopes actually
+  granted by Google before storing a token or enabling an integration.
+- The integration UI gives a prominent Google-data disclosure before leaving
+  Sauti. Disconnect removes local encrypted tokens and reports whether optional
+  provider revocation was confirmed.
+- Google project-wide revocation is disabled by default because a shared Cloud
+  project can also invalidate Google sign-in or another integration. Calendar
+  now supports its own client credentials; production should isolate sign-in,
+  Calendar, and Sheets projects before enabling automatic revocation.
+- Current Cloud configuration, scope justifications, reviewer navigation,
+  video requirements, and external acceptance are documented in
+  `docs/google-oauth-production-verification.md`.
+- The human Google attestation remains unchecked until Google's production
+  Verification Center accepts the branding and sensitive scopes.

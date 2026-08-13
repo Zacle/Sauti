@@ -12153,3 +12153,43 @@ Expected:
   verticals; Google OAuth verification; then CI/CD deployment, the documented
   privacy/security/reliability and consented channel acceptance exercises, and
   a limited-cohort launch approval through the platform gate.
+
+### 2026-08-13 - Phase 4 Google OAuth production-verification readiness
+
+- Completed the engineering and reviewer-package portion of Google Calendar
+  and Google Sheets production verification. Added
+  `docs/google-oauth-production-verification.md` with the exact scopes,
+  minimum-scope rationale, production project/client layout, copy-ready scope
+  justifications, Cloud Console submission sequence, recording script, and
+  external acceptance criteria.
+- Added an in-product pre-authorization disclosure for Google Calendar and
+  Sheets. It identifies the requested data and purpose, workspace-scoped
+  encrypted token handling, disconnection behavior, and links to the Sauti
+  Privacy Policy and Terms before the browser leaves for Google consent.
+- Calendar and Sheets callbacks now verify that Google actually granted every
+  required scope before persisting credentials or enabling the connection.
+  Calendar's HTTP client also has bounded connection and request timeouts, and
+  callback failures return to the integration screen instead of surfacing an
+  unhandled server response.
+- Added tenant-scoped Google grant deletion and optional provider revocation on
+  disconnect. Because Google revocation invalidates all grants in the same
+  Cloud project, provider revocation defaults off until Sign-in, Calendar, and
+  Sheets have isolated production projects; local encrypted token deletion and
+  tool disablement always occur. Added Calendar-specific OAuth credentials
+  with a backward-compatible fallback and documented the safe enablement flag.
+- Files touched: Google Calendar/Sheets OAuth services and callback/controller,
+  integration disconnection service/revoker/API/client/UI/styles, focused scope
+  and disconnect tests, application and environment examples, Google
+  verification and production-phase documentation, and this handoff.
+- Verification: complete backend suite passed (`532` tests, zero failures or
+  errors); dashboard typecheck, zero-warning lint, and optimized production
+  build passed with all 63 pages generated; `git diff --check` passed
+  (line-ending notices only).
+- Deployment status: not deployed. All changes remain uncommitted for
+  maintainer review and the normal CI/CD path.
+- Remaining external work: create or confirm the isolated production Google
+  projects/clients, install their secrets through the deployment pipeline,
+  deploy the reviewed revision, run the synthetic end-to-end recording, submit
+  sensitive-scope verification, and record approval evidence in platform
+  launch readiness. Qualified launch-country/vertical review and live Phase 4
+  acceptance also remain external gates.

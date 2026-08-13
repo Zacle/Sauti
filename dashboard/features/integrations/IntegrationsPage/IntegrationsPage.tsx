@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -124,6 +125,7 @@ export function IntegrationsPage() {
   const [editing, setEditing] = useState<IntegrationCatalogEntry | null>(null);
   const [whatsappEditing, setWhatsappEditing] = useState(false);
   const [calendarEditing, setCalendarEditing] = useState(false);
+  const [googleAuthorizing, setGoogleAuthorizing] = useState<IntegrationCatalogEntry | null>(null);
   const [disconnecting, setDisconnecting] = useState<IntegrationConnection | null>(null);
   const [busy, setBusy] = useState("");
   const [loading, setLoading] = useState(true);
@@ -208,7 +210,8 @@ export function IntegrationsPage() {
         return;
       }
       if (entry.provider === "google_calendar" || oauthProviders.includes(entry.provider)) {
-        await startOAuth(entry);
+        if (entry.provider.startsWith("google_")) setGoogleAuthorizing(entry);
+        else await startOAuth(entry);
         return;
       }
       setEditing(entry);
@@ -252,7 +255,14 @@ export function IntegrationsPage() {
 
   async function disconnect(connection: IntegrationConnection): Promise<boolean> {
     setBusy(connection.provider);
-    try { await deleteIntegrationConnection(connection.id); await refresh(agentId); return true; }
+    try {
+      const result = await deleteIntegrationConnection(connection.id);
+      await refresh(agentId);
+      if (result.providerRevocationAttempted && !result.providerRevocationConfirmed) {
+        setError(`${connection.displayName} was disconnected from Sauti, but Google did not confirm revocation. Remove Sauti from your Google Account permissions to finish revoking access.`);
+      }
+      return true;
+    }
     catch (caught) { showError(caught); return false; } finally { setBusy(""); }
   }
 
@@ -340,7 +350,7 @@ export function IntegrationsPage() {
                   {entry.provider === "google_calendar" && !connection && <button
                     className={styles.googleConnect}
                     disabled={!entry.authorizationConfigured || busy === entry.provider || !agentId}
-                    onClick={() => void startOAuth(entry)}
+                    onClick={() => setGoogleAuthorizing(entry)}
                     type="button"
                   >
                     <Image alt="" height={17} src={logos.google_calendar} width={17} />
@@ -354,7 +364,8 @@ export function IntegrationsPage() {
                     if (entry.provider === "whatsapp") {
                       setWhatsappEditing(true);
                     } else if (oauthProviders.includes(entry.provider) && !connection) {
-                      void startOAuth(entry);
+                      if (entry.provider.startsWith("google_")) setGoogleAuthorizing(entry);
+                      else void startOAuth(entry);
                     } else {
                       setEditing(entry);
                     }
@@ -384,6 +395,12 @@ export function IntegrationsPage() {
       />}
       {calendarEditing && <GoogleCalendarDialog agentId={agentId} onClose={() => setCalendarEditing(false)}
         onSaved={async () => { setCalendarEditing(false); await refresh(agentId); }} />}
+      {googleAuthorizing && <GoogleAuthorizationDialog
+        busy={busy === googleAuthorizing.provider}
+        entry={googleAuthorizing}
+        onClose={() => setGoogleAuthorizing(null)}
+        onContinue={async () => { await startOAuth(googleAuthorizing); }}
+      />}
       {disconnecting && <DisconnectDialog
         connection={disconnecting}
         busy={busy === disconnecting.provider}
@@ -392,6 +409,33 @@ export function IntegrationsPage() {
       />}
     </div>
   );
+}
+
+function GoogleAuthorizationDialog({ entry, busy, onClose, onContinue }: {
+  entry: IntegrationCatalogEntry;
+  busy: boolean;
+  onClose: () => void;
+  onContinue: () => Promise<void>;
+}) {
+  const calendar = entry.provider === "google_calendar";
+  return <div className={styles.backdrop} onMouseDown={onClose}>
+    <section className={`${styles.dialog} ${styles.googleAuthorizationDialog}`} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="google-authorization-title">
+      <header><div><span className={styles.dialogEyebrow}>Before connecting</span><h2 id="google-authorization-title">Connect {entry.name}</h2><p>Google will ask you to approve only the access needed for this integration.</p></div><button aria-label="Close Google authorization dialog" type="button" onClick={onClose}><X size={18} /></button></header>
+      <div className={styles.googleDataNotice}>
+        <ShieldCheck size={20} />
+        <div><h3>{calendar ? "Calendar events and availability" : "Spreadsheet content"}</h3><p>{calendar
+          ? "Sauti reads busy time ranges and creates, updates, or cancels booking events in the calendar you select. It does not request calendar sharing or full-calendar administration."
+          : "Sauti can read and update spreadsheets available to the connected Google account. In Sauti, access is limited to the spreadsheet and ranges you configure for the agent."}</p></div>
+      </div>
+      <ul className={styles.googleAuthorizationList}>
+        <li>OAuth tokens are encrypted and scoped to this workspace.</li>
+        <li>Google data is used only for the integration features you enable, not advertising or generalized model training.</li>
+        <li>You can disconnect later; Sauti deletes its token copy and asks Google to revoke the grant.</li>
+      </ul>
+      <p className={styles.googlePolicyLinks}>See the <Link href="/privacy" target="_blank">Privacy Policy</Link> and <Link href="/terms" target="_blank">Terms</Link>.</p>
+      <footer><button type="button" onClick={onClose}>Cancel</button><button className={styles.primary} disabled={busy} type="button" onClick={() => void onContinue()}>{busy && <LoaderCircle className="spin" size={15} />}{busy ? "Opening Google..." : "Continue to Google"}</button></footer>
+    </section>
+  </div>;
 }
 
 function GoogleCalendarDialog({ agentId, onClose, onSaved }: {
@@ -481,7 +525,7 @@ function DisconnectDialog({ connection, busy, onClose, onConfirm }: {
       <div className={styles.disconnectCopy}>
         <span className={styles.dialogEyebrow}>Connection settings</span>
         <h2 id="disconnect-title">Disconnect {connection.displayName}?</h2>
-    <p id="disconnect-description">This removes the workspace connection and turns off {impact.resource} for agents using it.</p>
+    <p id="disconnect-description">This removes the workspace connection and turns off {impact.resource} for agents using it.{connection.provider.startsWith("google_") ? " Sauti deletes its encrypted token copy. You can remove all Sauti access from Google Account permissions." : ""}</p>
     <div className={styles.impactList}>
      <div><Check size={15} /><span>{impact.intact}</span></div>
      <div><CircleAlert size={15} /><span>{impact.stops}</span></div>

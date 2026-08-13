@@ -1,6 +1,12 @@
 # Google API verification package
 
-Prepared: 2026-08-03
+Prepared: 2026-08-03. Engineering status refreshed: 2026-08-13.
+
+The authoritative current production checklist is
+[`google-oauth-production-verification.md`](google-oauth-production-verification.md).
+This older reviewer package remains useful for its detailed synthetic demo
+scenario, but any conflicting scope, provider, recording, or Cloud-project
+statement is superseded by the current checklist.
 
 This document is a reviewer-facing draft based on the repository implementation. It is not a substitute for confirming the enabled scopes, provider contracts, account tier, retention settings, and test credentials in the deployed staging environment.
 

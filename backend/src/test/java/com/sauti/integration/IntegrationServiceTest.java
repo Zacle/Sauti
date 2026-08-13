@@ -25,6 +25,31 @@ import org.junit.jupiter.api.Test;
 
 class IntegrationServiceTest {
     @Test
+    void prefersGoogleRefreshTokenForGrantRevocation() {
+        var objectMapper = new ObjectMapper();
+        var encryption = new CredentialEncryption("dev-tool-encryption-key-32-bytes");
+        var connections = mock(IntegrationConnectionRepository.class);
+        var tenantId = UUID.randomUUID();
+        var connection = new IntegrationConnection(
+                tenantId, "google_sheets", "Google Sheets",
+                encryption.encrypt("{\"accessToken\":\"access\",\"refreshToken\":\"refresh\"}"), "{}"
+        );
+        when(connections.findByIdAndTenantId(connection.getId(), tenantId)).thenReturn(Optional.of(connection));
+        var service = new IntegrationService(
+                objectMapper, encryption, new IntegrationCatalog(), connections,
+                mock(AgentIntegrationRepository.class), mock(IntegrationDeliveryRepository.class),
+                mock(AgentRepository.class), mock(AgentToolRepository.class),
+                mock(CalendarCredentialRepository.class), mock(AgentVariableService.class),
+                mock(WebhookDestinationValidator.class)
+        );
+
+        var grant = service.googleGrantForDisconnect(tenantId, connection.getId());
+
+        assertThat(grant.provider()).isEqualTo("google_sheets");
+        assertThat(grant.token()).isEqualTo("refresh");
+    }
+
+    @Test
     void enablesGoogleSheetsOnlyWithAValidatedAgentScopedRange() {
         var objectMapper = new ObjectMapper();
         var encryption = new CredentialEncryption("dev-tool-encryption-key-32-bytes");

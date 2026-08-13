@@ -131,8 +131,14 @@ export function initializeGoogleSheets(agentId: string) {
   );
 }
 
+export type IntegrationDisconnectResult = {
+  googleGrantRemovedLocally: boolean;
+  providerRevocationAttempted: boolean;
+  providerRevocationConfirmed: boolean;
+};
+
 export function deleteIntegrationConnection(id: string) {
-  return apiRequest<void>(`/integrations/connections/${id}`, { method: "DELETE" });
+  return apiRequest<IntegrationDisconnectResult>(`/integrations/connections/${id}`, { method: "DELETE" });
 }
 
 export function getAgentIntegrations(agentId: string) {

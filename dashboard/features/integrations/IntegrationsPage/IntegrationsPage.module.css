@@ -77,6 +77,16 @@
 .formSuccess { display:flex; align-items:flex-start; gap:8px; margin-top:14px; padding:11px 12px; border-radius:9px; color:#08766f; background:#effbf8; font-size:.72rem; line-height:1.45; }
 .formSuccess svg { flex:none; margin-top:1px; }
 .disconnectDialog { width: min(500px, 100%); }
+.googleAuthorizationDialog { width:min(540px,100%); }
+.googleAuthorizationDialog header { margin-bottom:18px; }
+.googleAuthorizationDialog header > div { display:grid; gap:5px; }
+.googleAuthorizationDialog header p { margin:0; }
+.googleDataNotice { display:grid; grid-template-columns:auto minmax(0,1fr); gap:12px; padding:16px; border:1px solid #cce7e3; border-radius:14px; background:#f3fbf9; }
+.googleDataNotice > svg { color:#078d86; }
+.googleDataNotice h3 { margin:0 0 4px; color:#17342f; font-size:.85rem; font-weight:650; }
+.googleDataNotice p,.googlePolicyLinks { margin:0; color:#64748b; font-size:.74rem; font-weight:400; line-height:1.55; }
+.googleAuthorizationList { display:grid; gap:9px; margin:16px 0; padding-left:20px; color:#536579; font-size:.74rem; line-height:1.5; }
+.googlePolicyLinks a { color:#087f79; }
 .disconnectDialog > header { align-items: center; margin-bottom: 20px; }
 .dialogIcon { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(255, 126, 102, .25); border-radius: 13px; color: #ff927b; background: rgba(130, 39, 26, .2); }
 .disconnectCopy { display: grid; gap: 8px; }

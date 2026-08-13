@@ -71,6 +71,19 @@ public class IntegrationService {
         return requireConnection(tenantId, id).getProvider();
     }
 
+    @Transactional(readOnly = true)
+    public GoogleGrant googleGrantForDisconnect(UUID tenantId, UUID id) {
+        var connection = requireConnection(tenantId, id);
+        if (!java.util.Set.of("google_calendar", "google_sheets").contains(connection.getProvider())) {
+            return null;
+        }
+        var credentials = decrypt(connection);
+        var refreshToken = String.valueOf(credentials.getOrDefault("refreshToken", "")).trim();
+        var accessToken = String.valueOf(credentials.getOrDefault("accessToken", "")).trim();
+        var token = blank(refreshToken) ? accessToken : refreshToken;
+        return blank(token) ? null : new GoogleGrant(connection.getProvider(), token);
+    }
+
     @Transactional
     public ConnectionResponse create(UUID tenantId, ConnectionRequest request) {
         var entry = catalog.require(normalize(request.provider()));
@@ -283,6 +296,8 @@ public class IntegrationService {
     }
 
     Map<String, Object> credentials(IntegrationConnection connection) { return decrypt(connection); }
+
+    public record GoogleGrant(String provider, String token) {}
 
     @Transactional(readOnly = true)
     public RuntimeConfiguration runtime(UUID tenantId, UUID agentId, String provider) {

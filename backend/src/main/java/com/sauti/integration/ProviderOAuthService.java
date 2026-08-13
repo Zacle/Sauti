@@ -102,6 +102,9 @@ public class ProviderOAuthService {
             if (node.path("access_token").asText("").isBlank()) {
                 throw new IllegalArgumentException("Provider authorization returned no access token");
             }
+            if (provider.google()) {
+                requireGrantedScopes(provider.scope(), node.path("scope").asText(""));
+            }
             var credentials = new LinkedHashMap<String, Object>();
             credentials.put("accessToken", node.path("access_token").asText());
             credentials.put("refreshToken", node.path("refresh_token").asText(""));
@@ -211,6 +214,18 @@ public class ProviderOAuthService {
         if (provider == null) throw new IllegalArgumentException("Provider does not support OAuth");
         if (!configured(providerName)) throw new IllegalStateException(providerName + " OAuth is not configured");
         return provider;
+    }
+
+    static void requireGrantedScopes(String requiredScopes, String grantedScopes) {
+        var required = java.util.Set.of(requiredScopes.trim().split("\\s+"));
+        var granted = grantedScopes == null || grantedScopes.isBlank()
+                ? java.util.Set.<String>of()
+                : java.util.Set.of(grantedScopes.trim().split("\\s+"));
+        if (!granted.containsAll(required)) {
+            throw new IllegalArgumentException(
+                    "Google authorization did not grant every required permission; reconnect and approve the requested permission"
+            );
+        }
     }
 
     private String state(String provider, UUID tenantId, UUID agentId) {

@@ -239,8 +239,8 @@ sauti:
   calendar:
     provider: ${SAUTI_CALENDAR_PROVIDER:local}
     google:
-      client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
-      client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}
+      client-id: ${GOOGLE_CALENDAR_OAUTH_CLIENT_ID:${GOOGLE_OAUTH_CLIENT_ID:}}
+      client-secret: ${GOOGLE_CALENDAR_OAUTH_CLIENT_SECRET:${GOOGLE_OAUTH_CLIENT_SECRET:}}
       redirect-uri: ${GOOGLE_CALENDAR_REDIRECT_URI:http://localhost:8082/api/v1/integrations/google-calendar/callback}
     webhook:
       url: ${SAUTI_CALENDAR_WEBHOOK_URL:http://localhost:8090/calendar-events}
@@ -257,6 +257,9 @@ sauti:
   integrations:
     worker-delay-ms: ${SAUTI_INTEGRATIONS_WORKER_DELAY_MS:5000}
     delivery-delay-ms: ${SAUTI_INTEGRATIONS_DELIVERY_DELAY_MS:5000}
+    # Google revocation is project-wide. Enable only when integration OAuth
+    # clients are isolated from Google sign-in and from each other.
+    google-revoke-on-disconnect: ${GOOGLE_REVOKE_ON_DISCONNECT:false}
     whatsapp:
       app-id: ${WHATSAPP_EMBEDDED_SIGNUP_APP_ID:}
       app-secret: ${WHATSAPP_EMBEDDED_SIGNUP_APP_SECRET:${WHATSAPP_APP_SECRET:}}

@@ -54,10 +54,14 @@ public class GoogleCalendarIntegrationController {
         if (error != null || code == null || state == null) {
             return new RedirectView(dashboardBaseUrl + "/dashboard/integrations?calendar=cancelled");
         }
-        var agentId = service.complete(code, state);
-        return new RedirectView(
-                dashboardBaseUrl + "/dashboard/integrations?agentId=" + agentId + "&calendar=connected"
-        );
+        try {
+            var agentId = service.complete(code, state);
+            return new RedirectView(
+                    dashboardBaseUrl + "/dashboard/integrations?agentId=" + agentId + "&calendar=connected"
+            );
+        } catch (RuntimeException exception) {
+            return new RedirectView(dashboardBaseUrl + "/dashboard/integrations?calendar=failed");
+        }
     }
 
     @PutMapping("/selection")

@@ -17,6 +17,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.Set;
@@ -31,9 +32,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class GoogleCalendarIntegrationService {
     private static final String AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
     private static final String TOKEN_URL = "https://oauth2.googleapis.com/token";
+    private static final Set<String> REQUIRED_SCOPES = Set.of(
+            "https://www.googleapis.com/auth/calendar.events",
+            "https://www.googleapis.com/auth/calendar.freebusy"
+    );
     private static final long STATE_TTL_SECONDS = 600;
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
     private final ObjectMapper objectMapper;
     private final AgentRepository agentRepository;
     private final TenantRepository tenantRepository;
@@ -103,6 +110,7 @@ public class GoogleCalendarIntegrationService {
         var agent = agentRepository.findByIdAndTenantId(context.agentId(), context.tenantId())
                 .orElseThrow(() -> new EntityNotFoundException("Agent not found"));
         var token = exchange(code);
+        requireGrantedScopes(token.scope());
         var existing = credentialRepository
                 .findAllByTenant_IdAndProviderOrderByCreatedAtDesc(context.tenantId(), "google")
                 .stream()
@@ -208,6 +216,7 @@ public class GoogleCalendarIntegrationService {
         try {
             var response = httpClient.send(
                     HttpRequest.newBuilder(URI.create(TOKEN_URL))
+                            .timeout(Duration.ofSeconds(20))
                             .header("Content-Type", "application/x-www-form-urlencoded")
                             .POST(HttpRequest.BodyPublishers.ofString(body))
                             .build(),
@@ -220,7 +229,8 @@ public class GoogleCalendarIntegrationService {
             return new TokenResponse(
                     node.path("access_token").asText(""),
                     node.path("refresh_token").asText(""),
-                    node.path("expires_in").asLong(3600)
+                    node.path("expires_in").asLong(3600),
+                    node.path("scope").asText("")
             );
         } catch (java.io.IOException exception) {
             throw new IllegalStateException("Google Calendar authorization response could not be read", exception);
@@ -276,6 +286,17 @@ public class GoogleCalendarIntegrationService {
         if (!isConfigured()) throw new IllegalStateException("Google Calendar OAuth is not configured");
     }
 
+    static void requireGrantedScopes(String scopes) {
+        var granted = scopes == null || scopes.isBlank()
+                ? Set.<String>of()
+                : Set.of(scopes.trim().split("\\s+"));
+        if (!granted.containsAll(REQUIRED_SCOPES)) {
+            throw new IllegalArgumentException(
+                    "Google Calendar authorization did not grant every required permission; reconnect and approve both Calendar permissions"
+            );
+        }
+    }
+
     private static String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
@@ -287,7 +308,7 @@ public class GoogleCalendarIntegrationService {
     public record Status(boolean configured, boolean connected, UUID agentId, UUID credentialId, String calendarId) {
     }
 
-    private record TokenResponse(String accessToken, String refreshToken, long expiresIn) {
+    private record TokenResponse(String accessToken, String refreshToken, long expiresIn, String scope) {
     }
 
     private record StatePayload(long issuedAt, UUID tenantId, UUID agentId, UUID nonce) {
