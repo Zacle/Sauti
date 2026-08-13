@@ -4,6 +4,8 @@ import com.sauti.auth.AuthenticatedUser;
 import com.sauti.tenant.TenantDtos.OnboardingStatusResponse;
 import com.sauti.tenant.TenantDtos.TenantWebhookRequest;
 import com.sauti.tenant.TenantDtos.TenantWebhookResponse;
+import com.sauti.tenant.TenantDtos.PrivacyRetentionRequest;
+import com.sauti.tenant.TenantDtos.PrivacyRetentionResponse;
 import com.sauti.tenant.TenantFlowService;
 import com.sauti.tenant.TenantSettingsService;
 import jakarta.validation.Valid;
@@ -44,5 +46,18 @@ public class TenantController {
             @Valid @RequestBody TenantWebhookRequest request
     ) {
         return TenantWebhookResponse.from(tenantSettingsService.configureWebhook(user.tenantId(), request));
+    }
+
+    @GetMapping("/privacy-retention")
+    PrivacyRetentionResponse privacyRetention(@AuthenticationPrincipal AuthenticatedUser user) {
+        return tenantSettingsService.privacyRetention(user.tenantId());
+    }
+
+    @PutMapping("/privacy-retention")
+    PrivacyRetentionResponse configurePrivacyRetention(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody PrivacyRetentionRequest request
+    ) {
+        return tenantSettingsService.configurePrivacyRetention(user.tenantId(), request);
     }
 }

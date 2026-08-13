@@ -238,9 +238,9 @@ public release without bypassing operational gates.
 
 ### Remaining Phase 4 slices
 
-1. Finalize launch-country privacy, retention, recording/AI disclosure, terms,
-   cancellation, refund, and acceptable-use commitments with qualified legal
-   review where required.
+1. Obtain qualified launch-country legal review of the implemented privacy,
+   recording/AI disclosure, retention, cancellation, refund, and acceptable-use
+   controls, then retain that decision as launch evidence.
 2. Complete Google OAuth verification for the production Calendar and Sheets
    scopes and record the decision.
 3. Deploy through CI/CD, complete the production reliability drill and one
@@ -259,3 +259,23 @@ public release without bypassing operational gates.
   origins, and trusted-proxy processing. The human security attestation remains
   intentionally unchecked until deployment and the documented two-workspace
   and provider smoke tests are retained.
+
+### Slice 3: privacy and legal product controls (engineering complete)
+
+- Workspace settings now offer bounded identifiable conversation retention of
+  30, 90, 180, or 365 days and recording retention of 7, 30, or 90 days. A
+  recording period cannot exceed the conversation period.
+- A daily tenant-scoped job redacts expired caller identifiers, transcript and
+  derived conversation content, archived state, and transfer details while
+  preserving aggregate operational measurements. It deletes local recordings
+  and permanently deletes Telnyx-hosted recordings; provider failures remain
+  retryable and are not falsely marked as purged.
+- Disabling an agent's transcript storage now removes durable turn text and
+  derived conversation content when the call closes, while the transient live
+  session is deleted after the completing transaction commits.
+- Recording-enabled workspaces must acknowledge their notice and consent
+  responsibility when saving retention settings. The dashboard describes
+  deletion boundaries and links the effective Privacy Policy and Terms.
+- The evidence and unresolved legal decisions are recorded in
+  `docs/privacy-legal-review.md`. Engineering completion does not satisfy the
+  human legal attestation; qualified launch-country review remains required.

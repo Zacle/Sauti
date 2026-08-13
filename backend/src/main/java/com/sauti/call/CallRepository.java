@@ -16,6 +16,14 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
 
     List<Call> findAllByTenantIdOrderByStartedAtDesc(UUID tenantId);
 
+    List<Call> findTop250ByTenantIdAndEndedAtBeforeAndPrivacyRedactedAtIsNullOrderByEndedAtAsc(
+            UUID tenantId, OffsetDateTime cutoff
+    );
+
+    List<Call> findTop250ByTenantIdAndEndedAtBeforeAndRecordingPurgedAtIsNullAndRecordingUrlIsNotNullOrderByEndedAtAsc(
+            UUID tenantId, OffsetDateTime cutoff
+    );
+
     Optional<Call> findByIdAndTenantId(UUID id, UUID tenantId);
 
     Optional<Call> findByTwilioCallSid(String twilioCallSid);

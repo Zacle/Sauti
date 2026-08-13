@@ -42,6 +42,12 @@ public class Tenant extends Auditable {
     @Column(nullable = false)
     private String status = "active";
 
+    @Column(nullable = false)
+    private int conversationRetentionDays = 90;
+
+    @Column(nullable = false)
+    private int recordingRetentionDays = 30;
+
     protected Tenant() {
     }
 
@@ -90,6 +96,28 @@ public class Tenant extends Auditable {
 
     public String getWebhookSecret() {
         return webhookSecret;
+    }
+
+    public int getConversationRetentionDays() {
+        return conversationRetentionDays;
+    }
+
+    public int getRecordingRetentionDays() {
+        return recordingRetentionDays;
+    }
+
+    public void configurePrivacyRetention(int conversationRetentionDays, int recordingRetentionDays) {
+        if (!java.util.Set.of(30, 90, 180, 365).contains(conversationRetentionDays)) {
+            throw new IllegalArgumentException("Conversation retention must be 30, 90, 180, or 365 days");
+        }
+        if (!java.util.Set.of(7, 30, 90).contains(recordingRetentionDays)) {
+            throw new IllegalArgumentException("Recording retention must be 7, 30, or 90 days");
+        }
+        if (recordingRetentionDays > conversationRetentionDays) {
+            throw new IllegalArgumentException("Recording retention cannot exceed conversation retention");
+        }
+        this.conversationRetentionDays = conversationRetentionDays;
+        this.recordingRetentionDays = recordingRetentionDays;
     }
 
     public void configureWebhook(String webhookUrl, String webhookSecret) {

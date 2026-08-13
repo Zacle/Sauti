@@ -13,6 +13,8 @@ public interface CallTurnRepository extends JpaRepository<CallTurn, UUID> {
 
     List<CallTurn> findByCall_IdOrderByTurnIndexAsc(UUID callId);
 
+    List<CallTurn> findByCall_IdAndTenant_Id(UUID callId, UUID tenantId);
+
     Optional<CallTurn> findFirstByCall_IdOrderByTurnIndexDesc(UUID callId);
 
     long countByTenant_Id(UUID tenantId);

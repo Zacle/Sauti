@@ -60,6 +60,8 @@ public class Call extends Auditable {
     private String transferFailureReason;
     private OffsetDateTime transferRequestedAt;
     private OffsetDateTime transferCompletedAt;
+    private OffsetDateTime privacyRedactedAt;
+    private OffsetDateTime recordingPurgedAt;
     @Column(nullable = false)
     private boolean afterHours;
 
@@ -94,6 +96,30 @@ public class Call extends Auditable {
     public void attachRecording(String recordingUrl, String recordingSid) {
         this.recordingUrl = recordingUrl;
         this.recordingSid = recordingSid;
+    }
+
+    public void purgeRecording(OffsetDateTime purgedAt) {
+        this.recordingUrl = null;
+        this.recordingSid = null;
+        this.recordingPurgedAt = purgedAt;
+    }
+
+    public void redactConversation(OffsetDateTime redactedAt) {
+        this.callerNumber = null;
+        discardTranscriptContent();
+        this.transferTargetNumber = null;
+        this.transferChildCallSid = null;
+        this.transferFailureReason = null;
+        this.privacyRedactedAt = redactedAt;
+    }
+
+    public void discardTranscriptContent() {
+        this.transcript = "";
+        this.conversationJson = null;
+        this.callSummary = null;
+        this.sentiment = null;
+        this.intent = null;
+        this.failureReason = null;
     }
 
     public void awaitTelnyxRecording(String callControlId) {
@@ -255,6 +281,14 @@ public class Call extends Auditable {
 
     public String getRecordingSid() {
         return recordingSid;
+    }
+
+    public OffsetDateTime getPrivacyRedactedAt() {
+        return privacyRedactedAt;
+    }
+
+    public OffsetDateTime getRecordingPurgedAt() {
+        return recordingPurgedAt;
     }
 
     public String getFailureReason() {

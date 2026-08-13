@@ -8,7 +8,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.UUID;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -81,12 +84,28 @@ public class CallRecordingService {
         }
     }
 
+    @Transactional
+    public void purgeForRetention(UUID tenantId, UUID callId) {
+        var call = callRepository.findByIdAndTenantId(callId, tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Call not found"));
+        if (call.getRecordingPurgedAt() != null || call.getRecordingUrl() == null
+                || call.getRecordingUrl().isBlank()) return;
+        if (call.getRecordingUrl().startsWith("https://")) {
+            deleteTelnyxRecording(call.getRecordingSid());
+        } else {
+            deleteLocalRecording(callId);
+        }
+        call.purgeRecording(OffsetDateTime.now(ZoneOffset.UTC));
+        callRepository.save(call);
+    }
+
     private RecordingData readTelnyxRecording(String recordingUrl) {
         if (telnyxApiKey.isBlank()) {
             throw new IllegalStateException("Telnyx recording credentials are not configured");
         }
         try {
             var request = HttpRequest.newBuilder(URI.create(recordingUrl))
+                    .timeout(Duration.ofSeconds(20))
                     .header("Authorization", "Bearer " + telnyxApiKey)
                     .GET()
                     .build();
@@ -100,6 +119,42 @@ public class CallRecordingService {
             throw new IllegalStateException("Telnyx recording download was interrupted", exception);
         } catch (Exception exception) {
             throw new IllegalStateException("Unable to download Telnyx recording", exception);
+        }
+    }
+
+    private void deleteTelnyxRecording(String recordingId) {
+        if (telnyxApiKey.isBlank()) {
+            throw new IllegalStateException("Telnyx recording credentials are not configured");
+        }
+        if (recordingId == null || !recordingId.matches("[0-9a-fA-F-]{36}")) {
+            throw new IllegalStateException("Telnyx recording ID is unavailable for retention deletion");
+        }
+        try {
+            var request = HttpRequest.newBuilder(URI.create(telnyxApiBaseUrl + "/recordings/" + recordingId))
+                    .timeout(Duration.ofSeconds(20))
+                    .header("Authorization", "Bearer " + telnyxApiKey)
+                    .DELETE()
+                    .build();
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            if ((response.statusCode() < 200 || response.statusCode() >= 300) && response.statusCode() != 404) {
+                throw new IllegalStateException(
+                        "Telnyx recording deletion failed with HTTP " + response.statusCode()
+                );
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Telnyx recording deletion was interrupted", exception);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to delete Telnyx recording", exception);
+        }
+    }
+
+    private void deleteLocalRecording(UUID callId) {
+        try {
+            Files.deleteIfExists(recordingsDirectory.resolve(callId + ".webm").normalize());
+            Files.deleteIfExists(recordingsDirectory.resolve(callId + ".wav").normalize());
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to delete local call recording", exception);
         }
     }
 

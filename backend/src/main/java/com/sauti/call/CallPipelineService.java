@@ -796,6 +796,9 @@ public class CallPipelineService {
 
     private void archiveSession(Call call) {
         if (!call.getAgent().isSaveTranscript()) {
+            callTurnRepository.findByCall_IdAndTenant_Id(call.getId(), call.getTenant().getId())
+                    .forEach(CallTurn::redactContent);
+            call.discardTranscriptContent();
             deleteSessionAfterCommit(call.getTwilioCallSid());
             return;
         }

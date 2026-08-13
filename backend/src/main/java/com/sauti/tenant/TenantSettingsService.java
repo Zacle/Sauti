@@ -1,6 +1,9 @@
 package com.sauti.tenant;
 
 import com.sauti.tenant.TenantDtos.TenantWebhookRequest;
+import com.sauti.tenant.TenantDtos.PrivacyRetentionRequest;
+import com.sauti.tenant.TenantDtos.PrivacyRetentionResponse;
+import com.sauti.agent.AgentRepository;
 import com.sauti.tool.WebhookDestinationValidator;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.UUID;
@@ -11,10 +14,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class TenantSettingsService {
     private final TenantRepository tenantRepository;
     private final WebhookDestinationValidator webhookDestinationValidator;
+    private final AgentRepository agents;
 
-    public TenantSettingsService(TenantRepository tenantRepository, WebhookDestinationValidator webhookDestinationValidator) {
+    public TenantSettingsService(TenantRepository tenantRepository,
+                                 WebhookDestinationValidator webhookDestinationValidator,
+                                 AgentRepository agents) {
         this.tenantRepository = tenantRepository;
         this.webhookDestinationValidator = webhookDestinationValidator;
+        this.agents = agents;
     }
 
     @Transactional(readOnly = true)
@@ -35,5 +42,35 @@ public class TenantSettingsService {
                 : request.webhookSecret().trim();
         tenant.configureWebhook(url, secret);
         return tenant;
+    }
+
+    @Transactional(readOnly = true)
+    public PrivacyRetentionResponse privacyRetention(UUID tenantId) {
+        var tenant = get(tenantId);
+        return privacyResponse(tenant);
+    }
+
+    @Transactional
+    public PrivacyRetentionResponse configurePrivacyRetention(UUID tenantId, PrivacyRetentionRequest request) {
+        var tenant = get(tenantId);
+        var recordingEnabled = agents.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .anyMatch(com.sauti.agent.Agent::isRecordCalls);
+        if (recordingEnabled && !request.recordingComplianceAcknowledged()) {
+            throw new IllegalArgumentException(
+                    "Confirm that your caller notice and recording consent process meet applicable requirements"
+            );
+        }
+        tenant.configurePrivacyRetention(request.conversationRetentionDays(), request.recordingRetentionDays());
+        return privacyResponse(tenant);
+    }
+
+    private PrivacyRetentionResponse privacyResponse(Tenant tenant) {
+        return new PrivacyRetentionResponse(
+                tenant.getConversationRetentionDays(),
+                tenant.getRecordingRetentionDays(),
+                agents.findAllByTenantIdOrderByCreatedAtDesc(tenant.getId()).stream()
+                        .anyMatch(com.sauti.agent.Agent::isRecordCalls),
+                "2026-08-12"
+        );
     }
 }

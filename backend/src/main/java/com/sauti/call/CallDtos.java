@@ -33,6 +33,8 @@ public final class CallDtos {
             String transferFailureReason,
             OffsetDateTime transferRequestedAt,
             OffsetDateTime transferCompletedAt,
+            OffsetDateTime privacyRedactedAt,
+            OffsetDateTime recordingPurgedAt,
             boolean afterHours
     ) {
         public static CallResponse from(Call call) {
@@ -62,6 +64,8 @@ public final class CallDtos {
                     call.getTransferFailureReason(),
                     call.getTransferRequestedAt(),
                     call.getTransferCompletedAt(),
+                    call.getPrivacyRedactedAt(),
+                    call.getRecordingPurgedAt(),
                     call.isAfterHours()
             );
         }

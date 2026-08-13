@@ -116,4 +116,9 @@ public class CallTurn {
     public void recordTtsLatency(int latencyMs) {
         this.ttsLatencyMs = Math.max(0, latencyMs);
     }
+
+    public void redactContent() {
+        this.callerTranscript = "";
+        this.agentResponse = "";
+    }
 }

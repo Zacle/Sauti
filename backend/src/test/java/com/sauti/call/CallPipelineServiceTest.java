@@ -339,6 +339,53 @@ class CallPipelineServiceTest {
     }
 
     @Test
+    void discardsConversationContentWhenTranscriptStorageIsDisabled() {
+        var callRepository = mock(CallRepository.class);
+        var callTurnRepository = mock(CallTurnRepository.class);
+        var callSessionStore = mock(CallSessionStore.class);
+        var postCallAnalysisService = mock(PostCallAnalysisService.class);
+        var dashboardEventPublisher = mock(DashboardEventPublisher.class);
+        var service = new CallPipelineService(
+                callRepository,
+                callTurnRepository,
+                mock(AgentRepository.class),
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                mock(LanguageDetector.class),
+                mock(ConversationOrchestrator.class),
+                mock(StreamingTtsProvider.class),
+                callSessionStore,
+                dashboardEventPublisher,
+                postCallAnalysisService
+        );
+        var tenant = new Tenant("Demo Clinic", "owner@example.com", "SN");
+        var agent = new Agent(tenant, "Amina", "Bonjour", "Prompt");
+        agent.update(
+                "Amina", null, "Bonjour", "Prompt", "en", List.of("en"), null,
+                null, List.of("speak to a human"), true, "Africa/Dakar", "", null,
+                300, false, false
+        );
+        agent.activate();
+        var call = new Call(tenant, agent, "CA-private", "+221771234567", "inbound");
+        call.appendTurn("en", "My name is Sam", "Hello Sam");
+        var turn = new CallTurn(call, 1, "My name is Sam", "Hello Sam", "en", 10, 20, 30, false);
+        when(callRepository.findByTwilioCallSid("CA-private")).thenReturn(Optional.of(call));
+        when(callTurnRepository.findByCall_IdAndTenant_Id(call.getId(), tenant.getId()))
+                .thenReturn(List.of(turn));
+        when(callRepository.save(call)).thenReturn(call);
+
+        service.completeActiveCall("CA-private", "completed");
+
+        assertThat(call.getTranscript()).isEmpty();
+        assertThat(turn.getCallerTranscript()).isEmpty();
+        assertThat(turn.getAgentResponse()).isEmpty();
+        assertThat(call.getCallerNumber()).isEqualTo("+221771234567");
+        verify(postCallAnalysisService).schedule(call);
+        verify(callSessionStore).delete("CA-private");
+        verify(dashboardEventPublisher).callEnded(call);
+    }
+
+    @Test
     void keepsEveryCallerFragmentUntilTheNextRealtimeAgentResponse() {
         var callRepository = mock(CallRepository.class);
         var callTurnRepository = mock(CallTurnRepository.class);

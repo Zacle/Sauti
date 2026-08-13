@@ -295,6 +295,13 @@ export type WorkspaceNotificationList = {
   unreadCount: number;
 };
 
+export type PrivacyRetentionSettings = {
+  conversationRetentionDays: number;
+  recordingRetentionDays: number;
+  recordingEnabledForAnyAgent: boolean;
+  policyVersion: string;
+};
+
 export type OnboardingStatus = {
   registered: boolean;
   emailVerified: boolean;

@@ -114,7 +114,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="console-sidebar-footer">
           <Link className={pathname === "/billing" ? "active" : ""} href="/billing"><CreditCard size={18} /> Usage & billing</Link>
-          <Link href="/settings"><Settings size={18} /> Settings</Link>
+          <Link className={pathname === "/settings" ? "active" : ""} href="/settings"><Settings size={18} /> Settings</Link>
           <Link href="/help"><CircleHelp size={18} /> Help center</Link>
           <button type="button" onClick={handleLogout}><LogOut size={18} /> Log out</button>
         </div>

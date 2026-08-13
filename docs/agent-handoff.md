@@ -12105,3 +12105,51 @@ Expected:
 - Next Phase 4 slice: finalize the launch-country privacy/legal product
   controls and disclosure evidence; separately perform the documented live
   security acceptance after CI/CD deployment.
+
+### 2026-08-12 - Phase 4 privacy and legal product controls
+
+- Completed the engineering portion of the Phase 4 privacy/legal slice and
+  added `docs/privacy-legal-review.md` as the implementation boundary,
+  deletion-scope disclosure, qualified-review checklist, and post-deployment
+  acceptance record. The human launch attestation remains intentionally
+  unchecked because code verification is not legal advice.
+- Added tenant-controlled identifiable conversation retention of 30, 90, 180,
+  or 365 days and recording retention of 7, 30, or 90 days. Defaults are 90
+  and 30 days respectively, and recording retention cannot exceed conversation
+  retention. Recording-enabled workspaces must acknowledge their notice and
+  consent responsibility before saving these controls.
+- Added a daily tenant-scoped retention job. It redacts expired caller numbers,
+  transcript turns, summaries, inferred intent and sentiment, archived
+  conversation state, failure detail, and transfer detail while preserving
+  aggregate operational measurements. It deletes local WebM/WAV recordings
+  and permanently deletes Telnyx recordings through the provider API with a
+  bounded request timeout; failed provider deletion stays eligible for retry.
+- Enforced the existing agent **Save transcript** setting at call completion.
+  Durable turn text and derived conversation content are cleared when storage
+  is disabled, the live session is deleted after commit, and the caller number
+  remains temporarily available for separate configured post-call workflows
+  until workspace retention later redacts it.
+- Replaced the placeholder Settings route with a workspace privacy-control
+  screen that explains retained metrics, external-provider boundaries, rights
+  requests, and the recording-consent acknowledgement. Updated console
+  navigation state and the tenant API client/types.
+- Updated the effective Privacy Policy and Terms to match implemented
+  retention, recording/AI notice, cancellation, paid-through access, pending
+  plan-change, add-on, and refund behavior instead of promising indefinite or
+  unspecified behavior.
+- Files touched: tenant privacy entity/DTO/service/controller and tests; call,
+  turn, recording, pipeline, retention repositories/services/DTOs and tests;
+  Flyway `V70`; scheduled-job configuration and production environment example;
+  Settings page/client/types/styles/navigation; Privacy Policy, Terms, Phase 4
+  roadmap, privacy/legal review, and this handoff.
+- Verification: focused retention, tenant-setting, and call-pipeline tests
+  passed; complete `:backend:test` passed in a single-worker Gradle run;
+  dashboard typecheck, zero-warning lint, and optimized production build passed
+  with all 63 pages generated; `git diff --check` passed before this handoff
+  update (line-ending notices only).
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and normal CI/CD.
+- Remaining Phase 4 work: qualified review for the actual launch countries and
+  verticals; Google OAuth verification; then CI/CD deployment, the documented
+  privacy/security/reliability and consented channel acceptance exercises, and
+  a limited-cohort launch approval through the platform gate.

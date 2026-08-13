@@ -132,6 +132,8 @@ sauti:
   analytics:
     hash-secret: ${SAUTI_ANALYTICS_HASH_SECRET:${JWT_SECRET:dev-only-change-me-dev-only-change-me}}
     retention-cron: ${SAUTI_ANALYTICS_RETENTION_CRON:0 41 3 * * *}
+  privacy:
+    retention-cron: ${SAUTI_PRIVACY_RETENTION_CRON:0 17 2 * * *}
   public-demo:
     enabled: ${SAUTI_PUBLIC_DEMO_ENABLED:false}
     telnyx-agent-id: ${SAUTI_PUBLIC_DEMO_TELNYX_AGENT_ID:}

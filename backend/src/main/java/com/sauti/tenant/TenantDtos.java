@@ -58,4 +58,19 @@ public final class TenantDtos {
         }
     }
 
+    public record PrivacyRetentionRequest(
+            int conversationRetentionDays,
+            int recordingRetentionDays,
+            boolean recordingComplianceAcknowledged
+    ) {
+    }
+
+    public record PrivacyRetentionResponse(
+            int conversationRetentionDays,
+            int recordingRetentionDays,
+            boolean recordingEnabledForAnyAgent,
+            String policyVersion
+    ) {
+    }
+
 }
