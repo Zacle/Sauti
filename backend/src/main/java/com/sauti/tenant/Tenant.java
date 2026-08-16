@@ -48,6 +48,12 @@ public class Tenant extends Auditable {
     @Column(nullable = false)
     private int recordingRetentionDays = 30;
 
+    @Column(nullable = false, length = 100)
+    private String timezone = "UTC";
+
+    @Column(nullable = false)
+    private int defaultBookingDurationMinutes = 60;
+
     protected Tenant() {
     }
 
@@ -104,6 +110,33 @@ public class Tenant extends Auditable {
 
     public int getRecordingRetentionDays() {
         return recordingRetentionDays;
+    }
+
+    public String getTimezone() {
+        return timezone;
+    }
+
+    public int getDefaultBookingDurationMinutes() {
+        return defaultBookingDurationMinutes;
+    }
+
+    public void configureWorkspaceProfile(String businessName, String timezone, int defaultBookingDurationMinutes) {
+        var normalizedName = businessName == null ? "" : businessName.trim();
+        if (normalizedName.length() < 2 || normalizedName.length() > 120) {
+            throw new IllegalArgumentException("Business name must contain between 2 and 120 characters");
+        }
+        String normalizedTimezone;
+        try {
+            normalizedTimezone = java.time.ZoneId.of(timezone == null ? "" : timezone.trim()).getId();
+        } catch (java.time.DateTimeException exception) {
+            throw new IllegalArgumentException("Select a valid IANA timezone");
+        }
+        if (defaultBookingDurationMinutes < 5 || defaultBookingDurationMinutes > 480) {
+            throw new IllegalArgumentException("Default booking duration must be between 5 and 480 minutes");
+        }
+        this.businessName = normalizedName;
+        this.timezone = normalizedTimezone;
+        this.defaultBookingDurationMinutes = defaultBookingDurationMinutes;
     }
 
     public void configurePrivacyRetention(int conversationRetentionDays, int recordingRetentionDays) {

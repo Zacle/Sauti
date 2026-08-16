@@ -107,15 +107,25 @@ class AgentTemplateApiTest {
                         .content(templateBody("Changed system template", "Hello", 1)))
                 .andExpect(status().isNotFound());
 
+        mvc.perform(put("/api/v1/tenant/workspace-profile")
+                        .header("Authorization", bearer(ownerToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "businessName": "Workspace Defaults Clinic",
+                                  "timezone": "Africa/Nairobi",
+                                  "defaultBookingDurationMinutes": 45
+                                }
+                                """))
+                .andExpect(status().isOk());
+
         var agentJson = mvc.perform(post("/api/v1/agents/from-template/" + systemTemplateId)
                         .header("Authorization", bearer(ownerToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "name": "Amina",
-                                  "timezone": "Africa/Nairobi",
-                                  "humanTransferNumber": "+254700000000",
-                                  "defaultBookingDurationMinutes": 45
+                                  "humanTransferNumber": "+254700000000"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -123,6 +133,7 @@ class AgentTemplateApiTest {
                 .andExpect(jsonPath("$.defaultLanguage").value("en"))
                 .andExpect(jsonPath("$.supportedLanguages[0]").value("en"))
                 .andExpect(jsonPath("$.bookingEnabled").value(true))
+                .andExpect(jsonPath("$.timezone").value("Africa/Nairobi"))
                 .andExpect(jsonPath("$.defaultBookingDurationMinutes").value(45))
                 .andExpect(jsonPath("$.active").value(false))
                 .andReturn().getResponse().getContentAsString();

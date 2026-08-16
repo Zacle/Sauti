@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.sauti.agent.Agent;
 import com.sauti.agent.AgentRepository;
 import com.sauti.tenant.TenantDtos.PrivacyRetentionRequest;
+import com.sauti.tenant.TenantDtos.WorkspaceProfileRequest;
 import com.sauti.tool.WebhookDestinationValidator;
 import java.util.List;
 import java.util.Optional;
@@ -57,5 +58,32 @@ class TenantSettingsPrivacyTest {
                 new PrivacyRetentionRequest(30, 90, false)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cannot exceed");
+    }
+
+    @Test
+    void savesValidatedWorkspaceOwnedDefaults() {
+        var tenant = new Tenant("Clinic", "owner@example.com", "GB");
+        when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+
+        var result = service.configureWorkspaceProfile(
+                tenant.getId(),
+                new WorkspaceProfileRequest("Clinic Group", "Europe/London", 45)
+        );
+
+        assertThat(result.businessName()).isEqualTo("Clinic Group");
+        assertThat(result.timezone()).isEqualTo("Europe/London");
+        assertThat(result.defaultBookingDurationMinutes()).isEqualTo(45);
+    }
+
+    @Test
+    void rejectsInvalidWorkspaceTimezone() {
+        var tenant = new Tenant("Clinic", "owner@example.com", "GB");
+        when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+
+        assertThatThrownBy(() -> service.configureWorkspaceProfile(
+                tenant.getId(),
+                new WorkspaceProfileRequest("Clinic", "Not/A-Timezone", 60)
+        )).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("valid IANA timezone");
     }
 }

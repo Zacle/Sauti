@@ -2,6 +2,52 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-08-16: Settings operations-console redesign
+
+- Rebuilt the authenticated Settings page from the selected horizontal-tab
+  design direction. The page now uses a compact workspace-status strip and
+  General, Calls & AI, Notifications, Data & privacy, Security, and Developer
+  tabs instead of a permanent secondary sidebar and oversized profile card.
+- Kept the interface behaviorally honest: workspace and billing values come
+  from the authenticated session, agent and connected-provider counts load
+  independently without blocking core settings, and agent/integration-specific
+  controls route to their existing owning screens rather than appearing as
+  non-functional workspace toggles.
+- Preserved the working privacy-retention and tenant-webhook save flows. The
+  retention dropdowns now use accessible Radix popovers with custom open,
+  selected, hover, and focus states; the conditional recording-compliance
+  checkbox has a modern custom treatment while retaining native semantics.
+- Follow-up correction added the missing persistence layer for General
+  settings. `GET/PUT /api/v1/tenant/workspace-profile` now reads and saves the
+  tenant-scoped business display name, IANA timezone, and default booking
+  duration with server validation. Flyway `V72` stores the new defaults.
+- Saving General updates the local authenticated tenant snapshot immediately.
+  Both direct and template-based new-agent creation inherit the saved timezone
+  and booking duration when the caller does not explicitly provide overrides;
+  existing agents remain unchanged because their live behavior is agent-owned.
+  The new-agent studio also loads these defaults before a template is selected,
+  while retaining safe local fallbacks if the profile request is unavailable.
+- Files touched:
+  - `dashboard/features/settings/presentation/WorkspaceSettings.tsx`;
+  - `dashboard/features/settings/presentation/WorkspaceSettings.module.css`;
+  - `dashboard/lib/api/tenant.ts`;
+  - `dashboard/features/agents/AgentCreator/AgentCreator.tsx`;
+  - tenant entity, DTOs, settings service, and controller;
+  - agent and agent-template creation services;
+  - Flyway `V72` and focused service/API regression tests;
+  - `design-qa.md`;
+  - `docs/agent-handoff.md`.
+- Verification: focused workspace-settings, tenant API, core auth flow, and
+  template-agent tests passed; the complete backend suite passed. Dashboard
+  `npm.cmd run typecheck`, zero-warning `npm.cmd run lint`, and optimized
+  `npm.cmd run build` passed; all 63 pages generated. `git diff --check` passed
+  with line-ending notices only.
+- Design QA remains blocked only on authenticated browser-rendered evidence.
+  Capture General and Data & privacy at 1600 x 1000 plus a narrow mobile view
+  after deployment or with a local authenticated session.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.
+
 ### 2026-08-12: Google Sheets setup feedback and OAuth dialog dismissal
 
 - Google Sheets setup now returns a clear client-facing validation response when

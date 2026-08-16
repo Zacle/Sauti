@@ -82,6 +82,8 @@ public class AgentTemplateService {
     @Transactional
     public Agent createAgent(UUID tenantId, UUID templateId, CreateAgentFromTemplateRequest request) {
         var template = get(tenantId, templateId);
+        var tenant = tenantRepository.findById(tenantId)
+                .orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
         var configuration = parseConfiguration(template.getConfigurationJson());
         boolean bookingEnabled = configuration.path("bookingEnabled").asBoolean(false);
         List<String> escalationPhrases = configuration.has("escalationPhrases")
@@ -94,7 +96,7 @@ public class AgentTemplateService {
         String operatingHours = textOrNull(configuration, "operatingHours");
         String afterHoursBehavior = textOrNull(configuration, "afterHoursBehavior");
         String afterHoursMessage = textOrNull(configuration, "afterHoursMessage");
-        int configuredBookingDuration = boundedDuration(configuration.path("bookingDurationMinutes").asInt(60));
+        int configuredBookingDuration = tenant.getDefaultBookingDurationMinutes();
         List<String> bookingRequiredFields = stringList(configuration, "bookingRequiredFields");
         List<String> bookingNotificationChannels = stringList(configuration, "bookingNotificationChannels");
         String requestedName = request == null ? null : request.name();
@@ -113,7 +115,7 @@ public class AgentTemplateService {
                 escalationPhrases,
                 bookingEnabled,
                 requestedBookingDuration == null ? configuredBookingDuration : requestedBookingDuration,
-                requestedTimezone == null || requestedTimezone.isBlank() ? "Africa/Nairobi" : requestedTimezone,
+                requestedTimezone == null || requestedTimezone.isBlank() ? tenant.getTimezone() : requestedTimezone,
                 "",
                 operatingHours,
                 afterHoursBehavior,
@@ -133,10 +135,6 @@ public class AgentTemplateService {
         var agent = agentService.create(tenantId, agentRequest);
         agentVariableService.seedDefinitions(agent, configuration);
         return agent;
-    }
-
-    private int boundedDuration(int durationMinutes) {
-        return durationMinutes < 5 || durationMinutes > 480 ? 60 : durationMinutes;
     }
 
     private List<String> stringList(JsonNode configuration, String field) {

@@ -68,6 +68,30 @@ class AuthAgentFlowTest {
 
         String token = registerVerifyResetPasswordAndReturnToken();
 
+        mvc.perform(put("/api/v1/tenant/workspace-profile")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "businessName": "Demo Clinic Group",
+                                  "timezone": "Africa/Dakar",
+                                  "defaultBookingDurationMinutes": 45
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.businessName").value("Demo Clinic Group"))
+                .andExpect(jsonPath("$.ownerEmail").value("owner@example.com"))
+                .andExpect(jsonPath("$.countryCode").value("SN"))
+                .andExpect(jsonPath("$.timezone").value("Africa/Dakar"))
+                .andExpect(jsonPath("$.defaultBookingDurationMinutes").value(45));
+
+        mvc.perform(get("/api/v1/tenant/workspace-profile")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.businessName").value("Demo Clinic Group"))
+                .andExpect(jsonPath("$.timezone").value("Africa/Dakar"))
+                .andExpect(jsonPath("$.defaultBookingDurationMinutes").value(45));
+
         String agentBody = """
                 {
                   "name": "Amina",

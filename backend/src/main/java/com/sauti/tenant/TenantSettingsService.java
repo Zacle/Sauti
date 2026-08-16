@@ -3,6 +3,8 @@ package com.sauti.tenant;
 import com.sauti.tenant.TenantDtos.TenantWebhookRequest;
 import com.sauti.tenant.TenantDtos.PrivacyRetentionRequest;
 import com.sauti.tenant.TenantDtos.PrivacyRetentionResponse;
+import com.sauti.tenant.TenantDtos.WorkspaceProfileRequest;
+import com.sauti.tenant.TenantDtos.WorkspaceProfileResponse;
 import com.sauti.agent.AgentRepository;
 import com.sauti.tool.WebhookDestinationValidator;
 import jakarta.persistence.EntityNotFoundException;
@@ -48,6 +50,22 @@ public class TenantSettingsService {
     public PrivacyRetentionResponse privacyRetention(UUID tenantId) {
         var tenant = get(tenantId);
         return privacyResponse(tenant);
+    }
+
+    @Transactional(readOnly = true)
+    public WorkspaceProfileResponse workspaceProfile(UUID tenantId) {
+        return WorkspaceProfileResponse.from(get(tenantId));
+    }
+
+    @Transactional
+    public WorkspaceProfileResponse configureWorkspaceProfile(UUID tenantId, WorkspaceProfileRequest request) {
+        var tenant = get(tenantId);
+        tenant.configureWorkspaceProfile(
+                request.businessName(),
+                request.timezone(),
+                request.defaultBookingDurationMinutes()
+        );
+        return WorkspaceProfileResponse.from(tenant);
     }
 
     @Transactional

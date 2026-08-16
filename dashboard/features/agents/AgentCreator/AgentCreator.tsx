@@ -77,6 +77,7 @@ import {
   updateAgentVariables,
   uploadKnowledgeDocument,
 } from "@/lib/api/agents";
+import { loadWorkspaceProfile } from "@/lib/api/tenant";
 import type { Agent, AgentReadiness, AgentTemplate as StoredAgentTemplate, AgentVariableDefinition, AvailablePhoneNumber, CreateAgentVariable, KnowledgeDocument } from "@/types/api";
 import { useAuth } from "@/hooks/useAuth";
 import { TIMEZONE_GROUPS } from "@/lib/timezones";
@@ -389,6 +390,7 @@ export function AgentCreator({
   const [prompt, setPrompt] = useState(templates[0].prompt);
   const [bookingEnabled, setBookingEnabled] = useState(true);
   const [defaultBookingDurationMinutes, setDefaultBookingDurationMinutes] = useState(60);
+  const [workspaceBookingDurationMinutes, setWorkspaceBookingDurationMinutes] = useState(60);
   const [maxDuration, setMaxDuration] = useState("5");
   const [saveTranscript, setSaveTranscript] = useState(true);
   const [recordCalls, setRecordCalls] = useState(false);
@@ -446,6 +448,17 @@ export function AgentCreator({
   useEffect(() => {
     listCountryCallingCodes().then(setPhoneCountries).catch(() => setPhoneCountries([]));
   }, []);
+
+  useEffect(() => {
+    if (editing) return;
+    loadWorkspaceProfile().then((profile) => {
+      setTimezone(profile.timezone);
+      setDefaultBookingDurationMinutes(profile.defaultBookingDurationMinutes);
+      setWorkspaceBookingDurationMinutes(profile.defaultBookingDurationMinutes);
+    }).catch(() => {
+      // Keep safe local defaults when workspace preferences are unavailable.
+    });
+  }, [editing]);
 
   useEffect(() => {
     listAgentTemplates()
@@ -574,7 +587,7 @@ export function AgentCreator({
     setLanguage(template.defaultLanguage);
     setSupportedLanguages(Array.from(new Set([template.defaultLanguage, ...template.supportedLanguages])));
     setEscalationPhrases(template.escalationPhrases.join(", "));
-    setDefaultBookingDurationMinutes(template.defaultBookingDurationMinutes);
+    setDefaultBookingDurationMinutes(workspaceBookingDurationMinutes);
     setBookingRequiredFields(template.bookingRequiredFields);
     setBookingNotificationChannels(template.bookingNotificationChannels);
     setBookingNotificationRecipient("");

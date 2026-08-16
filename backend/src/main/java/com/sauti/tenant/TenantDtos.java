@@ -1,5 +1,9 @@
 package com.sauti.tenant;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
 public final class TenantDtos {
@@ -71,6 +75,31 @@ public final class TenantDtos {
             boolean recordingEnabledForAnyAgent,
             String policyVersion
     ) {
+    }
+
+    public record WorkspaceProfileRequest(
+            @NotBlank @Size(min = 2, max = 120) String businessName,
+            @NotBlank @Size(max = 100) String timezone,
+            @Min(5) @Max(480) int defaultBookingDurationMinutes
+    ) {
+    }
+
+    public record WorkspaceProfileResponse(
+            String businessName,
+            String ownerEmail,
+            String countryCode,
+            String timezone,
+            int defaultBookingDurationMinutes
+    ) {
+        public static WorkspaceProfileResponse from(Tenant tenant) {
+            return new WorkspaceProfileResponse(
+                    tenant.getBusinessName(),
+                    tenant.getEmail(),
+                    tenant.getCountryCode(),
+                    tenant.getTimezone(),
+                    tenant.getDefaultBookingDurationMinutes()
+            );
+        }
     }
 
 }

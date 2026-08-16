@@ -6,6 +6,25 @@ export type WorkspaceWebhookSettings = {
   secretConfigured: boolean;
 };
 
+export type WorkspaceProfileSettings = {
+  businessName: string;
+  ownerEmail: string;
+  countryCode: string;
+  timezone: string;
+  defaultBookingDurationMinutes: number;
+};
+
+export function loadWorkspaceProfile() {
+  return apiRequest<WorkspaceProfileSettings>("/tenant/workspace-profile");
+}
+
+export function saveWorkspaceProfile(request: Pick<WorkspaceProfileSettings, "businessName" | "timezone" | "defaultBookingDurationMinutes">) {
+  return apiRequest<WorkspaceProfileSettings>("/tenant/workspace-profile", {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+}
+
 export function loadPrivacyRetention() {
   return apiRequest<PrivacyRetentionSettings>("/tenant/privacy-retention");
 }

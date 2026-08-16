@@ -1,0 +1,2 @@
+ALTER TABLE tenants ADD COLUMN timezone VARCHAR(100) NOT NULL DEFAULT 'UTC';
+ALTER TABLE tenants ADD COLUMN default_booking_duration_minutes INTEGER NOT NULL DEFAULT 60;

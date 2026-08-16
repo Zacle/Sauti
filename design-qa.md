@@ -1,3 +1,62 @@
+# Design QA: workspace Settings operations console
+
+## Comparison target
+
+- Source visual truth: `C:\Users\Zacle\.codex\generated_images\019faf25-54b2-7311-b536-4c619135ab47\exec-07f5c0a2-fbc1-4cd0-80af-c52e2aa60076.png`.
+- Source pixels: 1600 x 1000, desktop density.
+- Target implementation: authenticated `/settings` route in the existing Sauti console.
+- Intended state: General tab active, workspace and integration summaries loaded.
+- Implementation screenshot: unavailable because this protected route requires an authenticated local workspace session and no user-selected authenticated browser surface was available for capture.
+- Implementation pixels, CSS viewport, and density normalization: unavailable without a browser-rendered capture.
+
+## Full-view comparison evidence
+
+- The selected direction's horizontal category navigation, compact workspace-health strip, two-column General settings layout, calm navy surfaces, teal active states, and restrained typography are implemented in the existing Settings feature.
+- The previous permanent secondary sidebar and oversized profile card were removed.
+- General now contains a real persisted business-name field and modern timezone and booking-duration dropdowns. Existing working privacy-retention and webhook behavior remains available under dedicated tabs; Calls & AI, Notifications, billing, and provider settings link to their real management surfaces instead of presenting non-functional controls.
+
+## Focused-region comparison evidence
+
+- Source inspection established the intended compact tab treatment, divided information rows, moderate radii, and low-emphasis descriptions.
+- Settings dropdowns now use accessible Radix popovers with visible selected, highlighted, open, and keyboard-focus states.
+- Recording compliance uses a custom focus-visible checkbox with an explicit checked state while retaining a native checkbox input for semantics.
+- Browser-rendered comparison of those focused states is blocked by the authenticated local route.
+
+## Required fidelity surfaces
+
+- Fonts and typography: implementation uses the console font stack with moderate headings, normal-weight descriptions, compact labels, and no oversized display heading; rendered wrapping remains unverified.
+- Spacing and layout rhythm: the 1400px content frame, three-part health strip, horizontal tabs, divided two-column rows, and mobile stacking rules follow the selected reference; browser-rendered alignment remains unverified.
+- Colors and visual tokens: existing Sauti midnight navy, cool borders, teal active states, and semantic red/green feedback are retained without introducing decorative gradients.
+- Image quality and asset fidelity: the screen contains no raster imagery. Existing Lucide icons are used consistently with the repository and selected reference.
+- Copy and content: every visible summary is derived from session or API data, reports unavailable optional status honestly, or links to the real owning feature. Editable General fields save through the tenant-scoped workspace-profile API and become defaults for new agents.
+
+## Findings
+
+- [P1] Authenticated browser-rendered comparison is unavailable.
+  - Location: `/settings`, all tabs and interactive control states.
+  - Evidence: the selected visual target is available, but an authenticated implementation screenshot at the matching viewport is not.
+  - Impact: exact wrapping, density, dropdown placement, checkbox rendering, and responsive overflow cannot receive final visual sign-off.
+  - Fix: open `/settings` in an authenticated browser after deployment or with a local test session, capture General and Data & privacy at 1600 x 1000 plus a 390px mobile view, then compare each capture with the selected target and correct any P0-P2 differences.
+
+## Interaction and build checks
+
+- Horizontal tabs use ARIA tab roles and update the displayed panel.
+- General, Calls & AI, Notifications, billing, integration, password-reset, policy, terms, support, and deletion destinations remain real links.
+- Privacy and webhook saves retain their existing API calls, error/success states, loading states, and validation boundaries.
+- General saves business name, IANA timezone, and default booking duration through a validated tenant-scoped API and updates the authenticated tenant snapshot.
+- Dashboard typecheck, zero-warning lint, and optimized production build pass; all 63 pages generated.
+
+## Comparison history
+
+1. Initial screenshot: a light shell mismatch around an oversized dark Settings card with a permanent secondary navigation and weak information hierarchy.
+2. Selected target: horizontal category tabs, compact operational summary, structured rows, and restrained typography.
+3. Implementation: rebuilt the page around that target, preserved only working controls, and added modern accessible dropdown/checkbox states.
+4. Post-fix visual evidence: blocked pending an authenticated browser-rendered capture.
+
+final result: blocked
+
+---
+
 # Design QA: billing plans and Whop checkout
 
 ## Evidence

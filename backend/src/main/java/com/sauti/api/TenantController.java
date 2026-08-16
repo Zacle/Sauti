@@ -6,6 +6,8 @@ import com.sauti.tenant.TenantDtos.TenantWebhookRequest;
 import com.sauti.tenant.TenantDtos.TenantWebhookResponse;
 import com.sauti.tenant.TenantDtos.PrivacyRetentionRequest;
 import com.sauti.tenant.TenantDtos.PrivacyRetentionResponse;
+import com.sauti.tenant.TenantDtos.WorkspaceProfileRequest;
+import com.sauti.tenant.TenantDtos.WorkspaceProfileResponse;
 import com.sauti.tenant.TenantFlowService;
 import com.sauti.tenant.TenantSettingsService;
 import jakarta.validation.Valid;
@@ -51,6 +53,19 @@ public class TenantController {
     @GetMapping("/privacy-retention")
     PrivacyRetentionResponse privacyRetention(@AuthenticationPrincipal AuthenticatedUser user) {
         return tenantSettingsService.privacyRetention(user.tenantId());
+    }
+
+    @GetMapping("/workspace-profile")
+    WorkspaceProfileResponse workspaceProfile(@AuthenticationPrincipal AuthenticatedUser user) {
+        return tenantSettingsService.workspaceProfile(user.tenantId());
+    }
+
+    @PutMapping("/workspace-profile")
+    WorkspaceProfileResponse configureWorkspaceProfile(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody WorkspaceProfileRequest request
+    ) {
+        return tenantSettingsService.configureWorkspaceProfile(user.tenantId(), request);
     }
 
     @PutMapping("/privacy-retention")

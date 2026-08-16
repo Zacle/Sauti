@@ -78,8 +78,13 @@ public class AgentService {
         validateLanguages(request.defaultLanguage(), request.supportedLanguages());
         validateTelnyxVoice(request.ttsVoiceId());
         validateAvailability(request);
-        var timezone = validateTimezone(request.timezone());
         var tenant = tenantRepository.findById(tenantId).orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
+        var timezone = validateTimezone(request.timezone() == null || request.timezone().isBlank()
+                ? tenant.getTimezone()
+                : request.timezone());
+        var bookingDuration = request.defaultBookingDurationMinutes() == null
+                ? tenant.getDefaultBookingDurationMinutes()
+                : request.defaultBookingDurationMinutes();
         var agent = new Agent(tenant, request.name(), request.greetingMessage(), request.systemPrompt());
         agent.update(
                 request.name(),
@@ -102,7 +107,7 @@ public class AgentService {
         agent.configureAvailability(request.operatingHours(), request.afterHoursBehavior(), request.afterHoursMessage());
         applyCallBehavior(agent, request);
         agent.configureBookingWorkflow(
-                request.defaultBookingDurationMinutes(),
+                bookingDuration,
                 request.bookingRequiredFields(),
                 request.bookingNotificationChannels(),
                 request.bookingNotificationRecipient()
