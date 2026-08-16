@@ -14,12 +14,45 @@ export type WorkspaceProfileSettings = {
   defaultBookingDurationMinutes: number;
 };
 
+export type WorkspaceCallDefaults = {
+  saveTranscript: boolean;
+  recordCalls: boolean;
+  bargeInSensitivity: number;
+};
+
+export type WorkspaceNotificationPreferences = {
+  consoleBookingNotificationsEnabled: boolean;
+  emailBookingNotificationsEnabled: boolean;
+};
+
 export function loadWorkspaceProfile() {
   return apiRequest<WorkspaceProfileSettings>("/tenant/workspace-profile");
 }
 
 export function saveWorkspaceProfile(request: Pick<WorkspaceProfileSettings, "businessName" | "timezone" | "defaultBookingDurationMinutes">) {
   return apiRequest<WorkspaceProfileSettings>("/tenant/workspace-profile", {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+}
+
+export function loadWorkspaceCallDefaults() {
+  return apiRequest<WorkspaceCallDefaults>("/tenant/call-defaults");
+}
+
+export function saveWorkspaceCallDefaults(request: WorkspaceCallDefaults) {
+  return apiRequest<WorkspaceCallDefaults>("/tenant/call-defaults", {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+}
+
+export function loadWorkspaceNotificationPreferences() {
+  return apiRequest<WorkspaceNotificationPreferences>("/tenant/notification-preferences");
+}
+
+export function saveWorkspaceNotificationPreferences(request: WorkspaceNotificationPreferences) {
+  return apiRequest<WorkspaceNotificationPreferences>("/tenant/notification-preferences", {
     method: "PUT",
     body: JSON.stringify(request),
   });

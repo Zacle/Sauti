@@ -77,7 +77,7 @@ import {
   updateAgentVariables,
   uploadKnowledgeDocument,
 } from "@/lib/api/agents";
-import { loadWorkspaceProfile } from "@/lib/api/tenant";
+import { loadWorkspaceCallDefaults, loadWorkspaceProfile } from "@/lib/api/tenant";
 import type { Agent, AgentReadiness, AgentTemplate as StoredAgentTemplate, AgentVariableDefinition, AvailablePhoneNumber, CreateAgentVariable, KnowledgeDocument } from "@/types/api";
 import { useAuth } from "@/hooks/useAuth";
 import { TIMEZONE_GROUPS } from "@/lib/timezones";
@@ -451,10 +451,13 @@ export function AgentCreator({
 
   useEffect(() => {
     if (editing) return;
-    loadWorkspaceProfile().then((profile) => {
+    Promise.all([loadWorkspaceProfile(), loadWorkspaceCallDefaults()]).then(([profile, defaults]) => {
       setTimezone(profile.timezone);
       setDefaultBookingDurationMinutes(profile.defaultBookingDurationMinutes);
       setWorkspaceBookingDurationMinutes(profile.defaultBookingDurationMinutes);
+      setSaveTranscript(defaults.saveTranscript);
+      setRecordCalls(defaults.recordCalls);
+      setBargeInSensitivity(defaults.bargeInSensitivity);
     }).catch(() => {
       // Keep safe local defaults when workspace preferences are unavailable.
     });

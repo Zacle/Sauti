@@ -50,6 +50,12 @@ export const authApi = {
       body: JSON.stringify({ email, code, newPassword }),
     });
   },
+  changePassword(currentPassword: string, newPassword: string) {
+    return apiRequest<{ status: string; message: string }>("/auth/password", {
+      method: "PUT",
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
 };
 
 export function getOnboardingStatus() {

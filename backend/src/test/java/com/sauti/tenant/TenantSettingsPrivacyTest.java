@@ -9,6 +9,8 @@ import com.sauti.agent.Agent;
 import com.sauti.agent.AgentRepository;
 import com.sauti.tenant.TenantDtos.PrivacyRetentionRequest;
 import com.sauti.tenant.TenantDtos.WorkspaceProfileRequest;
+import com.sauti.tenant.TenantDtos.WorkspaceCallDefaultsRequest;
+import com.sauti.tenant.TenantDtos.WorkspaceNotificationPreferencesRequest;
 import com.sauti.tool.WebhookDestinationValidator;
 import java.util.List;
 import java.util.Optional;
@@ -85,5 +87,22 @@ class TenantSettingsPrivacyTest {
                 new WorkspaceProfileRequest("Clinic", "Not/A-Timezone", 60)
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("valid IANA timezone");
+    }
+
+    @Test
+    void savesWorkspaceCallAndNotificationPreferences() {
+        var tenant = new Tenant("Clinic", "owner@example.com", "GB");
+        when(tenants.findById(tenant.getId())).thenReturn(Optional.of(tenant));
+
+        var calls = service.configureCallDefaults(
+                tenant.getId(), new WorkspaceCallDefaultsRequest(false, true, 0.9));
+        var notifications = service.configureNotificationPreferences(
+                tenant.getId(), new WorkspaceNotificationPreferencesRequest(false, true));
+
+        assertThat(calls.saveTranscript()).isFalse();
+        assertThat(calls.recordCalls()).isTrue();
+        assertThat(calls.bargeInSensitivity()).isEqualTo(0.9);
+        assertThat(notifications.consoleBookingNotificationsEnabled()).isFalse();
+        assertThat(notifications.emailBookingNotificationsEnabled()).isTrue();
     }
 }

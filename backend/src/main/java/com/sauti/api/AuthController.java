@@ -11,6 +11,8 @@ import com.sauti.auth.AuthDtos.RegisterResponse;
 import com.sauti.auth.AuthDtos.ResendVerificationRequest;
 import com.sauti.auth.AuthDtos.ResetPasswordRequest;
 import com.sauti.auth.AuthDtos.VerifyEmailRequest;
+import com.sauti.auth.AuthDtos.ChangePasswordRequest;
+import com.sauti.auth.AuthenticatedUser;
 import com.sauti.auth.AuthRateLimitService;
 import com.sauti.auth.AuthService;
 import com.sauti.auth.GoogleOAuthService;
@@ -26,6 +28,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.servlet.view.RedirectView;
 
 @RestController
@@ -146,6 +150,14 @@ public class AuthController {
     MessageResponse resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         rateLimitService.checkResetPassword(request.email());
         return authService.resetPassword(request);
+    }
+
+    @PutMapping("/password")
+    MessageResponse changePassword(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        return authService.changePassword(user.userId(), request);
     }
 
     private String encode(String value) {

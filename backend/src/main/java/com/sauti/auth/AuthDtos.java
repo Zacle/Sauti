@@ -49,6 +49,11 @@ public final class AuthDtos {
     ) {
     }
 
+    public record ChangePasswordRequest(
+            @NotBlank String currentPassword,
+            @NotBlank @Size(min = 8, max = 200) String newPassword
+    ) { }
+
     public record RegisterResponse(
             String status,
             String message,

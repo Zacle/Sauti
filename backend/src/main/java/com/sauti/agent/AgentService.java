@@ -101,11 +101,11 @@ public class AgentService {
                 knowledgeBaseService.normalize(request.knowledgeBase()),
                 request.operatingHours(),
                 request.maxCallDurationSeconds(),
-                request.saveTranscript(),
-                request.recordCalls()
+                request.saveTranscript() == null ? tenant.isDefaultSaveTranscript() : request.saveTranscript(),
+                request.recordCalls() == null ? tenant.isDefaultRecordCalls() : request.recordCalls()
         );
         agent.configureAvailability(request.operatingHours(), request.afterHoursBehavior(), request.afterHoursMessage());
-        applyCallBehavior(agent, request);
+        applyCallBehavior(agent, request, tenant.getDefaultBargeInSensitivity());
         agent.configureBookingWorkflow(
                 bookingDuration,
                 request.bookingRequiredFields(),
@@ -145,7 +145,7 @@ public class AgentService {
                 request.recordCalls()
         );
         agent.configureAvailability(request.operatingHours(), request.afterHoursBehavior(), request.afterHoursMessage());
-        applyCallBehavior(agent, request);
+        applyCallBehavior(agent, request, null);
         agent.configureBookingWorkflow(
                 request.defaultBookingDurationMinutes(),
                 request.bookingRequiredFields(),
@@ -324,9 +324,10 @@ public class AgentService {
         }
     }
 
-    private void applyCallBehavior(Agent agent, AgentRequest request) {
+    private void applyCallBehavior(Agent agent, AgentRequest request, Double defaultBargeInSensitivity) {
         agent.updateCallBehavior(
-                request.bargeInSensitivity(), request.bargeInGraceMs(), request.endCallOnSilenceSeconds(),
+                request.bargeInSensitivity() == null ? defaultBargeInSensitivity : request.bargeInSensitivity(),
+                request.bargeInGraceMs(), request.endCallOnSilenceSeconds(),
                 request.reminderAfterSilenceSeconds(), request.maxReminders(), request.detectVoicemail(),
                 request.handleCallScreening(), request.dtmfEnabled(), request.sttEndpointingMs(),
                 request.sttVocabularyDomain(), request.sttBoostedKeywords(), request.safetyGuardrails(),

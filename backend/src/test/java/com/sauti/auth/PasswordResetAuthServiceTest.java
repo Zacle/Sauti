@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.sauti.auth.AuthDtos.ResetPasswordRequest;
+import com.sauti.auth.AuthDtos.ChangePasswordRequest;
 import com.sauti.tenant.TenantRepository;
 import java.util.List;
 import java.util.Optional;
@@ -56,5 +57,26 @@ class PasswordResetAuthServiceTest {
         verify(codes).deletePasswordResetCode(user);
         verify(first).revoke();
         verify(second).revoke();
+    }
+
+    @Test
+    void authenticatedPasswordChangeVerifiesCurrentPasswordAndRevokesSessions() {
+        var user = mock(User.class);
+        var refreshToken = mock(RefreshToken.class);
+        var userId = java.util.UUID.randomUUID();
+        when(user.getId()).thenReturn(userId);
+        when(user.getPasswordHash()).thenReturn("old-hash");
+        when(users.findById(userId)).thenReturn(Optional.of(user));
+        when(passwords.matches("old-password", "old-hash")).thenReturn(true);
+        when(passwords.matches("new-password", "old-hash")).thenReturn(false);
+        when(passwords.encode("new-password")).thenReturn("new-hash");
+        when(refreshTokens.findAllByUserIdAndRevokedAtIsNull(userId)).thenReturn(List.of(refreshToken));
+
+        var response = service.changePassword(userId,
+                new ChangePasswordRequest("old-password", "new-password"));
+
+        assertThat(response.status()).isEqualTo("ok");
+        verify(user).updatePasswordHash("new-hash");
+        verify(refreshToken).revoke();
     }
 }

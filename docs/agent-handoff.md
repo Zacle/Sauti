@@ -12318,3 +12318,35 @@ Expected:
   visual check.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and the normal CI/CD path.
+
+### 2026-08-16 - Persisted Calls, Notifications, and Security settings
+
+- Replaced the link-only Calls & AI and Notifications tabs with tenant-scoped,
+  persisted controls. Workspace owners can now save transcript, recording, and
+  interruption defaults for newly created agents, plus workspace-wide console
+  and email booking-notification gates.
+- New agents created manually or from templates inherit the saved call defaults.
+  Existing agents remain unchanged so editing workspace defaults cannot alter a
+  live phone line unexpectedly.
+- Booking notification delivery now applies both layers intentionally: the
+  channel must be enabled on the agent and allowed by the workspace. Calendar
+  sync failures still create an in-console alert because owner action is needed.
+- Replaced Security-tab password/reset and support-email redirects with an
+  authenticated in-app password change. The backend verifies the current
+  password, rejects password reuse, updates the hash, and revokes active refresh
+  sessions. The endpoint is explicitly authenticated despite other public auth
+  routes. Google sign-in remains available for Google-created accounts.
+- Removed `mailto:` behavior from Settings. Contextual help now opens Sauti's
+  in-app help centre; the Security tab no longer launches an external mail app.
+- Added the forward-only V73 workspace-preferences migration for call and
+  notification defaults without changing the already committed V72 checksum.
+  Files touched: tenant settings entity/DTO/service/API,
+  auth DTO/service/controller/security policy, agent creation/template flows,
+  booking notifications, Settings UI/styles/API clients, Agent Creator defaults,
+  focused tests, migration, and this handoff.
+- Verification: focused tenant/password tests passed; full backend test suite
+  passed; dashboard typecheck, zero-warning lint, and optimized production build
+  passed with all 63 routes generated; `git diff --check` passed with only the
+  repository's expected LF-to-CRLF warnings.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path.

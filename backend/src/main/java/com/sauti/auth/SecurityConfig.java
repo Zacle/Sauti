@@ -44,6 +44,7 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/error").permitAll()
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/auth/password").authenticated()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/integrations/google-calendar/callback").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/integrations/*/callback").permitAll()

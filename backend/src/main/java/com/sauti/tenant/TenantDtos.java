@@ -102,4 +102,42 @@ public final class TenantDtos {
         }
     }
 
+    public record WorkspaceCallDefaultsRequest(
+            boolean saveTranscript,
+            boolean recordCalls,
+            @jakarta.validation.constraints.DecimalMin("0.0")
+            @jakarta.validation.constraints.DecimalMax("1.0") double bargeInSensitivity
+    ) { }
+
+    public record WorkspaceCallDefaultsResponse(
+            boolean saveTranscript,
+            boolean recordCalls,
+            double bargeInSensitivity
+    ) {
+        public static WorkspaceCallDefaultsResponse from(Tenant tenant) {
+            return new WorkspaceCallDefaultsResponse(
+                    tenant.isDefaultSaveTranscript(),
+                    tenant.isDefaultRecordCalls(),
+                    tenant.getDefaultBargeInSensitivity()
+            );
+        }
+    }
+
+    public record WorkspaceNotificationPreferencesRequest(
+            boolean consoleBookingNotificationsEnabled,
+            boolean emailBookingNotificationsEnabled
+    ) { }
+
+    public record WorkspaceNotificationPreferencesResponse(
+            boolean consoleBookingNotificationsEnabled,
+            boolean emailBookingNotificationsEnabled
+    ) {
+        public static WorkspaceNotificationPreferencesResponse from(Tenant tenant) {
+            return new WorkspaceNotificationPreferencesResponse(
+                    tenant.isConsoleBookingNotificationsEnabled(),
+                    tenant.isEmailBookingNotificationsEnabled()
+            );
+        }
+    }
+
 }

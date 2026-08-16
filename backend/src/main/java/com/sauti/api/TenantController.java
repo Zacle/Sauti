@@ -8,6 +8,10 @@ import com.sauti.tenant.TenantDtos.PrivacyRetentionRequest;
 import com.sauti.tenant.TenantDtos.PrivacyRetentionResponse;
 import com.sauti.tenant.TenantDtos.WorkspaceProfileRequest;
 import com.sauti.tenant.TenantDtos.WorkspaceProfileResponse;
+import com.sauti.tenant.TenantDtos.WorkspaceCallDefaultsRequest;
+import com.sauti.tenant.TenantDtos.WorkspaceCallDefaultsResponse;
+import com.sauti.tenant.TenantDtos.WorkspaceNotificationPreferencesRequest;
+import com.sauti.tenant.TenantDtos.WorkspaceNotificationPreferencesResponse;
 import com.sauti.tenant.TenantFlowService;
 import com.sauti.tenant.TenantSettingsService;
 import jakarta.validation.Valid;
@@ -66,6 +70,32 @@ public class TenantController {
             @Valid @RequestBody WorkspaceProfileRequest request
     ) {
         return tenantSettingsService.configureWorkspaceProfile(user.tenantId(), request);
+    }
+
+    @GetMapping("/call-defaults")
+    WorkspaceCallDefaultsResponse callDefaults(@AuthenticationPrincipal AuthenticatedUser user) {
+        return tenantSettingsService.callDefaults(user.tenantId());
+    }
+
+    @PutMapping("/call-defaults")
+    WorkspaceCallDefaultsResponse configureCallDefaults(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody WorkspaceCallDefaultsRequest request
+    ) {
+        return tenantSettingsService.configureCallDefaults(user.tenantId(), request);
+    }
+
+    @GetMapping("/notification-preferences")
+    WorkspaceNotificationPreferencesResponse notificationPreferences(@AuthenticationPrincipal AuthenticatedUser user) {
+        return tenantSettingsService.notificationPreferences(user.tenantId());
+    }
+
+    @PutMapping("/notification-preferences")
+    WorkspaceNotificationPreferencesResponse configureNotificationPreferences(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody WorkspaceNotificationPreferencesRequest request
+    ) {
+        return tenantSettingsService.configureNotificationPreferences(user.tenantId(), request);
     }
 
     @PutMapping("/privacy-retention")

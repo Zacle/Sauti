@@ -5,6 +5,10 @@ import com.sauti.tenant.TenantDtos.PrivacyRetentionRequest;
 import com.sauti.tenant.TenantDtos.PrivacyRetentionResponse;
 import com.sauti.tenant.TenantDtos.WorkspaceProfileRequest;
 import com.sauti.tenant.TenantDtos.WorkspaceProfileResponse;
+import com.sauti.tenant.TenantDtos.WorkspaceCallDefaultsRequest;
+import com.sauti.tenant.TenantDtos.WorkspaceCallDefaultsResponse;
+import com.sauti.tenant.TenantDtos.WorkspaceNotificationPreferencesRequest;
+import com.sauti.tenant.TenantDtos.WorkspaceNotificationPreferencesResponse;
 import com.sauti.agent.AgentRepository;
 import com.sauti.tool.WebhookDestinationValidator;
 import jakarta.persistence.EntityNotFoundException;
@@ -66,6 +70,32 @@ public class TenantSettingsService {
                 request.defaultBookingDurationMinutes()
         );
         return WorkspaceProfileResponse.from(tenant);
+    }
+
+    @Transactional(readOnly = true)
+    public WorkspaceCallDefaultsResponse callDefaults(UUID tenantId) {
+        return WorkspaceCallDefaultsResponse.from(get(tenantId));
+    }
+
+    @Transactional
+    public WorkspaceCallDefaultsResponse configureCallDefaults(UUID tenantId, WorkspaceCallDefaultsRequest request) {
+        var tenant = get(tenantId);
+        tenant.configureCallDefaults(request.saveTranscript(), request.recordCalls(), request.bargeInSensitivity());
+        return WorkspaceCallDefaultsResponse.from(tenant);
+    }
+
+    @Transactional(readOnly = true)
+    public WorkspaceNotificationPreferencesResponse notificationPreferences(UUID tenantId) {
+        return WorkspaceNotificationPreferencesResponse.from(get(tenantId));
+    }
+
+    @Transactional
+    public WorkspaceNotificationPreferencesResponse configureNotificationPreferences(
+            UUID tenantId, WorkspaceNotificationPreferencesRequest request) {
+        var tenant = get(tenantId);
+        tenant.configureNotificationPreferences(
+                request.consoleBookingNotificationsEnabled(), request.emailBookingNotificationsEnabled());
+        return WorkspaceNotificationPreferencesResponse.from(tenant);
     }
 
     @Transactional

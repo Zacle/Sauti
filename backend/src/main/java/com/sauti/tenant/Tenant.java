@@ -54,6 +54,21 @@ public class Tenant extends Auditable {
     @Column(nullable = false)
     private int defaultBookingDurationMinutes = 60;
 
+    @Column(nullable = false)
+    private boolean defaultSaveTranscript = true;
+
+    @Column(nullable = false)
+    private boolean defaultRecordCalls = false;
+
+    @Column(nullable = false)
+    private double defaultBargeInSensitivity = 0.70;
+
+    @Column(nullable = false)
+    private boolean consoleBookingNotificationsEnabled = true;
+
+    @Column(nullable = false)
+    private boolean emailBookingNotificationsEnabled = true;
+
     protected Tenant() {
     }
 
@@ -118,6 +133,27 @@ public class Tenant extends Auditable {
 
     public int getDefaultBookingDurationMinutes() {
         return defaultBookingDurationMinutes;
+    }
+
+    public boolean isDefaultSaveTranscript() { return defaultSaveTranscript; }
+    public boolean isDefaultRecordCalls() { return defaultRecordCalls; }
+    public double getDefaultBargeInSensitivity() { return defaultBargeInSensitivity; }
+    public boolean isConsoleBookingNotificationsEnabled() { return consoleBookingNotificationsEnabled; }
+    public boolean isEmailBookingNotificationsEnabled() { return emailBookingNotificationsEnabled; }
+
+    public void configureCallDefaults(boolean saveTranscript, boolean recordCalls, double bargeInSensitivity) {
+        if (bargeInSensitivity < 0 || bargeInSensitivity > 1) {
+            throw new IllegalArgumentException("Interruption sensitivity must be between 0 and 1");
+        }
+        this.defaultSaveTranscript = saveTranscript;
+        this.defaultRecordCalls = recordCalls;
+        this.defaultBargeInSensitivity = bargeInSensitivity;
+    }
+
+    public void configureNotificationPreferences(boolean consoleBookingNotificationsEnabled,
+                                                 boolean emailBookingNotificationsEnabled) {
+        this.consoleBookingNotificationsEnabled = consoleBookingNotificationsEnabled;
+        this.emailBookingNotificationsEnabled = emailBookingNotificationsEnabled;
     }
 
     public void configureWorkspaceProfile(String businessName, String timezone, int defaultBookingDurationMinutes) {

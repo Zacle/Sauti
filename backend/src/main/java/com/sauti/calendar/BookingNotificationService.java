@@ -75,7 +75,8 @@ public class BookingNotificationService {
             var booking = bookingRepository.findById(event.bookingId()).orElse(null);
             if (booking == null) return;
             var calendarSyncFailed = "pending_owner_action".equals(booking.getCalendarSyncStatus());
-            if (calendarSyncFailed || booking.getAgent().getBookingNotificationChannels().contains("dashboard")) {
+            if (calendarSyncFailed || (booking.getTenant().isConsoleBookingNotificationsEnabled()
+                    && booking.getAgent().getBookingNotificationChannels().contains("dashboard"))) {
                 workspaceNotificationService.bookingCreated(booking.getId());
             }
             dashboardEventPublisher.bookingCreated(booking);
@@ -119,7 +120,8 @@ public class BookingNotificationService {
             OffsetDateTime previousAppointmentAt,
             OffsetDateTime statusChangedAt
     ) {
-        if (!booking.getAgent().getBookingNotificationChannels().contains("email")) return;
+        if (!booking.getTenant().isEmailBookingNotificationsEnabled()
+                || !booking.getAgent().getBookingNotificationChannels().contains("email")) return;
         var configured = booking.getAgent().getBookingNotificationRecipient();
         var recipient = configured == null || configured.isBlank()
                 ? booking.getTenant().getEmail()

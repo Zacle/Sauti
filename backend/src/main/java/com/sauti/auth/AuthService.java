@@ -11,6 +11,7 @@ import com.sauti.auth.AuthDtos.RegisterResponse;
 import com.sauti.auth.AuthDtos.ResendVerificationRequest;
 import com.sauti.auth.AuthDtos.ResetPasswordRequest;
 import com.sauti.auth.AuthDtos.VerifyEmailRequest;
+import com.sauti.auth.AuthDtos.ChangePasswordRequest;
 import com.sauti.tenant.Tenant;
 import com.sauti.tenant.TenantDtos.TenantResponse;
 import com.sauti.tenant.TenantRepository;
@@ -200,6 +201,21 @@ public class AuthService {
         verificationCodeService.deletePasswordResetCode(user);
         refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull(user.getId()).forEach(RefreshToken::revoke);
         return new MessageResponse("ok", "Password has been reset.", null);
+    }
+
+    @Transactional
+    public MessageResponse changePassword(UUID userId, ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("Current password is incorrect");
+        }
+        if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("Choose a password different from your current password");
+        }
+        user.updatePasswordHash(passwordEncoder.encode(request.newPassword()));
+        refreshTokenRepository.findAllByUserIdAndRevokedAtIsNull(user.getId()).forEach(RefreshToken::revoke);
+        return new MessageResponse("ok", "Password changed. Sign in again on your other devices.", null);
     }
 
     @Transactional
