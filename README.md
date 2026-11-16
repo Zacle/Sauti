@@ -1,71 +1,56 @@
 # Sauti
 
-Sauti is a greenfield MVP implementation of the multilingual AI voice-agent platform described in `Sauti_SRS.pdf`.
+Sauti is a multi-tenant AI voice-receptionist platform. Businesses configure an
+agent in the dashboard, connect a phone number, and the agent answers calls,
+books appointments, sends SMS, and syncs with calendars, CRMs, and webhooks.
 
-The current implementation targets the first live-call MVP:
+- **Voice:** live calls run on Telnyx-managed AI Assistants (Telnyx handles
+  speech recognition, the model, synthesis, and interruption). Sauti owns the
+  business logic: tool policy, confirmation before side effects, fulfillment,
+  call records, billing, and analytics.
+- **WhatsApp:** handled by Sauti's own conversation orchestrator.
+- **Data:** PostgreSQL (Neon in production), Redis (Upstash in production),
+  email through Resend SMTP.
 
-- Spring Boot backend with tenant auth, agent configuration, Twilio webhook entrypoints, call logs, and a fake STT/LLM/TTS pipeline.
-- AI agent turn orchestration with structured booking decisions and configurable webhook integrations for external LLM/calendar workflows.
-- Next.js dashboard with agent creation, activation, usage summary, and call-log views.
-- Local infrastructure for PostgreSQL and Redis under `infra/local/docker-compose.yml`.
-
-## Structure
+## Repository layout
 
 ```text
-backend/      Spring Boot modular monolith
-dashboard/    Next.js operational dashboard
-infra/local/  Infrastructure-only Docker Compose services
-docs/         Implementation notes
+backend/     Spring Boot modular monolith (Java 17, Gradle)
+dashboard/   Next.js 15 App Router console and marketing site
+deploy/      Production Docker Compose, Caddy, and server helper scripts
+infra/local/ Local Postgres, Redis, and Mailpit
+docs/        Architecture, runbooks, setup guides, and agent handoff history
 ```
 
-## Backend
+Start with [AGENTS.md](AGENTS.md) and [docs/agent-handoff.md](docs/agent-handoff.md).
+Product specs: `Sauti_SRS.pdf` and `Sauti_Flows.pdf`. Backend module boundaries
+are in [docs/backend-modules.md](docs/backend-modules.md).
 
-The complete local stack can be started from the repository root:
+## Local development
 
-```powershell
-Copy-Item .env.example .env
-# Add GOOGLE_AI_API_KEY to .env for live Standard-model responses.
-docker compose up --build -d
-docker compose ps
+```bash
+cp .env.example .env
+docker compose -f infra/local/docker-compose.yml up -d   # postgres, redis, mailpit
+./gradlew :backend:bootRun                               # http://localhost:8080
+cd dashboard && npm ci && npm run dev                    # http://localhost:8088
 ```
 
-Open the dashboard at `http://localhost:8088`, the API at `http://localhost:8080`, Swagger at `http://localhost:8080/swagger-ui.html`, and Mailpit at `http://localhost:8025`.
+Or run everything in containers with `docker compose up --build`.
+Mailpit is at `http://localhost:8025`, Swagger at `/swagger-ui.html`.
+Without `PROVIDER_MODE=live` no external telephony or speech calls are made.
+Verification codes are returned in API responses only when
+`AUTH_EXPOSE_DEV_TOKENS=true`; keep it `false` in production.
 
-Use `docker compose logs -f backend dashboard` to follow application logs and `docker compose down` to stop the stack. PostgreSQL and Redis data remain in named volumes; use `docker compose down -v` only when you intentionally want to erase local data.
+## Checks
 
-The code uses fake telephony and no-op speech providers by default. Gemini-backed text turns require `GOOGLE_AI_API_KEY`. Twilio, Deepgram, and ElevenLabs credentials are only required when their corresponding live providers are enabled.
-Auth email HTML is rendered in the backend with Thymeleaf templates under `backend/src/main/resources/templates/email`. Verification and password reset codes are stored in Redis with a TTL. The app uses one SMTP-backed mail service. Local delivery uses Mailpit on `localhost:1025`; open the Mailpit inbox at `http://localhost:8025`. Production can use Resend SMTP by setting `SPRING_MAIL_HOST=smtp.resend.com`, `SPRING_MAIL_PORT=587`, `SPRING_MAIL_USERNAME=resend`, `SPRING_MAIL_PASSWORD=<resend-api-key>`, `SPRING_MAIL_SMTP_AUTH=true`, and `SPRING_MAIL_SMTP_STARTTLS_ENABLE=true`. Verification and password reset codes are returned in API responses only when `AUTH_EXPOSE_DEV_TOKENS=true`, which is the local default. Disable it in production.
-The dashboard handles `/verify-email`, `/forgot-password`, and `/reset-password` by collecting the email code sent by the backend.
-Twilio webhook signature validation is available through `TWILIO_VALIDATE_SIGNATURE=true`; local development leaves it disabled by default. Auth rate limits are stored in Redis.
-
-Call turns are routed through per-agent tool definitions stored in `agent_tools`. Local development uses `SAUTI_LLM_PROVIDER=heuristic`; production can set `SAUTI_LLM_PROVIDER=webhook` and `SAUTI_LLM_WEBHOOK_URL` to call an external AI workflow. The webhook should return:
-
-```json
-{
-  "responseText": "Done. Your appointment is confirmed.",
-  "bookingIntent": {
-    "callerName": "Fatou",
-    "serviceType": "Consultation",
-    "appointmentAt": "2030-01-15T10:00:00Z"
-  }
-}
+```bash
+./gradlew :backend:test
+cd dashboard && npm run typecheck && npm run lint && npm run build
 ```
 
-Agent tools are seeded inactive when an agent is created. Activate the relevant tools through `/api/v1/agents/{agentId}/tools` before expecting the LLM to call them.
+## Production
 
-Bookings are synced through a `CalendarProvider`. Local development uses `SAUTI_CALENDAR_PROVIDER=local`; production can set `SAUTI_CALENDAR_PROVIDER=webhook` and `SAUTI_CALENDAR_WEBHOOK_URL` to call Google Calendar, Calendly, n8n, or another scheduling workflow. The calendar webhook should return `{ "externalEventId": "..." }`.
-
-Backend module boundaries are documented in [docs/backend-modules.md](docs/backend-modules.md).
-OpenAPI UI is available at `/swagger-ui.html` when the backend is running.
-
-## Production deployment
-
-Production runs from immutable Docker images using Docker Compose and Caddy.
-Pushes to `main` deploy only after the backend and dashboard CI jobs pass;
-the VPS builds the exact commit that passed CI.
-See [docs/deployment.md](docs/deployment.md) for server provisioning, GitHub
-secrets, DNS, TLS, and backup requirements.
-
-## Dashboard
-
-For a host-based dashboard run, use `npm ci` and `npm run dev` inside `dashboard/`. Override the backend proxy with `SAUTI_API_BASE_URL` when necessary.
+Pushes to `main` run `.github/workflows/ci.yml`; `deploy.yml` then deploys the
+exact commit that passed CI to a single Docker host behind Caddy. See
+[docs/deployment.md](docs/deployment.md) for provisioning, secrets, DNS, and
+backups, and `deploy/bootstrap-vps.sh` to prepare a fresh Ubuntu server.

@@ -12,7 +12,7 @@ Sauti is a Spring Boot + Next.js AI voice-agent platform.
 - `docs/`: plans, architecture notes, implementation notes, and agent handoff history.
 - Production domain: `https://sauti.uk`.
 - GitHub repository: `https://github.com/Zacle/Sauti`.
-- Production host: OVH VPS reached by CI/CD over SSH. Do not commit server secrets or private keys.
+- Production host: Contabo Cloud VPS 4 (Ubuntu, 8 GB RAM) reached by CI/CD over SSH. Do not commit server secrets or private keys.
 
 The old Flutter clean-architecture guidance does not apply to the current dashboard. If a Flutter app is introduced later, add a separate section for it.
 

@@ -11,7 +11,7 @@ Create this record with the DNS provider for `sauti.uk`:
 ```text
 Type: A
 Name: admin
-Value: <the same OVH VPS IPv4 address used by sauti.uk>
+Value: <the same VPS IPv4 address used by sauti.uk>
 ```
 
 Add an `AAAA` record only if the VPS has correctly configured public IPv6.

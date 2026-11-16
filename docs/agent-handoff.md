@@ -2,6 +2,118 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-16: Repository cleanup and Contabo server provisioning
+
+- Removed tracked clutter: `design-qa/` screenshots, `design-qa.md`,
+  `dashboard/design-qa.md`, ~60 competitor reference screenshots under
+  `docs/{omniDimension,polyai,rinng,zeeg}`, and the unreferenced root
+  `logo.png`/`logo.jpg`. All remain recoverable from git history.
+- Rewrote `README.md` and `CLAUDE.md`; both described the retired Twilio/Gemini-only
+  stack. `AGENTS.md` and `docs/deployment.md` were already current.
+- Added `deploy/bootstrap-vps.sh` (Docker, deploy user access, `/opt/sauti`,
+  swap, firewall). The new Contabo server is bootstrapped and
+  `/opt/sauti/.env.production` was created from the local `.env` plus the
+  production example (production keeps `PROVIDER_MODE=live`,
+  `WHOP_SANDBOX=false`, public demo disabled).
+- Committed and pushed at the user's explicit request, overriding the usual
+  "agents do not commit" rule for this change.
+- Verification: `./gradlew :backend:test` passed, dashboard `typecheck`, `lint`,
+  and `build` passed.
+- Follow-ups: update GitHub secrets `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY` and the
+  `sauti.uk`/`admin.sauti.uk` DNS A records before the first deploy to the new
+  host; remove `/etc/sudoers.d/deploy-bootstrap` on the server; the local ignored
+  `secrets/sauti-ovh-deploy*` key and `design-qa/`, `video/` folders can be deleted.
+
+### 2026-11-16: Production host moved from OVH to Contabo
+
+- The OVH VPS became unreachable after unpaid billing, so production moves to a
+  Contabo Cloud VPS 4 (4 vCPU, 8 GB RAM, 100 GB SSD, 1-month term, Europe).
+  The server IP is intentionally not recorded in the repository.
+- No workflow or script hardcodes the host. CI/CD reads `VPS_HOST`, `VPS_USER`,
+  and `VPS_SSH_KEY` from GitHub Actions secrets, so the move needs those secrets
+  updated, not code changes.
+- Docs updated: `AGENTS.md` and `docs/admin-subdomain.md` no longer name OVH.
+  Older entries below still mention OVH as history.
+- Remaining manual steps: install Docker, create `/opt/sauti` and
+  `.env.production` on the new host, update the three GitHub secrets, repoint
+  the `sauti.uk` and `admin.sauti.uk` A records, then deploy. Neon, Upstash, and
+  Resend are external and unaffected. Local call recordings on the old server
+  are lost unless recovered.
+- Deployment status: server provisioned, nothing deployed yet.
+
+### 2026-11-13: Homepage results cards
+
+- Replaced the plain results strip with four rounded dark cards, larger values,
+  icon labels, restrained mint/blue/violet/amber accents and compact metric
+  illustrations. Retained the existing metric values and Number Flow entrance.
+  Reduced-motion users see final values without number animation or hover motion.
+- Files: `VoiceHome/Stats.tsx`, new `Stats.module.css`, and this handoff.
+- Verification: TypeScript and focused ESLint passed. Browser checked desktop and
+  390px mobile; cards form a two-by-two mobile grid without horizontal overflow.
+  No new metric sources or measured trend series were introduced.
+- Deployment: none; changes uncommitted. Existing marketing metric claims still
+  use the pre-existing constants; their underlying evidence was not changed.
+
+### 2026-11-13: Automatic solution playback
+
+- Solution demos now autoplay four-second action sequences with a moving pointer,
+  simulated click ripple, and scene transition. Results hold 4.5 seconds before
+  replay. Removed the instruction to click manually.
+- Added pause/resume; manual sample interaction pauses playback, Restart begins
+  autoplay again. Timers stop offscreen or in hidden tabs; reduced-motion users
+  retain manual controls without autoplay. Timers clean up on state change/unmount.
+- Files: `Solutions/InteractiveDemo.tsx`, `InteractiveDemo.module.css`, `README.md`
+  and this handoff. All simulation remains local to public marketing pages.
+- Verification: TypeScript and focused ESLint passed; browser observed automatic
+  progress to completion and verified pause/resume. Production build checked.
+- Deployment: none. Changes remain uncommitted; local dev preview restored at 8088.
+
+### 2026-11-13: Clickable solution illustrations
+
+- Upgraded the public solution walkthroughs into an interactive workspace with
+  a progress rail, voice waveform, source/configuration cards, highlighted click
+  actions, Motion transitions, and outcome receipts. Retained current marketing
+  fonts/colors and static hero/overview previews.
+- Each of the six journeys advances through three explicit actions. Booking
+  time, language, support question, transfer availability, and after-hours policy
+  choices update the conversation and final outcome. Restart clears all choices.
+  These remain labelled, local sample simulations with no API side effects.
+- Files: `Solutions/InteractiveDemo.tsx`, `InteractiveDemo.module.css`,
+  `SolutionExperience.tsx`, `README.md`, and this handoff. Removed superseded
+  tab-panel rendering; kept the pre-launch test scenarios.
+- Verification: TypeScript, focused ESLint, and production build passed (57
+  pages). Browser exercised all six journeys, slot confirmation and restart,
+  policy-exception escalation, unavailable transfer, French keyboard activation,
+  and closure outcome. Mobile 390px checks showed no horizontal overflow.
+- Dev server was briefly stopped for the build to avoid the shared Next cache
+  conflict, then restored at port 8088. No deployment, staging or commits.
+
+### 2026-11-13: Public solution product walkthroughs
+
+- Replaced the repeated animated checklist hero on the six solution pages with
+  solution-specific calendar, knowledge, lead summary, transfer, language, and
+  after-hours visuals. Added visual previews to the solutions overview cards.
+- Added accessible setup / example conversation / result walkthroughs, language
+  and after-hours example selectors, and solution-specific pre-launch test cases.
+  Previews use fictional, labelled sample data and make no workspace API calls.
+- Grounded setup labels in the current agent editor and removed unused legacy
+  scoring/transfer outcome copy. Preserved the user's current Tailwind, Radix,
+  black/mint, Geist/Instrument Serif design direction.
+- Files: `dashboard/features/marketing/Solutions/{SolutionPages.tsx,
+  SolutionExperience.tsx,walkthrough-content.ts,README.md}` and this handoff.
+  README maps the editable scenes to their app sources for future UI changes.
+- Verification: TypeScript and focused ESLint passed; production build passed
+  (57 pages). Browser checked all six solution routes, step keyboard navigation,
+  French switching, and after-hours policy switching. Checked mobile at 390px
+  with no document overflow; verified the final policy/visual text correction
+  in dev and reran TypeScript. No backend changes or live calls.
+- Local build initially conflicted with the running dev cache; an isolated
+  temporary build also hit Windows junction/font resolution. Sequential build
+  succeeded. Dev server restored at port 8088; temporary production server stopped.
+- Deployment: none; changes uncommitted. Existing public analytics requests fail
+  locally while the backend on port 8080 is unavailable; this does not prevent
+  the previews. These are illustrative UI components, not exact app screenshots.
+
 ### 2026-08-16: Settings operations-console redesign
 
 - Rebuilt the authenticated Settings page from the selected horizontal-tab
