@@ -11,6 +11,8 @@ import {
 } from "react";
 import type { AuthSession } from "@/types/api";
 import { clearSession, readSession, SESSION_CHANGED_EVENT, writeSession } from "@/lib/session";
+import { isPreviewMode } from "@/lib/preview/mode";
+import { previewSession } from "@/lib/preview/session";
 
 type AuthContextValue = {
   session: AuthSession | null;
@@ -26,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const synchronize = () => setSession(readSession());
+    const synchronize = () => setSession(readSession() ?? (isPreviewMode() ? previewSession : null));
     synchronize();
     setReady(true);
     window.addEventListener(SESSION_CHANGED_EVENT, synchronize);

@@ -1,6 +1,9 @@
-import { CircleHelp } from "lucide-react";
-import { ConsolePlaceholder } from "@/features/console/ConsolePlaceholder/ConsolePlaceholder";
+import type { Metadata } from "next";
+import { HelpCenter } from "@/features/help/HelpCenter";
+
+
+export const metadata: Metadata = { title: "Help | Sauti" };
 
 export default function HelpPage() {
-  return <ConsolePlaceholder icon={CircleHelp} eyebrow="Resources" title="Help center" description="Find setup guidance and troubleshooting resources." />;
+  return <HelpCenter />;
 }

@@ -1,0 +1,140 @@
+/*
+ * Marketing nav, restyled to the black/white Geist look introduced
+ * with the new homepage. Scoped under `.mk` (the marketing layout root) so it
+ * overrides foundation.css without touching the console.
+ */
+
+.mk .nav-shell {
+  min-height: 64px;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  background: rgb(0 0 0 / 0.62);
+  box-shadow: none;
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  font-family: var(--font-sans);
+}
+
+.mk .brand {
+  gap: 10px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #fff;
+}
+
+.mk .nav-links {
+  gap: 26px;
+  color: #a1a1a1;
+  font-size: 0.875rem;
+}
+
+.mk .nav-links a:hover,
+.mk .login-link:hover,
+.mk .nav-dropdown:focus-within .nav-trigger,
+.mk .nav-dropdown:hover .nav-trigger {
+  color: #fff;
+}
+
+.mk .login-link {
+  color: #a1a1a1;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.mk .solid-button {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  color: #000;
+  background: #fff;
+  box-shadow: none;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.mk .solid-button:hover {
+  transform: none;
+  background: rgb(255 255 255 / 0.85);
+  box-shadow: none;
+}
+
+.mk .solid-button.large {
+  min-height: 46px;
+  padding: 0 24px;
+}
+
+.mk .product-menu {
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 16px;
+  background: #0a0a0a;
+  box-shadow: 0 30px 80px rgb(0 0 0 / 0.7);
+}
+
+.mk .product-menu-copy {
+  border-color: rgb(255 255 255 / 0.06);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.025);
+}
+
+.mk .product-menu-copy span {
+  color: #6b6b6b;
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+}
+
+.mk .product-menu-copy strong {
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.mk .product-menu-copy p,
+.mk .product-menu-grid span {
+  color: #a1a1a1;
+}
+
+.mk .product-menu-grid a {
+  border-color: transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: #ededed;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.mk .product-menu-grid a:hover {
+  border-color: rgb(255 255 255 / 0.08);
+  background: rgb(255 255 255 / 0.04);
+}
+
+.mk .product-menu-grid svg,
+.mk .mobile-menu-button svg {
+  color: #ededed;
+  filter: none;
+}
+
+.mk .product-menu-grid strong {
+  font-weight: 500;
+}
+
+.mk .mobile-menu-button {
+  border-color: rgb(255 255 255 / 0.1);
+  border-radius: 999px;
+  background: transparent;
+}
+
+.mk .mobile-nav-panel {
+  top: 64px;
+  max-height: calc(100dvh - 64px);
+  background: #000;
+}
+
+/* destinations.css collapses .nav-shell to one column below 980px, which
+   stacked the logo above the menu button. Keep them on one row. */
+@media (max-width: 980px) {
+  .mk .nav-shell {
+    grid-template-columns: 1fr auto;
+    min-height: 64px;
+    padding-block: 0;
+  }
+}

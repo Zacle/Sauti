@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, CircleAlert, Languages, LoaderCircle, Mic2, Pause, Play, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { CircleAlert, Languages, LoaderCircle, Mic2, Pause, Play, Search, X } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { listVoices } from "@/lib/api/voices";
 import type { VoiceOption } from "@/types/api";
 
@@ -23,14 +28,11 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   const [pendingVoiceId, setPendingVoiceId] = useState(value);
   const [playingId, setPlayingId] = useState("");
   const [bufferingId, setBufferingId] = useState("");
-  const [previewError, setPreviewError] = useState("");
   const [languageFilter, setLanguageFilter] = useState("recommended");
-  const [languageOpen, setLanguageOpen] = useState(false);
-  const [languageQuery, setLanguageQuery] = useState("");
   const [accentFilter, setAccentFilter] = useState("all");
-  const [accentOpen, setAccentOpen] = useState(false);
   const [visibleLimit, setVisibleLimit] = useState(40);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const initialSelectionRef = useRef({ value, primaryLanguage, onChange });
 
   useEffect(() => {
@@ -62,6 +64,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
     [primaryLanguage, supportedLanguages],
   );
   const selectedVoice = voices.find((voice) => voice.id === value);
+  const pendingVoice = voices.find((voice) => voice.id === pendingVoiceId);
   const visibleLanguages = useMemo(
     () => Array.from(new Set([
       ...configuredLanguages,
@@ -124,9 +127,6 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
       .sort((left, right) => compareVoiceQuality(left, right, [languageFilter]));
   const displayedVoices = visibleLanguageVoices.slice(0, visibleLimit);
   const unsupportedLanguage = languageFilter !== "recommended" && voiceCoverage[languageFilter] === 0;
-  const languageOptions = visibleLanguages.filter((language) =>
-    languageName(language).toLowerCase().includes(languageQuery.trim().toLowerCase())
-  );
 
   useEffect(() => {
     setVisibleLimit(40);
@@ -135,7 +135,6 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
   async function preview(voice: VoiceOption) {
     const previewLanguage = previewLanguageFor(voice);
     if (!previewLanguage) return;
-    setPreviewError("");
     if (playingId === voice.id) {
       audioRef.current?.pause();
       setPlayingId("");
@@ -161,15 +160,17 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
     audio.addEventListener("error", () => {
       setPlayingId("");
       setBufferingId("");
-      setPreviewError(`The preview for ${voice.name} could not be played.`);
+      toast.error(`Couldn’t play ${displayVoiceName(voice.name)}`, { description: "The preview is unavailable right now. Try another voice." });
     });
     try {
       await audio.play();
     } catch (caught) {
       setBufferingId("");
-      setPreviewError(caught instanceof DOMException && caught.name === "NotAllowedError"
-        ? "Your browser blocked audio playback. Allow sound for this site and try again."
-        : `The preview for ${displayVoiceName(voice.name)} is unavailable. Try another voice.`);
+      if (caught instanceof DOMException && caught.name === "NotAllowedError") {
+        toast.error("Your browser blocked audio", { description: "Allow sound for this site and try again." });
+      } else {
+        toast.error(`Couldn’t play ${displayVoiceName(voice.name)}`, { description: "The preview is unavailable right now. Try another voice." });
+      }
     }
   }
 
@@ -177,9 +178,6 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
     audioRef.current?.pause();
     setPlayingId("");
     setBufferingId("");
-    setPreviewError("");
-    setLanguageOpen(false);
-    setAccentOpen(false);
     setOpen(false);
   }
 
@@ -188,239 +186,217 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
     close();
   }
 
+  const languageSelectOptions = [
+    { value: "recommended", label: "Best match", description: "Ranked for this agent's languages" },
+    ...visibleLanguages.map((language) => ({
+      value: language,
+      label: languageName(language),
+      description: `${voiceCoverage[language] || 0} ${voiceCoverage[language] === 1 ? "voice" : "voices"}`,
+    })),
+  ];
+  const accentSelectOptions = [
+    { value: "all", label: "All accents" },
+    ...accents.map((accent) => ({ value: accent, label: titleCase(accent) })),
+  ];
+  const fieldName = selectedVoice ? displayVoiceName(selectedVoice.name) : value ? "Custom provider voice" : "Choose a voice";
+  const fieldDetail = selectedVoice
+    ? [
+        selectedVoice.languages.length > 1 ? "Multilingual" : languageName(selectedVoice.languages[0] ?? primaryLanguage),
+        selectedVoice.traits.accent,
+        selectedVoice.traits.gender,
+      ].filter(Boolean).map((part) => titleCase(String(part))).join(" · ")
+    : "Preview and pick a voice for your callers";
+
   return (
     <>
-      <button className="voice-picker-field" type="button" onClick={() => setOpen(true)}>
-        <span><Mic2 size={17} /></span>
-        <div>
-          <strong>{selectedVoice?.name ?? (value ? "Custom provider voice" : "Choose a voice")}</strong>
-          <small>{selectedVoice ? `${providerName(selectedVoice.provider)} · ${selectedVoice.languages.length > 1 ? "Multilingual" : languageName(selectedVoice.languages[0] ?? primaryLanguage)} · ${selectedVoice.traits.description ?? selectedVoice.traits.accent ?? selectedVoice.category}` : "Preview and select a voice for the caller's language"}</small>
-        </div>
-        <ChevronDown size={16} />
+      <button
+        className="voice-field group flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-control)] border border-line-strong bg-surface px-3 py-2.5 text-left shadow-[0_1px_2px_rgb(0_0_0/0.04)] transition-colors hover:border-fg-muted/45 hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal"
+        type="button"
+        onClick={() => setOpen(true)}
+      >
+        <VoiceAvatar name={fieldName} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[0.9rem] font-medium leading-snug text-ink">{fieldName}</span>
+          <span className="block truncate text-[0.78rem] leading-snug text-fg-muted">{fieldDetail}</span>
+        </span>
+        <span className="text-[0.8rem] font-medium text-fg-soft transition-colors group-hover:text-ink">Change</span>
       </button>
 
-      {open && (
-        <div className="voice-picker-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
-          <section className="voice-picker-modal" role="dialog" aria-modal="true" aria-label="Select voice">
-            <header>
-              <div>
-                <span><Mic2 size={19} /></span>
-                <div>
-                  <h2>Select a voice <i>Available voices</i></h2>
-                  <p>Listen and choose a voice that fits your callers.</p>
-                </div>
+      <DialogPrimitive.Root open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-[150] bg-scrim data-[state=open]:animate-[fade-in_180ms_ease-out]" />
+          <DialogPrimitive.Content
+            aria-describedby={undefined}
+            onOpenAutoFocus={(event) => { event.preventDefault(); searchRef.current?.focus(); }}
+            className="fixed left-1/2 top-1/2 z-[151] flex max-h-[min(88dvh,760px)] w-[min(94vw,720px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[var(--radius-card)] border border-line-strong bg-popover font-sans text-fg shadow-[var(--shadow-pop)] outline-none data-[state=open]:animate-[dialog-in_220ms_cubic-bezier(0.16,1,0.3,1)] max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:max-h-[90dvh] max-sm:w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none"
+          >
+            <header className="flex items-start justify-between gap-4 px-6 pb-4 pt-5">
+              <div className="min-w-0">
+                <DialogPrimitive.Title className="m-0 text-[1.05rem] font-semibold tracking-[-0.01em] text-ink">Choose a voice</DialogPrimitive.Title>
+                <p className="m-0 mt-1 text-[0.85rem] text-fg-soft">Listen first, then pick the voice your callers will hear.</p>
               </div>
-              <button type="button" onClick={close} aria-label="Close voice picker"><X size={19} /></button>
+              <DialogPrimitive.Close asChild>
+                <Button variant="ghost" size="icon-xs" aria-label="Close voice picker" className="-mr-1.5"><X /></Button>
+              </DialogPrimitive.Close>
             </header>
 
-            <div className="voice-picker-filters">
-              <label className="voice-search">
-                <Search aria-hidden="true" size={18} />
+            <div className="grid grid-cols-[minmax(0,1fr)_11rem_10rem] gap-2 px-6 pb-4 max-sm:grid-cols-2">
+              <label className="relative max-sm:col-span-2">
+                <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-muted" />
                 <input
+                  ref={searchRef}
                   aria-label="Search voices"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search voices, accents, or styles..."
+                  placeholder="Search by name, accent or style"
+                  className="h-9 w-full rounded-[var(--radius-control)] border border-tint/[0.14] bg-tint/[0.03] pl-9 pr-3 font-sans text-[0.85rem] text-fg outline-none transition-[border-color,box-shadow] placeholder:text-fg-muted hover:border-tint/25 focus:border-signal/60 focus:ring-4 focus:ring-signal/10"
                 />
               </label>
-              <div className={`voice-language-filter ${languageOpen ? "open" : ""}`}>
-                <button
-                  className="voice-filter-trigger"
-                  type="button"
-                  aria-expanded={languageOpen}
-                  aria-haspopup="menu"
-                  onClick={() => {
-                    setLanguageOpen((current) => !current);
-                    setAccentOpen(false);
-                  }}
-                >
-                  <Languages aria-hidden="true" size={17} />
-                  <span>
-                    <small>Language</small>
-                    <strong>{languageFilter === "recommended" ? "Best match" : languageName(languageFilter)}</strong>
-                  </span>
-                  <ChevronDown aria-hidden="true" size={16} />
-                </button>
-                {languageOpen && (
-                  <div className="voice-language-menu">
-                    <label>
-                      <Search aria-hidden="true" size={15} />
-                      <input
-                        autoFocus
-                        aria-label="Search languages"
-                        placeholder="Find a language..."
-                        value={languageQuery}
-                        onChange={(event) => setLanguageQuery(event.target.value)}
-                      />
-                    </label>
-                    <div>
-                      {!languageQuery && (
-                        <button
-                          className={languageFilter === "recommended" ? "selected" : ""}
-                          type="button"
-                          onClick={() => {
-                            setLanguageFilter("recommended");
-                            setLanguageOpen(false);
-                          }}
-                        >
-                          <span><strong>Best match</strong><small>Agent languages</small></span>
-                          {languageFilter === "recommended" && <Check size={14} />}
-                        </button>
-                      )}
-                      {languageOptions.map((language) => (
-                        <button
-                          className={languageFilter === language ? "selected" : ""}
-                          key={language}
-                          type="button"
-                          onClick={() => {
-                            setLanguageFilter(language);
-                            setLanguageOpen(false);
-                            setLanguageQuery("");
-                          }}
-                        >
-                          <span><strong>{languageName(language)}</strong><small>{voiceCoverage[language] || 0} voices</small></span>
-                          {languageFilter === language && <Check size={14} />}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className={`voice-accent-filter ${accentOpen ? "open" : ""}`}>
-                <button
-                  className="voice-accent-trigger"
-                  type="button"
-                  aria-expanded={accentOpen}
-                  aria-haspopup="menu"
-                  onClick={() => {
-                    setAccentOpen((current) => !current);
-                    setLanguageOpen(false);
-                  }}
-                >
-                  <span>
-                    <small>Accent</small>
-                    <strong>{accentFilter === "all" ? "All accents" : titleCase(accentFilter)}</strong>
-                  </span>
-                  <ChevronDown aria-hidden="true" size={16} />
-                </button>
-                {accentOpen && (
-                  <div className="voice-accent-menu" role="menu">
-                    {[["all", "All accents"], ...accents.map((accent) => [accent, titleCase(accent)] as [string, string])].map(([value, label]) => (
-                      <button
-                        className={accentFilter === value ? "selected" : ""}
-                        key={value}
-                        role="menuitemradio"
-                        aria-checked={accentFilter === value}
-                        type="button"
-                        onClick={() => {
-                          setAccentFilter(value);
-                          setAccentOpen(false);
-                        }}
-                      >
-                        {label}
-                        {accentFilter === value && <Check size={14} />}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <Select
+                size="sm"
+                ariaLabel="Language"
+                icon={<Languages />}
+                searchable
+                searchPlaceholder="Find a language"
+                value={languageFilter}
+                onValueChange={setLanguageFilter}
+                options={languageSelectOptions}
+              />
+              <Select
+                size="sm"
+                ariaLabel="Accent"
+                value={accentFilter}
+                onValueChange={setAccentFilter}
+                options={accentSelectOptions}
+                disabled={accents.length === 0}
+              />
             </div>
 
-            <div className="voice-engine-summary">
-              <span><Mic2 size={17} /></span>
-              <div><strong>Voice library</strong><small>Choose a language, refine by accent, then listen before saving.</small></div>
-              <i>{voices.length} voices · {availableLanguageCount} languages</i>
+            <div className="flex items-center justify-between gap-3 border-y border-line bg-tint/[0.02] px-6 py-2 text-[0.75rem] text-fg-muted">
+              <span className="font-medium text-fg-soft">
+                {languageFilter === "recommended" ? "Recommended for this agent" : `${languageName(languageFilter)} voices`}
+              </span>
+              <span className="tabular-nums">
+                {loading ? "Loading…" : `${visibleLanguageVoices.length} of ${voices.length} voices · ${availableLanguageCount} languages`}
+              </span>
             </div>
 
-            <div className="voice-picker-results">
-              {previewError && <div className="voice-preview-error">{previewError}</div>}
-              {loading && <div className="voice-picker-state"><LoaderCircle className="spin" size={22} /> Loading available voices...</div>}
-              {!loading && error && <div className="voice-picker-state error">{error}<small>Check the configured TTS provider credentials.</small></div>}
-              {!loading && !error && !providerEnabled && <div className="voice-picker-state">The voice library is unavailable.<small>Ask a workspace administrator to check the voice service configuration.</small></div>}
+            <div className="min-h-[220px] flex-1 overflow-y-auto px-3 py-2">
+              {loading && (
+                <div className="grid gap-2 p-3">{[0, 1, 2, 3].map((item) => <div key={item} className="h-[60px] animate-pulse rounded-lg bg-tint/[0.05]" />)}</div>
+              )}
+              {!loading && error && (
+                <PickerState icon={<CircleAlert />} title={error} detail="Check the configured voice provider credentials." />
+              )}
+              {!loading && !error && !providerEnabled && (
+                <PickerState icon={<Mic2 />} title="The voice library is unavailable" detail="Ask a workspace administrator to check the voice service configuration." />
+              )}
               {!loading && !error && providerEnabled && unsupportedLanguage && (
-                <div className="voice-language-unavailable">
-                  <CircleAlert aria-hidden="true" size={20} />
-                  <div>
-                    <strong>No compatible {languageName(languageFilter)} voice is available</strong>
-                    <p>{unsupportedLanguageMessage(languageFilter, enabledProviders)}</p>
-                  </div>
-                </div>
+                <PickerState
+                  icon={<CircleAlert />}
+                  title={`No ${languageName(languageFilter)} voice yet`}
+                  detail={unsupportedLanguageMessage(languageFilter, enabledProviders)}
+                  action={<Button variant="secondary" size="xs" onClick={() => setLanguageFilter("recommended")}>Show best matches</Button>}
+                />
               )}
               {!loading && !error && providerEnabled && !unsupportedLanguage && visibleLanguageVoices.length === 0 && (
-                <div className="voice-picker-state">
-                  No voices match these filters.
-                  <button type="button" onClick={() => { setQuery(""); setAccentFilter("all"); }}>Clear filters</button>
+                <PickerState
+                  icon={<Search />}
+                  title="No voices match these filters"
+                  action={<Button variant="secondary" size="xs" onClick={() => { setQuery(""); setAccentFilter("all"); }}>Clear filters</Button>}
+                />
+              )}
+              {!loading && !unsupportedLanguage && visibleLanguageVoices.length > 0 && (
+                <div role="radiogroup" aria-label="Voices" className="grid gap-0.5">
+                  {displayedVoices.map((voice, index) => {
+                    const selected = pendingVoiceId === voice.id;
+                    const name = displayVoiceName(voice.name);
+                    const covered = coverage(voice, configuredLanguages);
+                    const previewLanguage = previewLanguageFor(voice);
+                    const playing = playingId === voice.id;
+                    const buffering = bufferingId === voice.id;
+                    const traits = [
+                      languageFilter === "recommended" ? `${covered}/${configuredLanguages.length} languages` : null,
+                      voice.traits.accent,
+                      voice.traits.gender,
+                      voice.traits.age,
+                    ].filter(Boolean).map((trait) => titleCase(String(trait)));
+                    return (
+                      <div
+                        key={voice.id}
+                        role="radio"
+                        aria-checked={selected}
+                        tabIndex={0}
+                        onClick={() => setPendingVoiceId(voice.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setPendingVoiceId(voice.id);
+                          }
+                        }}
+                        className={cn(
+                          "group grid cursor-pointer grid-cols-[18px_36px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-signal/40",
+                          selected ? "border-signal/35 bg-signal/[0.07]" : "border-transparent hover:bg-tint/[0.04]",
+                        )}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "grid size-[18px] place-items-center rounded-full border transition-colors",
+                            selected ? "border-signal bg-signal" : "border-line-strong bg-surface group-hover:border-fg-muted",
+                          )}
+                        >
+                          {selected ? <span className="size-1.5 rounded-full bg-signal-fg" /> : null}
+                        </span>
+                        <VoiceAvatar name={name} playing={playing} />
+                        <span className="min-w-0">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-[0.9rem] font-medium text-ink">{name}</span>
+                            {languageFilter === "recommended" && index < 3 ? (
+                              <span className="shrink-0 rounded-[4px] bg-signal/10 px-1.5 py-[3px] text-[0.68rem] font-medium leading-none text-signal">Top pick</span>
+                            ) : null}
+                          </span>
+                          <span className="mt-0.5 block truncate text-[0.8rem] text-fg-soft">{voice.description || titleCase(voice.category)}</span>
+                          {traits.length ? (
+                            <span className="mt-1 block truncate text-[0.72rem] text-fg-muted">{traits.slice(0, 4).join(" · ")}</span>
+                          ) : null}
+                        </span>
+                        <Button
+                          variant={playing ? "soft" : "secondary"}
+                          size="xs"
+                          className="min-w-[5.5rem] rounded-full"
+                          disabled={!previewLanguage}
+                          aria-label={`${playing ? "Pause" : "Listen to"} ${name}${previewLanguage ? ` in ${languageName(previewLanguage)}` : ""}`}
+                          title={previewLanguage ? `Listen in ${languageName(previewLanguage)}` : "No compatible preview language"}
+                          onClick={(event) => { event.stopPropagation(); void preview(voice); }}
+                        >
+                          {buffering ? <LoaderCircle className="spin" /> : playing ? <Pause /> : <Play />}
+                          {buffering ? "Loading" : playing ? "Pause" : "Listen"}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  {displayedVoices.length < visibleLanguageVoices.length && (
+                    <Button variant="ghost" size="xs" className="mx-auto my-2" onClick={() => setVisibleLimit((current) => current + 40)}>
+                      Show more <span className="text-fg-muted">{visibleLanguageVoices.length - displayedVoices.length} left</span>
+                    </Button>
+                  )}
                 </div>
               )}
-              {!unsupportedLanguage && visibleLanguageVoices.length > 0 && <section className="voice-language-group">
-                <h3>
-                  <span>{languageFilter === "recommended" ? "Recommended voices" : languageName(languageFilter)}</span>
-                  <i>{languageFilter === "recommended" ? `Ranked across ${configuredLanguages.length} languages` : `${visibleLanguageVoices.length} compatible voices`}</i>
-                </h3>
-                <div>{displayedVoices.map((voice, index) => {
-                const selected = pendingVoiceId === voice.id;
-                const origin = voice.traits.language
-                  ? `${languageName(voice.traits.language)} origin`
-                  : null;
-                const catalogSource = voice.name.match(/^\[([^\]]+)\]/)?.[1];
-                const traits = [catalogSource, origin, voice.traits.accent, voice.traits.gender, voice.traits.age].filter(Boolean);
-                const covered = coverage(voice, configuredLanguages);
-                const previewLanguage = previewLanguageFor(voice);
-                return (
-                  <div
-                    className={`voice-option-card ${selected ? "selected" : ""}`}
-                    key={voice.id}
-                    onClick={() => setPendingVoiceId(voice.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        setPendingVoiceId(voice.id);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <span className="voice-option-radio">{selected && <Check size={13} />}</span>
-                    <span className="voice-option-avatar">{displayVoiceName(voice.name).slice(0, 1).toUpperCase()}</span>
-                    <span className="voice-option-copy">
-                      <strong>{displayVoiceName(voice.name)}<em className={`provider-${voice.provider}`}>{providerName(voice.provider)}</em>{languageFilter === "recommended" && index < 3 && <em>Recommended</em>}</strong>
-                      <small>{voice.description || voice.category}</small>
-                      <span>
-                        {languageFilter === "recommended" && <i>{covered}/{configuredLanguages.length} languages</i>}
-                        {traits.slice(0, 3).map((trait) => <i key={trait}>{trait}</i>)}
-                      </span>
-                    </span>
-                    <button
-                      className={`voice-preview-button ${playingId === voice.id ? "playing" : ""} ${!previewLanguage ? "disabled" : ""}`}
-                      disabled={!previewLanguage}
-                      type="button"
-                      aria-label={`Preview ${voice.name} in ${previewLanguage ? languageName(previewLanguage) : "the selected language"}`}
-                      title={previewLanguage ? `Listen in ${languageName(previewLanguage)}` : "No compatible preview language"}
-                      onClick={(event) => { event.stopPropagation(); void preview(voice); }}
-                    >
-                      {bufferingId === voice.id
-                        ? <LoaderCircle className="spin" size={15} />
-                        : playingId === voice.id ? <Pause size={15} /> : <Play size={15} />}
-                      <span>{bufferingId === voice.id ? "Loading" : playingId === voice.id ? "Pause" : "Listen"}</span>
-                    </button>
-                  </div>
-                );
-              })}</div>
-                {displayedVoices.length < visibleLanguageVoices.length && (
-                  <button className="voice-results-more" type="button" onClick={() => setVisibleLimit((current) => current + 40)}>
-                    Show 40 more <span>{visibleLanguageVoices.length - displayedVoices.length} remaining</span>
-                  </button>
-                )}
-              </section>}
             </div>
 
-            <footer>
-              <p>Compatibility comes from the speech model. Listen in the selected language before choosing.</p>
-              <div><button type="button" onClick={close}>Cancel</button><button className="save" disabled={!pendingVoiceId} type="button" onClick={save}>Use voice</button></div>
+            <footer className="flex items-center justify-between gap-4 border-t border-line px-6 py-3.5 max-sm:flex-col max-sm:items-stretch">
+              <p className="m-0 text-[0.78rem] leading-snug text-fg-muted">
+                {pendingVoice ? <>Selected: <span className="font-medium text-ink">{displayVoiceName(pendingVoice.name)}</span></> : "Pick a voice to continue."}
+              </p>
+              <div className="flex gap-2 max-sm:justify-end">
+                <Button variant="secondary" size="sm" onClick={close}>Cancel</Button>
+                <Button size="sm" disabled={!pendingVoiceId} onClick={save}>Use this voice</Button>
+              </div>
             </footer>
-          </section>
-        </div>
-      )}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
     </>
   );
 
@@ -489,10 +465,41 @@ function providerRank(provider: string) {
   return provider === "telnyx" ? 0 : 1;
 }
 
-function providerName(provider: string) {
-  return provider === "telnyx" ? "Sauti Voice" : titleCase(provider);
-}
 
 function categoryRank(category: string) {
   return category === "professional" ? 0 : category === "generated" ? 1 : category === "native" ? 2 : 3;
+}
+
+function VoiceAvatar({ name, playing = false }: { name: string; playing?: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-signal/12 text-[0.85rem] font-semibold leading-none text-signal"
+    >
+      {playing ? (
+        <span className="flex h-3.5 items-end gap-[2px]">
+          {[0, 1, 2, 3].map((bar) => (
+            <span
+              key={bar}
+              className="h-full w-[3px] origin-bottom rounded-full bg-signal"
+              style={{ animation: `voice-eq 0.9s ease-in-out ${bar * 0.14}s infinite` }}
+            />
+          ))}
+        </span>
+      ) : (
+        name.slice(0, 1).toUpperCase()
+      )}
+    </span>
+  );
+}
+
+function PickerState({ icon, title, detail, action }: { icon: ReactNode; title: string; detail?: string; action?: ReactNode }) {
+  return (
+    <div className="grid place-items-center gap-1.5 px-6 py-12 text-center">
+      <span className="mb-1 grid size-10 place-items-center rounded-full bg-tint/[0.06] text-fg-muted [&_svg]:size-[18px]">{icon}</span>
+      <strong className="text-[0.9rem] font-medium text-ink">{title}</strong>
+      {detail ? <p className="m-0 max-w-sm text-[0.82rem] leading-relaxed text-fg-soft">{detail}</p> : null}
+      {action ? <div className="mt-2">{action}</div> : null}
+    </div>
+  );
 }

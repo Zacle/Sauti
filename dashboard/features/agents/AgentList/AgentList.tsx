@@ -1,37 +1,22 @@
 "use client";
 
-import styles from "./AgentList.module.css";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Activity,
-  ArrowRight,
-  Bot,
-  CalendarCheck2,
-  CheckCircle2,
-  Globe2,
-  Grid2X2,
-  Languages,
-  List,
-  MoreHorizontal,
-  PhoneCall,
-  Plus,
-  Radio,
-  Search,
-  Sparkles,
-  Trash2,
-  TrendingUp,
-} from "lucide-react";
+import { Bot, MoreHorizontal, Plus, Search, Trash2 } from "lucide-react";
 import { deleteAgent, listAgents, listAgentStats } from "@/lib/api/agents";
 import type { Agent, AgentStats } from "@/types/api";
 import { previewDashboardData } from "@/features/dashboard/data/preview-data";
 import { useAuth } from "@/hooks/useAuth";
 import { DeleteAgentDialog } from "@/features/agents/DeleteAgentDialog/DeleteAgentDialog";
-import { BrandLogo } from "@/components/BrandLogo/BrandLogo";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/field";
+import { Card, EmptyState, Skeleton, Tabs, TabsCount, TabsList, TabsTrigger } from "@/components/ui/primitives";
+import { PageHeader, StatStrip } from "@/components/ui/console";
 
 type AgentFilter = "all" | "live" | "draft";
 
 const numberFormat = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+const COLUMNS = "lg:grid-cols-[minmax(0,2.2fr)_6rem_minmax(0,1.2fr)_5rem_6rem_2.5rem]";
 
 export function AgentsPage() {
   const { session, ready } = useAuth();
@@ -39,7 +24,6 @@ export function AgentsPage() {
   const [stats, setStats] = useState<Record<string, AgentStats>>({});
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<AgentFilter>("all");
-  const [gridView, setGridView] = useState(true);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -71,6 +55,21 @@ export function AgentsPage() {
       .finally(() => setLoading(false));
   }, [ready, session]);
 
+  useEffect(() => {
+    if (!openMenuId) return;
+    const close = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+      if (event instanceof MouseEvent && (event.target as HTMLElement).closest("[data-agent-menu]")) return;
+      setOpenMenuId(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [openMenuId]);
+
   const visibleAgents = useMemo(
     () => agents.filter((agent) => {
       const needle = query.trim().toLowerCase();
@@ -95,22 +94,10 @@ export function AgentsPage() {
     const bookingCalls = values.reduce((sum, item) => sum + item.bookingCalls, 0);
     return {
       totalCalls,
-      bookingRate: totalCalls ? Math.round((bookingCalls / totalCalls) * 1000) / 10 : 0,
-      languages: new Set(agents.flatMap((agent) => agent.supportedLanguages)).size,
+      bookingRate: totalCalls ? bookingCalls / totalCalls : 0,
+      languages: new Set(agents.flatMap((agent) => agent.supportedLanguages.map(shortLanguage))).size,
     };
   }, [agents, stats]);
-
-  const rankedAgents = useMemo(() => [...agents]
-    .sort((left, right) => (stats[right.id]?.totalCalls ?? 0) - (stats[left.id]?.totalCalls ?? 0)),
-  [agents, stats]);
-
-  const chartPoints = useMemo(() => {
-    const values = rankedAgents.slice(0, 7).map((agent) => stats[agent.id]?.totalCalls ?? 0);
-    if (!values.length) return "0,78 240,78";
-    if (values.length === 1) return "0,42 240,42";
-    const max = Math.max(...values, 1);
-    return values.map((value, index) => `${index * (240 / (values.length - 1))},${84 - (value / max) * 62}`).join(" ");
-  }, [rankedAgents, stats]);
 
   async function confirmDelete() {
     if (!deleteTarget) return;
@@ -133,135 +120,121 @@ export function AgentsPage() {
   }
 
   return (
-    <div className={styles["agents-page"]}>
-      <header className={styles["agents-hero"]}>
-        <div>
-          <span className={styles.eyebrow}><Sparkles size={13} /> Agent studio</span>
-          <h1>AI voice agents</h1>
-          <p>Design, test, and deploy voice agents that sound human and drive results.</p>
-        </div>
-        <Link className={styles["hero-create"]} href="/agents/new"><Plus size={17} /> Create agent</Link>
-      </header>
+    <div className="grid min-w-0 grid-cols-1 gap-6 [&>*]:min-w-0">
+      <PageHeader
+        title="Agents"
+        description="Each agent answers a line, follows its instructions and books into your calendar."
+        actions={
+          <Button asChild size="xs">
+            <Link href="/agents/new"><Plus /> New agent</Link>
+          </Button>
+        }
+      />
 
-      <div className={styles["studio-layout"]}>
-        <main className={styles["agents-workspace"]}>
-          <section className={styles["metric-grid"]} aria-label="Agent overview">
-            <MetricCard icon={<Bot size={21} />} label="Total agents" value={counts.all} tone="teal" />
-            <MetricCard icon={<Radio size={21} />} label="Live agents" value={counts.live} tone="violet" />
-            <MetricCard icon={<PhoneCall size={21} />} label="Calls handled" value={numberFormat.format(totals.totalCalls)} tone="blue" />
-            <MetricCard icon={<CalendarCheck2 size={21} />} label="Booking rate" value={`${totals.bookingRate}%`} tone="amber" />
-          </section>
+      <StatStrip
+        items={[
+          { label: "Agents", value: counts.all, hint: `${counts.live} live · ${counts.draft} draft` },
+          { label: "Calls handled", value: totals.totalCalls, hint: "All time" },
+          { label: "Booking rate", value: totals.bookingRate, format: { style: "percent", maximumFractionDigits: 1 }, hint: "Calls that booked" },
+          { label: "Languages", value: totals.languages, hint: "Across all agents" },
+        ]}
+      />
 
-          <section className={styles["agents-toolbar"]}>
-            <div className={styles.filters}>
-              {(["all", "live", "draft"] as const).map((value) => (
-                <button
-                  aria-pressed={filter === value}
-                  className={filter === value ? styles.active : ""}
-                  key={value}
-                  onClick={() => setFilter(value)}
-                  type="button"
-                >
-                  {value === "all" ? "All agents" : value === "live" ? "Live" : "Draft"}
-                  <span>{counts[value]}</span>
-                </button>
-              ))}
-            </div>
-            <label className={styles["agent-search"]}>
-              <Search size={15} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find an agent" />
-            </label>
-            <div className={styles["view-switcher"]}>
-              <button className={gridView ? styles.active : ""} onClick={() => setGridView(true)} aria-label="Grid view" type="button"><Grid2X2 size={16} /></button>
-              <button className={!gridView ? styles.active : ""} onClick={() => setGridView(false)} aria-label="List view" type="button"><List size={17} /></button>
-            </div>
-          </section>
-
-          {loading ? (
-            <div className={styles["agents-loading-grid"]}>{[1, 2, 3].map((item) => <span key={item} />)}</div>
-          ) : visibleAgents.length ? (
-            <section className={`${styles["agents-grid"]} ${!gridView ? styles["list-view"] : ""}`}>
-              {visibleAgents.map((agent, index) => (
-                <article className={`${styles["agent-list-card"]} ${styles[`accent-${index % 3}`]}`} key={agent.id}>
-                  <div className={styles["agent-list-card-head"]}>
-                    <i className={agent.active ? styles.live : styles.draft}>{agent.active ? "Live" : "Draft"}</i>
-                    <div className={styles["agent-card-menu"]}>
-                      <button
-                        aria-expanded={openMenuId === agent.id}
-                        aria-label={`More actions for ${agent.name}`}
-                        onClick={() => setOpenMenuId((current) => current === agent.id ? null : agent.id)}
-                        type="button"
-                      ><MoreHorizontal size={18} /></button>
-                      {openMenuId === agent.id && (
-                        <div><button onClick={() => {
-                          setDeleteError("");
-                          setDeleteTarget(agent);
-                          setOpenMenuId(null);
-                        }} type="button"><Trash2 size={15} /> Delete agent</button></div>
-                      )}
-                    </div>
-                  </div>
-                  <div className={styles["agent-identity"]}>
-                    <span className={styles["agent-list-avatar"]}><BrandLogo className={styles["agent-brand-mark"]} size={58} /><small><Activity size={13} /></small></span>
-                    <h2>{agent.name} {agent.active && <CheckCircle2 size={15} />}</h2>
-                    <p>{agent.description || "Voice agent ready to be configured for your business."}</p>
-                  </div>
-                  <div className={styles["agent-list-meta"]}>
-                    <span><Languages size={14} /> {agent.supportedLanguages.map(shortLanguage).join(" · ")}</span>
-                    <span><Globe2 size={14} /> {agent.twilioPhoneNumber ?? (agent.webVoiceEnabled ? "Web voice enabled" : "Channel not assigned")}</span>
-                  </div>
-                  <div className={styles["agent-list-footer"]}>
-                    <span><strong>{numberFormat.format(stats[agent.id]?.totalCalls ?? 0)}</strong><small>Calls</small></span>
-                    <span><strong>{formatRate(stats[agent.id]?.bookingRate ?? 0)}</strong><small>Booking rate</small></span>
-                    <span><strong>{agent.supportedLanguages.length}</strong><small>Languages</small></span>
-                  </div>
-                  <Link className={styles["open-agent"]} href={`/agents/${agent.id}`}>
-                    {agent.active ? "Open agent" : "Continue setup"}<ArrowRight size={15} />
-                  </Link>
-                </article>
-              ))}
-              <Link className={styles["agent-create-card"]} href="/agents/new">
-                <span><Plus size={22} /></span>
-                <div><strong>Create new agent</strong><small>Build a new voice agent in minutes</small></div>
-                <ArrowRight size={17} />
-              </Link>
-            </section>
-          ) : (
-            <section className={styles["agents-empty"]}>
-              <span><Bot size={24} /></span>
-              <h2>{agents.length ? "No matching agents" : "Create your first AI voice agent"}</h2>
-              <p>{agents.length ? "Try another search or clear the current filters." : "No agent exists in this workspace yet. Create one to start handling calls, capturing bookings, and connecting your tools."}</p>
-              {!agents.length && <Link className={styles["empty-create"]} href="/agents/new"><Plus size={16} /> Create an agent <ArrowRight size={15} /></Link>}
-            </section>
-          )}
-        </main>
-
-        <aside className={styles["insights-rail"]}>
-          <section className={styles["performance-card"]}>
-            <div><span>Performance overview</span><small>All time</small></div>
-            <strong>{numberFormat.format(totals.totalCalls)}</strong>
-            <p><TrendingUp size={14} /> Calls handled across your workspace</p>
-            <svg viewBox="0 0 240 94" role="img" aria-label="Calls handled by agent">
-              <defs><linearGradient id="agentChartFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#22e7dc" stopOpacity=".34" /><stop offset="1" stopColor="#22e7dc" stopOpacity="0" /></linearGradient></defs>
-              <polygon points={`0,94 ${chartPoints} 240,94`} fill="url(#agentChartFill)" />
-              <polyline points={chartPoints} fill="none" stroke="#21e5dc" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <div className={styles["performance-foot"]}><span><Languages size={14} /> {totals.languages} languages</span><span><Radio size={14} /> {counts.live} live</span></div>
-          </section>
-
-          <section className={styles["activity-card"]}>
-            <div className={styles["rail-heading"]}><span>Agent activity</span><Link href="/analytics">View analytics</Link></div>
-            {rankedAgents.length ? rankedAgents.slice(0, 4).map((agent, index) => (
-              <Link href={`/agents/${agent.id}`} className={styles["activity-row"]} key={agent.id}>
-                <span className={styles[`activity-${index % 3}`]}><PhoneCall size={16} /></span>
-                <div><strong>{agent.name}</strong><small>{numberFormat.format(stats[agent.id]?.totalCalls ?? 0)} calls handled</small></div>
-                <em>{formatRate(stats[agent.id]?.bookingRate ?? 0)}</em>
-              </Link>
-            )) : <p className={styles["rail-empty"]}>Your agent activity will appear here after the first call.</p>}
-          </section>
-
-        </aside>
+      <div className="flex flex-wrap items-center gap-2">
+        <Tabs value={filter} onValueChange={(value) => setFilter(value as AgentFilter)}>
+          <TabsList aria-label="Filter agents">
+            {(["all", "live", "draft"] as const).map((value) => (
+              <TabsTrigger key={value} value={value}>
+                {value === "all" ? "All" : value === "live" ? "Live" : "Draft"}
+                <TabsCount>{counts[value]}</TabsCount>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <label className="relative ml-auto w-full sm:w-64">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-muted" />
+          <Input aria-label="Find an agent" className="h-9 pl-9 text-[0.85rem]" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find an agent" />
+        </label>
       </div>
+
+      {loading ? (
+        <Card className="grid gap-3 p-4">{[1, 2, 3].map((item) => <Skeleton key={item} className="h-14" />)}</Card>
+      ) : visibleAgents.length ? (
+        <Card>
+          <div className={`hidden gap-4 border-b border-line px-5 py-2.5 text-xs font-medium text-fg-muted lg:grid ${COLUMNS}`}>
+            <span>Agent</span>
+            <span>Status</span>
+            <span>Channel</span>
+            <span className="text-right">Calls</span>
+            <span className="text-right">Booked</span>
+            <span />
+          </div>
+          <ul className="m-0 list-none divide-y divide-line p-0">
+            {visibleAgents.map((agent) => {
+              const agentStats = stats[agent.id];
+              return (
+                <li key={agent.id} className={`relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-5 py-3.5 transition-colors first:rounded-t-[var(--radius-card)] last:rounded-b-[var(--radius-card)] hover:bg-surface-2/60 ${COLUMNS}`}>
+                  <Link href={`/agents/${agent.id}`} className="flex min-w-0 items-center gap-3 text-inherit no-underline after:absolute after:inset-0">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-[8px] border border-line bg-surface-2 text-[0.85rem] font-semibold text-ink">
+                      {agent.name.trim().slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[0.9rem] font-medium text-ink">{agent.name}</span>
+                      <span className="block truncate text-[0.8rem] text-fg-muted">{agent.description || "No description yet"}</span>
+                    </span>
+                  </Link>
+                  <span className="flex items-center gap-2 text-[0.82rem] text-fg max-lg:justify-self-end">
+                    <span className={agent.active ? "size-1.5 rounded-full bg-success" : "size-1.5 rounded-full bg-line-strong"} aria-hidden="true" />
+                    {agent.active ? "Live" : "Draft"}
+                  </span>
+                  <span className="min-w-0 text-[0.82rem] leading-tight max-lg:col-span-2 max-lg:pl-12">
+                    <span className="block truncate tabular-nums text-fg">{agent.twilioPhoneNumber ?? (agent.webVoiceEnabled ? "Web voice" : "No channel yet")}</span>
+                    <span className="block truncate text-[0.75rem] text-fg-muted">{agent.supportedLanguages.map(shortLanguage).join(" · ")}</span>
+                  </span>
+                  <span className="hidden text-right text-[0.85rem] tabular-nums text-fg lg:block">{numberFormat.format(agentStats?.totalCalls ?? 0)}</span>
+                  <span className="hidden text-right text-[0.85rem] tabular-nums text-fg lg:block">{formatRate(agentStats?.bookingRate ?? 0)}</span>
+                  <div className="relative z-10 hidden justify-self-end lg:block" data-agent-menu>
+                    <button
+                      aria-expanded={openMenuId === agent.id}
+                      aria-label={`More actions for ${agent.name}`}
+                      onClick={() => setOpenMenuId((current) => current === agent.id ? null : agent.id)}
+                      type="button"
+                      className="grid size-8 cursor-pointer place-items-center rounded-[6px] border-0 bg-transparent p-0 text-fg-muted transition-colors hover:bg-tint/[0.06] hover:text-fg"
+                    >
+                      <MoreHorizontal className="size-4" />
+                    </button>
+                    {openMenuId === agent.id ? (
+                      <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-[var(--radius-popover)] border border-line-strong bg-popover p-1 shadow-[var(--shadow-pop)]">
+                        <Link href={`/agents/${agent.id}`} className="flex h-8 items-center rounded-[6px] px-2.5 text-[0.84rem] text-fg no-underline hover:bg-surface-2">
+                          {agent.active ? "Open agent" : "Continue setup"}
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteError("");
+                            setDeleteTarget(agent);
+                            setOpenMenuId(null);
+                          }}
+                          className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-[6px] border-0 bg-transparent px-2.5 text-left font-sans text-[0.84rem] text-danger hover:bg-danger/[0.07]"
+                        >
+                          <Trash2 className="size-3.5" /> Delete agent
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      ) : (
+        <EmptyState
+          icon={<Bot />}
+          title={agents.length ? "No matching agents" : "No agents yet"}
+          description={agents.length ? "Try another search or filter." : "Create an agent to start answering calls and taking bookings."}
+          action={!agents.length ? <Button asChild size="xs"><Link href="/agents/new"><Plus /> New agent</Link></Button> : undefined}
+        />
+      )}
 
       {deleteTarget && (
         <DeleteAgentDialog
@@ -274,10 +247,6 @@ export function AgentsPage() {
       )}
     </div>
   );
-}
-
-function MetricCard({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string | number; tone: string }) {
-  return <article className={styles["metric-card"]}><span className={styles[`tone-${tone}`]}>{icon}</span><div><small>{label}</small><strong>{value}</strong></div></article>;
 }
 
 function shortLanguage(language: string) {

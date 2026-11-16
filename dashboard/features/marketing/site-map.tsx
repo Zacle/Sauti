@@ -1,30 +1,16 @@
 import {
-  BarChart3,
-  BookOpen,
-  Bot,
-  BriefcaseBusiness,
   Building2,
   CalendarCheck,
-  Code2,
-  FileQuestion,
-  FileText,
   GraduationCap,
   Headphones,
   Landmark,
   Languages,
-  LockKeyhole,
   MessageSquareText,
-  Network,
   PhoneCall,
-  Radio,
   Rocket,
-  Route,
   Scissors,
   Stethoscope,
   UsersRound,
-  Webhook,
-  Workflow,
-  Zap,
 } from "lucide-react";
 
 export const menuGroups = [
@@ -44,21 +30,6 @@ export const menuGroups = [
     ],
   },
   {
-    label: "Integrations",
-    href: "/integrations",
-    eyebrow: "Connected stack",
-    headline: "Connect calls, calendars, models, and business systems.",
-    description: "Use trusted providers for voice, speech, AI, calendars, CRM, and developer workflows.",
-    items: [
-      ["voice-infrastructure", "Voice Infrastructure", "Telnyx call control, managed AI assistants, status callbacks, and carrier-grade routing.", PhoneCall],
-      ["speech-and-voice", "Speech & Voice", "Telnyx managed speech and multilingual voice selection.", Radio],
-      ["ai-models", "AI Models", "OpenAI, Gemini, Spring AI, prompt construction, and tool calling.", Bot],
-      ["calendars", "Calendars", "Google Calendar, Calendly, and custom booking webhooks.", CalendarCheck],
-      ["business-tools", "Business Tools", "HubSpot, Salesforce, Slack, Pipedrive, Notion, and team workflows.", BriefcaseBusiness],
-      ["developer-tools", "Developer Tools", "REST APIs, OpenAPI docs, signed webhooks, and tenant tools.", Code2],
-    ],
-  },
-  {
     label: "Industries",
     href: "/industries",
     eyebrow: "Use cases",
@@ -73,35 +44,23 @@ export const menuGroups = [
       ["local-businesses", "Local Businesses", "Never miss after-hours calls, new leads, or appointment requests.", Rocket],
     ],
   },
-  {
-    label: "Resources",
-    href: "/resources",
-    eyebrow: "Learn and evaluate",
-    headline: "Everything buyers and builders need to trust the platform.",
-    description: "Documentation, API references, security notes, case studies, and answers for teams evaluating Sauti.",
-    items: [
-      ["documentation", "Documentation", "Platform concepts, setup guides, agent configuration, and deployment notes.", BookOpen],
-      ["api-reference", "API Reference", "REST endpoints, DTOs, OpenAPI docs, and webhook contracts.", FileText],
-      ["blog", "Blog", "Product updates, voice AI patterns, booking automation, and implementation guides.", MessageSquareText],
-      ["case-studies", "Case Studies", "How teams use Sauti to answer more calls and convert more bookings.", BarChart3],
-      ["faqs", "FAQs", "Answers about compliance, billing, integrations, customization, and support.", FileQuestion],
-      ["security", "Security", "Tenant isolation, encrypted credentials, signature validation, and operational controls.", LockKeyhole],
-    ],
-  },
 ] as const;
 
-export const pricingPage = {
-  section: "pricing",
-  slug: "pricing",
-  label: "Pricing",
-  eyebrow: "Plans",
-  title: "Pricing built around call volume, agents, and outcomes.",
-  description:
-    "Start with a pilot, measure call minutes and booked outcomes, then scale agents across teams, locations, and workflows.",
-  icon: Zap,
-};
-
 export type MenuGroup = (typeof menuGroups)[number];
+
+function group(label: MenuGroup["label"]) {
+  const found = menuGroups.find((entry) => entry.label === label);
+  if (!found) throw new Error(`Unknown menu group ${label}`);
+  return found;
+}
+
+/** Top-level marketing navigation, in display order. */
+export const primaryNav: Array<{ kind: "group"; group: MenuGroup } | { kind: "link"; label: string; href: string }> = [
+  { kind: "group", group: group("Solutions") },
+  { kind: "group", group: group("Industries") },
+  { kind: "link", label: "Integrations", href: "/integrations" },
+  { kind: "link", label: "Pricing", href: "/pricing" },
+];
 export type MenuItem = MenuGroup["items"][number];
 
 export function sectionPathFor(group: MenuGroup) {
@@ -139,26 +98,3 @@ export function paramsFor(section: string) {
   const group = menuGroups.find((entry) => groupMatches(entry, section));
   return group ? group.items.map(([slug]) => ({ slug })) : [];
 }
-
-export function allDestinations() {
-  return menuGroups.flatMap((group) =>
-    group.items.map(([slug, title, description, icon]) => ({
-      section: sectionPathFor(group),
-      slug,
-      title,
-      description,
-      icon,
-      href: `/${sectionPathFor(group)}/${slug}`,
-    })),
-  );
-}
-
-export const destinationAccents = {
-  solutions: "service",
-  integrations: "webhook",
-  industries: "lead",
-  resources: "transfer",
-  pricing: "ops",
-} as const;
-
-export const destinationVisualIcons = [Workflow, Network, Webhook, Route];

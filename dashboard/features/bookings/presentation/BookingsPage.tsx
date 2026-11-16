@@ -1,24 +1,16 @@
 "use client";
 
+import { Select } from "@/components/ui/select";
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowUpRight,
-  CalendarCheck2,
-  CalendarClock,
   CalendarDays,
-  CheckCircle2,
-  Clock3,
   Filter,
   LayoutGrid,
   List,
-  LoaderCircle,
-  Pencil,
   Phone,
   Search,
   Trash2,
-  UserRound,
   X,
-  XCircle,
 } from "lucide-react";
 import { listAgents } from "@/lib/api/agents";
 import { cancelBooking, deleteBooking, listBookings, updateBooking } from "@/lib/api/bookings";
@@ -32,8 +24,12 @@ import {
   type BookingStatusFilter,
   type BookingViewModel,
 } from "../domain/bookings";
-import styles from "./BookingsPage.module.css";
-import polish from "./BookingsPagePolish.module.css";
+import { Button } from "@/components/ui/button";
+import { Alert, Input } from "@/components/ui/field";
+import { Card, EmptyState, Skeleton, Tabs, TabsList, TabsTrigger, Tooltip } from "@/components/ui/primitives";
+import { PageHeader, StatStrip } from "@/components/ui/console";
+import { toast } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
 import { BookingActionDialog, type BookingAction } from "./BookingActionDialog";
 import { BookingDateRangePicker } from "./BookingDateRangePicker";
 import { BookingEditor, type BookingEditorValues } from "./BookingEditor";
@@ -60,7 +56,6 @@ export function BookingsPage() {
   const [agentId, setAgentId] = useState("all");
   const [rangeStart, setRangeStart] = useState(initialRange.start);
   const [rangeEnd, setRangeEnd] = useState(initialRange.end);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [view, setView] = useState<BookingView>("list");
   const [cancellingId, setCancellingId] = useState("");
   const [editingBooking, setEditingBooking] = useState<BookingViewModel | null>(null);
@@ -110,9 +105,11 @@ export function BookingsPage() {
       if (kind === "cancel") {
         const updated = await cancelBooking(booking.id);
         setBookings((current) => current.map((item) => item.id === updated.id ? updated : item));
+        toast.success("Appointment cancelled", { description: `${booking.serviceType} for ${booking.callerName}` });
       } else {
         await deleteBooking(booking.id);
         setBookings((current) => current.filter((item) => item.id !== booking.id));
+        toast.success("Booking deleted", { description: booking.bookingReference });
       }
       setPendingAction(null);
     } catch (caught) {
@@ -139,6 +136,7 @@ export function BookingsPage() {
       });
       setBookings((current) => current.map((item) => item.id === updated.id ? updated : item));
       setEditingBooking(null);
+      toast.success("Booking updated", { description: `${values.serviceType} · ${new Date(values.appointmentAt).toLocaleString()}` });
     } catch (caught) {
       setEditorError(caught instanceof Error ? caught.message : "Unable to update this booking.");
     } finally {
@@ -158,82 +156,78 @@ export function BookingsPage() {
   const hasActiveFilters = Boolean(query || filter !== "all" || agentId !== "all" || rangeStart || rangeEnd);
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <h1>Bookings</h1>
-          <p>Track appointments captured by agents, where they came from, and what needs follow-up.</p>
-        </div>
-      </header>
+    <div className="mk-v2 grid min-w-0 grid-cols-1 gap-6 [&>*]:min-w-0">
+      <PageHeader
+        eyebrow="Operations"
+        title="Bookings"
+        description="Appointments captured by your agents, where they came from, and what needs follow-up."
+      />
 
-      <section className={`${styles.metrics} ${polish.metrics}`} aria-label="Booking summary">
-        <Metric detail="Next 7 days" icon={CalendarCheck2} label="Upcoming" value={summary.upcoming} tone="cyan" />
-        <Metric detail="Scheduled for today" icon={Clock3} label="Today" value={summary.today} tone="blue" />
-        <Metric detail="All confirmed bookings" icon={CheckCircle2} label="Confirmed" value={summary.confirmed} tone="green" />
-        <Metric detail="All cancelled bookings" icon={XCircle} label="Cancelled" value={summary.cancelled} tone="orange" />
-        <article className={`${styles.nextMetric} ${polish.metricCard}`}>
-          <span><CalendarClock size={20} /></span>
-          <div><small>Next appointment</small><strong>{summary.nextBooking ? formatAppointment(summary.nextBooking.appointmentDate) : "No upcoming booking"}</strong></div>
-        </article>
-      </section>
+      <StatStrip
+        items={[
+          { label: "Upcoming", value: summary.upcoming, hint: summary.nextBooking ? `Next: ${formatAppointment(summary.nextBooking.appointmentDate)}` : "Next 7 days" },
+          { label: "Today", value: summary.today, hint: "Scheduled for today" },
+          { label: "Confirmed", value: summary.confirmed, hint: "All time" },
+          { label: "Cancelled", value: summary.cancelled, hint: "All time" },
+        ]}
+      />
 
-      <section className={styles.controls}>
-        <div className={`${styles.controlRow} ${polish.controlRow}`}>
-          <label className={styles.search}>
-            <Search size={18} />
-            <input aria-label="Search bookings" onChange={(event) => setQuery(event.target.value)} placeholder="Search bookings..." value={query} />
-            {query && <button aria-label="Clear search" onClick={() => setQuery("")} type="button"><X size={15} /></button>}
+      <section className="grid min-w-0 grid-cols-1 gap-3 [&>*]:min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-[14rem] flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-muted" />
+            <Input aria-label="Search bookings" className="h-9 pl-9 pr-8 text-[0.85rem]" onChange={(event) => setQuery(event.target.value)} placeholder="Search bookings…" value={query} />
+            {query ? (
+              <button aria-label="Clear search" onClick={() => setQuery("")} type="button" className="absolute right-2 top-1/2 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded-md border-0 bg-transparent text-fg-muted hover:text-ink">
+                <X className="size-3.5" />
+              </button>
+            ) : null}
           </label>
-          <BookingDateRangePicker
-            end={rangeEnd}
-            onApply={(range) => { setRangeStart(range.start); setRangeEnd(range.end); }}
-            start={rangeStart}
-          />
-          <button className={`${styles.filterButton} ${filtersOpen ? styles.controlActive : ""}`} onClick={() => setFiltersOpen((open) => !open)} type="button">
-            <Filter size={16} /> Filters {agentId !== "all" && <i>1</i>}
-          </button>
-          <div className={styles.viewToggle} aria-label="Booking view">
-            <button aria-label="List view" className={view === "list" ? styles.selected : ""} onClick={() => setView("list")} type="button"><List size={16} /> List</button>
-            <button aria-label="Calendar view" className={view === "calendar" ? styles.selected : ""} onClick={() => setView("calendar")} type="button"><LayoutGrid size={16} /> Calendar</button>
+          <BookingDateRangePicker end={rangeEnd} onApply={(range) => { setRangeStart(range.start); setRangeEnd(range.end); }} start={rangeStart} />
+          <div className="w-44 max-sm:w-full">
+            <Select size="sm" icon={<Filter />} ariaLabel="Filter by agent" value={agentId} onValueChange={setAgentId} options={[{ value: "all", label: "All agents" }, ...agents.map((agent) => ({ value: agent.id, label: agent.name }))]} />
           </div>
-          <div className={styles.statusTabs}>
-            {FILTERS.map((item) => <button className={filter === item.value ? styles.selected : ""} key={item.value} onClick={() => setFilter(item.value)} type="button">{item.label}</button>)}
-          </div>
+          <Tabs value={view} onValueChange={(value) => setView(value as BookingView)} className="ml-auto">
+            <TabsList aria-label="Booking view">
+              <TabsTrigger value="list"><List /> List</TabsTrigger>
+              <TabsTrigger value="calendar"><LayoutGrid /> Calendar</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
-        {filtersOpen && (
-          <div className={styles.filterPanel}>
-            <label>Agent<select value={agentId} onChange={(event) => setAgentId(event.target.value)}><option value="all">All agents</option>{agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}</select></label>
-            <p>Filter the current result set by the agent responsible for the booking.</p>
-          </div>
-        )}
-        {hasActiveFilters && (
-          <div className={styles.chips}>
-            {(rangeStart || rangeEnd) && <button onClick={() => { setRangeStart(""); setRangeEnd(""); }} type="button">{formatRange(rangeStart, rangeEnd)} <X size={13} /></button>}
-            {filter !== "all" && <button onClick={() => setFilter("all")} type="button">{FILTERS.find((item) => item.value === filter)?.label} <X size={13} /></button>}
-            {activeAgent && <button onClick={() => setAgentId("all")} type="button">Agent: {activeAgent.name} <X size={13} /></button>}
-            <button className={styles.clearAll} onClick={clearFilters} type="button">Clear all</button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Tabs value={filter} onValueChange={(value) => setFilter(value as BookingStatusFilter)} className="max-w-full overflow-x-auto [scrollbar-width:none]">
+            <TabsList aria-label="Booking status">
+              {FILTERS.map((item) => <TabsTrigger key={item.value} value={item.value}>{item.label}</TabsTrigger>)}
+            </TabsList>
+          </Tabs>
+          {hasActiveFilters ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(rangeStart || rangeEnd) ? <FilterChip onClear={() => { setRangeStart(""); setRangeEnd(""); }}>{formatRange(rangeStart, rangeEnd)}</FilterChip> : null}
+              {activeAgent ? <FilterChip onClear={() => setAgentId("all")}>Agent: {activeAgent.name}</FilterChip> : null}
+              <Button variant="ghost" size="sm" onClick={clearFilters}>Clear all</Button>
+            </div>
+          ) : null}
+        </div>
       </section>
 
-      {error && <div className={styles.error}>{error}</div>}
+      {error ? <Alert tone="error">{error}</Alert> : null}
       {loading ? (
-        <div className={styles.loading}><LoaderCircle className="spin" size={22} /> Loading bookings...</div>
+        <Card className="grid gap-3 p-5">{[1, 2, 3, 4].map((row) => <Skeleton key={row} className="h-20" />)}</Card>
       ) : viewModels.length === 0 ? (
-        <Empty icon={<CalendarDays size={25} />} title="No bookings yet">Bookings created by agents or owners will appear here, even when an external calendar needs follow-up.</Empty>
+        <EmptyState icon={<CalendarDays />} title="No bookings yet" description="Bookings created by agents or owners appear here, even when an external calendar needs follow-up." />
       ) : visibleBookings.length === 0 ? (
-        <Empty icon={<Search size={25} />} title="No matching bookings">Adjust the date, agent, search, or status filters to see more appointments.</Empty>
+        <EmptyState icon={<Search />} title="No matching bookings" description="Adjust the date, agent, search or status filters to see more appointments." action={<Button variant="secondary" size="sm" onClick={clearFilters}>Clear filters</Button>} />
       ) : view === "calendar" ? (
-        <CalendarView bookings={visibleBookings} onEdit={(booking) => {
-          setEditorError("");
-          setEditingBooking(booking);
-        }} />
+        <CalendarView bookings={visibleBookings} onEdit={(booking) => { setEditorError(""); setEditingBooking(booking); }} />
       ) : (
-        <section className={styles.groupList}>
+        <div className="grid gap-6">
           {groupedBookings.map(([label, items]) => (
-            <section className={styles.dayGroup} key={label}>
-              <h2>{label}<span>{items.length} {items.length === 1 ? "booking" : "bookings"}</span></h2>
-              <div className={`${styles.dayRows} ${polish.dayRows}`}>
+            <section key={label}>
+              <h2 className="m-0 mb-3 flex items-baseline gap-3 text-sm font-medium text-ink">
+                {label}
+                <span className="text-xs font-medium text-fg-muted">{items.length} {items.length === 1 ? "booking" : "bookings"}</span>
+              </h2>
+              <Card className="divide-y divide-line overflow-hidden">
                 {items.map((booking) => (
                   <BookingRow
                     booking={booking}
@@ -241,17 +235,14 @@ export function BookingsPage() {
                     key={booking.id}
                     onCancel={() => requestAction("cancel", booking)}
                     onDelete={() => requestAction("delete", booking)}
-                    onEdit={() => {
-                      setEditorError("");
-                      setEditingBooking(booking);
-                    }}
+                    onEdit={() => { setEditorError(""); setEditingBooking(booking); }}
                     saving={savingId === booking.id}
                   />
                 ))}
-              </div>
+              </Card>
             </section>
           ))}
-        </section>
+        </div>
       )}
       {editingBooking && (
         <BookingEditor
@@ -270,48 +261,87 @@ export function BookingsPage() {
       {pendingAction && (
         <BookingActionDialog
           action={pendingAction}
-          busy={pendingAction.kind === "cancel"
-            ? cancellingId === pendingAction.booking.id
-            : savingId === pendingAction.booking.id}
+          busy={pendingAction.kind === "cancel" ? cancellingId === pendingAction.booking.id : savingId === pendingAction.booking.id}
           error={actionError}
-          onClose={() => {
-            if (!cancellingId && !savingId) setPendingAction(null);
-          }}
+          onClose={() => { if (!cancellingId && !savingId) setPendingAction(null); }}
           onConfirm={() => void confirmAction()}
         />
       )}
-    </main>
+    </div>
   );
 }
 
-function Metric({ icon: Icon, label, value, detail, tone }: { icon: typeof CalendarCheck2; label: string; value: number; detail: string; tone: "cyan" | "green" | "blue" | "orange" }) {
-  return <article className={`${styles.metric} ${styles[tone]} ${polish.metricCard} ${polish[tone]}`}><span><Icon size={20} /></span><div><div><strong>{value}</strong><small>{label}</small></div><p>{detail}</p></div></article>;
+const AGENT_TONES = ["45 106 85", "106 88 173", "47 98 163", "168 106 20", "47 122 75", "184 67 47"];
+
+function agentAccent(tone: number) {
+  return AGENT_TONES[Math.abs(tone) % AGENT_TONES.length];
+}
+
+function FilterChip({ children, onClear }: { children: React.ReactNode; onClear: () => void }) {
+  return (
+    <button type="button" onClick={onClear} className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] border border-line-strong bg-surface px-2.5 font-sans text-xs text-fg transition-colors hover:bg-surface-2">
+      {children} <X className="size-3" />
+    </button>
+  );
 }
 
 function BookingRow({ booking, cancelling, saving, onCancel, onDelete, onEdit }: { booking: BookingViewModel; cancelling: boolean; saving: boolean; onCancel: () => void; onDelete: () => void; onEdit: () => void }) {
   const cancelled = booking.status === "cancelled";
   const synced = booking.calendarSyncStatus === "synced";
-  const agentTone = styles[`agentTone${booking.agentTone}`];
+  const status = cancelled
+    ? { label: "Cancelled", dot: "bg-fg-muted" }
+    : synced
+      ? { label: humanize(booking.status), dot: "bg-success" }
+      : { label: "Calendar follow-up", dot: "bg-warning" };
   return (
-    <article className={`${styles.bookingRow} ${polish.bookingRow} ${agentTone} ${cancelled ? styles.cancelled : ""}`}>
-      <div className={styles.timeColumn}><strong>{formatTime(booking.appointmentDate)}</strong><span><Clock3 size={13} /> {booking.durationMinutes} min</span></div>
-      <div className={styles.bookingBody}>
-        <div className={styles.bookingTitle}><i className={cancelled ? styles.cancelledDot : synced ? styles.syncedDot : styles.pendingDot} /><h3>{booking.serviceType}</h3></div>
-        <p><UserRound size={14} /> {booking.callerName}</p>
-        <div className={styles.tags}>
-          <a href={`tel:${booking.callerPhone}`}><Phone size={13} /> {booking.callerPhone}</a>
-          <span className={styles.agentBadge}><CalendarDays size={13} /> {booking.agentName}</span>
-          <span><ArrowUpRight size={13} /> {booking.sourceLabel}</span>
-          <span>{booking.bookingReference}</span>
-        </div>
-        <div className={styles.rowMeta}><span>Booked <strong>{formatAppointment(booking.bookedDate)}</strong></span><span>Calendar <strong>{synced ? "Synced" : "Owner follow-up"}</strong></span></div>
+    <article
+      style={{ ["--agent" as string]: agentAccent(booking.agentTone) }}
+      className={cn(
+        "group grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-1 px-4 py-3 transition-colors hover:bg-surface-2/60 md:grid-cols-[4.5rem_minmax(0,1.4fr)_minmax(0,1fr)_10rem_auto] sm:px-5",
+        cancelled && "opacity-55",
+      )}
+    >
+      <div className="leading-tight">
+        <p className="m-0 text-[0.9rem] font-medium tabular-nums text-ink">{formatTime(booking.appointmentDate)}</p>
+        <p className="m-0 text-[0.75rem] text-fg-muted">{booking.durationMinutes} min</p>
       </div>
-      <div className={styles.rowActions}>
-        <span className={`${styles.status} ${cancelled ? styles.statusCancelled : synced ? `${styles.statusConfirmed} ${polish.statusConfirmed}` : styles.statusPending}`}>{humanize(booking.status)}</span>
-        {!cancelled && <button disabled={saving || cancelling} onClick={onEdit} type="button"><Pencil size={14} /> Reschedule</button>}
-        <a href={`tel:${booking.callerPhone}`}><Phone size={14} /> Call</a>
-        {!cancelled && <button className={styles.cancelAction} disabled={saving || cancelling} onClick={onCancel} type="button"><X size={14} /> {cancelling ? "Cancelling..." : "Cancel"}</button>}
-        <button aria-label={`Delete ${booking.bookingReference}`} className={styles.deleteAction} disabled={saving || cancelling} onClick={onDelete} type="button"><Trash2 size={15} /></button>
+      <div className="min-w-0 leading-tight">
+        <p className={cn("m-0 truncate text-[0.9rem] text-ink", cancelled && "line-through decoration-fg-muted")}>{booking.callerName}</p>
+        <p className="m-0 mt-0.5 truncate text-[0.8rem] text-fg-soft">{booking.serviceType}</p>
+      </div>
+      <div className="hidden min-w-0 leading-tight md:block">
+        <p className="m-0 flex items-center gap-1.5 truncate text-[0.82rem] text-fg">
+          <span className="size-2 shrink-0 rounded-[2px] bg-[rgb(var(--agent))]" aria-hidden="true" />
+          {booking.agentName}
+        </p>
+        <p className="m-0 mt-0.5 truncate text-[0.75rem] text-fg-muted">
+          <a href={`tel:${booking.callerPhone}`} className="text-fg-muted no-underline tabular-nums hover:text-ink">{booking.callerPhone}</a>
+          <span className="mx-1.5">·</span>{booking.bookingReference}
+        </p>
+      </div>
+      <p className="m-0 hidden items-center gap-2 text-[0.82rem] text-fg md:flex">
+        <span className={cn("size-1.5 shrink-0 rounded-full", status.dot)} aria-hidden="true" />
+        {status.label}
+      </p>
+      <div className="flex items-center justify-end gap-0.5 max-md:-ml-3 max-md:col-start-2 max-md:justify-start">
+        {!cancelled ? (
+          <Button variant="ghost" size="xs" disabled={saving || cancelling} onClick={onEdit} className="text-fg-soft hover:bg-tint/[0.05]">
+            Reschedule
+          </Button>
+        ) : null}
+        <Tooltip content="Call">
+          <Button asChild variant="ghost" size="xs" className="size-8 px-0 text-fg-muted hover:bg-tint/[0.05] max-sm:hidden">
+            <a href={`tel:${booking.callerPhone}`} aria-label={`Call ${booking.callerName}`}><Phone /></a>
+          </Button>
+        </Tooltip>
+        {!cancelled ? (
+          <Tooltip content={cancelling ? "Cancelling…" : "Cancel booking"}>
+            <Button variant="ghost" size="xs" aria-label={`Cancel ${booking.bookingReference}`} disabled={saving || cancelling} onClick={onCancel} className="size-8 px-0 text-fg-muted hover:bg-tint/[0.05]"><X /></Button>
+          </Tooltip>
+        ) : null}
+        <Tooltip content="Delete permanently">
+          <Button variant="ghost" size="xs" aria-label={`Delete ${booking.bookingReference}`} disabled={saving || cancelling} onClick={onDelete} className="size-8 px-0 text-fg-muted hover:bg-danger/[0.08] hover:text-danger"><Trash2 /></Button>
+        </Tooltip>
       </div>
     </article>
   );
@@ -326,11 +356,33 @@ function CalendarView({ bookings, onEdit }: { bookings: BookingViewModel[]; onEd
     });
     return [...map.entries()].sort(([left], [right]) => left.localeCompare(right));
   }, [bookings]);
-  return <section className={styles.calendarView}>{days.map(([date, items]) => <article key={date}><header><strong>{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</strong><span>{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span></header><div>{items.map((booking) => <button className={styles[`agentTone${booking.agentTone}`]} key={booking.id} onClick={() => onEdit(booking)} type="button"><time>{formatTime(booking.appointmentDate)}</time><strong>{booking.serviceType}</strong><span>{booking.callerName}</span><span className={styles.agentBadge}>{booking.agentName}</span></button>)}</div></article>)}</section>;
-}
-
-function Empty({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
-  return <section className={styles.empty}><span>{icon}</span><h2>{title}</h2><p>{children}</p></section>;
+  return (
+    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      {days.map(([date, items]) => (
+        <Card key={date} className="flex min-h-48 flex-col overflow-hidden">
+          <header className="flex items-baseline justify-between border-b border-line px-4 py-3">
+            <span className="text-sm font-medium text-ink">{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</span>
+            <span className="font-mono text-[0.65rem] text-fg-muted">{new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+          </header>
+          <div className="grid gap-2 p-2">
+            {items.map((booking) => (
+              <button
+                key={booking.id}
+                type="button"
+                onClick={() => onEdit(booking)}
+                style={{ ["--agent" as string]: agentAccent(booking.agentTone) }}
+                className="grid cursor-pointer gap-0.5 rounded-[var(--radius-control)] border border-[rgb(var(--agent)/0.25)] bg-[rgb(var(--agent)/0.07)] p-2.5 text-left font-sans transition-colors hover:border-[rgb(var(--agent)/0.5)]"
+              >
+                <time className="font-mono text-[0.65rem] text-[rgb(var(--agent))]">{formatTime(booking.appointmentDate)}</time>
+                <span className="truncate text-sm font-medium text-ink">{booking.serviceType}</span>
+                <span className="truncate text-xs text-fg-soft">{booking.callerName}</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      ))}
+    </section>
+  );
 }
 
 function groupBookings(bookings: BookingViewModel[]): Array<[string, BookingViewModel[]]> {

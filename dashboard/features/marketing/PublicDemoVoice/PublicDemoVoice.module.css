@@ -1,22 +1,23 @@
 .trigger {
   display: inline-flex;
-  min-height: 52px;
+  min-height: 48px;
   padding: 0 24px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #eef8f8;
-  background: rgba(4, 17, 30, 0.42);
-  backdrop-filter: blur(14px);
-  font-size: 0.82rem;
-  font-weight: 850;
+  color: #ededed;
+  background: rgba(255, 255, 255, 0.03);
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: transform 180ms ease, border-color 180ms ease;
+  transition: background 180ms ease, border-color 180ms ease, transform 120ms ease;
 }
 
-.trigger:hover:not(:disabled) { transform: translateY(-2px); }
+.trigger:hover:not(:disabled) { border-color: rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.06); }
+.trigger:active:not(:disabled) { transform: scale(0.97); }
 .trigger:disabled { cursor: wait; opacity: 0.72; }
 .triggerError { align-self: center; max-width: 220px; color: #ffc0b8; font-size: 0.7rem; }
 

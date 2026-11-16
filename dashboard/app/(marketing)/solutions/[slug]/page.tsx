@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { DestinationScreen } from "@/features/marketing/DestinationScreen/DestinationScreen";
+import { SolutionDetailPage } from "@/features/marketing/Solutions/SolutionPages";
 import { pageFor, paramsFor } from "@/features/marketing/site-map";
 
 export function generateStaticParams() {
@@ -19,5 +19,5 @@ export default async function SolutionsPage({ params }: { params: Promise<{ slug
   if (!destination) {
     notFound();
   }
-  return <DestinationScreen slug={slug} section="solutions" />;
+  return <SolutionDetailPage slug={slug} />;
 }

@@ -1,0 +1,596 @@
+/*
+ * Agent Studio pop-ups, hand-written for the console theme:
+ * voice picker (modal), number picker (modal), personalisation (side drawer).
+ * Loaded last so it replaces the older styling in AgentCreator.css.
+ */
+
+/* ---------- Shared shells ---------- */
+
+html body :is(.voice-picker-backdrop, .number-picker-backdrop, .personalisation-drawer-backdrop) {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 160 !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 20px !important;
+  background: var(--color-scrim) !important;
+  backdrop-filter: none !important;
+  animation: overlay-fade 160ms ease-out;
+}
+
+html body :is(.voice-picker-modal, .number-picker-modal) {
+  display: flex !important;
+  width: min(760px, 100%) !important;
+  max-height: min(88dvh, 760px) !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  border: 1px solid var(--color-line-strong) !important;
+  border-radius: 12px !important;
+  color: var(--color-fg) !important;
+  background: var(--color-popover) !important;
+  box-shadow: var(--shadow-pop) !important;
+  font-family: var(--font-sans);
+  animation: overlay-rise 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html body :is(.voice-picker-modal, .number-picker-modal, .personalisation-drawer) > header {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 14px !important;
+  min-height: 0 !important;
+  padding: 18px 22px !important;
+  border-bottom: 1px solid var(--color-line) !important;
+  background: transparent !important;
+}
+
+html body :is(.voice-picker-modal, .number-picker-modal, .personalisation-drawer) > header h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 !important;
+  color: var(--color-ink) !important;
+  font-size: 1.05rem !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+}
+
+html body :is(.voice-picker-modal, .number-picker-modal, .personalisation-drawer) > header p {
+  margin: 3px 0 0 !important;
+  max-width: 52ch;
+  color: var(--color-fg-muted) !important;
+  font-size: 0.82rem !important;
+  line-height: 1.5 !important;
+}
+
+/* Icon tiles in headers add noise; the title says enough. */
+html body .voice-picker-modal > header > div > span,
+html body .number-picker-icon { display: none !important; }
+html body .voice-picker-modal > header > div { display: block !important; flex: 1; }
+html body .voice-picker-modal > header h2 i { color: var(--color-fg-muted); font-size: 0.78rem; font-style: normal; font-weight: 400; }
+
+html body :is(.voice-picker-modal > header > button, .number-picker-close, .personalisation-drawer > header > button) {
+  display: grid !important;
+  width: 30px !important;
+  height: 30px !important;
+  flex: none !important;
+  place-items: center !important;
+  margin-left: auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 7px !important;
+  color: var(--color-fg-muted) !important;
+  background: transparent !important;
+  cursor: pointer;
+}
+
+html body :is(.voice-picker-modal > header > button, .number-picker-close, .personalisation-drawer > header > button):hover {
+  color: var(--color-ink) !important;
+  background: color-mix(in oklab, var(--color-tint) 6%, transparent) !important;
+}
+
+html body :is(.voice-picker-modal, .number-picker-modal) > footer {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 12px 22px !important;
+  border-top: 1px solid var(--color-line) !important;
+  background: var(--color-surface-2) !important;
+}
+
+html body :is(.voice-picker-modal, .number-picker-modal) > footer p { margin: 0 !important; color: var(--color-fg-muted) !important; font-size: 0.78rem !important; }
+html body :is(.voice-picker-modal, .number-picker-modal) > footer > div { display: flex; gap: 8px; margin-left: auto; }
+
+html body :is(.voice-picker-modal > footer button, .number-picker-cancel, .number-picker-assign) {
+  display: inline-flex !important;
+  height: 32px !important;
+  align-items: center !important;
+  gap: 6px;
+  padding: 0 14px !important;
+  border: 1px solid var(--color-line-strong) !important;
+  border-radius: 7px !important;
+  color: var(--color-fg) !important;
+  background: var(--color-surface) !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 0.82rem !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+}
+
+html body :is(.voice-picker-modal > footer button.save, .number-picker-assign) {
+  border-color: var(--color-primary) !important;
+  color: var(--color-primary-fg) !important;
+  background: var(--color-primary) !important;
+}
+
+html body :is(.voice-picker-modal > footer button, .number-picker-cancel, .number-picker-assign):disabled { opacity: 0.45 !important; cursor: not-allowed; }
+
+html body :is(.voice-picker-modal, .number-picker-modal, .personalisation-drawer) :is(input:not([type="radio"]):not([type="checkbox"]), textarea) {
+  border: 1px solid var(--color-line-strong) !important;
+  border-radius: 7px !important;
+  color: var(--color-fg) !important;
+  background: var(--color-surface) !important;
+  box-shadow: none !important;
+  font: inherit;
+  font-size: 0.86rem !important;
+}
+
+html body :is(.voice-picker-modal, .number-picker-modal, .personalisation-drawer) :is(input, textarea):focus {
+  border-color: var(--color-signal) !important;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-signal) 14%, transparent) !important;
+  outline: none !important;
+}
+
+/* ---------- Voice picker ---------- */
+
+html body .voice-picker-filters {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto auto !important;
+  gap: 8px !important;
+  padding: 14px 22px !important;
+  border-bottom: 1px solid var(--color-line) !important;
+  background: transparent !important;
+}
+
+html body .voice-search {
+  position: relative;
+  display: flex !important;
+  align-items: center !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+html body .voice-search > svg { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--color-fg-muted); pointer-events: none; }
+html body .voice-search input { width: 100%; height: 34px !important; padding: 0 10px 0 32px !important; }
+
+html body :is(.voice-filter-trigger, .voice-accent-trigger) {
+  display: inline-flex !important;
+  height: 34px !important;
+  min-height: 0 !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 10px !important;
+  border: 1px solid var(--color-line-strong) !important;
+  border-radius: 7px !important;
+  color: var(--color-fg) !important;
+  background: var(--color-surface) !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  cursor: pointer;
+}
+
+html body :is(.voice-filter-trigger, .voice-accent-trigger) > svg { width: 15px; height: 15px; color: var(--color-fg-muted); }
+html body :is(.voice-filter-trigger, .voice-accent-trigger) span { display: flex !important; align-items: baseline; gap: 5px; }
+html body :is(.voice-filter-trigger, .voice-accent-trigger) small { color: var(--color-fg-muted) !important; font-size: 0.75rem !important; letter-spacing: 0 !important; text-transform: none !important; }
+html body :is(.voice-filter-trigger, .voice-accent-trigger) strong { color: var(--color-ink) !important; font-size: 0.82rem !important; font-weight: 500 !important; }
+
+html body :is(.voice-language-filter, .voice-accent-filter) { position: relative; }
+
+html body :is(.voice-language-menu, .voice-accent-menu) {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  right: 0 !important;
+  z-index: 5 !important;
+  width: 240px !important;
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  padding: 4px !important;
+  border: 1px solid var(--color-line-strong) !important;
+  border-radius: 9px !important;
+  background: var(--color-popover) !important;
+  box-shadow: var(--shadow-pop) !important;
+}
+
+html body .voice-language-menu > label { position: relative; display: flex; align-items: center; margin: 2px 2px 6px; }
+html body .voice-language-menu > label svg { position: absolute; left: 9px; width: 14px; height: 14px; color: var(--color-fg-muted); }
+html body .voice-language-menu > label input { width: 100%; height: 30px !important; padding: 0 8px 0 28px !important; }
+
+html body :is(.voice-language-menu, .voice-accent-menu) button {
+  display: flex !important;
+  width: 100% !important;
+  min-height: 32px !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px;
+  padding: 5px 9px !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  color: var(--color-fg) !important;
+  background: transparent !important;
+  font: inherit !important;
+  font-size: 0.82rem !important;
+  text-align: left;
+  cursor: pointer;
+}
+
+html body :is(.voice-language-menu, .voice-accent-menu) button:hover { background: var(--color-surface-2) !important; }
+html body :is(.voice-language-menu, .voice-accent-menu) button.selected { color: var(--color-ink) !important; font-weight: 500; }
+html body :is(.voice-language-menu, .voice-accent-menu) button > svg { color: var(--color-signal); }
+html body .voice-language-menu button span { display: flex; align-items: baseline; gap: 6px; }
+html body .voice-language-menu button small { color: var(--color-fg-muted) !important; font-size: 0.72rem !important; }
+
+/* The library summary becomes a single quiet line. */
+html body .voice-engine-summary {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 10px 22px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--color-line) !important;
+  border-radius: 0 !important;
+  color: var(--color-fg-muted) !important;
+  background: transparent !important;
+  font-size: 0.78rem !important;
+}
+
+html body .voice-engine-summary > span { display: none !important; }
+html body .voice-engine-summary > div { display: flex; flex: 1; align-items: baseline; gap: 6px; }
+html body .voice-engine-summary strong { color: var(--color-fg) !important; font-size: 0.8rem !important; font-weight: 500 !important; }
+html body .voice-engine-summary small { color: var(--color-fg-muted) !important; font-size: 0.78rem !important; }
+html body .voice-engine-summary i { color: var(--color-fg-muted) !important; font-size: 0.75rem !important; font-style: normal; }
+
+html body .voice-picker-results {
+  min-height: 0;
+  flex: 1 !important;
+  overflow-y: auto !important;
+  padding: 6px 12px 12px !important;
+  background: transparent !important;
+}
+
+html body .voice-language-group > h3 {
+  display: flex !important;
+  align-items: baseline !important;
+  justify-content: space-between !important;
+  margin: 10px 10px 6px !important;
+  color: var(--color-fg-muted) !important;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+html body .voice-language-group > h3 i { font-style: normal; }
+html body .voice-language-group > div { display: grid !important; gap: 2px !important; grid-template-columns: minmax(0, 1fr) !important; }
+
+html body .voice-option-card {
+  display: grid !important;
+  grid-template-columns: 18px 34px minmax(0, 1fr) auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-height: 0 !important;
+  padding: 10px !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  color: var(--color-fg) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+html body .voice-option-card:hover { background: var(--color-surface-2) !important; }
+html body .voice-option-card.selected { border-color: var(--color-signal) !important; background: color-mix(in oklab, var(--color-signal) 7%, var(--color-popover)) !important; }
+
+html body .voice-option-radio {
+  display: grid !important;
+  width: 18px !important;
+  height: 18px !important;
+  place-items: center !important;
+  border: 1.5px solid var(--color-line-strong) !important;
+  border-radius: 50% !important;
+  color: var(--color-signal-fg) !important;
+  background: transparent !important;
+}
+
+html body .voice-option-card.selected .voice-option-radio { border-color: var(--color-signal) !important; background: var(--color-signal) !important; }
+html body .voice-option-radio svg { width: 11px; height: 11px; }
+
+html body .voice-option-avatar {
+  display: grid !important;
+  width: 34px !important;
+  height: 34px !important;
+  place-items: center !important;
+  border: 1px solid var(--color-line) !important;
+  border-radius: 50% !important;
+  color: var(--color-fg) !important;
+  background: var(--color-surface-2) !important;
+  box-shadow: none !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+}
+
+html body .voice-option-copy { display: block !important; min-width: 0; }
+html body .voice-option-copy > strong { display: flex !important; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--color-ink) !important; font-size: 0.88rem !important; font-weight: 500 !important; }
+
+html body .voice-option-copy > strong em {
+  padding: 0 6px !important;
+  border: 1px solid var(--color-line) !important;
+  border-radius: 4px !important;
+  color: var(--color-fg-muted) !important;
+  background: transparent !important;
+  font-size: 0.68rem !important;
+  font-style: normal !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+html body .voice-option-copy > small { display: block !important; overflow: hidden; margin-top: 1px; color: var(--color-fg-soft) !important; font-size: 0.78rem !important; text-overflow: ellipsis; white-space: nowrap; }
+html body .voice-option-copy > span { display: flex !important; flex-wrap: wrap; gap: 4px 10px; margin-top: 3px; }
+html body .voice-option-copy > span i { color: var(--color-fg-muted) !important; font-size: 0.72rem !important; font-style: normal !important; background: none !important; padding: 0 !important; border: 0 !important; }
+
+html body .voice-preview-button {
+  display: inline-flex !important;
+  height: 30px !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 0 11px !important;
+  border: 1px solid var(--color-line-strong) !important;
+  border-radius: 999px !important;
+  color: var(--color-fg) !important;
+  background: var(--color-surface) !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 0.78rem !important;
+  cursor: pointer;
+}
+
+html body .voice-preview-button.playing { border-color: var(--color-signal) !important; color: var(--color-signal-fg) !important; background: var(--color-signal) !important; }
+html body .voice-preview-button:disabled { opacity: 0.4 !important; cursor: not-allowed; }
+
+html body :is(.voice-picker-state, .voice-language-unavailable, .voice-preview-error) {
+  display: grid !important;
+  gap: 4px;
+  margin: 12px 10px !important;
+  padding: 18px !important;
+  border: 1px dashed var(--color-line-strong) !important;
+  border-radius: 9px !important;
+  color: var(--color-fg-soft) !important;
+  background: transparent !important;
+  font-size: 0.84rem !important;
+  text-align: center;
+}
+
+html body .voice-preview-error { border-style: solid !important; border-color: color-mix(in oklab, var(--color-danger) 30%, transparent) !important; color: var(--color-danger) !important; }
+html body .voice-picker-state small { color: var(--color-fg-muted) !important; }
+
+html body .voice-results-more {
+  display: flex !important;
+  width: 100% !important;
+  justify-content: center !important;
+  gap: 6px;
+  margin-top: 8px !important;
+  padding: 9px !important;
+  border: 1px dashed var(--color-line-strong) !important;
+  border-radius: 8px !important;
+  color: var(--color-fg) !important;
+  background: transparent !important;
+  font: inherit !important;
+  font-size: 0.8rem !important;
+  cursor: pointer;
+}
+
+html body .voice-results-more span { color: var(--color-fg-muted); }
+
+/* ---------- Number picker ---------- */
+
+html body .number-picker-toolbar {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: flex-end !important;
+  gap: 10px !important;
+  padding: 14px 22px !important;
+  border-bottom: 1px solid var(--color-line) !important;
+  background: transparent !important;
+}
+
+html body .number-picker-country-field > span { display: block; margin-bottom: 5px; color: var(--color-fg-muted) !important; font-size: 0.75rem !important; letter-spacing: 0 !important; text-transform: none !important; }
+
+html body .number-picker-country-trigger,
+html body .number-picker-refresh {
+  display: inline-flex !important;
+  height: 34px !important;
+  min-height: 0 !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 0 10px !important;
+  border: 1px solid var(--color-line-strong) !important;
+  border-radius: 7px !important;
+  color: var(--color-fg) !important;
+  background: var(--color-surface) !important;
+  box-shadow: none !important;
+  font: inherit !important;
+  font-size: 0.84rem !important;
+  cursor: pointer;
+}
+
+html body .number-picker-country-menu {
+  border: 1px solid var(--color-line-strong) !important;
+  border-radius: 9px !important;
+  background: var(--color-popover) !important;
+  box-shadow: var(--shadow-pop) !important;
+}
+
+html body .number-picker-country-menu button { border-radius: 6px !important; color: var(--color-fg) !important; background: transparent !important; }
+html body .number-picker-country-menu button:hover { background: var(--color-surface-2) !important; }
+
+html body .number-picker-results { flex: 1; min-height: 0; overflow-y: auto !important; padding: 8px 12px !important; background: transparent !important; }
+
+html body .number-picker-results > :is(button, label, div[role="radio"]) {
+  display: grid !important;
+  grid-template-columns: 18px minmax(0, 1fr) auto 14px !important;
+  align-items: center !important;
+  gap: 12px !important;
+  width: 100%;
+  min-height: 0 !important;
+  margin: 0 0 2px !important;
+  padding: 10px 12px !important;
+  border: 1px solid transparent !important;
+  border-radius: 9px !important;
+  color: var(--color-fg) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+html body .number-picker-results > :is(button, label, div[role="radio"]):hover { background: var(--color-surface-2) !important; }
+html body .number-picker-results > :is(.selected, [aria-checked="true"], [aria-pressed="true"]) { border-color: var(--color-signal) !important; background: color-mix(in oklab, var(--color-signal) 7%, var(--color-popover)) !important; }
+
+html body .number-picker-radio { display: grid !important; width: 18px !important; height: 18px !important; place-items: center !important; border: 1.5px solid var(--color-line-strong) !important; border-radius: 50% !important; background: transparent !important; }
+html body .number-picker-radio-dot { width: 8px !important; height: 8px !important; border-radius: 50% !important; background: var(--color-signal) !important; box-shadow: none !important; }
+html body .number-picker-number { color: var(--color-ink) !important; font-size: 0.92rem !important; font-weight: 500 !important; font-variant-numeric: tabular-nums; }
+html body .number-picker-price { color: var(--color-fg-soft) !important; font-size: 0.8rem !important; font-variant-numeric: tabular-nums; }
+html body .number-recommended-badge { padding: 0 6px !important; border: 1px solid color-mix(in oklab, var(--color-signal) 40%, transparent) !important; border-radius: 4px !important; color: var(--color-signal) !important; background: transparent !important; font-size: 0.68rem !important; letter-spacing: 0 !important; text-transform: none !important; }
+html body .number-row-chevron { color: var(--color-fg-muted) !important; }
+
+html body :is(.number-picker-state, .number-picker-error, .number-replacement-warning, .number-cost-confirmation, .number-picker-footer-notice) {
+  margin: 10px 22px !important;
+  padding: 12px 14px !important;
+  border: 1px solid var(--color-line) !important;
+  border-radius: 9px !important;
+  color: var(--color-fg-soft) !important;
+  background: var(--color-surface-2) !important;
+  box-shadow: none !important;
+  font-size: 0.82rem !important;
+}
+
+html body :is(.number-picker-error) { border-color: color-mix(in oklab, var(--color-danger) 30%, transparent) !important; color: var(--color-danger) !important; background: color-mix(in oklab, var(--color-danger) 6%, transparent) !important; }
+html body .number-replacement-warning { border-color: color-mix(in oklab, var(--color-warning) 35%, transparent) !important; background: color-mix(in oklab, var(--color-warning) 6%, transparent) !important; }
+html body .number-picker-state-icon,
+html body .number-picker-shield { color: var(--color-fg-muted) !important; background: transparent !important; border: 0 !important; box-shadow: none !important; }
+
+/* ---------- Personalisation drawer ---------- */
+
+html body .personalisation-drawer-backdrop { place-items: stretch end !important; padding: 0 !important; }
+
+html body .personalisation-drawer {
+  display: flex !important;
+  width: min(480px, 100vw) !important;
+  height: 100dvh !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-left: 1px solid var(--color-line-strong) !important;
+  border-radius: 0 !important;
+  color: var(--color-fg) !important;
+  background: var(--color-popover) !important;
+  box-shadow: var(--shadow-pop) !important;
+  font-family: var(--font-sans);
+  animation: drawer-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html body .personalisation-heading > span {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+  color: var(--color-fg-muted) !important;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+html body .personalisation-heading code { padding: 0 4px; border-radius: 4px; color: var(--color-fg); background: var(--color-surface-2); font-size: 0.78rem; }
+
+html body .personalisation-body { flex: 1; min-height: 0; overflow-y: auto !important; padding: 18px 22px 28px !important; background: transparent !important; }
+
+html body .personalisation-progress {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 6px 12px !important;
+  margin-bottom: 18px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html body .personalisation-progress > div { display: flex; align-items: baseline; gap: 6px; }
+html body .personalisation-progress strong { color: var(--color-ink) !important; font-size: 0.86rem !important; font-weight: 500 !important; }
+html body .personalisation-progress > div span,
+html body .personalisation-progress > span { color: var(--color-fg-muted) !important; font-size: 0.8rem !important; font-variant-numeric: tabular-nums; }
+html body .personalisation-progress i { grid-column: 1 / -1; display: block; height: 4px; overflow: hidden; border-radius: 999px; background: var(--color-surface-3) !important; }
+html body .personalisation-progress i span { display: block; height: 100%; border-radius: inherit; background: var(--color-signal) !important; box-shadow: none !important; }
+
+html body .personalisation-drawer-fields { display: grid !important; gap: 0 !important; }
+
+html body .personalise-field {
+  display: grid !important;
+  gap: 6px !important;
+  padding: 14px 0 !important;
+  border: 0 !important;
+  border-top: 1px solid var(--color-line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html body .personalise-field-label { display: flex !important; align-items: center; justify-content: space-between; color: var(--color-ink) !important; font-size: 0.84rem !important; font-weight: 500 !important; }
+
+html body .personalise-field-label i {
+  padding: 0 6px !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  color: var(--color-fg-muted) !important;
+  background: var(--color-surface-2) !important;
+  font-size: 0.7rem !important;
+  font-style: normal !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+html body .personalise-field-label i.required { color: var(--color-warning) !important; background: color-mix(in oklab, var(--color-warning) 10%, transparent) !important; }
+html body .personalise-field-label i.filled { color: var(--color-success) !important; background: color-mix(in oklab, var(--color-success) 10%, transparent) !important; }
+html body .personalise-field small { color: var(--color-fg-muted) !important; font-size: 0.76rem !important; }
+html body .personalisation-variable-group > header { margin: 18px 0 4px !important; padding: 0 !important; border: 0 !important; background: transparent !important; }
+html body .personalisation-variable-group > header strong { color: var(--color-fg-muted) !important; font-size: 0.75rem !important; font-weight: 500 !important; letter-spacing: 0 !important; text-transform: none !important; }
+html body .personalisation-save-error { color: var(--color-danger) !important; font-size: 0.8rem !important; }
+
+/* ---------- Motion ---------- */
+
+@keyframes overlay-fade { from { opacity: 0; } }
+@keyframes overlay-rise { from { opacity: 0; translate: 0 8px; scale: 0.98; } }
+@keyframes drawer-in { from { translate: 24px 0; opacity: 0.4; } }
+
+@media (max-width: 640px) {
+  html body :is(.voice-picker-backdrop, .number-picker-backdrop) { place-items: end stretch !important; padding: 0 !important; }
+  html body :is(.voice-picker-modal, .number-picker-modal) { width: 100% !important; max-height: 92dvh !important; border-radius: 14px 14px 0 0 !important; }
+  html body .voice-picker-filters { grid-template-columns: 1fr 1fr !important; }
+  html body .voice-search { grid-column: 1 / -1; }
+  html body .voice-option-card { grid-template-columns: 18px minmax(0, 1fr) auto !important; }
+  html body .voice-option-avatar { display: none !important; }
+}
+
+html body .voice-picker-modal .voice-picker-filters .voice-search input { height: 34px !important; min-height: 0 !important; padding: 0 10px 0 32px !important; }
+html body .voice-picker-modal .voice-picker-filters :is(.voice-filter-trigger, .voice-accent-trigger) { height: 34px !important; min-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; }

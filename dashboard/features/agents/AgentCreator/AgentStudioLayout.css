@@ -1,0 +1,435 @@
+/* =====================================================================
+ * Agent Studio layout v2: a settings document, not a stack of boxes.
+ * Groups are two-column rows (what it is, then the controls) separated by
+ * hairlines. The rail is a numbered step tracker. No icon tiles.
+ * Loaded after AgentStudio.css.
+ * ===================================================================== */
+
+/* ---- Step tracker rail ---- */
+
+html body .studio-nav-sections { counter-reset: studio-step; gap: 0; }
+
+html body .studio-nav-sections > button {
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 7px;
+  box-shadow: none;
+}
+
+html body .studio-nav-sections > button > svg:first-child,
+html body .studio-nav-sections > button > .studio-nav-check { display: none; }
+
+html body .studio-nav-sections > button::before {
+  counter-increment: studio-step;
+  content: counter(studio-step);
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  align-self: start;
+  place-items: center;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 50%;
+  color: var(--color-fg-muted);
+  background: var(--color-canvas);
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The line joining the steps. */
+html body .studio-nav-sections > button:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 31px;
+  bottom: -9px;
+  left: 18px;
+  width: 1px;
+  background: var(--color-line-strong);
+}
+
+html body .studio-nav-sections > button:has(.studio-nav-check)::before {
+  content: "\2713";
+  border-color: var(--color-signal);
+  color: var(--color-signal-fg);
+  background: var(--color-signal);
+}
+
+html body .studio-nav-sections > button:has(.studio-nav-check):not(:last-child)::after {
+  background: color-mix(in oklab, var(--color-signal) 55%, var(--color-line-strong));
+}
+
+html body .studio-nav-sections > button.active { background: var(--color-surface); box-shadow: var(--shadow-card); }
+html body .studio-nav-sections > button.active::before { border-color: var(--color-ink); color: var(--color-ink); background: var(--color-surface); }
+html body .studio-nav-sections > button.active:has(.studio-nav-check)::before {
+  border-color: var(--color-signal);
+  color: var(--color-signal-fg);
+  background: var(--color-signal);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-signal) 22%, transparent);
+}
+html body .studio-nav-sections > button strong { line-height: 1.3; }
+
+html body .studio-setup-progress { padding: 4px 8px 6px; border: 0; background: transparent; }
+
+/* ---- The form as a document ---- */
+
+html body .agent-studio-form > * { max-width: 860px; }
+html body .agent-studio .main-settings-page { display: block; }
+
+html body .agent-studio .studio-heading { margin-bottom: 8px; padding-bottom: 20px; border-bottom: 1px solid var(--color-line); }
+html body .agent-studio .studio-heading > span { display: none; }
+html body .agent-studio .studio-heading h2 { font-size: 1.35rem; }
+
+html body .agent-studio :is(.main-settings-card, .main-identity-card, .studio-setting-group, .web-voice-settings, .booking-workflow-settings, .knowledge-overview, .dtmf-configuration) {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Two-column setting rows, built with a floated label column so a title and
+   its description always stay together however tall the controls are. */
+html body .agent-studio :is(.studio-setting-group, .identity-settings-section) {
+  display: flow-root !important;
+  padding: 26px 0 !important;
+  border-top: 1px solid var(--color-line) !important;
+}
+
+html body .agent-studio .main-identity-card > .identity-settings-section:first-of-type { border-top: 0 !important; }
+
+html body .agent-studio .studio-setting-group > :is(h3, p),
+html body .agent-studio .identity-settings-section > .identity-settings-section-heading {
+  float: left;
+  clear: left;
+  width: 12.5rem;
+  margin: 0;
+}
+
+html body .agent-studio .studio-setting-group > p { margin-top: 4px; }
+html body .agent-studio .studio-setting-group > :not(h3):not(p),
+html body .agent-studio .identity-settings-section > :not(.identity-settings-section-heading) { margin: 0 0 14px 14.5rem; }
+html body .agent-studio .studio-setting-group > :not(h3):not(p):last-child,
+html body .agent-studio .identity-settings-section > :not(.identity-settings-section-heading):last-child { margin-bottom: 0; }
+
+html body .agent-studio .identity-settings-section-heading { display: block !important; }
+html body .agent-studio .identity-settings-section-heading > span,
+html body .agent-studio .identity-settings-section-heading > i { display: none !important; }
+html body .agent-studio .identity-settings-section-heading h3 { margin: 0; }
+html body .agent-studio .identity-settings-section-heading p { margin: 4px 0 0; }
+
+html body .agent-studio :is(.studio-form-grid, .identity-profile-grid, .identity-call-grid, .advanced-grid) {
+  grid-template-columns: repeat(auto-fit, minmax(11.5rem, 1fr)) !important;
+}
+
+html body .agent-studio :is(.studio-setting-group > h3, .identity-settings-section-heading h3) { color: var(--color-ink); font-size: 0.9rem; font-weight: 600; }
+html body .agent-studio :is(.studio-setting-group > p, .identity-settings-section-heading p) { color: var(--color-fg-muted); font-size: 0.8rem; line-height: 1.55; }
+
+/* ---- Toggle rows: text left, switch right; no icon tiles or shaded panels ---- */
+
+html body .agent-studio .studio-toggle-row {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0 !important;
+  border: 0 !important;
+  border-top: 1px solid var(--color-line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html body .agent-studio :is(.studio-setting-group, .web-voice-config) > .studio-toggle-row:first-of-type { padding-top: 0 !important; border-top: 0 !important; }
+html body .agent-studio .studio-toggle-row > span:first-child { display: none !important; }
+html body .agent-studio .studio-toggle-row strong { display: block; }
+
+/* Nested config reads as a continuation of its switch, not a box in a box. */
+html body .agent-studio .web-voice-config {
+  margin: 0 0 14px 14.5rem !important;
+  padding: 4px 0 4px 16px !important;
+  border: 0 !important;
+  border-left: 2px solid var(--color-line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+html body .agent-studio :is(.web-voice-share, .web-voice-embed, .web-voice-widget-options, .booking-field-picker, .booking-notification-settings, .channel-status) {
+  padding: 14px !important;
+  border: 1px solid var(--color-line) !important;
+  border-radius: 8px !important;
+  background: var(--color-surface-2) !important;
+  box-shadow: none !important;
+}
+
+html body .agent-studio .channel-status { display: flex; align-items: center; gap: 12px; }
+html body .agent-studio .channel-status > svg { color: var(--color-fg-muted); }
+html body .agent-studio .channel-status strong { display: block; color: var(--color-ink); font-size: 0.86rem; font-weight: 500; }
+html body .agent-studio .channel-status small { color: var(--color-fg-muted); font-size: 0.78rem; }
+html body .agent-studio .channel-status-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+html body .agent-studio .channel-status-actions button {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 6px;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+html body .agent-studio .phone-status.active { color: var(--color-success); }
+
+html body .agent-studio :is(.web-voice-share code, .web-voice-embed code) { color: var(--color-fg); background: transparent; font-family: var(--font-mono); font-size: 0.78rem; }
+html body .agent-studio .web-voice-share a { color: var(--color-ink); font-size: 0.8rem; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Language chips: quiet pills. */
+html body .agent-studio .studio-language-options > button { padding: 0 12px !important; border-radius: 999px !important; }
+html body .agent-studio .add-language-control { display: flex; gap: 8px; margin-top: 10px; }
+html body .agent-studio .add-language-control button {
+  flex: none;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 7px;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+html body .agent-studio .booking-duration-setting { display: grid; gap: 6px; padding-bottom: 14px; border-bottom: 0; }
+html body .agent-studio .booking-duration-setting > span { color: var(--color-ink); font-size: 0.82rem; font-weight: 500; }
+html body .agent-studio .booking-duration-setting > span small,
+html body .agent-studio .booking-notification-email > span small {
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--color-fg-muted);
+  background: var(--color-surface-2);
+  font-size: 0.7rem;
+}
+
+/* ---- Try-it panel ---- */
+
+html body .agent-test-panel { padding: 0 !important; background: var(--color-canvas) !important; }
+
+html body .agent-test-canvas,
+html body .agent-test-canvas[class*="status-"] {
+  min-height: 100%;
+  align-content: center;
+  gap: 14px;
+  padding: 28px 22px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html body .agent-test-canvas > small {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  color: var(--color-fg-soft);
+  background: var(--color-surface);
+}
+
+html body .agent-test-canvas > small::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--color-fg-muted); }
+html body .agent-test-canvas:not(.status-idle) > small::before { background: var(--color-success); animation: studio-pulse 1.4s ease-in-out infinite; }
+html body .agent-test-canvas > h2 { font-size: 1.15rem; }
+html body .agent-test-canvas .test-voice-animation { margin: 4px 0; }
+html body .agent-test-canvas .test-voice-animation { width: 220px !important; height: 220px !important; flex: none; }
+html body .agent-test-canvas .test-voice-animation canvas { width: 220px !important; height: 220px !important; max-width: none !important; transform: none !important; }
+html body .agent-test-canvas > button { width: 100%; max-width: 260px; height: 40px; justify-content: center; border-radius: 999px; }
+html body .agent-test-canvas .test-call-language-auto { border-radius: 10px; }
+
+@keyframes studio-pulse { 50% { opacity: 0.35; } }
+
+@media (max-width: 1100px) {
+  html body .agent-studio .studio-setting-group > :is(h3, p),
+  html body .agent-studio .identity-settings-section > .identity-settings-section-heading { float: none; width: auto; }
+  html body .agent-studio .studio-setting-group > p,
+  html body .agent-studio .identity-settings-section > .identity-settings-section-heading { margin-bottom: 14px; }
+  html body .agent-studio .studio-setting-group > :not(h3):not(p),
+  html body .agent-studio .identity-settings-section > :not(.identity-settings-section-heading) { margin-left: 0; }
+}
+
+@media (max-width: 760px) {
+  html body .studio-nav-sections > button::after { display: none; }
+  html body .studio-nav-sections > button { grid-template-columns: 22px auto; }
+}
+
+
+/* ---- Test panel open / closed (toggled by the header Test button) ---- */
+html body .agent-studio-layout.test-closed { grid-template-columns: 224px minmax(0, 1fr) !important; }
+html body .agent-studio-layout.test-closed > .agent-test-panel { display: none !important; }
+html body .agent-studio-layout.test-open { grid-template-columns: 224px minmax(0, 1fr) 320px !important; }
+html body .agent-studio-layout.test-open > .agent-test-panel { display: flex !important; animation: studio-panel-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+html body .agent-studio-actions .console-secondary-button[aria-pressed="true"] { border-color: var(--color-ink); color: var(--color-ink); }
+
+@keyframes studio-panel-in { from { opacity: 0; transform: translateX(12px); } }
+
+@media (max-width: 1080px) {
+  html body .agent-studio-layout.test-open,
+  html body .agent-studio-layout.test-closed { grid-template-columns: 210px minmax(0, 1fr) !important; }
+  /* On narrower screens the test panel slides over the form instead of squeezing it. */
+  html body .agent-studio-layout.test-open > .agent-test-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    width: min(340px, 92vw);
+    border-left: 1px solid var(--color-line-strong);
+    box-shadow: var(--shadow-pop);
+  }
+  html body .agent-studio-layout { position: relative; }
+}
+
+@media (max-width: 760px) {
+  html body .agent-studio-layout.test-open,
+  html body .agent-studio-layout.test-closed { display: block; }
+  /* Phones: a bottom sheet that leaves the header (and its Hide test button) visible. */
+  html body .agent-studio-layout.test-open > .agent-test-panel {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 130;
+    width: auto;
+    height: min(82dvh, 640px);
+    border: 1px solid var(--color-line-strong);
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    animation: studio-sheet-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  html body .agent-studio-layout.test-open::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 129;
+    background: var(--color-scrim);
+    pointer-events: none;
+  }
+}
+
+html body .agent-studio .studio-setting-group > :is(h3, p) { padding: 0 !important; text-indent: 0; }
+@media (max-width: 1100px) { html body .agent-studio .web-voice-config { margin-left: 0 !important; } }
+
+/* Old decorative glows behind the test canvas. */
+html body .agent-test-canvas::before,
+html body .agent-test-canvas::after { display: none !important; }
+
+/* Close button: only where the panel floats over the form. */
+html body .agent-test-close { display: none; }
+@media (max-width: 1080px) {
+  html body .agent-test-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 2;
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 0;
+    border-radius: 7px;
+    color: var(--color-fg-muted);
+    background: transparent;
+    cursor: pointer;
+  }
+  html body .agent-test-close:hover { color: var(--color-ink); background: color-mix(in oklab, var(--color-tint) 6%, transparent); }
+  html body .agent-test-panel { position: relative; }
+}
+@media (max-width: 760px) {
+  html body .agent-test-panel::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-line-strong);
+    translate: -50% 0;
+  }
+}
+@keyframes studio-sheet-in { from { translate: 0 30%; opacity: 0.6; } }
+
+/* Direct form controls in a row: 100% width would ignore the label column. */
+html body .agent-studio .studio-setting-group > :is(textarea, input, select, .studio-prompt-editor) {
+  width: calc(100% - 14.5rem) !important;
+  box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+  html body .agent-studio .studio-setting-group > :is(textarea, input, select, .studio-prompt-editor) { width: 100% !important; }
+}
+
+/* Any control in a row stays inside the controls column, whatever width it asks for. */
+html body .agent-studio .studio-setting-group > :not(h3):not(p),
+html body .agent-studio .identity-settings-section > :not(.identity-settings-section-heading) {
+  max-width: calc(100% - 14.5rem);
+  box-sizing: border-box;
+}
+@media (max-width: 1100px) {
+  html body .agent-studio .studio-setting-group > :not(h3):not(p),
+  html body .agent-studio .identity-settings-section > :not(.identity-settings-section-heading) { max-width: 100%; }
+}
+
+/* ---------- Scroll containment ----------
+ * Native <select>s behind the custom dropdowns are absolutely positioned.
+ * Without a positioned ancestor inside the scroller they anchored to the
+ * layout, stretching it far past the viewport, and focus could scroll the
+ * whole console into blank space. Pin them to the scrolling panes and clip
+ * (not just hide) the frame so it can never be scrolled programmatically. */
+html .agent-studio-form { position: relative; }
+
+@media (min-width: 761px) {
+  html .agent-studio,
+  html .agent-studio-layout { overflow: clip; }
+}
+
+/* ---------- Buttons ----------
+ * Studio buttons share the console Button spec (components/ui/button.tsx).
+ * Older container rules styled buttons per section; these win over them. */
+html body .agent-studio :is(.console-primary-button, .console-secondary-button) {
+  display: inline-flex !important;
+  width: auto !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 0 12px !important;
+  border-radius: var(--radius-button) !important;
+  font-family: var(--font-sans) !important;
+  font-size: 0.82rem !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  white-space: nowrap !important;
+}
+html body .agent-studio .console-secondary-button {
+  border: 1px solid var(--color-line-strong) !important;
+  color: var(--color-ink) !important;
+  background: var(--color-surface) !important;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05) !important;
+}
+html body .agent-studio .console-secondary-button:hover:not(:disabled) {
+  border-color: color-mix(in oklab, var(--color-fg-muted) 45%, var(--color-line-strong)) !important;
+  background: var(--color-surface-2) !important;
+}
+html body .agent-studio :is(.console-primary-button, .console-secondary-button):disabled { opacity: 0.45 !important; cursor: not-allowed !important; }
+html body .agent-studio :is(.console-primary-button, .console-secondary-button) svg { width: 14px !important; height: 14px !important; flex: none; }
+/* A button that completes an input row matches the input's height. */
+html body .agent-studio :is(input, select) + :is(.console-primary-button, .console-secondary-button) { height: 36px !important; min-height: 36px !important; align-self: center; }

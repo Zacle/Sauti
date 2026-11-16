@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CategoryScreen } from "@/features/marketing/DestinationScreen/DestinationScreen";
+import { SolutionsOverviewPage } from "@/features/marketing/Solutions/SolutionPages";
 
 export const metadata: Metadata = {
   title: "Solutions | Sauti",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function SolutionsIndexPage() {
-  return <CategoryScreen section="solutions" />;
+  return <SolutionsOverviewPage />;
 }

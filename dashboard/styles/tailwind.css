@@ -1,0 +1,296 @@
+/*
+ * Tailwind v4 without its global preflight: the console and older marketing
+ * pages still rely on hand-written CSS, so resets are scoped to `.mk` (the
+ * redesigned marketing surface) instead of the whole document.
+ */
+@layer reset, theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --color-canvas: #000000;
+  --color-surface: #0a0a0a;
+  --color-surface-2: #111111;
+  --color-line: rgb(255 255 255 / 0.08);
+  --color-line-strong: rgb(255 255 255 / 0.14);
+  --color-fg: #ededed;
+  --color-fg-soft: #a1a1a1;
+  --color-fg-muted: #6b6b6b;
+  --color-signal: #5eead4;
+  --color-surface-3: #181818;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #ff7a7a;
+  --color-danger-fg: #000000;
+  --color-info: #60a5fa;
+  --color-violet: #a78bfa;
+  /* Themeable roles: strongest text, hover/fill tint, solid primary, floating surfaces. */
+  --color-ink: #ffffff;
+  --color-tint: #ffffff;
+  --color-primary: #ffffff;
+  --color-primary-fg: #000000;
+  --color-popover: #0b0b0b;
+  --color-scrim: rgb(0 0 0 / 0.6);
+  --color-selected: #ffffff;
+  --color-selected-fg: #000000;
+  --color-signal-fg: #000000;
+  --shadow-card: none;
+  --radius-button: 9999px;
+  --radius-popover: 1rem;
+  --radius-badge: 9999px;
+
+  --radius-card: 1.5rem;
+  --radius-control: 0.75rem;
+
+  --shadow-pop: 0 24px 70px -12px rgb(0 0 0 / 0.85), 0 0 0 1px rgb(255 255 255 / 0.02);
+  --shadow-glow: 0 0 60px -12px rgb(94 234 212 / 0.45);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+  --font-serif: var(--font-instrument-serif), ui-serif, Georgia, serif;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-marquee: marquee 40s linear infinite;
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+
+/* Uses translate/scale (not transform) so it composes with the -translate-x/y-1/2 centring utilities. */
+@keyframes dialog-in {
+  from { opacity: 0; translate: -50% -48%; scale: 0.97; }
+  to { opacity: 1; translate: -50% -50%; scale: 1; }
+}
+
+@keyframes select-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes select-out {
+  to { opacity: 0; transform: translateY(-2px) scale(0.99); }
+}
+
+@keyframes line-draw {
+  from { stroke-dashoffset: 220; }
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [class*="line-draw"] { animation: none !important; }
+}
+
+@keyframes voice-eq {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes accordion-down {
+  from { height: 0; opacity: 0; }
+  to { height: var(--radix-accordion-content-height); opacity: 1; }
+}
+
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); opacity: 1; }
+  to { height: 0; opacity: 0; }
+}
+
+/*
+ * Console themes. AppShell (and a tiny boot script in the console layout) put
+ * `console-light` or `console-dark` plus `data-accent` on <html>, so portaled
+ * overlays (dialogs, menus, toasts) match the page.
+ */
+html.console-light {
+  --color-canvas: #f7f6f3;
+  --color-surface: #ffffff;
+  --color-surface-2: #f2f1ed;
+  --color-surface-3: #e9e7e1;
+  --color-line: #e7e5df;
+  --color-line-strong: #d6d3cb;
+  --color-fg: #23221f;
+  --color-fg-soft: #5f5c55;
+  --color-fg-muted: #8f8b82;
+  --color-ink: #141412;
+  --color-tint: #23221f;
+  --color-signal: #2d6a55;
+  --color-signal-fg: #ffffff;
+  --color-success: #2f7a4b;
+  --color-warning: #a86a14;
+  --color-danger: #b8432f;
+  --color-danger-fg: #ffffff;
+  --color-info: #2f62a3;
+  --color-violet: #6a58ad;
+  --color-primary: #1f1e1b;
+  --color-primary-fg: #ffffff;
+  --color-popover: #ffffff;
+  --color-scrim: rgb(35 34 31 / 0.28);
+  --color-selected: #ffffff;
+  --color-selected-fg: #141412;
+  --shadow-card: 0 1px 2px rgb(35 34 31 / 0.05);
+  --shadow-pop: 0 10px 30px -10px rgb(35 34 31 / 0.18), 0 0 0 1px rgb(35 34 31 / 0.06);
+  color-scheme: light;
+}
+
+html.console-dark {
+  --color-canvas: #121211;
+  --color-surface: #1a1a19;
+  --color-surface-2: #212120;
+  --color-surface-3: #2b2b29;
+  --color-line: #2a2a28;
+  --color-line-strong: #3a3936;
+  --color-fg: #e6e4df;
+  --color-fg-soft: #a9a59d;
+  --color-fg-muted: #86827a;
+  --color-ink: #f7f6f3;
+  --color-tint: #f7f6f3;
+  --color-signal: #6cbf9f;
+  --color-signal-fg: #0f1a15;
+  --color-success: #67b88a;
+  --color-warning: #d9a54a;
+  --color-danger: #e2806b;
+  --color-danger-fg: #1f0d08;
+  --color-info: #7ea9e0;
+  --color-violet: #a798e2;
+  --color-primary: #f2f1ed;
+  --color-primary-fg: #141412;
+  --color-popover: #1f1f1e;
+  --color-scrim: rgb(0 0 0 / 0.55);
+  --color-selected: #2f2f2d;
+  --color-selected-fg: #f7f6f3;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-pop: 0 16px 40px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.05);
+  color-scheme: dark;
+}
+
+html.console-light,
+html.console-dark {
+  --radius-card: 10px;
+  --radius-control: 7px;
+  --radius-button: 7px;
+  --radius-popover: 9px;
+  --radius-badge: 5px;
+  --shadow-glow: none;
+  background: var(--color-canvas);
+}
+
+/* Accent colours (light / dark pairs). Green is the default above. */
+html.console-light[data-accent="blue"] { --color-signal: #2f62a3; }
+html.console-dark[data-accent="blue"] { --color-signal: #7ea9e0; --color-signal-fg: #0d1828; }
+html.console-light[data-accent="violet"] { --color-signal: #5b4bb0; }
+html.console-dark[data-accent="violet"] { --color-signal: #a798e2; --color-signal-fg: #17122b; }
+html.console-light[data-accent="amber"] { --color-signal: #9a5b0c; }
+html.console-dark[data-accent="amber"] { --color-signal: #e0a94f; --color-signal-fg: #261804; }
+html.console-light[data-accent="rose"] { --color-signal: #ad3858; }
+html.console-dark[data-accent="rose"] { --color-signal: #e8849d; --color-signal-fg: #2b0d16; }
+html.console-light[data-accent="graphite"] { --color-signal: #44423d; }
+html.console-dark[data-accent="graphite"] { --color-signal: #cfccc4; --color-signal-fg: #161614; }
+
+html.console-light body,
+html.console-dark body {
+  background: var(--color-canvas);
+  color: var(--color-fg);
+}
+
+html.console-light ::selection,
+html.console-dark ::selection {
+  color: var(--color-signal-fg);
+  background: var(--color-signal);
+}
+
+html.console-switching,
+html.console-switching * {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-v2 *,
+  .mk-v2 *::before,
+  .mk-v2 *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+@layer base {
+  /* Console: neutral button reset. Zero specificity, so components, utilities
+     and older hand-written CSS all win; a bare <button> never falls back to
+     the browser’s native bevelled look. */
+  :where(html.console-light, html.console-dark) :where(button) {
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  :where(html.console-light, html.console-dark) :where(button:disabled) {
+    cursor: not-allowed;
+  }
+
+  /* Marketing layout root: black canvas behind every marketing page. */
+  .mk {
+    min-height: 100dvh;
+    background: var(--color-canvas);
+  }
+
+  /* Pages rebuilt on Tailwind opt into the scoped preflight with `.mk-v2`. */
+  .mk-v2 {
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .mk-v2 :where(h1, h2, h3, h4, p, figure, blockquote, dl, dd) {
+    margin: 0;
+  }
+
+  .mk-v2 :where(ul, ol) {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .mk-v2 :where(button) {
+    font: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .mk-v2 :where(input, textarea, select) {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
+  .mk-v2 :where(fieldset) {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+
+  .mk-v2 :where(img, svg, video, canvas) {
+    display: block;
+  }
+
+  .mk-v2 ::selection {
+    color: #000;
+    background: var(--color-signal);
+  }
+}

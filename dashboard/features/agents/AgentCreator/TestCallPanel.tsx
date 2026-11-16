@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Languages, LoaderCircle, Phone, PhoneOff, ShieldCheck } from "lucide-react";
+import { Download, Languages, LoaderCircle, Phone, PhoneOff, ShieldCheck, X } from "lucide-react";
 import {
   completeTestCall,
   correlateTestCall,
@@ -34,6 +34,8 @@ type TestCallPanelProps = {
   voiceId?: string;
   defaultLanguage: string;
   supportedLanguages: string[];
+  /** Closes the panel on screens where it floats over the form. */
+  onClose?: () => void;
 };
 
 type CallStatus =
@@ -72,6 +74,7 @@ export function TestCallPanel({
   voiceId,
   defaultLanguage,
   supportedLanguages,
+  onClose,
 }: TestCallPanelProps) {
   const [callId, setCallId] = useState("");
   const [status, setStatus] = useState<CallStatus>("idle");
@@ -403,6 +406,11 @@ export function TestCallPanel({
   const active = Boolean(callId);
   return (
     <aside className={`agent-test-panel ${active ? "active" : ""}`}>
+      {onClose ? (
+        <button type="button" className="agent-test-close" aria-label="Close test panel" onClick={onClose}>
+          <X size={16} />
+        </button>
+      ) : null}
       {!active ? (
         <div className={`agent-test-canvas status-${status}`}>
           <small>Voice test</small>

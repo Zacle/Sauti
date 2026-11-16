@@ -1,13 +1,17 @@
 "use client";
 
 import "./AgentCreator.css";
-import "./AgentCreatorRedesign.css";
+import "./AgentStudio.css";
+import "./AgentStudioLayout.css";
+import "./StudioOverlays.css";
 import Link from "next/link";
-import * as Select from "@radix-ui/react-select";
 import * as Slider from "@radix-ui/react-slider";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
+import { toast } from "sonner";
+import { ApiError } from "@/lib/api/client";
+import { LoadFailure } from "@/features/errors/ConsoleErrors";
 import {
   ArrowLeft,
   ArrowRight,
@@ -88,6 +92,7 @@ import { AddVariableForm } from "../AgentVariables/AddVariableForm";
 import { getAgentIntegrations, type AgentIntegration } from "@/lib/api/integrations";
 import { DeleteAgentDialog } from "@/features/agents/DeleteAgentDialog/DeleteAgentDialog";
 import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
+import { Select } from "@/components/ui/select";
 import { structuredAgentSetting, type StructuredAgentSetting } from "@/features/agents/domain/structured-agent-settings";
 import { listCountryCallingCodes, type CountryCallingCode } from "@/lib/api/phone-numbers";
 
@@ -433,7 +438,12 @@ export function AgentCreator({
   const [existingVariableKeys, setExistingVariableKeys] = useState<string[]>([]);
   const [showPersonalisation, setShowPersonalisation] = useState(openPersonalisation);
   const [loadingAgent, setLoadingAgent] = useState(editing);
+  const [loadFailure, setLoadFailure] = useState<{ status?: number; message: string } | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [saved, setSaved] = useState(false);
+  // The live test panel: open by default only when there is room for it beside the form.
+  const [testPanelOpen, setTestPanelOpen] = useState(false);
+  useEffect(() => { setTestPanelOpen(window.innerWidth >= 1560); }, []);
   const [loadedAgent, setLoadedAgent] = useState<Agent | null>(null);
   const [readiness, setReadiness] = useState<AgentReadiness | null>(null);
   const [showDelete, setShowDelete] = useState(false);
@@ -478,6 +488,7 @@ export function AgentCreator({
   useEffect(() => {
     if (!agentId) return;
     setLoadingAgent(true);
+    setLoadFailure(null);
     Promise.all([getAgent(agentId), listAgentVariables(agentId), getAgentReadiness(agentId)])
       .then(([agent, variables, agentReadiness]) => {
         const definitions = variables.map((variable) => ({
@@ -562,9 +573,12 @@ export function AgentCreator({
         });
         setStage("studio");
       })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load this agent."))
+      .catch((caught) => setLoadFailure({
+        status: caught instanceof ApiError ? caught.status : undefined,
+        message: caught instanceof Error ? caught.message : "We couldn’t load this agent. Please try again.",
+      }))
       .finally(() => setLoadingAgent(false));
-  }, [agentId]);
+  }, [agentId, loadAttempt]);
 
   const categories = ["All", "Appointments", "Support", "Sales"];
 
@@ -826,6 +840,16 @@ export function AgentCreator({
     <>
       {loadingAgent ? (
         <div className="agent-editor-loading"><LoaderCircle className="spin" /> Loading agent configuration...</div>
+      ) : loadFailure ? (
+        <LoadFailure
+          status={loadFailure.status}
+          message={loadFailure.message}
+          onRetry={() => setLoadAttempt((attempt) => attempt + 1)}
+          notFoundTitle="This agent doesn’t exist"
+          notFoundDescription="It may have been deleted, or the link belongs to another workspace."
+          backHref="/agents"
+          backLabel="Back to agents"
+        />
       ) : stage === "templates" ? (
         <TemplateSelection
           brief={brief}
@@ -871,7 +895,7 @@ export function AgentCreator({
                 </button>
               )}
               {editing && loadedAgent?.active && <span className="agent-live-badge"><Check size={13} /> Live</span>}
-              <button className="console-secondary-button" type="button"><Play size={15} /> Test</button>
+              <button className="console-secondary-button" type="button" aria-pressed={testPanelOpen} onClick={() => setTestPanelOpen((open) => !open)}><Play size={15} /> {testPanelOpen ? "Hide test" : "Test"}</button>
               {editing && (
                 <button aria-label="Delete agent" className="studio-delete-button" onClick={() => {
                   setDeleteError("");
@@ -886,7 +910,7 @@ export function AgentCreator({
             </div>
           </header>
 
-          <div className="agent-studio-layout">
+          <div className={`agent-studio-layout ${testPanelOpen ? "test-open" : "test-closed"}`}>
             <aside className="agent-studio-nav">
               <span>Agent setup</span>
               <div className="studio-setup-progress" aria-label={`Agent is ${setupProgress}% ready to go live`}>
@@ -906,7 +930,7 @@ export function AgentCreator({
               <div className="studio-template-note">
                 <Sparkles size={17} />
                 <div><small>{editing ? "Business details" : "Template"}</small><strong>{editing ? `${agentVariables.length} prompt variables` : selectedTemplate.name}</strong></div>
-                <button type="button" onClick={() => editing ? setShowPersonalisation(true) : agentVariables.length ? setShowPersonalisation(true) : setStage("templates")}>
+                <button className="console-secondary-button" type="button" onClick={() => editing ? setShowPersonalisation(true) : agentVariables.length ? setShowPersonalisation(true) : setStage("templates")}>
                   {editing || agentVariables.length ? "Personalise" : "Change"}
                 </button>
               </div>
@@ -1068,6 +1092,7 @@ export function AgentCreator({
             </section>
 
             <TestCallPanel
+              onClose={() => setTestPanelOpen(false)}
               agentId={agentId}
               agentName={name || "your agent"}
               voiceId={voice}
@@ -1697,12 +1722,12 @@ function MainSettings(props: {
               <ChevronDown size={15} />
             </button>
           </label>
-          <label>Primary language<DarkSelect ariaLabel="Primary language" triggerClassName="main-settings-select" icon={<Languages size={16} />} value={props.language} onValueChange={props.onLanguage}
+          <label>Primary language<DarkSelect ariaLabel="Primary language" icon={<Languages size={16} />} value={props.language} onValueChange={props.onLanguage}
             options={Array.from(new Set([...LANGUAGE_OPTIONS.map(([value]) => value), ...props.supportedLanguages]))
               .map((value) => ({ value, label: languageName(value) }))} /></label>
           <label>
             Timezone
-            <DarkSelect ariaLabel="Agent timezone" triggerClassName="main-settings-select" icon={<Clock3 size={16} />} value={props.timezone} onValueChange={props.onTimezone}
+            <DarkSelect ariaLabel="Agent timezone" icon={<Clock3 size={16} />} value={props.timezone} onValueChange={props.onTimezone}
               options={TIMEZONE_OPTIONS} />
           </label>
         </div>
@@ -1752,7 +1777,7 @@ function MainSettings(props: {
                 <div className="web-voice-embed">
                   <span>Embed code</span>
                   <code>{widgetEmbedCode}</code>
-                  <button type="button" onClick={() => void navigator.clipboard.writeText(widgetEmbedCode)}>Copy embed code</button>
+                  <button className="console-secondary-button" type="button" onClick={() => void navigator.clipboard.writeText(widgetEmbedCode).then(() => toast.success("Embed code copied"))}>Copy embed code</button>
                 </div>
               </div>
             ) : <small className="field-help">Save the agent to generate its hosted page and embed code.</small>}
@@ -1795,9 +1820,9 @@ function MainSettings(props: {
           <div className="channel-status-actions">
             {props.phoneNumber && <span className={`phone-status ${props.phoneNumberStatus ?? "active"}`}>{readablePhoneStatus(props.phoneNumberStatus)}</span>}
             {props.phoneNumber && props.phoneNumberStatus !== "active" && props.onRefreshPhone && (
-              <button onClick={props.onRefreshPhone} type="button">Refresh status</button>
+              <button className="console-secondary-button" onClick={props.onRefreshPhone} type="button">Refresh status</button>
             )}
-            <button disabled={!props.onAssignPhone} onClick={props.onAssignPhone} type="button">
+            <button className="console-secondary-button" disabled={!props.onAssignPhone} onClick={props.onAssignPhone} type="button">
               {props.phoneNumber ? "Change number" : "Choose number"}
             </button>
           </div>
@@ -1839,7 +1864,8 @@ function MainSettings(props: {
               setLanguageCodeToAdd("");
             }}
             type="button"
-          ><Plus size={15} /> Add language</button>
+            className="console-secondary-button"
+          ><Plus size={14} /> Add language</button>
         </div>
         {props.supportedLanguages.filter((code) => !LANGUAGE_OPTIONS.some(([known]) => known === code)).length > 0 && (
           <div className="studio-language-options custom-language-options">
@@ -2045,7 +2071,7 @@ function BookingFieldPicker({
             placeholder="e.g. Insurance member number"
             value={customField}
           />
-          <button disabled={atLimit || !normalizeBookingField(customField)} onClick={addCustomField} type="button"><Plus size={15} /> Add field</button>
+          <button className="console-secondary-button" disabled={atLimit || !normalizeBookingField(customField)} onClick={addCustomField} type="button"><Plus size={14} /> Add field</button>
         </div>
         {customField && <small>Saved as <code>{normalizeBookingField(customField)}</code></small>}
       </div>
@@ -2855,12 +2881,18 @@ function InternationalPhoneField({ countries, defaultRegion, value, onChange }: 
 
   return (
     <div className="international-phone-field">
-      <select aria-label="Country calling code" disabled={!countries.length}
-        value={selected?.region || ""} onChange={(event) => updateRegion(event.target.value)}>
-        {countries.map((country) => <option key={country.region} value={country.region}>
-          {country.name} ({country.dialingCode})
-        </option>)}
-      </select>
+      <Select
+        ariaLabel="Country calling code"
+        disabled={!countries.length}
+        value={selected?.region || ""}
+        onValueChange={updateRegion}
+        searchPlaceholder="Search country or code…"
+        options={countries.map((country) => ({
+          value: country.region,
+          label: `${country.name} (${country.dialingCode})`,
+          keywords: [country.region, country.dialingCode],
+        }))}
+      />
       <input aria-label="National phone number" inputMode="tel" type="tel"
         value={nationalNumber} placeholder="712 345 678"
         onChange={(event) => updateNationalNumber(event.target.value)} />
@@ -2995,33 +3027,15 @@ function ScheduleTimeSelect({
       .sort((left, right) => left.value.localeCompare(right.value));
 
   return (
-    <Select.Root value={value} onValueChange={onChange}>
-      <Select.Trigger aria-label={ariaLabel} className="schedule-time-trigger">
-        <Clock3 size={14} />
-        <Select.Value />
-        <Select.Icon><ChevronDown size={14} /></Select.Icon>
-      </Select.Trigger>
-      <Select.Portal>
-        <Select.Content
-          align="start"
-          className="schedule-time-content"
-          collisionPadding={10}
-          position="popper"
-          sideOffset={6}
-        >
-          <Select.ScrollUpButton className="schedule-time-scroll"><ChevronDown size={15} /></Select.ScrollUpButton>
-          <Select.Viewport className="schedule-time-viewport">
-            {options.map((option) => (
-              <Select.Item className="schedule-time-item" key={option.value} value={option.value}>
-                <Select.ItemIndicator><Check size={13} /></Select.ItemIndicator>
-                <Select.ItemText>{option.label}</Select.ItemText>
-              </Select.Item>
-            ))}
-          </Select.Viewport>
-          <Select.ScrollDownButton className="schedule-time-scroll"><ChevronDown size={15} /></Select.ScrollDownButton>
-        </Select.Content>
-      </Select.Portal>
-    </Select.Root>
+    <Select
+      size="sm"
+      ariaLabel={ariaLabel}
+      icon={<Clock3 />}
+      value={value}
+      onValueChange={onChange}
+      options={options}
+      searchPlaceholder="Search times…"
+    />
   );
 }
 

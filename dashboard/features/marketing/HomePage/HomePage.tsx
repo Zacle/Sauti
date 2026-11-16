@@ -1,9 +1,5 @@
-"use client";
-import { useRevealMotion } from "@/hooks/useRevealMotion";
-import ReferenceHome from "@/features/marketing/ReferenceHome/ReferenceHome";
+import VoiceHome from "@/features/marketing/VoiceHome/VoiceHome";
 
 export default function HomePage() {
-  useRevealMotion();
-
-  return <ReferenceHome />;
+  return <VoiceHome />;
 }

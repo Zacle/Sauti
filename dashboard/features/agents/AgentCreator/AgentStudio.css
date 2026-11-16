@@ -1,0 +1,484 @@
+/*
+ * Agent Studio, hand-written for the console theme.
+ * Three calm columns: setup sections · the form · a live test panel.
+ * Loaded after AgentCreator.css, which still styles the modals (number
+ * picker, voice picker, personalisation drawer) and a few widgets.
+ * Every colour comes from theme tokens, so light/dark and accents apply.
+ */
+
+/* ---------- Frame ---------- */
+
+.console-content:has(> .agent-studio) { padding: 0 !important; }
+
+html .agent-studio {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: calc(100dvh - 66px);
+  min-height: 520px;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 0 0 10px 10px;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  font-family: var(--font-sans);
+}
+
+html .agent-studio-header {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface);
+  backdrop-filter: none;
+}
+
+html .agent-studio-header > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--color-fg-soft);
+  background: transparent;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+html .agent-studio-header > button:hover { color: var(--color-ink); background: color-mix(in oklab, var(--color-tint) 5%, transparent); }
+
+html .agent-studio-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 0 16px;
+  border-left: 1px solid var(--color-line);
+}
+
+html .agent-studio-title .agent-list-avatar {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  color: var(--color-fg-soft);
+  background: var(--color-surface-2);
+  box-shadow: none;
+}
+
+html .agent-studio-title .agent-list-avatar svg { width: 16px; height: 16px; }
+html .agent-studio-title > div { min-width: 0; }
+html .agent-studio-title small { display: block; color: var(--color-fg-muted); font-size: 0.72rem; font-weight: 400; letter-spacing: 0; text-transform: none; }
+html .agent-studio-title h1 { margin: 0; overflow: hidden; color: var(--color-ink); font-size: 0.98rem; font-weight: 600; letter-spacing: -0.01em; text-overflow: ellipsis; white-space: nowrap; }
+
+html .agent-studio-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+html .agent-setup-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 7px;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+html .agent-setup-action:hover { background: var(--color-surface-2); }
+html .agent-setup-action.attention { border-color: color-mix(in oklab, var(--color-warning) 45%, transparent); background: color-mix(in oklab, var(--color-warning) 7%, var(--color-surface)); }
+html .agent-setup-action-icon { display: grid; color: var(--color-warning); }
+html .agent-setup-action:not(.attention) .agent-setup-action-icon { color: var(--color-fg-muted); }
+html .agent-setup-action-copy { display: flex; align-items: baseline; gap: 6px; }
+html .agent-setup-action-copy small { color: var(--color-fg-muted); font-size: 0.75rem; letter-spacing: 0; text-transform: none; }
+
+html .agent-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in oklab, var(--color-success) 35%, transparent);
+  border-radius: 5px;
+  color: var(--color-success);
+  background: color-mix(in oklab, var(--color-success) 7%, transparent);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+html .studio-delete-button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  color: var(--color-fg-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+html .studio-delete-button:hover { color: var(--color-danger); background: color-mix(in oklab, var(--color-danger) 8%, transparent); }
+
+/* ---------- Columns ---------- */
+
+html .agent-studio-layout {
+  display: grid;
+  grid-template-columns: 224px minmax(0, 1fr) 320px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+html .agent-studio-nav {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 16px 12px;
+  border-right: 1px solid var(--color-line);
+  background: var(--color-canvas);
+}
+
+html .agent-studio-nav > span {
+  padding: 0 8px;
+  color: var(--color-fg-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+html .studio-setup-progress {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+html .studio-setup-progress > div { display: flex; justify-content: space-between; font-size: 0.8rem; }
+html .studio-setup-progress strong { color: var(--color-fg); font-weight: 500; }
+html .studio-setup-progress > div span { color: var(--color-ink); font-variant-numeric: tabular-nums; }
+html .studio-setup-progress i { display: block; height: 4px; overflow: hidden; border-radius: 999px; background: var(--color-surface-3); }
+html .studio-setup-progress i span { display: block; height: 100%; border-radius: inherit; background: var(--color-signal); box-shadow: none; }
+html .studio-setup-progress small { color: var(--color-fg-muted); font-size: 0.72rem; letter-spacing: 0; text-transform: none; }
+
+html .studio-nav-sections { display: grid; gap: 1px; }
+
+html .studio-nav-sections > button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 10px;
+  min-height: 0;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--color-fg-soft);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+html .studio-nav-sections > button:hover { color: var(--color-fg); background: color-mix(in oklab, var(--color-tint) 5%, transparent); }
+html .studio-nav-sections > button.active { border-color: var(--color-line); color: var(--color-ink); background: var(--color-surface); box-shadow: var(--shadow-card); }
+html .studio-nav-sections > button > svg:first-child { width: 16px; height: 16px; color: var(--color-fg-muted); }
+html .studio-nav-sections > button.active > svg:first-child { color: var(--color-ink); }
+html .studio-nav-sections > button span { display: block; min-width: 0; }
+html .studio-nav-sections > button strong { display: block; font-size: 0.84rem; font-weight: 500; }
+html .studio-nav-sections > button small { display: block; overflow: hidden; margin-top: 1px; color: var(--color-fg-muted); font-size: 0.72rem; letter-spacing: 0; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
+html .studio-nav-check { color: var(--color-success); }
+
+html .studio-template-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: auto;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+html .studio-template-note > svg { color: var(--color-fg-muted); }
+html .studio-template-note small { display: block; color: var(--color-fg-muted); font-size: 0.72rem; letter-spacing: 0; text-transform: none; }
+html .studio-template-note strong { display: block; color: var(--color-ink); font-size: 0.82rem; font-weight: 500; }
+html .studio-template-note button { grid-column: 1 / -1; height: 28px; border: 1px solid var(--color-line-strong); border-radius: 6px; color: var(--color-fg); background: var(--color-surface); font: inherit; font-size: 0.78rem; cursor: pointer; }
+html .studio-template-note button:hover { background: var(--color-surface-2); }
+
+html .agent-studio-form {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 28px clamp(20px, 4vw, 48px) 64px;
+  background: var(--color-surface);
+}
+
+html .agent-studio-form > * { max-width: 760px; margin-right: auto; margin-left: auto; }
+
+html .agent-test-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  padding: 18px;
+  border-left: 1px solid var(--color-line);
+  background: var(--color-canvas);
+}
+
+html .agent-test-canvas {
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+/* ---------- Section headings & cards ---------- */
+
+html .agent-studio .studio-heading { margin-bottom: 20px; padding: 0; border: 0; background: none; }
+html .agent-studio .studio-heading > span { display: block; color: var(--color-fg-muted); font-size: 0.78rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+html .agent-studio .studio-heading h2 { margin: 2px 0 0; color: var(--color-ink); font-size: 1.25rem; font-weight: 600; letter-spacing: -0.015em; }
+html .agent-studio .studio-heading p { margin: 4px 0 0; max-width: 620px; color: var(--color-fg-soft); font-size: 0.86rem; line-height: 1.5; }
+
+html .agent-studio :is(.main-settings-card, .main-identity-card, .studio-setting-group, .identity-settings-section, .booking-workflow-settings, .web-voice-settings, .knowledge-overview, .dtmf-configuration) {
+  margin-bottom: 16px;
+  padding: 18px 20px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+html .agent-studio :is(.main-settings-card, .main-identity-card) :is(.identity-settings-section, .studio-setting-group) {
+  margin: 0;
+  padding: 16px 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  border-radius: 0;
+}
+
+html .agent-studio :is(.main-settings-card, .main-identity-card) :is(.identity-settings-section, .studio-setting-group):first-child { padding-top: 0; border-top: 0; }
+
+html .agent-studio :is(.studio-setting-group, .identity-settings-section, .main-settings-card) :is(h2, h3) { margin: 0; color: var(--color-ink); font-size: 0.92rem; font-weight: 600; letter-spacing: -0.005em; }
+html .agent-studio :is(.studio-setting-group, .identity-settings-section, .main-settings-card) > p,
+html .agent-studio .identity-settings-section-heading p { margin: 2px 0 12px; color: var(--color-fg-muted); font-size: 0.8rem; line-height: 1.5; }
+
+html .agent-studio .identity-settings-section-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+html .agent-studio .identity-settings-section-heading > span,
+html .agent-studio .identity-settings-section-heading > i {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: 7px;
+  color: var(--color-fg-soft);
+  background: var(--color-surface-2);
+}
+
+html .agent-studio .identity-settings-section-heading p { margin-bottom: 0; }
+
+html .agent-studio :is(.studio-form-grid, .identity-profile-grid, .identity-call-grid, .advanced-grid) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+
+/* ---------- Fields ---------- */
+
+html .agent-studio label { color: var(--color-fg); font-size: 0.8rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+
+html .agent-studio :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea) {
+  width: 100%;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 7px;
+  outline: none;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.86rem;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+html .agent-studio :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select) { min-height: 36px; padding: 0 11px; }
+html .agent-studio textarea { min-height: 96px; padding: 10px 12px; line-height: 1.55; resize: vertical; }
+html .agent-studio :is(input, select, textarea):hover { border-color: color-mix(in oklab, var(--color-tint) 28%, transparent); }
+html .agent-studio :is(input, select, textarea):focus { border-color: var(--color-signal); box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-signal) 14%, transparent); }
+html .agent-studio ::placeholder { color: var(--color-fg-muted); }
+html .agent-studio :is(input, select, textarea):disabled,
+html .agent-studio .studio-disabled-field { color: var(--color-fg-muted); background: var(--color-surface-2); cursor: not-allowed; }
+html .agent-studio .field-help { color: var(--color-fg-muted); font-size: 0.76rem; font-weight: 400; line-height: 1.45; }
+html .agent-studio .input-with-suffix { position: relative; }
+html .agent-studio .input-with-suffix span { color: var(--color-fg-muted); font-size: 0.8rem; }
+
+/* Radix-based selects inside the studio use the shared Select component; keep its height aligned. */
+html .agent-studio button[role="combobox"] { min-height: 36px; }
+
+/* ---------- Toggles, sliders, chips ---------- */
+
+html .agent-studio .studio-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  border-radius: 0;
+  background: transparent;
+}
+
+html .agent-studio .studio-toggle-row:first-of-type { border-top: 0; }
+html .agent-studio .studio-toggle-row strong { color: var(--color-ink); font-size: 0.86rem; font-weight: 500; }
+html .agent-studio .studio-toggle-row small,
+html .agent-studio .studio-toggle-row p { margin: 1px 0 0; color: var(--color-fg-muted); font-size: 0.78rem; letter-spacing: 0; text-transform: none; }
+
+html .agent-studio [role="switch"] {
+  position: relative;
+  width: 36px;
+  min-width: 36px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-surface-3);
+  box-shadow: none;
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+html .agent-studio [role="switch"][aria-checked="true"] { background: var(--color-signal); }
+html .agent-studio [role="switch"] > :is(span, i) { background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); }
+
+html .agent-studio .studio-slider-track { height: 4px; border-radius: 999px; background: var(--color-surface-3); }
+html .agent-studio .studio-slider-range { border-radius: 999px; background: var(--color-signal); }
+html .agent-studio .studio-slider-thumb { width: 16px; height: 16px; border: 2px solid var(--color-signal); border-radius: 50%; background: var(--color-surface); box-shadow: var(--shadow-card); }
+
+html .agent-studio :is(.service-chip-list, .booking-field-options, .studio-language-options, .custom-language-options) { display: flex; flex-wrap: wrap; gap: 6px; }
+
+html .agent-studio :is(.service-chip-list, .booking-field-options, .studio-language-options) > :is(button, span, label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 6px;
+  color: var(--color-fg);
+  background: var(--color-surface);
+  box-shadow: none;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+html .agent-studio :is(.service-chip-list, .booking-field-options, .studio-language-options) > :is(.selected, [aria-pressed="true"], [data-state="on"]) {
+  border-color: var(--color-signal);
+  color: var(--color-ink);
+  background: color-mix(in oklab, var(--color-signal) 10%, var(--color-surface));
+}
+
+/* ---------- Prompt editor ---------- */
+
+html .agent-studio .prompt-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+html .agent-studio .prompt-view-toggle { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface-2); }
+html .agent-studio .prompt-view-toggle button { height: 26px; padding: 0 10px; border: 0; border-radius: 6px; color: var(--color-fg-soft); background: transparent; font: inherit; font-size: 0.78rem; cursor: pointer; }
+html .agent-studio .prompt-view-toggle button.active,
+html .agent-studio .prompt-view-toggle button[aria-pressed="true"] { color: var(--color-selected-fg); background: var(--color-selected); box-shadow: var(--shadow-card); }
+html .agent-studio .studio-prompt-editor textarea { min-height: 360px; font-family: var(--font-mono); font-size: 0.82rem; }
+html .agent-studio .studio-prompt-preview { padding: 14px 16px; border: 1px solid var(--color-line); border-radius: 8px; color: var(--color-fg); background: var(--color-surface-2); font-size: 0.86rem; line-height: 1.6; }
+html .agent-studio .prompt-guidance { padding: 12px 14px; border: 1px solid var(--color-line); border-radius: 8px; color: var(--color-fg-soft); background: var(--color-surface-2); font-size: 0.8rem; }
+
+/* ---------- Lists: integrations, documents, hours, DTMF ---------- */
+
+html .agent-studio :is(.studio-integration-list, .document-list, .knowledge-chunks, .dtmf-options) { display: grid; gap: 0; overflow: hidden; border: 1px solid var(--color-line); border-radius: 8px; }
+html .agent-studio :is(.studio-integration-list, .document-list, .knowledge-chunks, .dtmf-options) > * { margin: 0; padding: 12px 14px; border: 0; border-top: 1px solid var(--color-line); border-radius: 0; background: var(--color-surface); box-shadow: none; }
+html .agent-studio :is(.studio-integration-list, .document-list, .knowledge-chunks, .dtmf-options) > :first-child { border-top: 0; }
+html .agent-studio .integration-card-icon { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--color-line); border-radius: 7px; background: var(--color-surface-2); }
+
+html .agent-studio :is(.document-empty, .knowledge-empty, .dtmf-empty, .personalisation-empty) { padding: 24px; border: 1px dashed var(--color-line-strong); border-radius: 8px; color: var(--color-fg-muted); background: transparent; font-size: 0.84rem; text-align: center; }
+html .agent-studio .document-error { color: var(--color-danger); }
+
+html .agent-studio .weekly-hours-row { display: grid; grid-template-columns: 7rem minmax(0, 1fr); align-items: center; gap: 12px; padding: 8px 0; border-top: 1px solid var(--color-line); }
+html .agent-studio .weekly-hours-row:first-child { border-top: 0; }
+
+html .agent-studio :is(.channel-status, .phone-status) { color: var(--color-fg-soft); font-size: 0.8rem; }
+html .agent-studio .identity-channel-notice { display: flex; gap: 10px; padding: 12px 14px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface-2); }
+html .agent-studio .identity-channel-notice-icon { color: var(--color-fg-muted); }
+
+/* ---------- Template picker (new agent) ---------- */
+
+html .agent-template-page .agent-template-grid > * { border-radius: 10px; box-shadow: none; }
+html .agent-template-page .agent-template-grid > *:hover { border-color: var(--color-line-strong); }
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1280px) {
+  html .agent-studio-layout { grid-template-columns: 210px minmax(0, 1fr) 290px; }
+  html .agent-setup-action-copy small { display: none; }
+}
+
+@media (max-width: 1080px) {
+  html .agent-studio-layout { grid-template-columns: 210px minmax(0, 1fr); }
+  html .agent-test-panel { display: none; }
+}
+
+@media (max-width: 760px) {
+  html .agent-studio { height: auto; min-height: 0; overflow: visible; grid-template-columns: minmax(0, 1fr); }
+  html .agent-studio > * { min-width: 0; max-width: 100%; }
+  html .agent-studio-header { flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+  html .agent-studio-title { order: -1; flex: 1 1 100%; padding: 0; border: 0; }
+  html .agent-studio-header > button { display: none; }
+  html .agent-studio-actions { flex-wrap: wrap; margin-left: 0; }
+  html .agent-studio-layout { display: block; overflow: visible; }
+  html .agent-studio-nav { position: sticky; top: 48px; z-index: 5; flex-direction: row; overflow-x: auto; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--color-line); }
+  html .agent-studio-nav > span,
+  html .studio-setup-progress,
+  html .studio-template-note { display: none; }
+  html .studio-nav-sections { display: flex; gap: 4px; }
+  html .studio-nav-sections > button { flex: none; grid-template-columns: 16px auto; }
+  html .studio-nav-sections > button small,
+  html .studio-nav-check { display: none; }
+  html .agent-studio-form { overflow: visible; padding: 20px 16px 56px; }
+  html .agent-studio :is(.studio-form-grid, .identity-profile-grid, .identity-call-grid, .advanced-grid) { grid-template-columns: 1fr; }
+}
+
+/* ---------- Test panel ---------- */
+
+html .agent-test-canvas { display: grid; justify-items: center; gap: 10px; padding: 22px 18px; text-align: center; }
+html .agent-test-canvas > small { color: var(--color-fg-muted); font-size: 0.75rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+html .agent-test-canvas > h2 { margin: 0; color: var(--color-ink); font-size: 1.05rem; font-weight: 600; }
+html .agent-test-canvas > p { margin: 0; color: var(--color-fg-soft); font-size: 0.8rem; line-height: 1.5; }
+html .agent-test-canvas .test-voice-animation { margin: 6px 0; }
+html .agent-test-canvas .test-call-language-auto { display: flex; align-items: flex-start; gap: 8px; max-width: 260px; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: 8px; color: var(--color-fg-soft); background: var(--color-surface-2); font-size: 0.78rem; line-height: 1.45; text-align: left; }
+html .agent-test-canvas .test-call-language-auto svg { flex: none; width: 15px; height: 15px; margin-top: 1px; color: var(--color-fg-muted); }
+html .agent-test-canvas .test-call-language-auto strong { display: block; color: var(--color-ink); font-weight: 500; }
+html .agent-test-canvas .test-runtime-note { color: var(--color-warning); font-size: 0.75rem; }
+html .agent-test-canvas > button { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border: 0; border-radius: 7px; color: var(--color-primary-fg); background: var(--color-primary); font: inherit; font-size: 0.84rem; font-weight: 500; cursor: pointer; box-shadow: none; }
+html .agent-test-canvas > button:hover { opacity: 0.88; }
+html .agent-test-canvas > button:disabled { opacity: 0.45; cursor: not-allowed; }
+html .agent-test-canvas .test-call-privacy { display: inline-flex; align-items: center; gap: 5px; color: var(--color-fg-muted); font-size: 0.74rem; }
+html .agent-test-canvas .test-call-privacy svg { width: 13px; height: 13px; }
+
+/* Cards win over older, more specific surface rules. */
+html .agent-studio .main-settings-page :is(.main-settings-card, .main-identity-card, .studio-setting-group, .web-voice-settings, .booking-workflow-settings) {
+  border-color: var(--color-line) !important;
+  background: var(--color-surface) !important;
+  box-shadow: none !important;
+}

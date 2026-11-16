@@ -1,6 +1,7 @@
 "use client";
 
 import styles from "./AddVariableForm.module.css";
+import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { Braces, Plus, X } from "lucide-react";
 import type { CreateAgentVariable } from "@/types/api";
@@ -43,7 +44,7 @@ export function AddVariableForm({
   }
 
   if (!open) {
-    return <button className={styles.trigger} disabled={disabled} type="button" onClick={() => setOpen(true)}><Plus size={15} /> Add variable</button>;
+    return <Button variant="secondary" size="xs" disabled={disabled} type="button" onClick={() => setOpen(true)}><Plus size={15} /> Add variable</Button>;
   }
 
   return (
@@ -66,7 +67,7 @@ export function AddVariableForm({
       </div>
       <footer>
         <label className={styles.required}><input type="checkbox" checked={required} onChange={(event) => setRequired(event.target.checked)} /><span><i>Required before activation</i><small>The agent cannot go live until this has a value.</small></span></label>
-        <div><button className={styles.cancel} type="button" onClick={() => setOpen(false)}>Cancel</button><button className="console-primary-button" disabled={!valid || busy} onClick={() => void submit()} type="button">Add variable</button></div>
+        <div><Button variant="secondary" size="xs" type="button" onClick={() => setOpen(false)}>Cancel</Button><Button size="xs" disabled={!valid || busy} onClick={() => void submit()} type="button">Add variable</Button></div>
       </footer>
       {error && <div className={styles.error}>{error}</div>}
     </div>

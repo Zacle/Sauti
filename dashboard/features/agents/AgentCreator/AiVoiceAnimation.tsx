@@ -2,171 +2,159 @@
 
 import { useEffect, useRef } from "react";
 
+/**
+ * Pixel orb: a halftone sphere drawn from square "pixels" in the accent colour.
+ *  - calm: slow breathing and a drifting light
+ *  - listening: rings travel inward, as if drawing sound in
+ *  - thinking: a scanning sweep circles the orb
+ *  - speaking: rings push outward on a speech-like rhythm and spill past the edge
+ * States cross-fade, so switching never jumps. Pixels are quantised into a few
+ * brightness levels and drawn as one path per level, which keeps it cheap.
+ */
+
 export type VoiceAnimationActivity = "calm" | "listening" | "thinking" | "speaking";
 
-type AiVoiceAnimationProps = {
-  activity: VoiceAnimationActivity;
-};
+type Props = { activity: VoiceAnimationActivity; size?: number };
 
-const SIZE = 240;
-const CENTER = SIZE / 2;
-const POINT_COUNT = 120;
+const BASE = 240;
+const CENTER = BASE / 2;
+const RADIUS = 92;
+const STEP = 6;
+const LEVELS = 6;
+const SPILL = 1.22;
 
-const ACTIVITY_MOTION: Record<
-  VoiceAnimationActivity,
-  { amplitude: number; speed: number; energy: number }
-> = {
-  calm: { amplitude: 7.2, speed: 0.95, energy: 0.82 },
-  listening: { amplitude: 9.2, speed: 1.08, energy: 0.88 },
-  thinking: { amplitude: 11.5, speed: 1.22, energy: 0.94 },
-  speaking: { amplitude: 14.5, speed: 1.42, energy: 1 },
-};
+type Weights = Record<VoiceAnimationActivity, number>;
+const ACTIVITIES: VoiceAnimationActivity[] = ["calm", "listening", "thinking", "speaking"];
 
-function drawClosedCurve(
-  context: CanvasRenderingContext2D,
-  points: Array<[number, number]>,
-) {
-  const first = points[0];
-  const last = points[points.length - 1];
-  context.beginPath();
-  context.moveTo((last[0] + first[0]) / 2, (last[1] + first[1]) / 2);
-
-  for (let index = 0; index < points.length; index += 1) {
-    const current = points[index];
-    const next = points[(index + 1) % points.length];
-    context.quadraticCurveTo(
-      current[0],
-      current[1],
-      (current[0] + next[0]) / 2,
-      (current[1] + next[1]) / 2,
-    );
-  }
-
-  context.closePath();
+function readAccent(fallback: string) {
+  return getComputedStyle(document.documentElement).getPropertyValue("--color-signal").trim() || fallback;
 }
 
-function drawVoiceRing(
-  context: CanvasRenderingContext2D,
-  frame: number,
-  activity: VoiceAnimationActivity,
-) {
-  const { amplitude, speed, energy } = ACTIVITY_MOTION[activity];
-  const time = frame * 0.06 * speed;
-  context.clearRect(0, 0, SIZE, SIZE);
-  context.globalCompositeOperation = "lighter";
+/** Syllable-like envelope: bursts with short gaps, never perfectly periodic. */
+function speechEnvelope(t: number) {
+  const syllables = Math.max(0, Math.sin(t * 8.3) * Math.sin(t * 3.1 + 1.3));
+  const phrase = 0.55 + 0.45 * Math.sin(t * 0.9);
+  return Math.min(1, syllables * 1.6 * phrase + 0.08);
+}
 
-  for (let layer = 0; layer < 7; layer += 1) {
-    const layerPhase = layer * 0.82;
-    const baseRadius = 68 + layer * 0.55;
-    const points: Array<[number, number]> = [];
+function drawOrb(context: CanvasRenderingContext2D, t: number, w: Weights) {
+  const env = speechEnvelope(t);
+  const breath = 0.5 + 0.5 * Math.sin(t * 1.1);
+  const radius = RADIUS * (1 + w.speaking * 0.045 * env + w.calm * 0.012 * breath + w.listening * 0.02 * Math.sin(t * 2.4));
+  const lightAngle = t * 0.35;
+  const lx = Math.cos(lightAngle) * 0.55;
+  const ly = Math.sin(lightAngle) * 0.4 - 0.35;
+  const lz = 0.75;
+  const sweepAngle = t * 2.4;
+  const paths = Array.from({ length: LEVELS }, () => new Path2D());
+  const extent = RADIUS * SPILL + STEP * 2;
 
-    for (let index = 0; index < POINT_COUNT; index += 1) {
-      const angle = (index / POINT_COUNT) * Math.PI * 2;
-      const ripple =
-        Math.sin(angle * 3 + time * 1.05 + layerPhase) * amplitude * 0.58 +
-        Math.sin(angle * 5 - time * 1.42 + layerPhase * 0.62) * amplitude * 0.31 +
-        Math.cos(angle * 7 + time * 0.74 - layerPhase * 0.8) * amplitude * 0.18;
-      const breathing = Math.sin(time * 0.82 + layerPhase) * 1.8;
-      const radius = baseRadius + ripple + breathing;
-      const orbit = time * 0.08 * (layer % 2 === 0 ? 1 : -1);
+  for (let y = -extent; y <= extent; y += STEP) {
+    for (let x = -extent; x <= extent; x += STEP) {
+      const r = Math.hypot(x, y);
+      const nr = r / radius;
+      if (nr > SPILL) continue;
+      const inside = nr <= 1;
+      const z = inside ? Math.sqrt(1 - nr * nr) : 0;
 
-      points.push([
-        CENTER + Math.cos(angle + orbit) * radius,
-        CENTER + Math.sin(angle + orbit) * radius,
-      ]);
+      // Sphere shading plus a slow flowing texture.
+      const shade = inside ? Math.max(0, (x / radius) * lx + (y / radius) * ly + z * lz) : 0;
+      const flow = 0.5 + 0.5 * Math.sin(x * 0.05 + t * 0.8 + Math.sin(y * 0.045 - t * 0.55) * 1.8);
+      // A floor keeps the whole disc readable; the light only adds depth.
+      let value = inside ? 0.2 + shade * 0.45 + flow * 0.18 + (1 - nr) * 0.12 : 0;
+      value *= 0.82 + 0.18 * (w.calm * breath + (1 - w.calm));
+
+      // Listening: rings travelling inward, strongest near the rim.
+      const inward = 0.5 + 0.5 * Math.sin(nr * 15 + t * 5.5);
+      value += w.listening * (inside ? inward * (0.15 + nr * 0.35) : 0);
+
+      // Thinking: a bright band sweeping around the orb.
+      if (w.thinking > 0.01 && inside) {
+        let delta = (Math.atan2(y, x) - sweepAngle) % (Math.PI * 2);
+        if (delta < 0) delta += Math.PI * 2;
+        value += w.thinking * Math.exp(-delta * 1.8) * (0.25 + nr * 0.45);
+      }
+
+      // Speaking: outward rings riding the speech envelope, spilling past the edge.
+      if (w.speaking > 0.01) {
+        const outward = Math.max(0, Math.sin(nr * 13 - t * 7.5));
+        const edge = inside ? 0.35 + nr * 0.65 : Math.max(0, (SPILL - nr) / (SPILL - 1));
+        value += w.speaking * outward * env * edge * 0.75;
+      }
+
+      if (value < 0.07) continue;
+      const level = Math.min(LEVELS - 1, Math.floor(value * LEVELS));
+      const size = 1.1 + ((level + 1) / LEVELS) * (STEP - 1.8);
+      paths[level].rect(CENTER + x - size / 2, CENTER + y - size / 2, size, size);
     }
-
-    drawClosedCurve(context, points);
-    context.strokeStyle = layer % 3 === 0 ? "#6ffff0" : layer % 2 === 0 ? "#35eadb" : "#1dc9d1";
-    context.globalAlpha = (0.32 + (6 - layer) * 0.045) * energy;
-    context.lineWidth = 1.25 + layer * 0.27;
-    context.shadowColor = layer % 2 === 0 ? "#25f1df" : "#16bfc9";
-    context.shadowBlur = 7 + energy * 7;
-    context.stroke();
   }
 
-  context.globalAlpha = 0.58 * energy;
-  context.lineWidth = 1.15;
-  context.shadowColor = "#8afff3";
-  context.shadowBlur = 12;
-  context.strokeStyle = "#79fff0";
-
-  const highlightPoints: Array<[number, number]> = [];
-  for (let index = 0; index < POINT_COUNT; index += 1) {
-    const angle = (index / POINT_COUNT) * Math.PI * 2;
-    const radius =
-      67 +
-      Math.sin(angle * 4 - time * 1.18) * amplitude * 0.28 +
-      Math.cos(angle * 6 + time * 0.9) * amplitude * 0.12;
-    highlightPoints.push([
-      CENTER + Math.cos(angle) * radius,
-      CENTER + Math.sin(angle) * radius,
-    ]);
+  context.clearRect(0, 0, BASE, BASE);
+  for (let level = 0; level < LEVELS; level += 1) {
+    context.globalAlpha = 0.18 + (level / (LEVELS - 1)) * 0.82;
+    context.fill(paths[level]);
   }
-  drawClosedCurve(context, highlightPoints);
-  context.stroke();
-  context.globalCompositeOperation = "source-over";
   context.globalAlpha = 1;
 }
 
-export function AiVoiceAnimation({ activity }: AiVoiceAnimationProps) {
+export function AiVoiceAnimation({ activity, size = BASE }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const activityRef = useRef(activity);
+  activityRef.current = activity;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
 
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = SIZE * pixelRatio;
-    canvas.height = SIZE * pixelRatio;
-    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = BASE * ratio;
+    canvas.height = BASE * ratio;
+    context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-    const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let animationFrame = 0;
-    let startedAt = 0;
-    let lastDrawnAt = 0;
-    let lastMotionTick = -1;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const weights: Weights = { calm: 1, listening: 0, thinking: 0, speaking: 0 };
+    let accent = readAccent("#2d6a55");
+    let accentReadAt = 0;
+    let frame = 0;
+    let last = 0;
+    let visible = true;
+    const observer = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; });
+    observer.observe(canvas);
 
-    const draw = (timestamp: number) => {
-      if (!startedAt) startedAt = timestamp;
-      const reducedMotion = motionPreference.matches;
-      const targetFps = reducedMotion ? 12 : 30;
-      if (timestamp - lastDrawnAt < 1000 / targetFps) {
-        animationFrame = window.requestAnimationFrame(draw);
-        return;
+    const tick = (now: number) => {
+      frame = window.requestAnimationFrame(tick);
+      const fps = reduced.matches ? 8 : 30;
+      if (!visible || now - last < 1000 / fps) return;
+      const dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
+      last = now;
+
+      // Ease each state's weight toward the current activity (≈250ms).
+      const target = activityRef.current;
+      for (const key of ACTIVITIES) {
+        const goal = key === target ? 1 : 0;
+        weights[key] += (goal - weights[key]) * Math.min(1, dt * 4.5);
       }
-      lastDrawnAt = timestamp;
-      const elapsedFrames = ((timestamp - startedAt) / 1000) * 30;
-      const frame = reducedMotion ? elapsedFrames * 0.24 : elapsedFrames;
-      drawVoiceRing(context, frame, activity);
-      const motionTick = Math.floor(frame / 8);
-      if (motionTick !== lastMotionTick) {
-        canvas.dataset.motionTick = String(motionTick);
-        lastMotionTick = motionTick;
+
+      if (now - accentReadAt > 500) {
+        accentReadAt = now;
+        accent = readAccent(accent);
       }
-      animationFrame = window.requestAnimationFrame(draw);
+      context.fillStyle = accent;
+      const t = (now / 1000) * (reduced.matches ? 0.25 : 1);
+      drawOrb(context, t, weights);
     };
 
-    const restart = () => {
-      window.cancelAnimationFrame(animationFrame);
-      startedAt = 0;
-      lastDrawnAt = 0;
-      lastMotionTick = -1;
-      animationFrame = window.requestAnimationFrame(draw);
-    };
-
-    motionPreference.addEventListener("change", restart);
-    animationFrame = window.requestAnimationFrame(draw);
+    frame = window.requestAnimationFrame(tick);
     return () => {
-      window.cancelAnimationFrame(animationFrame);
-      motionPreference.removeEventListener("change", restart);
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
     };
-  }, [activity]);
+  }, []);
 
   return (
     <div className={`test-voice-animation ${activity}`} aria-hidden="true">
-      <canvas ref={canvasRef} width={SIZE} height={SIZE} />
+      <canvas ref={canvasRef} width={BASE} height={BASE} style={{ width: size, height: size, display: "block" }} />
     </div>
   );
 }

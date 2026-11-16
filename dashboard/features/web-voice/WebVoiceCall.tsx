@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Languages, Mic, PhoneOff, ShieldCheck, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
+import { Languages, LoaderCircle, Mic, PhoneOff, ShieldCheck, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/field";
+import { toast } from "@/components/ui/sonner";
+import { cn } from "@/lib/utils";
+import { PixelGlow, glowPalettes } from "@/features/marketing/VoiceHome/PixelGlow";
 import {
   completePublicWebVoiceSession,
   getPublicWebVoiceAgent,
@@ -18,7 +24,6 @@ import {
   configuredLanguageHint,
   displayLanguage,
 } from "@/features/voice-runtime/languagePreference";
-import styles from "./WebVoiceCall.module.css";
 
 type Status = "loading" | "idle" | "connecting" | "live" | "ended" | "error";
 type Message = { id: string; role: "agent" | "visitor"; text: string };
@@ -37,7 +42,6 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
   const captionIdRef = useRef("");
   const endingRef = useRef(false);
   const startupLatencyRecordedRef = useRef(false);
-  const accent = "#39d4c0";
 
   useEffect(() => {
     getPublicWebVoiceAgent(publicId)
@@ -148,14 +152,17 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
         },
         onError(message) {
           setError(message);
+          toast.error("Voice connection problem", { description: message });
         },
         onEnded() {
           void end(false);
         },
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to start this conversation.");
+      const text = caught instanceof Error ? caught.message : "Unable to start this conversation.";
+      setError(text);
       setStatus("error");
+      toast.error("Couldn't start the conversation", { description: text });
     }
   }
 
@@ -180,52 +187,141 @@ export function WebVoiceCall({ publicId }: { publicId: string }) {
       captionIdRef.current = "";
       setSpeaking(false);
       setStatus("ended");
+      toast("Conversation ended", { description: "Thanks for talking with us." });
     }
   }
 
-  const pageStyle = { "--web-voice-accent": accent } as CSSProperties;
+  const live = status === "live";
+  const headline = live
+    ? speaking ? `${agent?.name ?? "The assistant"} is speaking` : "Listening to you"
+    : status === "ended" ? "Conversation ended" : status === "connecting" ? "Connecting…" : status === "error" && !agent ? "Assistant unavailable" : "Talk with our assistant";
+
   return (
-    <main className={styles.page} style={pageStyle}>
-      <section className={styles.card}>
-        <header>
-          <span><Sparkles size={22} /></span>
-          <div><small>WEB VOICE · TELNYX</small><h1>{agent?.name ?? "Voice assistant"}</h1></div>
-          <i className={status === "live" ? styles.online : ""}>{status}</i>
-        </header>
-        <div className={`${styles.orb} ${speaking ? styles.speaking : ""}`}><Mic size={34} /></div>
-        <h2>{status === "live" ? speaking ? `${agent?.name} is speaking` : "Listening to you" : status === "ended" ? "Conversation ended" : "Talk with our assistant"}</h2>
-        <p>{agent?.description ?? "Loading the voice assistant…"}</p>
-        {status === "idle" && agent && agent.languages.length > 1 && (
-          <div className={styles.languageAuto}>
-            <Languages size={18} />
-            <span>
-              <strong>Speak naturally in your language</strong>
-              Automatic detection · greeting starts in {displayLanguage(languageHint)}
-            </span>
+    <main className="mk-v2 relative isolate grid min-h-dvh place-items-center overflow-hidden bg-canvas px-4 py-10">
+      <PixelGlow
+        seed={7}
+        palette={live ? glowPalettes.signal : glowPalettes.ocean}
+        intensity={live ? 0.9 : 0.6}
+        className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-[46rem] w-[64rem] max-w-[220%] -translate-x-1/2 -translate-y-1/2 [mask-image:radial-gradient(closest-side,black_20%,transparent)]"
+      />
+      <section className="w-full max-w-[460px] overflow-hidden rounded-[2rem] border border-line-strong bg-black/70 shadow-[0_40px_120px_-40px_rgba(0,0,0,0.95)] backdrop-blur-2xl">
+        <header className="flex items-center gap-3 border-b border-line px-5 py-4">
+          <span className="grid size-9 place-items-center rounded-xl bg-white/[0.06]">
+            <Sparkles className="size-4 text-signal" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-mono text-[0.6rem] uppercase tracking-[0.16em] text-fg-muted">Web voice</p>
+            <h1 className="truncate text-[0.98rem] font-medium text-white">{agent?.name ?? "Voice assistant"}</h1>
           </div>
-        )}
-        {status === "idle" && agent?.consentRequired && (
-          <label className={styles.consent}>
-            <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <ShieldCheck size={18} />
-            <span>I agree to use my microphone for this conversation{agent.recordingEnabled ? " and understand that it will be recorded" : ""}.</span>
-          </label>
-        )}
-        {status === "idle" && <button className={styles.start} disabled={!consent} onClick={() => void start()}><Mic size={18} /> Start conversation</button>}
-        {status === "connecting" && <button className={styles.start} disabled><span className={styles.spinner} /> Connecting…</button>}
-        {status === "live" && <button className={styles.end} onClick={() => void end()}><PhoneOff size={18} /> End conversation</button>}
-        {status === "ended" && <button className={styles.start} onClick={() => setStatus("idle")}><Mic size={18} /> Start another conversation</button>}
-        {error && <div className={styles.error}>{error}</div>}
-        <div className={styles.transcript}>
-          {messages.length === 0 && <span>The conversation transcript will appear here.</span>}
-          {messages.map((message) => (
-            <div className={message.role === "agent" ? styles.agent : styles.visitor} key={message.id}>
-              <small>{message.role === "agent" ? agent?.name : "You"}</small>
-              <p>{message.text}</p>
-            </div>
-          ))}
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[0.62rem] uppercase tracking-wider",
+              live ? "bg-signal/15 text-signal" : status === "error" ? "bg-[#ff7a7a]/10 text-[#ff9a9a]" : "bg-white/[0.05] text-fg-muted",
+            )}
+          >
+            <span className={cn("size-1.5 rounded-full", live ? "animate-pulse bg-signal" : "bg-current")} />
+            {status}
+          </span>
+        </header>
+
+        <div className="flex flex-col items-center px-6 pb-6 pt-10 text-center">
+          <div className="relative grid size-32 place-items-center" aria-hidden="true">
+            {[0, 1, 2].map((ring) => (
+              <motion.span
+                key={ring}
+                className="absolute inset-0 rounded-full border border-signal/30"
+                animate={live ? { scale: speaking ? [1, 1.5 + ring * 0.2] : [1, 1.15 + ring * 0.08], opacity: [0.6, 0] } : { scale: 1, opacity: 0 }}
+                transition={live ? { duration: speaking ? 1.4 : 2.4, repeat: Infinity, delay: ring * 0.35, ease: "easeOut" } : { duration: 0.3 }}
+              />
+            ))}
+            <motion.span
+              className="grid size-24 place-items-center rounded-full bg-[radial-gradient(circle_at_30%_25%,#ffffff,rgb(94_234_212)_40%,rgb(59_130_246)_100%)] text-black shadow-[0_0_80px_rgb(94_234_212/0.45)]"
+              animate={{ scale: speaking ? [1, 1.06, 1] : 1 }}
+              transition={{ duration: 0.8, repeat: speaking ? Infinity : 0 }}
+            >
+              <Mic className="size-8" />
+            </motion.span>
+          </div>
+
+          <h2 className="mt-8 text-2xl font-medium tracking-tight text-white">{headline}</h2>
+          <p className="mt-2 max-w-sm text-sm leading-relaxed text-fg-soft">{agent?.description ?? (status === "error" ? "This conversation link isn't available right now. Please check the link or try again later." : "Loading the voice assistant…")}</p>
+
+          {status === "idle" && agent && agent.languages.length > 1 && (
+            <p className="mt-6 flex w-full items-start gap-3 rounded-2xl border border-line bg-white/[0.03] px-4 py-3 text-left text-sm">
+              <Languages className="mt-0.5 size-4 shrink-0 text-signal" aria-hidden="true" />
+              <span>
+                <span className="block font-medium text-white">Speak naturally in your language</span>
+                <span className="text-fg-soft">Automatic detection · greeting starts in {displayLanguage(languageHint)}</span>
+              </span>
+            </p>
+          )}
+          {status === "idle" && agent?.consentRequired && (
+            <label className="mt-3 flex w-full cursor-pointer items-start gap-3 rounded-2xl border border-line bg-white/[0.03] px-4 py-3 text-left text-sm text-fg-soft has-[:checked]:border-signal/40 has-[:checked]:bg-signal/[0.06]">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(event) => setConsent(event.target.checked)}
+                className="mt-0.5 size-4 shrink-0 accent-[#5eead4]"
+              />
+              <span>
+                I agree to use my microphone for this conversation
+                {agent.recordingEnabled ? " and understand that it will be recorded" : ""}.
+              </span>
+            </label>
+          )}
+
+          <div className="mt-6 w-full">
+            {status === "idle" && (
+              <Button size="lg" className="w-full rounded-xl" disabled={!consent} onClick={() => void start()}>
+                <Mic aria-hidden="true" /> Start conversation
+              </Button>
+            )}
+            {status === "connecting" && (
+              <Button size="lg" className="w-full rounded-xl" disabled>
+                <LoaderCircle className="animate-spin" aria-hidden="true" /> Connecting…
+              </Button>
+            )}
+            {live && (
+              <Button size="lg" className="w-full rounded-xl bg-[#ff5a5f] text-white hover:bg-[#ff5a5f]/85" onClick={() => void end()}>
+                <PhoneOff aria-hidden="true" /> End conversation
+              </Button>
+            )}
+            {status === "ended" && (
+              <Button size="lg" variant="secondary" className="w-full rounded-xl" onClick={() => setStatus("idle")}>
+                <Mic aria-hidden="true" /> Start another conversation
+              </Button>
+            )}
+          </div>
+          {error && <Alert tone="error" className="mt-4 w-full text-left">{error}</Alert>}
         </div>
-        <footer><ShieldCheck size={13} /> Voice powered by Telnyx</footer>
+
+        <div className="max-h-72 min-h-28 overflow-y-auto border-t border-line px-5 py-4" aria-live="polite">
+          {messages.length === 0 ? (
+            <p className="py-6 text-center text-sm text-fg-muted">The conversation transcript will appear here.</p>
+          ) : (
+            <ul className="grid gap-3">
+              {messages.map((message) => (
+                <li key={message.id} className={cn("max-w-[85%]", message.role === "agent" ? "" : "ml-auto text-right")}>
+                  <p className="mb-1 font-mono text-[0.58rem] uppercase tracking-[0.14em] text-fg-muted">
+                    {message.role === "agent" ? agent?.name : "You"}
+                  </p>
+                  <p
+                    className={cn(
+                      "inline-block rounded-2xl px-3.5 py-2 text-left text-sm leading-snug",
+                      message.role === "agent" ? "rounded-tl-md bg-white/[0.07] text-fg" : "rounded-tr-md bg-white text-black",
+                    )}
+                  >
+                    {message.text}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <footer className="flex items-center justify-center gap-1.5 border-t border-line py-3 text-xs text-fg-muted">
+          <ShieldCheck className="size-3.5" aria-hidden="true" /> Voice powered by Telnyx · Sauti
+        </footer>
       </section>
     </main>
   );

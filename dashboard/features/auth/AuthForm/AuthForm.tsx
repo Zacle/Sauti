@@ -1,14 +1,13 @@
 "use client";
 
-import "./AuthForm.css";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import {
   ArrowRight,
-  ChevronDown,
   Globe2,
+  KeyRound,
   LoaderCircle,
   MailCheck,
   ShieldCheck,
@@ -30,19 +29,28 @@ import {
   clearInvitationToken,
   retainInvitationToken,
 } from "@/features/auth/domain/invitation-token";
+import { Button } from "@/components/ui/button";
+import { Alert, Input, Label } from "@/components/ui/field";
+import { Select } from "@/components/ui/select";
+import { toast } from "@/components/ui/sonner";
+import { PixelGlow, glowPalettes } from "@/features/marketing/VoiceHome/PixelGlow";
+import { Eyebrow } from "@/features/marketing/VoiceHome/motion";
 
 type AuthMode = "login" | "register" | "verify" | "invite" | "forgot" | "reset";
+
+const ease = [0.16, 1, 0.3, 1] as const;
+const COUNTRY_OPTIONS = COUNTRIES.map((country) => ({ value: country.code, label: country.name, keywords: [country.code] }));
 
 export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const reduce = useReducedMotion();
   const [businessName, setBusinessName] = useState("");
   const [countryCode, setCountryCode] = useState("KE");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [googleError, setGoogleError] = useState("");
@@ -57,7 +65,8 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     if (mode === "verify" || mode === "forgot" || mode === "reset") {
       setEmail(searchParams.get("email") ?? readPendingEmail());
       if (mode === "reset" && searchParams.get("requested") === "1") {
-        setMessage("If the account exists, a six-digit reset code has been sent. The code expires in 15 minutes.");
+        const text = "If the account exists, a six-digit reset code has been sent. The code expires in 15 minutes.";
+        toast.success("Check your email", { id: "reset-requested", description: text });
       }
     } else if (mode === "login") {
       setEmail(searchParams.get("email") ?? "");
@@ -65,7 +74,10 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         setError("Google sign-in was cancelled. No account changes were made.");
       }
       if (searchParams.get("reset") === "1") {
-        setMessage("Password updated. Sign in with your new password.");
+        toast.success("Password updated", { id: "password-reset", description: "Sign in with your new password." });
+      }
+      if (searchParams.get("verified") === "1") {
+        toast.success("Email verified", { id: "email-verified", description: "Log in to finish setting up your workspace." });
       }
     }
   }, [mode, searchParams]);
@@ -118,11 +130,16 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       });
   }, [isAdminSurface, mode]);
 
+  // Dev-only verification codes outlive the navigation to /verify-email as a toast.
+  function announceDevCode(devCode?: string | null) {
+    if (!devCode) return;
+    toast.info(`Development code: ${devCode}`, { id: "dev-code", duration: 30_000 });
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     setError("");
-    setMessage("");
     try {
       if (mode === "forgot") {
         await authApi.forgotPassword(email);
@@ -143,12 +160,12 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         invitationTokenRef.current = "";
         writePendingEmail(email);
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
-        if (result.devVerificationCode) setMessage(`Development code: ${result.devVerificationCode}`);
+        announceDevCode(result.devVerificationCode);
       } else if (mode === "register") {
         const result = await authApi.register({ businessName, email, countryCode, password });
         writePendingEmail(email);
         router.push(`/verify-email?email=${encodeURIComponent(email)}`);
-        if (result.devVerificationCode) setMessage(`Development code: ${result.devVerificationCode}`);
+        announceDevCode(result.devVerificationCode);
       } else if (mode === "verify") {
         await authApi.verifyEmail(email, code);
         clearPendingEmail();
@@ -181,9 +198,11 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     setError("");
     try {
       const response = await authApi.resendVerification(email);
-      setMessage(response.message);
+      toast.success("Code sent", { description: response.message });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to resend the code.");
+      const text = caught instanceof Error ? caught.message : "Unable to resend the code.";
+      setError(text);
+      toast.error("Couldn't resend the code", { description: text });
     } finally {
       setBusy(false);
     }
@@ -196,21 +215,24 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   const isReset = mode === "reset";
   const recoverySurface = isAdminSurface ? "&surface=admin" : "";
   const isRecovery = isForgot || isReset;
-  const heroTitle = isForgot
-    ? "Recover access without compromising your workspace."
+  const showGoogle = !isVerify && !isInvite && !isRecovery && !isAdminSurface;
+
+  const hero = isForgot
+    ? { title: "Recover access", accent: "without the risk." }
     : isReset
-      ? "Choose a new password for your Sauti account."
+      ? { title: "A fresh password,", accent: "in a minute." }
       : isAdminSurface
-        ? "Operate Sauti from a protected control center."
+        ? { title: "Operate Sauti from a", accent: "protected console." }
         : isInvite
-          ? "Your private Sauti pilot workspace is ready."
+          ? { title: "Your pilot workspace", accent: "is ready." }
           : isVerify
-            ? "One quick check before your workspace goes live."
+            ? { title: "One quick check", accent: "before you go live." }
             : isLogin
-              ? "Your AI phone operations are ready when you are."
-              : "AI voice agents. Every language. Any scale.";
+              ? { title: "Your phones are answered.", accent: "Welcome back." }
+              : { title: "Every call answered,", accent: "in every language." };
+
   const cardTitle = isForgot ? "Forgot your password?" : isReset ? "Set a new password" : isVerify
-    ? "Verify your email" : isLogin ? "Welcome back" : "Create your workspace";
+    ? "Verify your email" : isInvite ? "Activate your workspace" : isLogin ? "Welcome back" : "Create your workspace";
   const cardDescription = isForgot
     ? "Enter your account email. If it exists, we will send a six-digit reset code."
     : isReset
@@ -226,6 +248,8 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
               : "Start building your first AI voice agent today.";
   const submitLabel = isForgot ? "Send reset code" : isReset ? "Update password" : isVerify
     ? "Verify email" : isLogin ? "Log in" : isInvite ? "Activate workspace" : "Create workspace";
+  const CardIcon = isRecovery ? KeyRound : isVerify ? MailCheck : UserRound;
+
   const googleQuery = new URLSearchParams({
     businessName: mode === "register" ? businessName : "",
     countryCode: mode === "register" ? countryCode : "",
@@ -253,148 +277,252 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   }
 
   return (
-    <main className="app-auth-page">
-      <Link className="app-brand" href="/">
-        <BrandLogo /><strong>Sauti</strong>
-      </Link>
-      <section className="auth-shell">
-        <div className="auth-copy">
-          <span>{isVerify || isRecovery ? "Secure workspace access" : "Sauti voice operations"}</span>
-          <h1>{heroTitle}</h1>
-          <p>
-            Launch natural, multilingual conversations, monitor outcomes, and keep every
-            customer interaction moving from one focused workspace.
-          </p>
-          <div className="auth-waveform" aria-hidden="true">
-            <Image
-              alt=""
-              fill
-              priority
-              sizes="(max-width: 900px) 0px, 52vw"
-              src="/images/marketing/conversation-waveform.png"
-            />
-          </div>
-          <div className="auth-copy-notes">
-            <div><Globe2 size={18} /><span><strong>Multilingual by default</strong>Natural conversations across markets.</span></div>
-            <div><Zap size={18} /><span><strong>Live operational insight</strong>Calls, transcripts, and outcomes in one place.</span></div>
-            <div><ShieldCheck size={18} /><span><strong>Built for trusted access</strong>Workspace-isolated tools and customer data.</span></div>
-          </div>
+    <main className="mk-v2 relative grid min-h-dvh bg-canvas lg:grid-cols-[1.05fr_1fr]">
+      {/* Brand panel */}
+      <aside className="relative isolate hidden flex-col justify-between overflow-hidden border-r border-line p-10 lg:flex xl:p-14">
+        <PixelGlow
+          seed={isLogin ? 1 : isRecovery ? 4 : 2}
+          palette={isRecovery || isVerify ? glowPalettes.ocean : glowPalettes.signal}
+          intensity={0.85}
+          className="pointer-events-none absolute -bottom-72 -left-32 -z-10 h-[46rem] w-[56rem] [mask-image:radial-gradient(closest-side,black_35%,transparent)]"
+        />
+        <Link href="/" className="inline-flex items-center gap-2.5 self-start text-lg font-semibold tracking-tight text-white">
+          <BrandLogo size={30} />
+          Sauti
+        </Link>
+
+        <div className="max-w-lg">
+          <Eyebrow>{isVerify || isRecovery ? "Secure workspace access" : isAdminSurface ? "Platform administration" : "Sauti voice operations"}</Eyebrow>
+          <h1 className="mt-6 text-5xl font-medium leading-[1.03] tracking-[-0.035em] text-white xl:text-[3.6rem]">
+            {hero.title}{" "}
+            <span className="block font-serif font-normal italic tracking-[-0.01em] text-fg-soft">{hero.accent}</span>
+          </h1>
+          <ul className="mt-12 grid gap-5">
+            {[
+              [Globe2, "Multilingual by default", "Natural conversations in English, Kiswahili, French and more."],
+              [Zap, "Live operational insight", "Calls, transcripts and outcomes in one place."],
+              [ShieldCheck, "Built for trusted access", "Workspace-isolated tools and customer data."],
+            ].map(([Icon, title, text]) => {
+              const I = Icon as typeof Globe2;
+              return (
+                <li key={title as string} className="flex gap-4">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-signal/25 bg-signal/10 text-signal">
+                    <I className="size-4" aria-hidden="true" />
+                  </span>
+                  <span>
+                    <span className="block text-[0.95rem] font-medium text-fg">{title as string}</span>
+                    <span className="mt-0.5 block text-sm text-fg-soft">{text as string}</span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         </div>
 
-        <div className="auth-form-panel">
-          <form className="auth-card" onSubmit={submit}>
-            <div className="auth-card-head">
-              <span>{isVerify || isRecovery ? <MailCheck size={22} /> : <UserRound size={22} />}</span>
-              <div>
-                <h2>{cardTitle}</h2>
-                <p>{cardDescription}</p>
-              </div>
+        <p className="flex gap-4 text-xs text-fg-muted">
+          <span>© {new Date().getFullYear()} Sauti</span>
+          <Link href="/privacy" className="transition-colors hover:text-fg">Privacy</Link>
+          <Link href="/terms" className="transition-colors hover:text-fg">Terms</Link>
+        </p>
+      </aside>
+
+      {/* Form panel */}
+      <section className="relative isolate flex min-h-dvh flex-col overflow-hidden">
+        <PixelGlow
+          seed={3}
+          palette={glowPalettes.ocean}
+          intensity={0.5}
+          className="pointer-events-none absolute -top-40 left-1/2 -z-10 h-[30rem] w-[44rem] -translate-x-1/2 [mask-image:radial-gradient(closest-side,black_15%,transparent)] lg:hidden"
+        />
+        <header className="flex items-center justify-between px-5 py-5 sm:px-8">
+          <Link href="/" className="inline-flex items-center gap-2.5 font-semibold tracking-tight text-white lg:invisible">
+            <BrandLogo size={28} />
+            Sauti
+          </Link>
+          <Link href="/" className="text-sm text-fg-soft transition-colors hover:text-white">
+            Back to site
+          </Link>
+        </header>
+
+        <div className="flex flex-1 items-center justify-center px-5 pb-16 sm:px-8">
+          <motion.form
+            onSubmit={submit}
+            initial={reduce ? false : { opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease }}
+            className="w-full max-w-[420px]"
+          >
+            <span className="grid size-12 place-items-center rounded-2xl border border-line-strong bg-white/[0.04] text-fg shadow-[0_0_40px_-10px_rgb(94_234_212/0.4)]">
+              <CardIcon className="size-5" aria-hidden="true" />
+            </span>
+            <h2 className="mt-6 text-3xl font-medium tracking-[-0.03em] text-white">{cardTitle}</h2>
+            <p className="mt-2 text-[0.95rem] leading-relaxed text-fg-soft">{cardDescription}</p>
+
+            <div className="mt-8 grid gap-4">
+              {mode === "register" && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Label>
+                    Business name
+                    <Input
+                      ref={businessNameRef}
+                      required
+                      value={businessName}
+                      autoComplete="organization"
+                      onChange={(event) => {
+                        setBusinessName(event.target.value);
+                        if (googleError.startsWith("Enter your business")) setGoogleError("");
+                      }}
+                      placeholder="Acme Health"
+                    />
+                  </Label>
+                  <Label>
+                    Country
+                    <Select ariaLabel="Country" value={countryCode} onValueChange={setCountryCode} searchPlaceholder="Search countries…" options={COUNTRY_OPTIONS} />
+                  </Label>
+                </div>
+              )}
+
+              {showGoogle && (
+                <>
+                  <button
+                    className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-xl border border-line-strong bg-white/[0.03] text-[0.95rem] font-medium text-fg transition-colors hover:border-white/25 hover:bg-white/[0.06] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:cursor-not-allowed disabled:opacity-55"
+                    disabled={googleBusy || googleConfigured !== true}
+                    onClick={continueWithGoogle}
+                    type="button"
+                  >
+                    {googleBusy ? <LoaderCircle className="size-[18px] animate-spin" aria-hidden="true" /> : <GoogleMark />}
+                    {googleConfigured === null
+                      ? "Checking Google sign-in…"
+                      : googleBusy
+                        ? "Opening Google…"
+                        : "Continue with Google"}
+                  </button>
+                  <p
+                    className={googleError ? "-mt-1 text-xs text-[#ffb4b4]" : "-mt-1 text-xs text-fg-muted"}
+                    role={googleError ? "alert" : undefined}
+                  >
+                    {googleError || (mode === "register"
+                      ? "Your workspace name and country will be used to finish setup."
+                      : "Use the Google account connected to your workspace.")}
+                  </p>
+                  <div className="my-1 flex items-center gap-3 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-fg-muted">
+                    <span className="h-px flex-1 bg-line" />
+                    or continue with email
+                    <span className="h-px flex-1 bg-line" />
+                  </div>
+                </>
+              )}
+
+              <Label>
+                Email
+                <Input
+                  required
+                  readOnly={isInvite}
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="owner@company.com"
+                />
+              </Label>
+              {(isVerify || isReset) && (
+                <Label>
+                  {isReset ? "Reset code" : "Verification code"}
+                  <Input
+                    required
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    minLength={6}
+                    maxLength={6}
+                    value={code}
+                    onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                    placeholder="123456"
+                    className="h-14 text-center font-mono text-2xl tracking-[0.5em] placeholder:tracking-[0.5em]"
+                  />
+                </Label>
+              )}
+              {!isVerify && !isForgot && (
+                <Label>
+                  <span className="flex items-baseline justify-between">
+                    {isReset ? "New password" : "Password"}
+                    {isLogin && (
+                      <Link
+                        className="text-xs font-normal text-fg-soft transition-colors hover:text-white"
+                        href={`/forgot-password?email=${encodeURIComponent(email)}${recoverySurface}`}
+                      >
+                        Forgot password?
+                      </Link>
+                    )}
+                  </span>
+                  <Input
+                    required
+                    minLength={8}
+                    type="password"
+                    autoComplete={isLogin ? "current-password" : "new-password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder="At least 8 characters"
+                  />
+                </Label>
+              )}
+
+              {error && <Alert tone="error">{error}</Alert>}
+
+              <Button
+                size="lg"
+                className="mt-2 w-full rounded-xl"
+                disabled={busy || invitationLoading || Boolean(isInvite && error)}
+                type="submit"
+              >
+                {busy || invitationLoading ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : null}
+                {submitLabel}
+                {!busy && <ArrowRight aria-hidden="true" />}
+              </Button>
             </div>
 
-            {mode === "register" && (
-              <div className="auth-field-row">
-                <label>
-                  Business name
-                  <input
-                    ref={businessNameRef}
-                    required
-                    value={businessName}
-                    onChange={(event) => {
-                      setBusinessName(event.target.value);
-                      if (googleError.startsWith("Enter your business")) setGoogleError("");
-                    }}
-                    placeholder="Acme Health"
-                  />
-                </label>
-                <label>
-                  Country
-                  <span className="auth-country-select">
-                    <Globe2 size={17} />
-                    <select aria-label="Country" value={countryCode} onChange={(event) => setCountryCode(event.target.value)}>
-                      {COUNTRIES.map((country) => (
-                        <option value={country.code} key={country.code}>{country.name}</option>
-                      ))}
-                    </select>
-                    <ChevronDown size={17} />
-                  </span>
-                </label>
-              </div>
-            )}
-
-            {!isVerify && !isInvite && !isRecovery && !isAdminSurface && (
-              <>
-                <button
-                  className="google-auth-button"
-                  disabled={googleBusy || googleConfigured !== true}
-                  onClick={continueWithGoogle}
-                  type="button"
-                >
-                  {googleBusy ? <LoaderCircle className="spin" size={18} /> : <span aria-hidden="true">G</span>}
-                  {googleConfigured === null
-                    ? "Checking Google sign-in…"
-                    : googleBusy
-                      ? "Opening Google…"
-                      : "Continue with Google"}
-                </button>
-                <p className={`google-auth-helper ${googleError ? "error" : ""}`} role={googleError ? "alert" : undefined}>
-                  {googleError || (mode === "register"
-                    ? "Your workspace name and country will be used to finish setup."
-                    : "Use the Google account connected to your workspace.")}
-                </p>
-                <div className="auth-divider"><span>or continue with email</span></div>
-              </>
-            )}
-
-            <label>
-              Email
-              <input required readOnly={isInvite} type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="owner@company.com" />
-            </label>
-            {(isVerify || isReset) && (
-              <label>
-                {isReset ? "Reset code" : "Verification code"}
-                <input required inputMode="numeric" minLength={6} maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} placeholder="123456" />
-              </label>
-            )}
-            {!isVerify && !isForgot && (
-              <label>
-                {isReset ? "New password" : "Password"}
-                <input required minLength={8} type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="At least 8 characters" />
-              </label>
-            )}
-            {isLogin && (
-              <Link className="auth-forgot-link" href={`/forgot-password?email=${encodeURIComponent(email)}${recoverySurface}`}>
-                Forgot password?
-              </Link>
-            )}
-
-            {error && <div className="form-alert error" role="alert">{error}</div>}
-            {message && <div className="form-alert success" role="status">{message}</div>}
-            <button className="app-primary-button" disabled={busy || invitationLoading || Boolean(isInvite && error)} type="submit">
-              {busy || invitationLoading ? <LoaderCircle className="spin" size={17} /> : null}
-              {submitLabel}
-              {!busy && <ArrowRight size={17} />}
-            </button>
-
-            <p className="auth-switch">
+            <p className="mt-8 text-center text-sm text-fg-soft">
               {isForgot ? (
-                <>Remembered it? <Link href={`/login?email=${encodeURIComponent(email)}${recoverySurface}`}>Return to login</Link></>
+                <>Remembered it? <AuthLink href={`/login?email=${encodeURIComponent(email)}${recoverySurface}`}>Return to login</AuthLink></>
               ) : isReset ? (
-                <>Need another code? <Link href={`/forgot-password?email=${encodeURIComponent(email)}${recoverySurface}`}>Send a new one</Link></>
+                <>Need another code? <AuthLink href={`/forgot-password?email=${encodeURIComponent(email)}${recoverySurface}`}>Send a new one</AuthLink></>
               ) : isVerify ? (
-                <>Didn&apos;t receive it? <button type="button" onClick={resend}>Resend code</button></>
+                <>Didn&apos;t receive it?{" "}
+                  <button type="button" onClick={resend} disabled={busy} className="font-medium text-white underline-offset-4 hover:underline disabled:opacity-60">
+                    Resend code
+                  </button>
+                </>
               ) : isInvite ? (
-                <>Already activated? <Link href={`/login?email=${encodeURIComponent(email)}`}>Log in</Link></>
+                <>Already activated? <AuthLink href={`/login?email=${encodeURIComponent(email)}`}>Log in</AuthLink></>
               ) : isAdminSurface ? (
-                <>Business workspace? <a href="https://sauti.uk/login">Use workspace login</a></>
+                <>Business workspace? <a className="font-medium text-white underline-offset-4 hover:underline" href="https://sauti.uk/login">Use workspace login</a></>
               ) : isLogin ? (
-                <>Interested in Sauti? <Link href="/request-demo">Request a demo</Link></>
+                <>Interested in Sauti? <AuthLink href="/request-demo">Request a demo</AuthLink></>
               ) : (
-                <>Already have an account? <Link href="/login">Log in</Link></>
+                <>Already have an account? <AuthLink href="/login">Log in</AuthLink></>
               )}
             </p>
-          </form>
+          </motion.form>
         </div>
       </section>
     </main>
+  );
+}
+
+function AuthLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link href={href} className="font-medium text-white underline-offset-4 hover:underline">
+      {children}
+    </Link>
+  );
+}
+
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-[18px]" aria-hidden="true">
+      <path fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.46a5.52 5.52 0 0 1-2.4 3.62v3h3.88c2.27-2.09 3.56-5.17 3.56-8.81Z" />
+      <path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.94-2.91l-3.88-3c-1.07.72-2.45 1.15-4.06 1.15-3.12 0-5.77-2.11-6.71-4.95H1.28v3.1A12 12 0 0 0 12 24Z" />
+      <path fill="#FBBC05" d="M5.29 14.29A7.2 7.2 0 0 1 4.91 12c0-.8.14-1.57.38-2.29v-3.1H1.28A12 12 0 0 0 0 12c0 1.94.46 3.77 1.28 5.39l4.01-3.1Z" />
+      <path fill="#EA4335" d="M12 4.77c1.76 0 3.34.61 4.59 1.8l3.44-3.44A11.5 11.5 0 0 0 12 0 12 12 0 0 0 1.28 6.61l4.01 3.1C6.23 6.88 8.88 4.77 12 4.77Z" />
+    </svg>
   );
 }

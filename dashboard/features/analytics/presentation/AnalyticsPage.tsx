@@ -22,8 +22,6 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
-  Funnel,
-  FunnelChart,
   LabelList,
   Line,
   LineChart,
@@ -46,18 +44,21 @@ import type {
 import { formatDuration } from "@/lib/utils";
 import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
 import { analyticsRange, analyticsRangeOptions, type AnalyticsRangeKey } from "../domain/date-ranges";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/console";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import styles from "./AnalyticsPage.module.css";
 
 type Tab = "overview" | "outcomes" | "latency";
 
 const COLORS = {
-  blue: "#1688ff",
-  sky: "#18c7f4",
-  green: "#17d8c5",
-  amber: "#f59e0b",
-  red: "#ef4444",
-  violet: "#8b5cf6",
-  slate: "#64748b",
+  blue: "var(--color-info)",
+  sky: "#6f9cc8",
+  green: "var(--color-signal)",
+  amber: "var(--color-warning)",
+  red: "var(--color-danger)",
+  violet: "var(--color-violet)",
+  slate: "var(--color-fg-muted)",
 };
 
 const PIE_COLORS = [COLORS.blue, COLORS.green, COLORS.violet, COLORS.amber, COLORS.sky, COLORS.red, COLORS.slate];
@@ -97,28 +98,27 @@ export function AnalyticsPage() {
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <span>Insights</span>
-          <h1>Analytics</h1>
-          <p>Track call volume, connect rate, outcomes, language demand, channels, and agent performance.</p>
-        </div>
-        <button className={styles.refresh} onClick={() => setRefreshKey((current) => current + 1)} disabled={loading} type="button">
-          {loading ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}
-          Refresh
-        </button>
-      </header>
+      <PageHeader
+        title="Analytics"
+        description="Track call volume, connect rate, outcomes, language demand, channels, and agent performance."
+        actions={
+          <Button variant="secondary" size="xs" onClick={() => setRefreshKey((current) => current + 1)} disabled={loading}>
+            {loading ? <LoaderCircle className="spin" /> : <RefreshCw />}
+            Refresh
+          </Button>
+        }
+      />
 
       <section className={styles.filters}>
-        <div className={styles.rangeButtons}>
-          {analyticsRangeOptions.map((option) => (
-            <button className={rangeKey === option.key ? styles.activeFilter : ""} key={option.key} onClick={() => setRangeKey(option.key)} type="button">
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <Tabs value={rangeKey} onValueChange={(value) => setRangeKey(value as AnalyticsRangeKey)}>
+          <TabsList aria-label="Date range" className={styles.rangeButtons}>
+            {analyticsRangeOptions.map((option) => (
+              <TabsTrigger key={option.key} value={option.key}>{option.label}</TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
         <div className={styles.selectField}>
-          <DarkSelect ariaLabel="Filter analytics by agent" icon={<UsersRound size={18} />} triggerClassName={styles.agentSelectTrigger} value={agentId || "all"}
+          <DarkSelect ariaLabel="Filter analytics by agent" icon={<UsersRound size={18} />} value={agentId || "all"}
             onValueChange={(value) => setAgentId(value === "all" ? "" : value)}
             options={[{ value: "all", label: "All agents" }, ...agents.map((agent) => ({ value: agent.id, label: agent.name }))]} />
         </div>
@@ -204,13 +204,13 @@ function LatencyTab({ data }: { data: AnalyticsData }) {
         <div className={styles.chartTall}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={items} margin={{ top: 18, right: 18, bottom: 8, left: 8 }}>
-              <CartesianGrid stroke="rgba(115, 159, 198, .14)" strokeDasharray="3 3" vertical={false} />
+              <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="name" axisLine={false} tickLine={false} />
               <YAxis axisLine={false} tickLine={false} width={46} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="value" radius={[12, 12, 0, 0]}>
                 {items.map((item) => <Cell key={item.name} fill={item.fill} />)}
-              <LabelList dataKey="value" position="top" fill="#a9bdd0" formatter={(value: unknown) => `${value} ms`} />
+              <LabelList dataKey="value" position="top" fill="var(--color-fg-soft)" formatter={(value: unknown) => `${value} ms`} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -243,20 +243,28 @@ function CallFunnel({ data }: { data: AnalyticsData }) {
       </div>
     );
   }
+  const top = Math.max(items[0].value, 1);
   return (
-    <>
-      <div className={styles.chart}>
-        <ResponsiveContainer width="100%" height="100%">
-          <FunnelChart margin={{ top: 10, right: 20, bottom: 10, left: 20 }}>
-            <Tooltip content={<ChartTooltip />} />
-            <Funnel dataKey="value" data={items} isAnimationActive>
-              <LabelList position="right" fill="#d8e8f6" stroke="none" dataKey="name" />
-            </Funnel>
-          </FunnelChart>
-        </ResponsiveContainer>
-      </div>
-      <Legend items={items.map((item) => ({ label: item.name, value: item.value, color: item.fill }))} />
-    </>
+    <ol className="m-0 grid list-none gap-5 p-0 pt-2">
+      {items.map((item, index) => {
+        const previous = index ? items[index - 1].value : null;
+        const share = previous ? Math.round((item.value / Math.max(previous, 1)) * 1000) / 10 : null;
+        return (
+          <li key={item.name}>
+            <div className="mb-2 flex items-baseline justify-between text-[0.84rem]">
+              <span className="text-fg">{item.name}</span>
+              <span className="tabular-nums text-ink">
+                {number(item.value)}
+                {share != null ? <span className="ml-2 text-[0.75rem] text-fg-muted">{share}% of previous step</span> : null}
+              </span>
+            </div>
+            <div className="h-7 overflow-hidden rounded-[4px] bg-surface-2">
+              <div className="h-full rounded-[4px]" style={{ width: `${(item.value / top) * 100}%`, background: item.fill, opacity: 0.85 }} />
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -273,7 +281,7 @@ function ConnectRateChart({ data }: { data: AnalyticsData }) {
               <stop offset="95%" stopColor={COLORS.blue} stopOpacity={0.02} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="rgba(115, 159, 198, .14)" strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={22} />
           <YAxis domain={[0, 100]} axisLine={false} tickLine={false} width={36} tickFormatter={(value) => `${value}%`} />
           <Tooltip content={<ChartTooltip suffix="%" />} />
@@ -293,7 +301,7 @@ function OutcomeStackedChart({ items }: { items: AnalyticsOutcomeByDay[] }) {
       <div className={styles.chartTall}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 14, right: 18, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="rgba(115, 159, 198, .14)" strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" vertical={false} />
             <XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={18} />
             <YAxis axisLine={false} tickLine={false} width={36} allowDecimals={false} />
             <Tooltip content={<ChartTooltip />} />
@@ -342,12 +350,12 @@ function HorizontalBarChart({ items, empty }: { items: Array<{ name: string; val
     <div className={styles.chart}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} layout="vertical" margin={{ top: 6, right: 22, bottom: 6, left: 8 }}>
-          <CartesianGrid stroke="rgba(115, 159, 198, .14)" strokeDasharray="3 3" horizontal={false} />
+          <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" hide />
-          <YAxis type="category" dataKey="name" width={116} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#91a7bc" }} />
+          <YAxis type="category" dataKey="name" width={116} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "var(--color-fg-soft)" }} />
           <Tooltip content={<ChartTooltip />} />
           <Bar dataKey="value" fill={COLORS.blue} radius={[0, 10, 10, 0]}>
-            <LabelList dataKey="value" position="right" fill="#d8e8f6" formatter={(value: unknown) => number(Number(value))} />
+            <LabelList dataKey="value" position="right" fill="var(--color-fg)" formatter={(value: unknown) => number(Number(value))} />
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -362,7 +370,7 @@ function SentimentTrend({ data }: { data: AnalyticsData["sentimentByDay"] }) {
     <div className={styles.chart}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={items} margin={{ top: 12, right: 16, bottom: 0, left: 0 }}>
-          <CartesianGrid stroke="rgba(115, 159, 198, .14)" strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="label" axisLine={false} tickLine={false} minTickGap={22} />
           <YAxis domain={[-1, 1]} axisLine={false} tickLine={false} width={32} />
           <Tooltip content={<ChartTooltip />} />
@@ -385,13 +393,13 @@ function AfterHoursChart({ data }: { data: AnalyticsData }) {
     <div className={styles.chart}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={items} margin={{ top: 18, right: 18, bottom: 8, left: 8 }}>
-          <CartesianGrid stroke="rgba(115, 159, 198, .14)" strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="name" axisLine={false} tickLine={false} />
           <YAxis axisLine={false} tickLine={false} width={36} allowDecimals={false} />
           <Tooltip content={<ChartTooltip />} />
           <Bar dataKey="value" radius={[12, 12, 0, 0]}>
             {items.map((item) => <Cell key={item.name} fill={item.fill} />)}
-          <LabelList dataKey="value" position="top" fill="#a9bdd0" />
+          <LabelList dataKey="value" position="top" fill="var(--color-fg-soft)" />
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -405,7 +413,7 @@ function IntegrationEventsChart({ data }: { data: AnalyticsData }) {
     <div className={styles.chartTall}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data.integrationEvents.map((item) => ({ ...item, provider: humanize(item.provider) }))} margin={{ top: 14, right: 18, bottom: 0, left: 0 }}>
-          <CartesianGrid stroke="rgba(115, 159, 198, .14)" strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke="var(--color-line)" strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="provider" axisLine={false} tickLine={false} />
           <YAxis axisLine={false} tickLine={false} width={36} allowDecimals={false} />
           <Tooltip content={<ChartTooltip />} />

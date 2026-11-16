@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { AgentCreator } from "@/features/agents/AgentCreator/AgentCreator";
+
+export const metadata: Metadata = { title: "Agent | Sauti" };
 
 export default async function AgentPage({
   params,

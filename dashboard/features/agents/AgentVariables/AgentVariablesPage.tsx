@@ -1,6 +1,7 @@
 "use client";
 
 import styles from "./AgentVariablesPage.module.css";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -112,13 +113,13 @@ export function AgentVariablesPage({ agentId }: { agentId: string }) {
         <Link href="/agents"><ArrowLeft size={17} /> Agents</Link>
         <div><span>{agent.name.slice(0, 1).toUpperCase()}</span><section><small>Agent setup</small><h1>{agent.name}</h1></section></div>
         <div className={styles.headerActions}>
-          <button className={styles.deleteButton} disabled={saving} onClick={() => {
+          <Button variant="danger-soft" size="xs" disabled={saving} onClick={() => {
             setDeleteError("");
             setShowDelete(true);
-          }} type="button"><Trash2 size={16} /> Delete</button>
-          <button className="console-primary-button" disabled={saving || agent.active || !readiness?.readyToActivate} type="button" onClick={activate}>
+          }} type="button"><Trash2 size={16} /> Delete</Button>
+          <Button size="xs" disabled={saving || agent.active || !readiness?.readyToActivate} type="button" onClick={activate}>
             {agent.active ? <><Check size={16} /> Active</> : "Activate agent"}
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -196,7 +197,7 @@ export function AgentVariablesPage({ agentId }: { agentId: string }) {
           </div>
         ) : <div className={styles.empty}>This agent has no template variables.</div>}
         {error && <div className="form-alert error">{error}</div>}
-        <footer><span>{saved ? "Changes saved." : "Updates apply to future calls."}</span><button className="console-primary-button" disabled={saving || !variables.length} type="button" onClick={save}>{saving && <LoaderCircle className="spin" size={16} />} Save changes</button></footer>
+        <footer><span>{saved ? "Changes saved." : "Updates apply to future calls."}</span><Button size="xs" disabled={saving || !variables.length} type="button" onClick={save}>{saving && <LoaderCircle className="spin" size={16} />} Save changes</Button></footer>
       </main>
       {showDelete && (
         <DeleteAgentDialog

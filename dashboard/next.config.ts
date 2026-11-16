@@ -3,6 +3,12 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   devIndicators: false,
+  async redirects() {
+    return [
+      { source: "/resources", destination: "/", permanent: true },
+      { source: "/resources/:slug*", destination: "/", permanent: true },
+    ];
+  },
   async rewrites() {
     return [
       {

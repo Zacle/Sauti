@@ -3,6 +3,7 @@
 @import "../styles/marketing/foundation.css";
 @import "../styles/marketing/sections.css";
 @import "../styles/marketing/destinations.css";
+@import "../styles/marketing/chrome-v2.css";
 @import "react-day-picker/style.css";
 
 .sauti-logo-mark {

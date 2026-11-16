@@ -1,22 +1,16 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
-  BarChart3,
-  BellRing,
-  Bot,
-  CalendarDays,
   Check,
-  CircleDollarSign,
   Clock3,
   CreditCard,
   FileText,
-  Gauge,
-  Info,
   LoaderCircle,
+  Minus,
   Phone,
   Plus,
   ReceiptText,
@@ -41,6 +35,12 @@ import {
 import { pricingPlans, type PricingPlanId } from "@/features/marketing/Pricing/domain/pricing-model";
 import { cancelBillingSubscription, createBillingAddOnCheckout, createBillingCheckout, loadBillingAccount, loadBillingCheckoutStatus, loadBillingUsage, requestBillingPlanChange, resumeBillingSubscription } from "@/lib/api/billing";
 import type { BillingAccount, BillingCheckoutStatus, BillingUsage } from "@/types/api";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/field";
+import { Badge, Card, Skeleton } from "@/components/ui/primitives";
+import { Dialog, DialogContent } from "@/components/ui/overlays";
+import { PageHeader, SectionTitle } from "@/components/ui/console";
+import { cn } from "@/lib/utils";
 import {
   billingAddOns,
   billingTabs,
@@ -54,7 +54,6 @@ import {
   type BillingInterval,
   type BillingTab,
 } from "../domain/billing-preview";
-import styles from "./BillingPage.module.css";
 
 const emptyUsage: BillingUsage = {
   plan: "launch",
@@ -67,6 +66,10 @@ const emptyUsage: BillingUsage = {
 };
 
 type LimitPolicy = "cap" | "pause" | "approval";
+type Projection = ReturnType<typeof projectBilling>;
+
+const mediumDate = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
+const formatDate = (value: string | null | undefined, fallback: string) => (value ? mediumDate.format(new Date(value)) : fallback);
 
 export function BillingPage() {
   const [activeTab, setActiveTab] = useState<BillingTab>("overview");
@@ -90,7 +93,6 @@ export function BillingPage() {
   const [resumeLoading, setResumeLoading] = useState(false);
   const [addOnCheckoutLoading, setAddOnCheckoutLoading] = useState<BillingAddOnId | null>(null);
   const [addOnCheckoutError, setAddOnCheckoutError] = useState("");
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const queryTab = new URLSearchParams(window.location.search).get("tab");
@@ -130,7 +132,6 @@ export function BillingPage() {
     if (previewOpen) {
       setCheckoutError("");
       setCheckoutLoading(false);
-      closeButtonRef.current?.focus();
     }
   }, [previewOpen]);
 
@@ -158,18 +159,10 @@ export function BillingPage() {
     () => estimateForecast(usage.minutesUsedThisCycle, Math.max(usage.monthlyMinutesLimit, currentPlan.includedMinutes)),
     [currentPlan.includedMinutes, usage.minutesUsedThisCycle, usage.monthlyMinutesLimit],
   );
-  const currentProjection = useMemo(
-    () => projectBilling(currentPlan, forecast, "monthly", quantities),
-    [currentPlan, forecast, quantities],
-  );
-  const modelProjection = useMemo(
-    () => projectBilling(selectedPlan, projectedMinutes, interval, quantities),
-    [interval, projectedMinutes, quantities, selectedPlan],
-  );
+  const currentProjection = useMemo(() => projectBilling(currentPlan, forecast, "monthly", quantities), [currentPlan, forecast, quantities]);
+  const modelProjection = useMemo(() => projectBilling(selectedPlan, projectedMinutes, interval, quantities), [interval, projectedMinutes, quantities, selectedPlan]);
   const includedMinutes = Math.max(1, usage.monthlyMinutesLimit || currentPlan.includedMinutes);
   const remainingMinutes = Math.max(0, includedMinutes - usage.minutesUsedThisCycle);
-  const usedPercent = Math.min(100, Math.round((usage.minutesUsedThisCycle / includedMinutes) * 100));
-  const forecastPercent = Math.min(100, Math.round((forecast / includedMinutes) * 100));
   const resetDate = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(
     new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0),
   );
@@ -177,6 +170,7 @@ export function BillingPage() {
   const checkoutConfigured = checkoutStatus?.configured !== false;
   const checkoutProvider = checkoutStatus?.provider === "whop" ? "Whop" : checkoutStatus?.provider ?? "the billing provider";
   const hasPaidSubscription = subscriptionAllowsCalls(account?.subscription ?? null);
+  const managing = hasPaidSubscription && Boolean(account?.subscription);
   const currentMembershipPrice = account?.subscription?.interval === "annual"
     ? `${money(currentPlan.monthlyPrice * 0.9 * 12)} per year`
     : `${money(currentPlan.monthlyPrice)} per month`;
@@ -218,7 +212,7 @@ export function BillingPage() {
         if (account.pendingPlanChange) {
           setPreviewOpen(false);
           setBillingActionMessage(
-            `${planById(account.pendingPlanChange.targetPlan).name} is already pending for ${account.pendingPlanChange.effectiveAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.pendingPlanChange.effectiveAt)) : "the end of the current paid period"}. Wait for that change to complete before requesting another one.`,
+            `${planById(account.pendingPlanChange.targetPlan).name} is already pending for ${formatDate(account.pendingPlanChange.effectiveAt, "the end of the current paid period")}. Wait for that change to complete before requesting another one.`,
           );
           setCheckoutLoading(false);
           return;
@@ -267,164 +261,152 @@ export function BillingPage() {
     }
   }
 
-  return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <span>Workspace billing</span>
-          <h1>Usage &amp; billing</h1>
-          <p>Understand usage, forecast costs, and choose the right plan for your workspace.</p>
-        </div>
-        <button className={styles.explainButton} onClick={() => switchTab("invoices")} type="button">
-          <Info size={16} /> How billing works
-        </button>
-      </header>
+  const providerState = !checkoutConfigured
+    ? { label: "Setup required", tone: "warning" as const, text: "Add the server-only Whop credentials and plan IDs before testing checkout." }
+    : isSandbox
+      ? { label: "Sandbox", tone: "info" as const, text: "Whop sandbox checkout is on. Use test payment details; no real money moves." }
+      : { label: "Live billing", tone: "success" as const, text: `Checkout opens in ${checkoutProvider}. Sauti never handles card details.` };
 
-      <nav className={styles.tabs} aria-label="Billing sections">
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-6 [&>*]:min-w-0">
+      <PageHeader
+        title="Usage & billing"
+        description="See what you've used this cycle, what it will cost, and change your plan."
+        actions={<Badge tone={providerState.tone} dot>{providerState.label}</Badge>}
+      />
+
+      <nav aria-label="Billing sections" className="-mb-2 flex gap-5 overflow-x-auto border-b border-line">
         {billingTabs.map((tab) => (
-          <button className={activeTab === tab.id ? styles.activeTab : ""} key={tab.id} onClick={() => switchTab(tab.id)} type="button">
+          <button
+            key={tab.id}
+            type="button"
+            aria-current={activeTab === tab.id ? "page" : undefined}
+            onClick={() => switchTab(tab.id)}
+            className={cn(
+              "-mb-px cursor-pointer whitespace-nowrap border-0 border-b-2 bg-transparent px-0 pb-2.5 pt-1 font-sans text-[0.86rem] font-medium transition-colors",
+              activeTab === tab.id ? "border-ink text-ink" : "border-transparent text-fg-soft hover:text-fg",
+            )}
+          >
             {tab.label}
           </button>
         ))}
       </nav>
 
-      <section className={styles.previewNotice} aria-label="Billing preview status">
-        <Info size={18} />
-        <div>
-          <strong>{!checkoutConfigured ? "Whop checkout setup is incomplete" : isSandbox ? "Whop sandbox checkout is enabled" : "Secure hosted checkout"}</strong>
-          <span>{!checkoutConfigured ? "Add the server-only Whop credentials and plan IDs before testing checkout." : isSandbox ? "Complete the full checkout flow with Whop test payment details. No live charge will be made." : `Your selected plan opens in ${checkoutProvider}; Sauti never handles card details.`}</span>
+      <p className="m-0 flex items-center gap-2 text-[0.8rem] text-fg-muted"><ShieldCheck className="size-3.5 shrink-0" /> {providerState.text}</p>
+
+      {billingActionMessage ? (
+        <div role="status" className="flex items-start gap-3 rounded-[8px] border border-success/30 bg-success/[0.06] px-3.5 py-3 text-[0.85rem] text-fg">
+          <Check className="mt-0.5 size-4 shrink-0 text-success" />
+          <span className="flex-1">{billingActionMessage}</span>
+          <button aria-label="Dismiss message" onClick={() => setBillingActionMessage("")} type="button" className="grid size-6 cursor-pointer place-items-center rounded-[5px] border-0 bg-transparent p-0 text-fg-muted hover:text-fg"><X className="size-3.5" /></button>
         </div>
-        <em>{!checkoutConfigured ? "Setup required" : isSandbox ? "Sandbox" : "Live billing"}</em>
-      </section>
+      ) : null}
+      {billingActionError ? <Alert tone="error">Billing action failed: {billingActionError}</Alert> : null}
 
-      {billingActionMessage && <section className={styles.actionSuccess} role="status"><Check size={18} /><span>{billingActionMessage}</span><button aria-label="Dismiss message" onClick={() => setBillingActionMessage("")} type="button"><X size={15} /></button></section>}
-      {billingActionError && <section className={styles.errorState} role="alert"><AlertTriangle size={18} /><div><strong>Billing action failed</strong><span>{billingActionError}</span></div><button onClick={() => setBillingActionError("")} type="button"><X size={15} /> Dismiss</button></section>}
+      {account?.pendingPlanChange ? <PendingChange change={account.pendingPlanChange} /> : null}
 
-      {account?.pendingPlanChange && <section className={styles.pendingPlanChange} role="status">
-        <Clock3 size={18} />
-        <div>
-          <strong>{account.pendingPlanChange.collectionMethod === "send_invoice" ? "Plan change awaiting renewal payment" : account.pendingPlanChange.status === "scheduled" ? `${planById(account.pendingPlanChange.targetPlan).name} plan change scheduled` : `${planById(account.pendingPlanChange.targetPlan).name} plan change is being prepared`}</strong>
-          <span>
-            Your {planById(account.pendingPlanChange.currentPlan).name} plan remains active until {account.pendingPlanChange.effectiveAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.pendingPlanChange.effectiveAt)) : "the end of the paid period"}.{" "}
-            {account.pendingPlanChange.collectionMethod === "send_invoice"
-              ? `Only after that subscription ends, Whop will email the ${planById(account.pendingPlanChange.targetPlan).name} invoice. The new plan activates after the secure invoice is paid; it cannot start early.`
-              : `Only after that subscription ends, ${planById(account.pendingPlanChange.targetPlan).name} (${account.pendingPlanChange.targetInterval}) will take effect automatically.`}
-            {" "}You cannot request another plan change until this one completes.
-          </span>
+      {error ? (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-[8px] border border-warning/30 bg-warning/[0.06] px-3.5 py-3 text-[0.85rem]">
+          <AlertTriangle className="size-4 shrink-0 text-warning" />
+          <span className="flex-1 text-fg"><span className="font-medium">Live usage is unavailable.</span> <span className="text-fg-soft">{error} You can still model plans below.</span></span>
+          <Button variant="secondary" size="xs" onClick={() => setReloadKey((key) => key + 1)}><RefreshCw /> Retry</Button>
         </div>
-      </section>}
-
-      {error && (
-        <section className={styles.errorState} role="alert">
-          <AlertTriangle size={19} />
-          <div><strong>Live usage is temporarily unavailable</strong><span>{error} The pricing modeller still works without changing your workspace.</span></div>
-          <button onClick={() => setReloadKey((key) => key + 1)} type="button"><RefreshCw size={15} /> Retry</button>
-        </section>
-      )}
+      ) : null}
 
       {loading ? <BillingLoading /> : (
         <>
-          {activeTab === "overview" && (
+          {activeTab === "overview" ? (
             <OverviewTab
+              account={account}
               currentPlanName={currentPlan.name}
               currentPlanPrice={currentPlan.monthlyPrice}
-              account={account}
               forecast={forecast}
-              forecastPercent={forecastPercent}
               includedMinutes={includedMinutes}
               policy={policy}
               projection={currentProjection}
               remainingMinutes={remainingMinutes}
+              renewsAt={account?.subscription?.renewsAt ?? null}
               resetDate={resetDate}
               setPolicy={setPolicy}
               switchTab={switchTab}
               usedMinutes={usage.minutesUsedThisCycle}
-              usedPercent={usedPercent}
             />
-          )}
-          {activeTab === "usage" && (
-            <UsageTab
-              forecast={forecast}
-              includedMinutes={includedMinutes}
-              resetDate={resetDate}
-              usedMinutes={usage.minutesUsedThisCycle}
-              switchTab={switchTab}
-            />
-          )}
-          {activeTab === "plans" && (
+          ) : null}
+          {activeTab === "usage" ? (
+            <UsageTab forecast={forecast} includedMinutes={includedMinutes} resetDate={resetDate} usedMinutes={usage.minutesUsedThisCycle} switchTab={switchTab} />
+          ) : null}
+          {activeTab === "plans" ? (
             <PlansTab
+              activeAddOns={account?.addOns ?? []}
+              addOnCheckoutError={addOnCheckoutError}
+              addOnCheckoutLoading={addOnCheckoutLoading}
+              addOnsConfigured={checkoutStatus?.addOnsConfigured === true}
+              checkoutConfigured={checkoutConfigured}
+              checkoutProvider={checkoutProvider}
               currentPlanId={currentPlan.id}
+              hasSubscription={hasPaidSubscription}
               interval={interval}
+              isSandbox={isSandbox}
+              openPlanDialog={openPlanDialog}
+              pendingPlanChange={account?.pendingPlanChange ?? null}
               projection={modelProjection}
               projectedMinutes={projectedMinutes}
               resetModel={resetModel}
-              selectedPlanId={selectedPlanId}
-              setInterval={setInterval}
-              openPlanDialog={openPlanDialog}
-              setProjectedMinutes={setProjectedMinutes}
-              setSelectedPlanId={setSelectedPlanId}
-              checkoutProvider={checkoutProvider}
-              checkoutConfigured={checkoutConfigured}
-              addOnsConfigured={checkoutStatus?.addOnsConfigured === true}
-              activeAddOns={account?.addOns ?? []}
-              pendingPlanChange={account?.pendingPlanChange ?? null}
-              addOnCheckoutError={addOnCheckoutError}
-              addOnCheckoutLoading={addOnCheckoutLoading}
-              hasSubscription={hasPaidSubscription}
-              subscription={account?.subscription ?? null}
-              isSandbox={isSandbox}
               resumeLoading={resumeLoading}
               resumeSubscription={resumeSubscription}
+              selectedPlanId={selectedPlanId}
+              setInterval={setInterval}
+              setProjectedMinutes={setProjectedMinutes}
+              setSelectedPlanId={setSelectedPlanId}
               startAddOnCheckout={startAddOnCheckout}
+              subscription={account?.subscription ?? null}
             />
-          )}
-          {activeTab === "invoices" && <InvoicesTab switchTab={switchTab} />}
+          ) : null}
+          {activeTab === "invoices" ? <InvoicesTab switchTab={switchTab} /> : null}
         </>
       )}
 
-      {previewOpen && (
-        <div className={styles.dialogBackdrop} onMouseDown={(event) => event.target === event.currentTarget && setPreviewOpen(false)}>
-          <section aria-describedby="preview-description" aria-labelledby="preview-title" aria-modal="true" className={styles.dialog} role="dialog">
-            <button aria-label="Close preview" className={styles.dialogClose} onClick={() => setPreviewOpen(false)} ref={closeButtonRef} type="button"><X size={18} /></button>
-            <span className={styles.dialogIcon}><ShieldCheck size={23} /></span>
-            <small>{isSandbox ? "Whop sandbox billing" : "Secure subscription management"}</small>
-            <h2 id="preview-title">{hasPaidSubscription && account?.subscription
-              ? managementIntent === "cancel" ? `Cancel your ${currentPlan.name} plan?` : `Change ${currentPlan.name} to ${selectedPlan.name}`
-              : `Review your ${isSandbox ? "test " : ""}checkout`}</h2>
-            <p id="preview-description">{hasPaidSubscription && account?.subscription
-              ? managementIntent === "cancel"
-                ? `You will keep access until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of the paid billing period"}. Sauti will cancel the exact synchronized Whop membership; no provider selection is required.`
-                : `Your ${currentPlan.name} plan remains active until ${account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "the end of its paid period"}. ${selectedPlan.name} takes effect only after the current subscription ends. If Whop cannot collect automatically, it will email a secure invoice that must be paid before the new plan activates.`
-              : `Continuing opens ${checkoutProvider}. ${isSandbox ? "Use Whop's test payment details; no real money will move. " : ""}Your plan changes only after Sauti receives a signed subscription event.`}</p>
-            <div className={styles.dialogRows}>
-              <span><em>{hasPaidSubscription && account?.subscription && managementIntent === "change" ? "New plan" : "Plan"}</em><strong>{hasPaidSubscription && account?.subscription && managementIntent === "cancel" ? currentPlan.name : selectedPlan.name}</strong></span>
-              {hasPaidSubscription && account?.subscription && managementIntent === "cancel" ? (
-                <>
-                  <span><em>Current price</em><strong>{currentMembershipPrice}</strong></span>
-                  <span><em>Access ends</em><strong>{account.subscription.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt)) : "End of billing period"}</strong></span>
-                </>
-              ) : (
-                <>
-                  {hasPaidSubscription && account?.subscription && managementIntent === "change" && (
-                    <span><em>New plan takes effect</em><strong>{account.subscription.renewsAt ? `After ${new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(account.subscription.renewsAt))}` : "After the current period"}</strong></span>
-                  )}
-                  <span><em>Projected usage</em><strong>{projectedMinutes.toLocaleString()} minutes</strong></span>
-                  <span><em>Estimated monthly total</em><strong>{money(modelProjection.total)}</strong></span>
-                </>
-              )}
-            </div>
-            {checkoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {checkoutError}</p>}
-            <button className={styles.dialogDone} disabled={checkoutLoading} onClick={startCheckout} type="button">
-              {checkoutLoading ? <LoaderCircle className="spin" size={16} /> : <CreditCard size={16} />}
-              {checkoutLoading ? "Updating billing…" : hasPaidSubscription && account?.subscription
+      <Dialog open={previewOpen} onOpenChange={(open) => { if (!checkoutLoading) setPreviewOpen(open); }}>
+        <DialogContent
+          title={managing
+            ? managementIntent === "cancel" ? `Cancel your ${currentPlan.name} plan?` : `Change ${currentPlan.name} to ${selectedPlan.name}`
+            : `Review your ${isSandbox ? "test " : ""}checkout`}
+          description={managing && account?.subscription
+            ? managementIntent === "cancel"
+              ? `You keep access until ${formatDate(account.subscription.renewsAt, "the end of the paid billing period")}. Sauti cancels the exact synchronized Whop membership.`
+              : `${currentPlan.name} stays active until ${formatDate(account.subscription.renewsAt, "the end of its paid period")}. ${selectedPlan.name} starts after that. If Whop can't collect automatically, it emails a secure invoice that must be paid first.`
+            : `Continuing opens ${checkoutProvider}. ${isSandbox ? "Use Whop's test payment details; no real money moves. " : ""}Your plan changes only after Sauti receives a signed subscription event.`}
+        >
+          <dl className="m-0 divide-y divide-line rounded-[8px] border border-line">
+            <DialogRow label={managing && managementIntent === "change" ? "New plan" : "Plan"} value={managing && managementIntent === "cancel" ? currentPlan.name : selectedPlan.name} />
+            {managing && managementIntent === "cancel" && account?.subscription ? (
+              <>
+                <DialogRow label="Current price" value={currentMembershipPrice} />
+                <DialogRow label="Access ends" value={formatDate(account.subscription.renewsAt, "End of billing period")} />
+              </>
+            ) : (
+              <>
+                {managing && account?.subscription ? (
+                  <DialogRow label="Takes effect" value={account.subscription.renewsAt ? `After ${mediumDate.format(new Date(account.subscription.renewsAt))}` : "After the current period"} />
+                ) : null}
+                <DialogRow label="Projected usage" value={`${projectedMinutes.toLocaleString()} minutes`} />
+                <DialogRow label="Estimated monthly total" value={money(modelProjection.total)} />
+              </>
+            )}
+          </dl>
+          {checkoutError ? <Alert tone="error" className="mt-4">{checkoutError}</Alert> : null}
+          <div className="mt-6 flex flex-wrap justify-end gap-2">
+            <Button variant="secondary" size="sm" disabled={checkoutLoading} onClick={() => setPreviewOpen(false)}>Keep exploring</Button>
+            <Button size="sm" variant={managing && managementIntent === "cancel" ? "danger" : "primary"} disabled={checkoutLoading} onClick={startCheckout}>
+              {checkoutLoading ? <LoaderCircle className="animate-spin" /> : <CreditCard />}
+              {checkoutLoading ? "Updating billing…" : managing
                 ? managementIntent === "cancel" ? "Schedule cancellation" : "Schedule plan change"
                 : isSandbox ? "Continue to Whop sandbox" : "Continue to secure checkout"}
-            </button>
-            <button className={styles.checkoutCancel} disabled={checkoutLoading} onClick={() => setPreviewOpen(false)} type="button">Keep exploring</button>
-          </section>
-        </div>
-      )}
-    </main>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 
@@ -435,159 +417,273 @@ function subscriptionAllowsCalls(subscription: BillingAccount["subscription"]) {
   return subscription.renewsAt != null && new Date(subscription.renewsAt).getTime() > Date.now();
 }
 
+function DialogRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 px-3.5 py-2.5 text-[0.85rem]">
+      <dt className="text-fg-soft">{label}</dt>
+      <dd className="m-0 text-right font-medium tabular-nums text-ink">{value}</dd>
+    </div>
+  );
+}
+
+function PendingChange({ change }: { change: NonNullable<BillingAccount["pendingPlanChange"]> }) {
+  const target = planById(change.targetPlan).name;
+  const current = planById(change.currentPlan).name;
+  const title = change.collectionMethod === "send_invoice"
+    ? "Plan change waiting for renewal payment"
+    : change.status === "scheduled" ? `${target} plan change scheduled` : `${target} plan change is being prepared`;
+  return (
+    <div role="status" className="flex items-start gap-3 rounded-[8px] border border-info/30 bg-info/[0.06] px-3.5 py-3 text-[0.85rem]">
+      <Clock3 className="mt-0.5 size-4 shrink-0 text-info" />
+      <div>
+        <p className="m-0 font-medium text-ink">{title}</p>
+        <p className="m-0 mt-0.5 text-fg-soft">
+          {current} stays active until {formatDate(change.effectiveAt, "the end of the paid period")}.{" "}
+          {change.collectionMethod === "send_invoice"
+            ? `After that, Whop emails the ${target} invoice; the new plan starts once it's paid.`
+            : `After that, ${target} (${change.targetInterval}) starts automatically.`}{" "}
+          Another change can be requested once this one completes.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Overview ---------------- */
+
 function OverviewTab({
-  account,
-  currentPlanName,
-  currentPlanPrice,
-  forecast,
-  forecastPercent,
-  includedMinutes,
-  policy,
-  projection,
-  remainingMinutes,
-  resetDate,
-  setPolicy,
-  switchTab,
-  usedMinutes,
-  usedPercent,
+  account, currentPlanName, currentPlanPrice, forecast, includedMinutes, policy, projection, remainingMinutes, renewsAt, resetDate, setPolicy, switchTab, usedMinutes,
 }: {
   account: BillingAccount | null;
   currentPlanName: string;
   currentPlanPrice: number;
   forecast: number;
-  forecastPercent: number;
   includedMinutes: number;
   policy: LimitPolicy;
-  projection: ReturnType<typeof projectBilling>;
+  projection: Projection;
   remainingMinutes: number;
+  renewsAt: string | null;
   resetDate: string;
   setPolicy: (policy: LimitPolicy) => void;
   switchTab: (tab: BillingTab) => void;
   usedMinutes: number;
-  usedPercent: number;
 }) {
-  const meterStyle = { "--usage-width": `${usedPercent}%`, "--forecast-left": `${forecastPercent}%` } as CSSProperties;
   const eighty = Math.round(includedMinutes * 0.8);
   return (
-    <section className={styles.overview} aria-label="Billing overview">
-      <article className={styles.usageHero}>
-        <div className={styles.planSummary}>
-          <span><BarChart3 size={20} /></span><small>Current plan</small><h2>{currentPlanName} plan</h2><strong>{money(currentPlanPrice)}<em>/month</em></strong>
-        </div>
-        <div className={styles.meterSummary}>
-          <small>AI minutes</small>
-          <h2>{usedMinutes.toLocaleString()} <span>of {includedMinutes.toLocaleString()} used</span></h2>
-          <div aria-label={`${usedMinutes} of ${includedMinutes} AI minutes used`} aria-valuemax={includedMinutes} aria-valuemin={0} aria-valuenow={Math.min(usedMinutes, includedMinutes)} className={styles.meter} role="progressbar" style={meterStyle}>
-            <i /><b><span>{forecast.toLocaleString()}</span></b>
+    <div className="grid gap-8">
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line px-5 py-4">
+          <div>
+            <p className="m-0 text-[0.8rem] text-fg-muted">Current plan</p>
+            <p className="m-0 mt-0.5 text-[1.15rem] font-semibold text-ink">
+              {currentPlanName} <span className="text-[0.9rem] font-normal text-fg-soft">· {money(currentPlanPrice)}/month</span>
+            </p>
+            <p className="m-0 mt-1 text-[0.8rem] text-fg-muted">{renewsAt ? `Renews ${mediumDate.format(new Date(renewsAt))}` : `Cycle ends ${resetDate}`}</p>
           </div>
-          <footer><span><i />{usedMinutes.toLocaleString()} used</span><span><i />{remainingMinutes.toLocaleString()} remaining</span><span><i />{forecast.toLocaleString()} forecast</span></footer>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="xs" onClick={() => switchTab("usage")}>View usage</Button>
+            <Button size="xs" onClick={() => switchTab("plans")}>Change plan</Button>
+          </div>
         </div>
-        <div className={styles.remainingSummary}>
-          <strong>{remainingMinutes.toLocaleString()}</strong><span>minutes remaining</span><small><CalendarDays size={16} /> Preview cycle ends {resetDate}</small>
+        <div className="px-5 py-5">
+          <UsageMeter used={usedMinutes} included={includedMinutes} forecast={forecast} />
+          <dl className="m-0 mt-5 grid grid-cols-3 gap-4 text-[0.8rem]">
+            <Fact label="Used" value={`${usedMinutes.toLocaleString()} min`} />
+            <Fact label="Left" value={`${remainingMinutes.toLocaleString()} min`} />
+            <Fact label="Forecast" value={`${forecast.toLocaleString()} min`} hint="by cycle end" />
+          </dl>
         </div>
-      </article>
+      </Card>
 
-      {account && <CommunicationCostOverview account={account} />}
+      <section className="grid grid-cols-1 gap-8 [&>*]:min-w-0 lg:grid-cols-2">
+        <div className="grid content-start gap-3">
+          <SectionTitle title="Projected bill" meta="This cycle" action={<TextButton onClick={() => switchTab("plans")}>Compare plans</TextButton>} />
+          <Card>
+            <Ledger rows={[
+              { label: "Base plan", note: `${currentPlanName} plan`, value: money(projection.basePrice) },
+              { label: "Overage", note: `${projection.overageMinutes.toLocaleString()} minutes over`, value: money(projection.overageCost) },
+              { label: "Add-ons", note: "Active add-ons", value: money(projection.addOnCost) },
+            ]} total={money(projection.total)} footnote="Estimate based on your forecast. Actual charges come from your invoice." />
+          </Card>
+        </div>
+        <div className="grid content-start gap-3">
+          <SectionTitle title="Usage alerts" />
+          <Card>
+            <ol className="m-0 grid list-none divide-y divide-line p-0">
+              <AlertRow reached={usedMinutes >= eighty} title="80% of minutes" detail={`${eighty.toLocaleString()} minutes`} note={usedMinutes >= eighty ? "Reached. We let you know; nothing was paused." : "We'll let you know when you get here."} />
+              <AlertRow reached={usedMinutes >= includedMinutes} title="All included minutes" detail={`${includedMinutes.toLocaleString()} minutes`} note={usedMinutes >= includedMinutes ? "Reached. Calls continue while billing is in preview." : "Calls keep going during testing after this point."} />
+              <AlertRow reached={false} title="Cycle resets" detail={resetDate} note="Minutes start again from zero." />
+            </ol>
+          </Card>
+        </div>
+      </section>
 
-      <div className={styles.overviewGrid}>
-        <article className={styles.costLedger}>
-          <header><div className={styles.cardTitle}><CircleDollarSign size={18} /><h2>Projected cost breakdown</h2></div><Info size={18} /></header>
-          <LedgerRow label="Base plan" note={`${currentPlanName} plan`} value={money(projection.basePrice)} />
-          <LedgerRow label="Projected overage" note={`${projection.overageMinutes.toLocaleString()} minutes`} value={money(projection.overageCost)} />
-          <LedgerRow label="Activated add-ons" note="None in preview" value={money(0)} />
-          <div className={styles.ledgerTotal}><div><strong>Estimated total</strong><span>Plan + overage + activated add-ons</span></div><strong>{money(projection.total)}</strong></div>
-          <p><Info size={14} /> All monetary amounts are modelled estimates.</p>
-          <button onClick={() => switchTab("plans")} type="button">Compare plans <ArrowRight size={15} /></button>
-        </article>
+      {account ? <CommunicationCosts account={account} /> : null}
 
-        <article className={styles.alertTimeline}>
-          <header><div className={styles.cardTitle}><BellRing size={18} /><h2>Billing cycle alerts</h2></div></header>
-          <div className={usedMinutes >= eighty ? styles.complete : ""}><i><span>80%</span></i><span><strong>80% usage</strong><small>{eighty.toLocaleString()} minutes</small><p>{usedMinutes >= eighty ? "Threshold reached. No action was taken." : `We will flag the preview at ${eighty.toLocaleString()} minutes.`}</p></span></div>
-          <div className={usedMinutes >= includedMinutes ? styles.complete : ""}><i><span>100%</span></i><span><strong>100% allowance</strong><small>{includedMinutes.toLocaleString()} minutes</small><p>{usedMinutes >= includedMinutes ? "Calls are continuing while billing is in preview." : "Calls will continue during testing even after this point."}</p></span></div>
-          <div><i><CalendarDays size={19} /></i><span><strong>Preview cycle resets</strong><small>{resetDate}</small><p>No real subscription renewal is created.</p></span></div>
-        </article>
+      <section className="grid gap-3">
+        <SectionTitle title="When you run out" meta="Preview, not saved" />
+        <div role="radiogroup" aria-label="Limit behaviour" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <PolicyOption active={policy === "cap"} icon={Check} label="Keep answering up to a cap" note="Best for not missing callers." onClick={() => setPolicy("cap")} />
+          <PolicyOption active={policy === "pause"} icon={Phone} label="Pause new AI calls" note="Calls in progress are never cut off." onClick={() => setPolicy("pause")} />
+          <PolicyOption active={policy === "approval"} icon={UsersRound} label="Ask an owner first" note="Notify before using more minutes." onClick={() => setPolicy("approval")} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function UsageMeter({ used, included, forecast }: { used: number; included: number; forecast: number }) {
+  const usedPercent = Math.min(100, (used / included) * 100);
+  const forecastPercent = Math.min(100, (forecast / included) * 100);
+  const tone = usedPercent >= 100 ? "bg-danger" : usedPercent >= 80 ? "bg-warning" : "bg-signal";
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="m-0 text-ink">
+          <span className="text-[1.6rem] font-medium tabular-nums tracking-[-0.02em]">{used.toLocaleString()}</span>
+          <span className="ml-1.5 text-[0.86rem] text-fg-muted">of {included.toLocaleString()} minutes</span>
+        </p>
+        <span className="text-[0.86rem] tabular-nums text-fg-soft">{Math.round(usedPercent)}%</span>
       </div>
+      <div
+        role="progressbar"
+        aria-label={`${used} of ${included} minutes used`}
+        aria-valuemin={0}
+        aria-valuemax={included}
+        aria-valuenow={Math.min(used, included)}
+        className="relative mt-3 h-2.5 rounded-full bg-surface-3"
+      >
+        <div className="absolute inset-y-0 left-0 rounded-full bg-signal/25" style={{ width: `${forecastPercent}%` }} />
+        <div className={cn("absolute inset-y-0 left-0 rounded-full", tone)} style={{ width: `${usedPercent}%` }} />
+        <div className="absolute inset-y-[-4px] w-px bg-fg-muted" style={{ left: "80%" }} title="80% alert" />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.75rem] text-fg-muted">
+        <span className="inline-flex items-center gap-1.5"><span className={cn("size-2 rounded-full", tone)} />Used</span>
+        <span className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-signal/25" />Forecast</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-px bg-fg-muted" />80% alert</span>
+      </div>
+    </div>
+  );
+}
 
-      <article className={styles.policyCard}>
-        <header><div><small>Testing only</small><h2>Model your future limit behaviour</h2><p>These choices are not saved and cannot pause agents or calls.</p></div><ShieldCheck size={23} /></header>
-        <div className={styles.policyOptions}>
-          <PolicyOption active={policy === "cap"} icon={Check} label="Continue to a cap" note="Recommended for service continuity" onClick={() => setPolicy("cap")} />
-          <PolicyOption active={policy === "pause"} icon={Phone} label="Pause new AI calls" note="Never interrupt an active call" onClick={() => setPolicy("pause")} />
-          <PolicyOption active={policy === "approval"} icon={UsersRound} label="Require approval" note="Notify an owner before more usage" onClick={() => setPolicy("approval")} />
-        </div>
-      </article>
+function Fact({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div>
+      <dt className="text-fg-muted">{label}</dt>
+      <dd className="m-0 mt-0.5 text-[0.92rem] font-medium tabular-nums text-ink">{value}{hint ? <span className="ml-1 text-[0.75rem] font-normal text-fg-muted">{hint}</span> : null}</dd>
+    </div>
+  );
+}
+
+function Ledger({ rows, total, totalLabel = "Estimated total", footnote }: { rows: Array<{ label: string; note: string; value: string }>; total: string; totalLabel?: string; footnote?: string }) {
+  return (
+    <div>
+      <dl className="m-0 divide-y divide-line">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-baseline justify-between gap-4 px-5 py-3">
+            <dt className="min-w-0">
+              <span className="block text-[0.86rem] text-ink">{row.label}</span>
+              <span className="block text-[0.76rem] text-fg-muted">{row.note}</span>
+            </dt>
+            <dd className="m-0 text-[0.88rem] tabular-nums text-fg">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="flex items-baseline justify-between gap-4 border-t border-line-strong bg-surface-2 px-5 py-3.5">
+        <span className="text-[0.88rem] font-medium text-ink">{totalLabel}</span>
+        <span className="text-[1.15rem] font-semibold tabular-nums text-ink">{total}</span>
+      </div>
+      {footnote ? <p className="m-0 border-t border-line px-5 py-2.5 text-[0.75rem] text-fg-muted">{footnote}</p> : null}
+    </div>
+  );
+}
+
+function AlertRow({ reached, title, detail, note }: { reached: boolean; title: string; detail: string; note: string }) {
+  return (
+    <li className="flex items-start gap-3 px-5 py-3.5">
+      <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", reached ? "bg-warning" : "bg-line-strong")} aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="m-0 flex items-baseline justify-between gap-3 text-[0.86rem] text-ink">
+          {title}
+          <span className="text-[0.76rem] tabular-nums text-fg-muted">{detail}</span>
+        </p>
+        <p className="m-0 mt-0.5 text-[0.78rem] text-fg-soft">{note}</p>
+      </div>
+    </li>
+  );
+}
+
+function PolicyOption({ active, icon: Icon, label, note, onClick }: { active: boolean; icon: typeof Check; label: string; note: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={cn(
+        "flex cursor-pointer items-start gap-3 rounded-[var(--radius-card)] border bg-surface p-4 text-left font-sans transition-colors",
+        active ? "border-signal ring-2 ring-signal/20" : "border-line hover:border-line-strong",
+      )}
+    >
+      <span className={cn("grid size-7 shrink-0 place-items-center rounded-[6px]", active ? "bg-signal text-signal-fg" : "bg-surface-2 text-fg-soft")}><Icon className="size-3.5" /></span>
+      <span>
+        <span className="block text-[0.86rem] font-medium text-ink">{label}</span>
+        <span className="mt-0.5 block text-[0.78rem] text-fg-muted">{note}</span>
+      </span>
+    </button>
+  );
+}
+
+function TextButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className="group inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-sans text-[0.8rem] text-fg-soft transition-colors hover:text-ink">
+      {children} <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+    </button>
+  );
+}
+
+function CommunicationCosts({ account }: { account: BillingAccount }) {
+  const confirmed = account.costTotals.filter((total) => total.costBasis === "provider_confirmed");
+  const estimated = account.costTotals.filter((total) => total.costBasis === "rate_card" || total.costBasis === "provider_quote");
+  const awaiting = account.reconciliation.pending + account.reconciliation.retrying;
+  const attention = account.reconciliation.unavailable + account.unpricedUsage.length;
+  return (
+    <section className="grid gap-3" aria-label="Communication cost tracking">
+      <SectionTitle
+        title="Provider costs"
+        meta="Phone, SMS and WhatsApp this cycle"
+        action={<Badge tone={account.enforcementMode === "observe" ? "neutral" : "success"}>{account.enforcementMode === "observe" ? "Observe only" : "Enforced"}</Badge>}
+      />
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] border border-line bg-line lg:grid-cols-4">
+        <CostCell label="Confirmed by provider" values={confirmed.map((total) => providerMoney(total.amount, total.currency))} note={`${account.reconciliation.reconciled.toLocaleString()} items`} />
+        <CostCell label="Estimated" values={estimated.map((total) => providerMoney(total.amount, total.currency))} note={`${account.reconciliation.estimated.toLocaleString()} rate-card items`} />
+        <CostCell label="Waiting for provider" values={[awaiting.toLocaleString()]} note="items to reconcile" />
+        <CostCell label="Needs attention" values={[attention.toLocaleString()]} note="missing or unpriced" warn={attention > 0} />
+      </div>
+      {attention > 0 ? (
+        <p className="m-0 flex items-start gap-2 text-[0.8rem] text-warning">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            Some usage has no final price yet:{" "}
+            {account.unpricedUsage.map((item) => `${usageCategory(item.category)} ${formatQuantity(item.quantity)} ${item.unit}${item.quantity === 1 ? "" : "s"}`).join(" · ")}
+            {account.reconciliation.unavailable > 0 ? `${account.unpricedUsage.length ? " · " : ""}${account.reconciliation.unavailable} unavailable` : ""}
+          </span>
+        </p>
+      ) : (
+        <p className="m-0 text-[0.78rem] text-fg-muted">These are Sauti&apos;s own costs with telephony providers, kept separate from your invoice.</p>
+      )}
     </section>
   );
 }
 
-function CommunicationCostOverview({ account }: { account: BillingAccount }) {
-  const confirmed = account.costTotals.filter((total) => total.costBasis === "provider_confirmed");
-  const estimated = account.costTotals.filter((total) => total.costBasis === "rate_card" || total.costBasis === "provider_quote");
-  const awaiting = account.reconciliation.pending + account.reconciliation.retrying;
-  const hasWarning = account.reconciliation.unavailable > 0 || account.unpricedUsage.length > 0;
-
+function CostCell({ label, values, note, warn = false }: { label: string; values: string[]; note: string; warn?: boolean }) {
   return (
-    <article className={styles.communicationCosts} aria-label="Communication cost tracking">
-      <header>
-        <div>
-          <small>Provider cost evidence</small>
-          <h2>Communication costs</h2>
-          <p>This cycle&apos;s provider costs are tracked separately from customer invoices and plan forecasts.</p>
-        </div>
-        <span className={account.enforcementMode === "observe" ? styles.observeBadge : styles.enforceBadge}>
-          {account.enforcementMode === "observe" ? "Observe only" : "Enforcement active"}
-        </span>
-      </header>
-
-      <div className={styles.costEvidenceGrid}>
-        <CostEvidenceCard label="Provider confirmed" totals={confirmed} empty="No confirmed costs yet" />
-        <CostEvidenceCard label="Estimated or quoted" totals={estimated} empty="No estimates recorded" />
-        <div className={styles.evidenceCard}>
-          <span>Reconciliation</span>
-          <strong>{awaiting.toLocaleString()}</strong>
-          <small>awaiting provider evidence</small>
-        </div>
-        <div className={hasWarning ? `${styles.evidenceCard} ${styles.warningEvidence}` : styles.evidenceCard}>
-          <span>Needs attention</span>
-          <strong>{(account.reconciliation.unavailable + account.unpricedUsage.length).toLocaleString()}</strong>
-          <small>unavailable prices or unpriced usage groups</small>
-        </div>
-      </div>
-
-      {(account.unpricedUsage.length > 0 || account.reconciliation.unavailable > 0) && (
-        <div className={styles.costWarning} role="status">
-          <AlertTriangle size={17} />
-          <div>
-            <strong>Some usage does not have a final provider price yet</strong>
-            <span>
-              {account.unpricedUsage.map((item) => `${usageCategory(item.category)}: ${formatQuantity(item.quantity)} ${item.unit}${item.quantity === 1 ? "" : "s"}`).join(" · ")}
-              {account.reconciliation.unavailable > 0 ? ` · ${account.reconciliation.unavailable} reconciliation ${account.reconciliation.unavailable === 1 ? "job" : "jobs"} unavailable` : ""}
-            </span>
-          </div>
-        </div>
-      )}
-
-      <footer>
-        <span><Check size={15} /> {account.reconciliation.reconciled.toLocaleString()} provider-confirmed</span>
-        <span><Clock3 size={15} /> {account.reconciliation.estimated.toLocaleString()} rate-card estimates</span>
-        <span><Info size={15} /> Subscription call access is {account.enforcementMode === "observe" ? "being observed" : "actively protected"}</span>
-      </footer>
-    </article>
-  );
-}
-
-function CostEvidenceCard({ label, totals, empty }: {
-  label: string;
-  totals: BillingAccount["costTotals"];
-  empty: string;
-}) {
-  return (
-    <div className={styles.evidenceCard}>
-      <span>{label}</span>
-      {totals.length === 0 ? <strong>—</strong> : totals.map((total) => (
-        <strong key={`${total.costBasis}-${total.currency}`}>{providerMoney(total.amount, total.currency)}</strong>
-      ))}
-      <small>{totals.length === 0 ? empty : "net provider cost this cycle"}</small>
+    <div className="bg-surface px-4 py-3.5">
+      <p className="m-0 text-[0.8rem] text-fg-soft">{label}</p>
+      {values.length ? values.map((value) => (
+        <p key={value} className={cn("m-0 mt-1 text-[1.25rem] font-medium tabular-nums tracking-[-0.01em]", warn ? "text-warning" : "text-ink")}>{value}</p>
+      )) : <p className="m-0 mt-1 text-[1.25rem] text-fg-muted">—</p>}
+      <p className="m-0 mt-1 text-[0.75rem] text-fg-muted">{note}</p>
     </div>
   );
 }
@@ -609,6 +705,8 @@ function formatQuantity(quantity: number) {
   return new Intl.NumberFormat("en", { maximumFractionDigits: 4 }).format(quantity);
 }
 
+/* ---------------- Usage ---------------- */
+
 function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab }: { forecast: number; includedMinutes: number; resetDate: string; usedMinutes: number; switchTab: (tab: BillingTab) => void }) {
   const actual = buildModelledUsageSeries(usedMinutes);
   const chartData = [
@@ -619,44 +717,48 @@ function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab
   const chartMaximum = Math.max(100, Math.ceil(Math.max(includedMinutes, forecast) / 50) * 50);
   const projection = projectBilling(planById("growth"), forecast, "monthly", { agent: 1 });
   return (
-    <section className={styles.usageWorkbench} aria-label="Usage forecasting workbench">
-      <p className={styles.contextLine}><Info size={15} /> Aggregate minutes are live. The daily curve and monetary amounts are clearly modelled until detailed metering is available.</p>
-      <div className={styles.workbenchGrid}>
-        <article className={styles.chartPanel}>
-          <header><div><small>Modelled distribution</small><h2>AI-minute usage</h2><p>Current preview cycle</p></div><div><button type="button">All agents</button><button type="button">All channels</button></div></header>
-          <div className={styles.chartLegend}><span><i />Aggregate</span><span><i />Forecast</span><span><i />Allowance</span><span><i />80% threshold</span></div>
-          <div className={styles.chart}>
+    <section className="grid grid-cols-1 gap-8 [&>*]:min-w-0 xl:grid-cols-[minmax(0,1fr)_320px]" aria-label="Usage">
+      <div className="grid content-start gap-3">
+        <SectionTitle title="Minutes this cycle" meta="Cumulative" />
+        <Card className="px-4 pb-3 pt-5 sm:px-5">
+          <div className="h-[300px] text-[11px] [&_.recharts-cartesian-axis-tick-value]:fill-fg-muted">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 18, right: 28, bottom: 4, left: 0 }}>
-                <CartesianGrid stroke="rgba(120,168,207,.12)" strokeDasharray="3 4" vertical={false} />
+              <AreaChart data={chartData} margin={{ top: 12, right: 12, bottom: 0, left: -8 }}>
+                <CartesianGrid stroke="var(--color-line)" vertical={false} />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} minTickGap={32} />
                 <YAxis axisLine={false} tickLine={false} width={42} domain={[0, chartMaximum]} />
-                <Tooltip contentStyle={{ background: "#06172a", border: "1px solid rgba(93,157,207,.28)", borderRadius: 12 }} />
-                <ReferenceLine y={includedMinutes} stroke="#458bff" strokeDasharray="8 6" label={{ value: `Allowance ${includedMinutes}`, fill: "#70a5ff", position: "insideTopRight" }} />
-                <ReferenceLine y={eighty} stroke="#f5a524" strokeDasharray="8 6" label={{ value: `80% ${eighty}`, fill: "#f5b64d", position: "insideBottomRight" }} />
-                <Area dataKey="actual" fill="#18b7aa" fillOpacity={0.16} stroke="#2ee6d5" strokeWidth={3} type="monotone" />
-                <Area dataKey="forecast" fill="none" stroke="#2ee6d5" strokeDasharray="7 7" strokeWidth={3} type="monotone" />
+                <Tooltip contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-line-strong)", borderRadius: 8, color: "var(--color-fg)", fontSize: 12 }} />
+                <ReferenceLine y={includedMinutes} stroke="var(--color-fg-muted)" strokeDasharray="4 4" label={{ value: `Included ${includedMinutes}`, fill: "var(--color-fg-soft)", position: "insideTopRight", fontSize: 11 }} />
+                <ReferenceLine y={eighty} stroke="var(--color-warning)" strokeDasharray="4 4" label={{ value: `80% · ${eighty}`, fill: "var(--color-warning)", position: "insideBottomRight", fontSize: 11 }} />
+                <Area dataKey="actual" name="Used" fill="var(--color-signal)" fillOpacity={0.12} stroke="var(--color-signal)" strokeWidth={2} type="monotone" />
+                <Area dataKey="forecast" name="Forecast" fill="none" stroke="var(--color-signal)" strokeDasharray="5 5" strokeWidth={2} type="monotone" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          <footer><Info size={14} /> Daily attribution is illustrative; only the aggregate {usedMinutes.toLocaleString()}-minute total comes from the current billing endpoint.</footer>
-          <div className={styles.breakdownUnavailable}>
-            <span><Bot size={18} /></span><div><strong>Per-agent usage is coming with shadow metering</strong><p>We will show tenant-scoped agent and channel rows here only when the durable ledger can support them.</p></div>
-          </div>
-        </article>
-        <article className={styles.stickyLedger}>
-          <header><small>Estimate</small><h2>Projected bill</h2><p>Preview cycle ends {resetDate}</p></header>
-          <LedgerRow label="Growth plan" note="Up to 750 AI minutes" value="$149" />
-          <LedgerRow label="Projected overage" note={`${projection.overageMinutes} minutes`} value={money(projection.overageCost)} />
-          <LedgerRow label="Active add-ons" note="Currently enabled" value={money(projection.addOnCost)} />
-          <div className={styles.ledgerTotal}><div><strong>Estimated total</strong><span>Plan + overage + activated add-ons</span></div><strong>{money(projection.total)}</strong></div>
-          <button onClick={() => switchTab("plans")} type="button">Model another plan <ArrowRight size={15} /></button>
-          <button className={styles.textButton} onClick={() => switchTab("invoices")} type="button">How usage is calculated</button>
-        </article>
+        </Card>
+        <p className="m-0 text-[0.78rem] text-fg-muted">
+          The {usedMinutes.toLocaleString()}-minute total is live. The day-by-day shape is modelled until per-call metering is available, and per-agent usage will appear here when it is.
+        </p>
+      </div>
+      <div className="grid content-start gap-3">
+        <SectionTitle title="Projected bill" meta={`Ends ${resetDate}`} />
+        <Card>
+          <Ledger rows={[
+            { label: "Growth plan", note: "750 minutes included", value: money(projection.basePrice) },
+            { label: "Overage", note: `${projection.overageMinutes} minutes`, value: money(projection.overageCost) },
+            { label: "Add-ons", note: "Currently active", value: money(projection.addOnCost) },
+          ]} total={money(projection.total)} />
+        </Card>
+        <div className="flex flex-wrap gap-2">
+          <Button size="xs" onClick={() => switchTab("plans")}>Model another plan</Button>
+          <Button size="xs" variant="ghost" onClick={() => switchTab("invoices")}>How it&apos;s calculated</Button>
+        </div>
       </div>
     </section>
   );
 }
+
+/* ---------------- Plans ---------------- */
 
 function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addOnsConfigured, checkoutConfigured, checkoutProvider, currentPlanId, hasSubscription, interval, isSandbox, openPlanDialog, pendingPlanChange, projection, projectedMinutes, resetModel, resumeLoading, resumeSubscription, selectedPlanId, setInterval, setProjectedMinutes, setSelectedPlanId, startAddOnCheckout, subscription }: {
   activeAddOns: NonNullable<BillingAccount["addOns"]>;
@@ -669,10 +771,10 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
   hasSubscription: boolean;
   interval: BillingInterval;
   isSandbox: boolean;
-  projection: ReturnType<typeof projectBilling>;
-  projectedMinutes: number;
   openPlanDialog: (intent: "change" | "cancel") => void;
   pendingPlanChange: BillingAccount["pendingPlanChange"];
+  projection: Projection;
+  projectedMinutes: number;
   resetModel: () => void;
   resumeLoading: boolean;
   resumeSubscription: () => void;
@@ -686,10 +788,7 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
   const selectedPlan = planById(selectedPlanId);
   const currentPlan = planById(currentPlanId);
   const activeAddOnIds = new Set(activeAddOns.map((item) => item.addOn));
-  const currentPrice = subscription?.interval === "annual"
-    ? `${money(currentPlan.monthlyPrice * 0.9 * 12)} / year`
-    : `${money(currentPlan.monthlyPrice)} / month`;
-  const providerReference = subscription?.providerReference ?? "";
+  const currentPrice = subscription?.interval === "annual" ? `${money(currentPlan.monthlyPrice * 0.9 * 12)} / year` : `${money(currentPlan.monthlyPrice)} / month`;
   const subscriptionState = subscription?.status === "canceling" || subscription?.status === "canceled"
     ? "Cancellation scheduled"
     : subscription?.status === "past_due" || subscription?.status === "unresolved"
@@ -698,121 +797,247 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
         ? "Ended"
         : "Active";
   const subscriptionExplanation = subscriptionState === "Cancellation scheduled"
-    ? `Whop has cancelled renewal. Access continues until ${subscription?.renewsAt ? new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(subscription.renewsAt)) : "the end of the paid period"}.`
+    ? `Renewal is cancelled. Access continues until ${formatDate(subscription?.renewsAt, "the end of the paid period")}.`
     : subscriptionState === "Payment issue"
-      ? "Whop reported a payment problem. Update the payment method to prevent an interruption."
+      ? "Whop reported a payment problem. Update the payment method to avoid an interruption."
       : subscriptionState === "Ended"
-        ? "Whop has ended this membership. Choose a plan to restore paid service."
-        : "This is the only Whop membership currently synchronized with this workspace.";
+        ? "This membership has ended. Choose a plan to restore paid service."
+        : `Renews ${formatDate(subscription?.renewsAt, "at the end of the period")} through ${checkoutProvider}.`;
+  const ctaLabel = !checkoutConfigured
+    ? "Checkout setup required"
+    : pendingPlanChange
+      ? `${planById(pendingPlanChange.targetPlan).name} change pending`
+      : hasSubscription
+        ? selectedPlanId === currentPlanId ? "This is your current plan" : `Switch to ${selectedPlan.name}`
+        : isSandbox ? "Continue to sandbox checkout" : "Continue to checkout";
+  const stateTone = subscriptionState === "Active" ? "success" : subscriptionState === "Ended" ? "neutral" : "warning";
+  const addOnIcon = (id: BillingAddOnId) => id === "line" ? Phone : id === "number" ? CreditCard : id === "voice" ? Sparkles : id === "messaging" ? FileText : UsersRound;
+
   return (
-    <section className={styles.planStudio} aria-label="Plan and add-on modeller">
-      {subscription && <article className={styles.currentSubscriptionNotice}>
-        <span><ShieldCheck size={18} /></span>
-        <div>
-          <small>Current synchronized subscription</small>
-          <strong>{currentPlan.name}{" · "}{currentPrice}</strong>
-          <p>{subscriptionExplanation}</p>
-          {providerReference && <code>Whop reference: {providerReference}</code>}
-          {subscriptionState === "Cancellation scheduled" && (
-            <button className={styles.resumePlanButton} disabled={resumeLoading} onClick={resumeSubscription} type="button">
-              {resumeLoading ? <LoaderCircle className="spin" size={13} /> : <RefreshCw size={13} />}
-              {resumeLoading ? "Resuming…" : `Resume ${currentPlan.name} renewal`}
-            </button>
-          )}
-        </div>
-        <em data-state={subscriptionState}>{subscriptionState}</em>
-      </article>}
-      <article className={styles.planSelector}>
-        <header className={styles.stepHeader}><span>1</span><div><h2>Choose a plan</h2><p>Select the allowance and capacity your workspace needs.</p></div></header>
-        <div className={styles.intervalToggle} role="group" aria-label="Billing interval">
-          <button aria-pressed={interval === "monthly"} className={interval === "monthly" ? styles.selected : ""} onClick={() => setInterval("monthly")} type="button">Monthly</button>
-          <button aria-pressed={interval === "annual"} className={interval === "annual" ? styles.selected : ""} onClick={() => setInterval("annual")} type="button">Annual</button>
-          <span>Save 10%</span>
-        </div>
-        <div className={styles.planRows}>
-          {pricingPlans.map((plan) => (
-            <button aria-pressed={selectedPlanId === plan.id} className={selectedPlanId === plan.id ? styles.activePlan : ""} key={plan.id} onClick={() => setSelectedPlanId(plan.id)} type="button">
-              <span><strong>{plan.name}{currentPlanId === plan.id && <em>{hasSubscription ? "Current" : "Previous"}</em>}</strong><small>{plan.includedMinutes.toLocaleString()} AI minutes / month</small><small>{plan.concurrentCalls} concurrent {plan.concurrentCalls === 1 ? "line" : "lines"}</small></span>
-              <strong className={styles.planPrice}>{money(interval === "annual" ? plan.monthlyPrice * 0.9 : plan.monthlyPrice)}<em>/ month</em></strong>
-              {selectedPlanId === plan.id && <Check className={styles.planCheck} size={15} />}
-            </button>
-          ))}
-        </div>
-        <p>Need more than {pricingPlans[2].concurrentCalls} lines? <a href="/request-demo">Contact sales</a></p>
-      </article>
+    <div className="grid gap-8">
+      {subscription ? (
+        <Card className="flex flex-wrap items-center gap-4 px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <p className="m-0 flex flex-wrap items-center gap-2 text-[0.92rem] font-medium text-ink">
+              {currentPlan.name} · {currentPrice}
+              <Badge tone={stateTone} dot>{subscriptionState}</Badge>
+            </p>
+            <p className="m-0 mt-1 text-[0.8rem] text-fg-soft">{subscriptionExplanation}</p>
+            {subscription.providerReference ? <p className="m-0 mt-1 text-[0.72rem] text-fg-muted">Reference {subscription.providerReference}</p> : null}
+          </div>
+          {subscriptionState === "Cancellation scheduled" ? (
+            <Button variant="secondary" size="xs" disabled={resumeLoading} onClick={resumeSubscription}>
+              {resumeLoading ? <LoaderCircle className="animate-spin" /> : <RefreshCw />}
+              {resumeLoading ? "Resuming…" : `Resume ${currentPlan.name}`}
+            </Button>
+          ) : null}
+        </Card>
+      ) : null}
 
-      <article className={styles.configurator}>
-        <header className={styles.stepHeader}><span>2</span><div><h2>Configure your setup</h2><p>Adjust the model to see how each choice affects the estimate.</p></div></header>
-        <label className={styles.minutesInput}><span><Clock3 size={18} /><strong>Projected AI minutes</strong></span><input max={20000} min={0} onChange={(event) => setProjectedMinutes(Math.max(0, Number(event.target.value) || 0))} type="number" value={projectedMinutes} /><small>Includes {selectedPlan.includedMinutes.toLocaleString()} minutes. Projected overage: {projection.overageMinutes.toLocaleString()} minutes.</small></label>
-        <div className={styles.addOnCheckoutPanel}>
-          <header><h3>Optional add-ons</h3><p>Add or manage each feature here. Active add-ons are included in the estimate automatically.</p></header>
-          {billingAddOns.map((addOn) => {
-            const active = activeAddOnIds.has(addOn.id);
-            const loading = addOnCheckoutLoading === addOn.id;
-            return <div key={addOn.id}>
-              <span className={styles.addOnIcon}>{addOn.id === "line" ? <Phone size={17} /> : addOn.id === "number" ? <CreditCard size={17} /> : addOn.id === "voice" ? <Sparkles size={17} /> : addOn.id === "messaging" ? <FileText size={17} /> : <UsersRound size={17} />}</span>
-              <span><strong>{addOn.name}{active && <em>Active</em>}</strong><small>{addOn.description}</small><small>{money(addOn.monthlyPrice)} / month</small></span>
-              <button disabled={!hasSubscription || !addOnsConfigured || addOnCheckoutLoading != null} onClick={() => startAddOnCheckout(addOn.id)} type="button">{loading ? <LoaderCircle className="spin" size={14} /> : active ? <SlidersHorizontal size={14} /> : <Plus size={14} />}{loading ? "Opening…" : active ? "Manage" : "Add"}</button>
-            </div>;
+      <section className="grid gap-3">
+        <SectionTitle
+          title="Plans"
+          action={
+            <div role="radiogroup" aria-label="Billing interval" className="inline-flex items-center gap-0.5 rounded-[8px] border border-line bg-surface-2 p-0.5">
+              {(["monthly", "annual"] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={interval === value}
+                  onClick={() => setInterval(value)}
+                  className={cn("h-7 cursor-pointer rounded-[6px] border-0 px-3 font-sans text-[0.8rem] capitalize transition-colors", interval === value ? "bg-selected text-selected-fg shadow-[var(--shadow-card)]" : "bg-transparent text-fg-soft hover:text-fg")}
+                >
+                  {value}{value === "annual" ? <span className="ml-1.5 text-[0.72rem] text-success">−10%</span> : null}
+                </button>
+              ))}
+            </div>
+          }
+        />
+        <div role="radiogroup" aria-label="Plan" className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          {pricingPlans.map((plan) => {
+            const selected = selectedPlanId === plan.id;
+            const current = currentPlanId === plan.id;
+            return (
+              <button
+                key={plan.id}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setSelectedPlanId(plan.id)}
+                className={cn(
+                  "relative flex cursor-pointer flex-col rounded-[var(--radius-card)] border bg-surface p-5 text-left font-sans transition-colors",
+                  selected ? "border-ink ring-1 ring-ink" : "border-line hover:border-line-strong",
+                )}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-[0.92rem] font-semibold text-ink">{plan.name}</span>
+                  {current ? <Badge tone="neutral">{hasSubscription ? "Current" : "Previous"}</Badge> : null}
+                </span>
+                <span className="mt-3 text-ink">
+                  <span className="text-[1.6rem] font-semibold tabular-nums tracking-[-0.02em]">{money(interval === "annual" ? plan.monthlyPrice * 0.9 : plan.monthlyPrice)}</span>
+                  <span className="ml-1 text-[0.8rem] text-fg-muted">/ month</span>
+                </span>
+                <span className="mt-4 grid gap-1.5 border-t border-line pt-4 text-[0.82rem] text-fg-soft">
+                  <span className="flex items-center gap-2"><Check className="size-3.5 text-signal" />{plan.includedMinutes.toLocaleString()} minutes included</span>
+                  <span className="flex items-center gap-2"><Check className="size-3.5 text-signal" />{plan.concurrentCalls} {plan.concurrentCalls === 1 ? "call" : "calls"} at once</span>
+                  <span className="flex items-center gap-2"><Check className="size-3.5 text-signal" />{money(plan.overageRate)} per extra minute</span>
+                </span>
+              </button>
+            );
           })}
-          {!hasSubscription && <p className={styles.addOnCheckoutNote}>Choose a base plan before purchasing add-ons.</p>}
-          {hasSubscription && !addOnsConfigured && <p className={styles.addOnCheckoutNote}>Add-on checkout needs the five Whop add-on plan IDs.</p>}
-          {addOnCheckoutError && <p className={styles.checkoutError} role="alert"><AlertTriangle size={15} /> {addOnCheckoutError}</p>}
         </div>
-      </article>
+        <p className="m-0 text-[0.78rem] text-fg-muted">Need more than {pricingPlans[2].concurrentCalls} calls at once? <Link href="/request-demo" className="text-fg underline underline-offset-4">Talk to us</Link></p>
+      </section>
 
-      <article className={styles.estimateSummary}>
-        <header className={styles.summaryHeader}><div className={styles.stepHeader}><span>3</span><div><h2>Estimate summary</h2><p>All amounts in USD</p></div></div><em>USD</em></header>
-        <LedgerRow label={`Base plan — ${selectedPlan.name}`} note={interval === "annual" ? "Annual billing equivalent" : "Monthly billing"} value={money(projection.basePrice)} />
-        <LedgerRow label="Overage minutes" note={`${projection.overageMinutes.toLocaleString()} × ${money(selectedPlan.overageRate)}`} value={money(projection.overageCost)} />
-        <LedgerRow label="Active add-ons" note={`${activeAddOns.length} currently enabled`} value={money(projection.addOnCost)} />
-        <div className={styles.ledgerTotal}><div><strong>Estimated total / month</strong><span>Plan + overage + activated add-ons</span></div><strong>{money(projection.total)}</strong></div>
-        <p><Info size={15} /> If a higher plan produces a lower total for your model, Sauti will explain the arithmetic instead of forcing a recommendation.</p>
-        <button disabled={!checkoutConfigured || pendingPlanChange != null || (hasSubscription && selectedPlanId === currentPlanId)} onClick={() => openPlanDialog("change")} type="button"><ShieldCheck size={16} /> {!checkoutConfigured ? "Whop setup required" : pendingPlanChange ? `${planById(pendingPlanChange.targetPlan).name} change pending` : hasSubscription ? selectedPlanId === currentPlanId ? "Current plan selected" : `Change to ${selectedPlan.name}` : isSandbox ? "Continue to sandbox checkout" : "Continue to secure checkout"}</button>
-        {pendingPlanChange && <p className={styles.addOnCheckoutNote}>Your existing plan change must complete before another upgrade or downgrade can be requested.</p>}
-        {hasSubscription && !pendingPlanChange && subscriptionState !== "Cancellation scheduled" && subscriptionState !== "Ended" && <button className={styles.cancelPlanButton} onClick={() => openPlanDialog("cancel")} type="button">Cancel subscription</button>}
-        <button className={styles.resetButton} onClick={resetModel} type="button"><RotateCcw size={15} /> Reset model</button>
-        <footer>Sauti guides the change; {checkoutProvider} securely authorizes billing.</footer>
-      </article>
-      <article className={styles.benefitsStrip} aria-label="Billing benefits">
-        <BillingBenefit icon={CircleDollarSign} title="Transparent pricing" note="See how the total is calculated before checkout." />
-        <BillingBenefit icon={ShieldCheck} title="Secure checkout" note={`Payment details stay with ${checkoutProvider}.`} />
-        <BillingBenefit icon={RefreshCw} title="Change anytime" note="Upgrade or adjust your plan as your usage grows." />
-        <BillingBenefit icon={SlidersHorizontal} title="Need a custom plan?" note="Talk to us about higher call capacity." action />
-      </article>
-    </section>
+      <section className="grid grid-cols-1 gap-8 [&>*]:min-w-0 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="grid content-start gap-8">
+          <div className="grid gap-3">
+            <SectionTitle title="Expected minutes" meta="Per month" />
+            <Card className="px-5 py-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="inline-flex items-center rounded-[8px] border border-line-strong">
+                  <button type="button" aria-label="100 fewer minutes" onClick={() => setProjectedMinutes(Math.max(0, projectedMinutes - 100))} className="grid size-9 cursor-pointer place-items-center border-0 bg-transparent p-0 text-fg-soft hover:text-ink"><Minus className="size-4" /></button>
+                  <input
+                    aria-label="Projected AI minutes"
+                    type="number"
+                    min={0}
+                    max={20000}
+                    value={projectedMinutes}
+                    onChange={(event) => setProjectedMinutes(Math.max(0, Number(event.target.value) || 0))}
+                    className="h-9 w-24 border-x border-y-0 border-line-strong bg-transparent text-center font-sans text-[0.95rem] tabular-nums text-ink outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <button type="button" aria-label="100 more minutes" onClick={() => setProjectedMinutes(Math.min(20000, projectedMinutes + 100))} className="grid size-9 cursor-pointer place-items-center border-0 bg-transparent p-0 text-fg-soft hover:text-ink"><Plus className="size-4" /></button>
+                </div>
+                <input
+                  aria-label="Projected AI minutes slider"
+                  type="range"
+                  min={0}
+                  max={Math.max(3000, selectedPlan.includedMinutes * 2)}
+                  step={50}
+                  value={projectedMinutes}
+                  onChange={(event) => setProjectedMinutes(Number(event.target.value))}
+                  className="min-w-[10rem] flex-1 accent-[var(--color-signal)]"
+                />
+              </div>
+              <p className="m-0 mt-3 text-[0.8rem] text-fg-soft">
+                {selectedPlan.name} includes {selectedPlan.includedMinutes.toLocaleString()} minutes.{" "}
+                {projection.overageMinutes > 0 ? <>That&apos;s <span className="text-ink">{projection.overageMinutes.toLocaleString()} minutes over</span>.</> : "You'd stay within the allowance."}
+              </p>
+            </Card>
+          </div>
+
+          <div className="grid gap-3">
+            <SectionTitle title="Add-ons" meta="Billed monthly" />
+            <Card>
+              <ul className="m-0 grid list-none divide-y divide-line p-0">
+                {billingAddOns.map((addOn) => {
+                  const active = activeAddOnIds.has(addOn.id);
+                  const busy = addOnCheckoutLoading === addOn.id;
+                  const Icon = addOnIcon(addOn.id);
+                  return (
+                    <li key={addOn.id} className="flex items-center gap-3 px-5 py-3.5">
+                      <span className="grid size-8 shrink-0 place-items-center rounded-[7px] border border-line bg-surface-2 text-fg-soft"><Icon className="size-4" /></span>
+                      <div className="min-w-0 flex-1">
+                        <p className="m-0 flex flex-wrap items-center gap-2 text-[0.86rem] text-ink">{addOn.name}{active ? <Badge tone="success">Active</Badge> : null}</p>
+                        <p className="m-0 mt-0.5 text-[0.78rem] text-fg-muted">{addOn.description}</p>
+                      </div>
+                      <span className="hidden text-[0.82rem] tabular-nums text-fg-soft sm:block">{money(addOn.monthlyPrice)}/mo</span>
+                      <Button variant="secondary" size="xs" disabled={!hasSubscription || !addOnsConfigured || addOnCheckoutLoading != null} onClick={() => startAddOnCheckout(addOn.id)}>
+                        {busy ? <LoaderCircle className="animate-spin" /> : active ? <SlidersHorizontal /> : <Plus />}
+                        {busy ? "Opening…" : active ? "Manage" : "Add"}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {!hasSubscription || !addOnsConfigured || addOnCheckoutError ? (
+                <div className="border-t border-line px-5 py-3 text-[0.78rem]">
+                  {!hasSubscription ? <p className="m-0 text-fg-muted">Choose a plan first, then add extras.</p> : null}
+                  {hasSubscription && !addOnsConfigured ? <p className="m-0 text-fg-muted">Add-on checkout needs the five Whop add-on plan IDs.</p> : null}
+                  {addOnCheckoutError ? <p className="m-0 text-danger">{addOnCheckoutError}</p> : null}
+                </div>
+              ) : null}
+            </Card>
+          </div>
+        </div>
+
+        <div className="grid content-start gap-3 xl:sticky xl:top-20 xl:self-start">
+          <SectionTitle title="Your estimate" meta="USD" />
+          <Card>
+            <Ledger
+              rows={[
+                { label: `${selectedPlan.name} plan`, note: interval === "annual" ? "Annual, shown per month" : "Monthly", value: money(projection.basePrice) },
+                { label: "Overage", note: `${projection.overageMinutes.toLocaleString()} × ${money(selectedPlan.overageRate)}`, value: money(projection.overageCost) },
+                { label: "Add-ons", note: `${activeAddOns.length} active`, value: money(projection.addOnCost) },
+              ]}
+              total={money(projection.total)}
+              totalLabel="Per month"
+            />
+            <div className="grid gap-2 border-t border-line px-5 py-4">
+              <Button size="sm" className="w-full" disabled={!checkoutConfigured || pendingPlanChange != null || (hasSubscription && selectedPlanId === currentPlanId)} onClick={() => openPlanDialog("change")}>
+                <ShieldCheck /> {ctaLabel}
+              </Button>
+              {pendingPlanChange ? <p className="m-0 text-[0.76rem] text-fg-muted">Your current plan change has to finish before you request another.</p> : null}
+              <div className="flex items-center justify-between gap-2">
+                <Button variant="ghost" size="xs" onClick={resetModel} className="px-0"><RotateCcw /> Reset</Button>
+                {hasSubscription && !pendingPlanChange && subscriptionState !== "Cancellation scheduled" && subscriptionState !== "Ended" ? (
+                  <Button variant="ghost" size="xs" onClick={() => openPlanDialog("cancel")} className="px-0 text-danger hover:text-danger">Cancel subscription</Button>
+                ) : null}
+              </div>
+            </div>
+          </Card>
+          <p className="m-0 text-[0.76rem] text-fg-muted">Payment happens in {checkoutProvider}. Sauti never sees card details.</p>
+        </div>
+      </section>
+    </div>
   );
 }
 
-function BillingBenefit({ action = false, icon: Icon, note, title }: { action?: boolean; icon: typeof Gauge; note: string; title: string }) {
-  return <div><span><Icon size={17} /></span><div><strong>{title}</strong><small>{note}</small></div>{action && <a href="/request-demo">Contact sales <ArrowRight size={13} /></a>}</div>;
-}
+/* ---------------- Invoices ---------------- */
 
 function InvoicesTab({ switchTab }: { switchTab: (tab: BillingTab) => void }) {
+  const rules = [
+    { icon: ShieldCheck, title: "Real records only", text: "Invoice numbers, receipts and taxes come from the payment provider, never from Sauti's estimates." },
+    { icon: ReceiptText, title: "Estimates stay estimates", text: "Forecasts on this page are never shown as charges." },
+    { icon: FileText, title: "Test invoices are labelled", text: "Anything created in sandbox mode is marked Test." },
+  ];
   return (
-    <section className={styles.invoices} aria-label="Invoices preview">
-      <article className={styles.invoiceIntro}>
-        <span><ReceiptText size={27} /></span><small>Financial records</small><h2>Invoices will appear after billing is activated</h2><p>Sauti has not created a subscription, charged a payment method, or issued a real invoice for this workspace.</p>
-        <button onClick={() => switchTab("plans")} type="button">Model a future bill <ArrowRight size={15} /></button>
-      </article>
-      <article className={styles.invoiceRules}>
-        <header><small>What to expect</small><h2>Clear records without surprises</h2></header>
-        <div><ShieldCheck size={18} /><span><strong>Verified provider records only</strong><p>Invoice numbers, receipts, and taxes will come from the connected merchant of record.</p></span></div>
-        <div><CircleDollarSign size={18} /><span><strong>Actual and estimated stay separate</strong><p>Forecasts never appear as completed financial transactions.</p></span></div>
-        <div><FileText size={18} /><span><strong>Sandbox invoices stay labelled Test</strong><p>Payment controls remain hidden until the processor is connected safely.</p></span></div>
-      </article>
+    <section className="grid grid-cols-1 gap-8 [&>*]:min-w-0 lg:grid-cols-[minmax(0,1fr)_360px]" aria-label="Invoices">
+      <Card className="flex flex-col items-start justify-center px-6 py-10">
+        <span className="grid size-10 place-items-center rounded-[9px] border border-line bg-surface-2 text-fg-soft"><ReceiptText className="size-5" /></span>
+        <h2 className="m-0 mt-5 text-[1.05rem] font-semibold text-ink">No invoices yet</h2>
+        <p className="m-0 mt-1.5 max-w-md text-[0.86rem] leading-relaxed text-fg-soft">Invoices appear here once a paid subscription starts. Nothing has been charged to this workspace.</p>
+        <Button size="xs" className="mt-5" onClick={() => switchTab("plans")}>See plans <ArrowRight /></Button>
+      </Card>
+      <div className="grid content-start gap-3">
+        <SectionTitle title="How billing works" />
+        <Card>
+          <ul className="m-0 grid list-none divide-y divide-line p-0">
+            {rules.map((rule) => (
+              <li key={rule.title} className="flex gap-3 px-5 py-3.5">
+                <rule.icon className="mt-0.5 size-4 shrink-0 text-fg-muted" />
+                <span>
+                  <span className="block text-[0.86rem] text-ink">{rule.title}</span>
+                  <span className="mt-0.5 block text-[0.78rem] text-fg-soft">{rule.text}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
     </section>
   );
-}
-
-function LedgerRow({ label, note, value }: { label: string; note: string; value: string }) {
-  return <div className={styles.ledgerRow}><div><strong>{label}</strong><span>{note}</span></div><strong>{value}</strong></div>;
-}
-
-function PolicyOption({ active, icon: Icon, label, note, onClick }: { active: boolean; icon: typeof Gauge; label: string; note: string; onClick: () => void }) {
-  return <button aria-pressed={active} className={active ? styles.policyActive : ""} onClick={onClick} type="button"><span>{active ? <Check size={16} /> : <Icon size={17} />}</span><strong>{label}</strong><small>{note}</small></button>;
 }
 
 function BillingLoading() {
-  return <section className={styles.loading}><LoaderCircle className="spin" size={22} /><strong>Loading billing preview</strong><span>Reading your current aggregate usage…</span></section>;
+  return (
+    <div className="grid gap-6" aria-busy="true" aria-label="Loading billing">
+      <Skeleton className="h-44 rounded-[var(--radius-card)]" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Skeleton className="h-56 rounded-[var(--radius-card)]" />
+        <Skeleton className="h-56 rounded-[var(--radius-card)]" />
+      </div>
+    </div>
+  );
 }

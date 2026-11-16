@@ -8,6 +8,7 @@ import { Bell, CalendarCheck2, CalendarClock, Check, CheckCheck, LoaderCircle, X
 import { useAuth } from "@/hooks/useAuth";
 import { createDashboardSocketTicket, listNotifications, markAllNotificationsRead, markNotificationRead } from "@/lib/api/notifications";
 import type { WorkspaceNotification } from "@/types/api";
+import { isPreviewMode } from "@/lib/preview/mode";
 
 export function NotificationMenu() {
   const { session } = useAuth();
@@ -39,7 +40,7 @@ export function NotificationMenu() {
     const poll = window.setInterval(() => void refresh(true), 30_000);
     let socket: WebSocket | null = null;
     let stopped = false;
-    void createDashboardSocketTicket().then(({ ticket }) => {
+    if (!isPreviewMode()) void createDashboardSocketTicket().then(({ ticket }) => {
       if (stopped) return;
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(`${protocol}//${window.location.host}/ws/dashboard/${session.tenant.id}?ticket=${encodeURIComponent(ticket)}`);

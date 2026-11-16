@@ -1,0 +1,296 @@
+/*
+ * Console shell on the Sauti design system (black canvas, Geist, white primary,
+ * teal signal). Scoped to `.console-shell.console-v2` so it outranks the
+ * per-page shell rules in console.css (e.g. `.agents-console-shell .console-nav`)
+ * without touching layout: widths, heights and the Agent Studio `:has()` rules
+ * keep working as before.
+ *
+ * Pages migrate onto components/ui/* one at a time; until then their own
+ * module CSS still controls their content area.
+ */
+
+.console-shell.console-v2 {
+  color: #ededed;
+  background: #000;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Sidebar ---------- */
+
+.console-shell.console-v2 .console-sidebar {
+  color: #ededed;
+  background: #050505;
+  border-right: 1px solid rgb(255 255 255 / 0.07);
+}
+
+.console-shell.console-v2 .console-brand {
+  gap: 10px;
+  color: #fff;
+  font-size: 1rem;
+  letter-spacing: -0.01em;
+}
+
+.console-shell.console-v2 .nav-collapse-toggle,
+.console-shell.console-v2 .mobile-close,
+.console-shell.console-v2 .mobile-menu {
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 10px;
+  color: #a1a1a1;
+  background: transparent;
+}
+
+.console-shell.console-v2 .nav-collapse-toggle:hover,
+.console-shell.console-v2 .mobile-close:hover,
+.console-shell.console-v2 .mobile-menu:hover {
+  border-color: rgb(255 255 255 / 0.2);
+  color: #fff;
+  background: rgb(255 255 255 / 0.05);
+}
+
+.console-shell.console-v2 .workspace-switcher {
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.03);
+  transform: none;
+}
+
+.console-shell.console-v2 .workspace-switcher:hover {
+  border-color: rgb(255 255 255 / 0.16);
+  background: rgb(255 255 255 / 0.05);
+  transform: none;
+}
+
+.console-shell.console-v2 .workspace-switcher > span,
+.console-shell.console-v2 .profile-avatar {
+  border-radius: 10px;
+  color: #000;
+  background: radial-gradient(circle at 30% 25%, #ffffff, #5eead4 45%, #3b82f6);
+  box-shadow: none;
+  font-weight: 600;
+}
+
+.console-shell.console-v2 .workspace-switcher strong { color: #fff; font-weight: 500; }
+.console-shell.console-v2 .workspace-switcher small { color: #8a8a8a; }
+.console-shell.console-v2 .workspace-switcher svg { color: #6b6b6b; }
+
+.console-shell.console-v2 .console-nav > span {
+  margin: 0 12px 8px;
+  color: #6b6b6b;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+}
+
+.console-shell.console-v2 .console-nav a,
+.console-shell.console-v2 .console-sidebar-footer a,
+.console-shell.console-v2 .console-sidebar-footer button {
+  min-height: 38px;
+  border-radius: 10px;
+  color: #a1a1a1;
+  font-size: 0.875rem;
+  font-weight: 450;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.console-shell.console-v2 .console-nav a svg,
+.console-shell.console-v2 .console-sidebar-footer a svg,
+.console-shell.console-v2 .console-sidebar-footer button svg {
+  color: #6b6b6b;
+  transition: color 160ms ease;
+}
+
+.console-shell.console-v2 .console-nav a:hover,
+.console-shell.console-v2 .console-sidebar-footer a:hover,
+.console-shell.console-v2 .console-sidebar-footer button:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 0.04);
+  transform: none;
+}
+
+.console-shell.console-v2 .console-nav a:hover svg,
+.console-shell.console-v2 .console-sidebar-footer a:hover svg,
+.console-shell.console-v2 .console-sidebar-footer button:hover svg {
+  color: #ededed;
+}
+
+.console-shell.console-v2 .console-nav a.active,
+.console-shell.console-v2 .console-sidebar-footer a.active {
+  border: 0;
+  outline: 0;
+  color: #fff;
+  background: rgb(255 255 255 / 0.07);
+  box-shadow: inset 2px 0 0 #5eead4;
+}
+
+.console-shell.console-v2 .console-nav a.active svg,
+.console-shell.console-v2 .console-sidebar-footer a.active svg {
+  color: #5eead4;
+}
+
+.console-shell.console-v2 .console-sidebar-footer {
+  border-top: 1px solid rgb(255 255 255 / 0.07);
+}
+
+/* ---------- Top bar ---------- */
+
+.console-shell.console-v2 .console-topbar {
+  border-bottom: 1px solid rgb(255 255 255 / 0.07);
+  background: rgb(0 0 0 / 0.7);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+/* The search field is now a button that opens the ⌘K command menu. */
+.console-shell.console-v2 .console-search {
+  width: min(420px, 45vw);
+  min-height: 38px;
+  padding: 0 10px 0 12px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 12px;
+  color: #6b6b6b;
+  background: rgb(255 255 255 / 0.03);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.console-shell.console-v2 .console-search:hover {
+  border-color: rgb(255 255 255 / 0.2);
+  background: rgb(255 255 255 / 0.05);
+  color: #a1a1a1;
+}
+
+.console-shell.console-v2 .console-search span { flex: 1; }
+
+.console-shell.console-v2 .console-search kbd {
+  padding: 2px 6px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 6px;
+  color: #a1a1a1;
+  background: rgb(255 255 255 / 0.04);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.65rem;
+}
+
+.console-shell.console-v2 .top-icon-button {
+  border: 1px solid rgb(255 255 255 / 0.1);
+  color: #a1a1a1;
+  background: transparent;
+}
+
+/* ---------- Shared console buttons and alerts (used by every console page) ---------- */
+
+.console-shell.console-v2 .test-agent-button,
+.console-shell.console-v2 .console-primary-button,
+.console-shell.console-v2 .console-secondary-button {
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 120ms ease;
+}
+
+.console-shell.console-v2 .test-agent-button::after,
+.console-shell.console-v2 .console-primary-button::after {
+  content: none;
+}
+
+.console-shell.console-v2 .test-agent-button,
+.console-shell.console-v2 .console-primary-button {
+  border: 0;
+  color: #000;
+  background: #fff;
+  box-shadow: none;
+}
+
+.console-shell.console-v2 .test-agent-button:hover,
+.console-shell.console-v2 .console-primary-button:hover {
+  color: #000;
+  background: rgb(255 255 255 / 0.85);
+  box-shadow: none;
+  transform: none;
+}
+
+.console-shell.console-v2 .console-secondary-button {
+  border: 1px solid rgb(255 255 255 / 0.14);
+  color: #ededed;
+  background: rgb(255 255 255 / 0.03);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.console-shell.console-v2 .console-secondary-button:hover {
+  border-color: rgb(255 255 255 / 0.3);
+  color: #fff;
+  background: rgb(255 255 255 / 0.06);
+  box-shadow: none;
+  transform: none;
+}
+
+.console-shell.console-v2 .test-agent-button:active,
+.console-shell.console-v2 .console-primary-button:active,
+.console-shell.console-v2 .console-secondary-button:active {
+  transform: scale(0.97);
+}
+
+.console-shell.console-v2 .form-alert {
+  border-radius: 12px;
+  font-size: 0.875rem;
+}
+
+.console-shell.console-v2 .form-alert.error {
+  border: 1px solid rgb(255 122 122 / 0.25);
+  color: #ffb4b4;
+  background: rgb(255 122 122 / 0.07);
+}
+
+.console-shell.console-v2 .form-alert.success {
+  border: 1px solid rgb(94 234 212 / 0.25);
+  color: #a7f3e4;
+  background: rgb(94 234 212 / 0.07);
+}
+
+.console-shell.console-v2 .billing-access-banner {
+  border-color: rgb(251 191 36 / 0.25);
+  color: #fde68a;
+  background: rgb(251 191 36 / 0.07);
+}
+
+/* ---------- Small screens ---------- */
+
+@media (max-width: 760px) {
+  .console-shell.console-v2 .console-content {
+    padding: 16px 16px 32px;
+  }
+
+  .console-shell.console-v2 .console-topbar {
+    gap: 10px;
+    padding: 0 12px;
+  }
+
+  .console-shell.console-v2 .console-search {
+    width: auto;
+    flex: 1;
+  }
+
+  .console-shell.console-v2 .console-search kbd {
+    display: none;
+  }
+
+  /* Off-canvas sidebar: soft edge and a dimmed, blurred page behind it. */
+  .console-shell.console-v2 .console-sidebar {
+    box-shadow: 24px 0 80px rgb(0 0 0 / 0.6);
+  }
+
+  .console-shell.console-v2 .sidebar-scrim {
+    background: rgb(0 0 0 / 0.6);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+}

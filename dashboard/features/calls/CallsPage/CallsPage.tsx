@@ -2,20 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
-import * as Popover from "@radix-ui/react-popover";
-import * as Select from "@radix-ui/react-select";
-import { DayPicker, type DateRange } from "react-day-picker";
-import { endOfDay, format, isAfter, isBefore, startOfDay, subDays } from "date-fns";
+import { Select as UiSelect } from "@/components/ui/select";
+import { DateRangePicker, type DateRange, type DateRangePreset } from "@/components/ui/date-range-picker";
+import { endOfDay, isAfter, isBefore, startOfDay, subDays } from "date-fns";
 import {
   Activity,
   ArrowLeft,
   ArrowRight,
   Bot,
-  CalendarDays,
   CalendarCheck2,
-  CheckCircle2,
-  Check,
-  ChevronDown,
   Clock3,
   FileText,
   Headphones,
@@ -24,18 +19,19 @@ import {
   PhoneCall,
   PhoneIncoming,
   Play,
-  PlayCircle,
   Search,
   Sparkles,
   SlidersHorizontal,
-  X,
-  XCircle,
 } from "lucide-react";
 import { listAgents } from "@/lib/api/agents";
 import { listBookings } from "@/lib/api/bookings";
 import { getCall, getCallRecording, listCalls, listCallTurns } from "@/lib/api/calls";
 import type { Agent, Booking, Call, CallTurn } from "@/types/api";
-import styles from "./CallsPage.module.css";
+import { Button } from "@/components/ui/button";
+import { Alert, Input } from "@/components/ui/field";
+import { Card, EmptyState, Skeleton, Table, TableBody, TableHead, Tabs, TabsList, TabsTrigger } from "@/components/ui/primitives";
+import { Drawer } from "@/components/ui/overlays";
+import { PageHeader, StatStrip } from "@/components/ui/console";
 
 type CallFilter = "all" | "phone" | "test";
 const ROWS_PER_PAGE = 20;
@@ -180,268 +176,248 @@ export function CallsPage() {
   }
 
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <div>
-          <span>Operations</span>
-          <h1>Calls</h1>
-          <p>Inspect phone calls and browser tests, review routed events, and open the transcript without losing the call list.</p>
-        </div>
-        <div className={styles.summary}>
-          <PhoneCall size={18} />
-          <span><strong>{calls.length}</strong><small>Total conversations</small></span>
-        </div>
-        <div className={styles["header-wave"]} aria-hidden="true" />
-      </header>
+    <div className="mk-v2 grid min-w-0 grid-cols-1 gap-6 [&>*]:min-w-0">
+      <PageHeader
+        eyebrow="Operations"
+        title="Calls"
+        description="Phone calls and browser tests, with routed events, recordings and transcripts."
+              />
 
-      <section className={styles.metrics} aria-label="Call metrics">
-        <CallMetric tone="teal" icon={<PhoneCall size={21} />} label="Total conversations" value={String(calls.length)} detail="Phone and browser sessions" values={metrics.sparkValues} />
-        <CallMetric tone="cyan" icon={<Activity size={21} />} label="Answered rate" value={`${metrics.answerRate}%`} detail="Successful conversations" ring={metrics.answerRate} values={metrics.sparkValues} />
-        <CallMetric tone="blue" icon={<Clock3 size={21} />} label="Avg. duration" value={formatDurationSeconds(metrics.averageDuration)} detail="Across completed calls" values={metrics.sparkValues} />
-        <CallMetric tone="violet" icon={<CalendarCheck2 size={21} />} label="Bookings made" value={String(metrics.bookingCount)} detail="Confirmed routed events" values={metrics.sparkValues} />
-      </section>
+      <StatStrip
+        items={[
+          { label: "Conversations", value: calls.length, hint: "Phone and browser" },
+          { label: "Answered", value: metrics.answerRate / 100, format: { style: "percent", maximumFractionDigits: 1 }, hint: "Reached a conclusion" },
+          { label: "Avg. length", value: metrics.averageDuration, suffix: "s", hint: formatDurationSeconds(metrics.averageDuration) },
+          { label: "Bookings", value: metrics.bookingCount, hint: "From these calls" },
+        ]}
+      />
 
-      <section className={styles.toolbar}>
-        <div className={styles.segmented} aria-label="Call type filter">
-          <button className={filter === "all" ? styles.activeSegment : ""} onClick={() => setFilter("all")} type="button">
-            <SlidersHorizontal size={16} /> All
-          </button>
-          <button className={filter === "phone" ? styles.activeSegment : ""} onClick={() => setFilter("phone")} type="button">
-            <PhoneCall size={16} /> Calls
-          </button>
-          <button className={filter === "test" ? styles.activeSegment : ""} onClick={() => setFilter("test")} type="button">
-            <PlayCircle size={16} /> Tests
-          </button>
-        </div>
+      <section className="flex flex-wrap items-center gap-2">
+        <Tabs value={filter} onValueChange={(value) => setFilter(value as CallFilter)}>
+          <TabsList aria-label="Call type filter">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="phone">Phone</TabsTrigger>
+            <TabsTrigger value="test">Tests</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <DateRangeFilter value={dateRange} onChange={setDateRange} />
-        <FilterSelect icon={<Activity size={15} />} label="Status" value={statusFilter} onChange={setStatusFilter} options={[{ value: "all", label: "All status" }, { value: "answered", label: "Answered" }, { value: "missed", label: "Missed" }, { value: "active", label: "Active" }]} />
-        <FilterSelect icon={<Bot size={15} />} label="Agent" value={agentFilter} onChange={setAgentFilter} options={[{ value: "all", label: "All agents" }, ...agents.map((agent) => ({ value: agent.id, label: agent.name }))]} />
-        <label className={styles.search}>
-          <Search size={17} />
-          <input
+        <FilterSelect icon={<Activity />} label="Status" value={statusFilter} onChange={setStatusFilter} options={[{ value: "all", label: "All status" }, { value: "answered", label: "Answered" }, { value: "missed", label: "Missed" }, { value: "active", label: "Active" }]} />
+        <FilterSelect icon={<Bot />} label="Agent" value={agentFilter} onChange={setAgentFilter} options={[{ value: "all", label: "All agents" }, ...agents.map((agent) => ({ value: agent.id, label: agent.name }))]} />
+        <label className="relative ml-auto min-w-[16rem] flex-1 sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-muted" />
+          <Input
             aria-label="Search calls"
+            className="h-9 pl-9 text-[0.85rem]"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search agent, number, intent, booking..."
+            placeholder="Search agent, number, intent, booking…"
             value={query}
           />
         </label>
       </section>
 
-      {error && <div className={styles.error}>{error}</div>}
+      {error ? <Alert tone="error">{error}</Alert> : null}
 
       {loading ? (
-        <div className={styles.loading}><LoaderCircle className="spin" size={22} /> Loading calls...</div>
+        <Card className="grid gap-3 p-5">
+          {[1, 2, 3, 4, 5].map((row) => <Skeleton key={row} className="h-12" />)}
+        </Card>
       ) : calls.length === 0 ? (
-        <section className={styles.empty}><span><PhoneCall size={24} /></span><h2>No calls yet</h2><p>Start a browser test from an agent configuration. The transcript and recording will appear here.</p></section>
+        <EmptyState
+          icon={<PhoneCall />}
+          title="No calls yet"
+          description="Start a browser test from an agent. The transcript and recording will appear here."
+        />
       ) : (
-        <section className={`${styles.workspace} ${selectedCall ? styles.withPanel : ""}`}>
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>Call type</th>
-                  <th>Date</th>
-                  <th>Incoming phone number</th>
-                  <th>Routed event</th>
-                  <th>Duration</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedCalls.map((call) => {
-                  const booking = bookingsByCall.get(call.id) ?? null;
-                  const selected = selectedId === call.id;
-                  return (
-                    <tr className={selected ? styles.selectedRow : ""} key={call.id} onClick={() => void openDetails(call.id)}>
-                      <td>
-                        <div className={styles.typeCell}>
-                          <span className={`${styles.typeIcon} ${call.direction === "test" ? styles.testIcon : styles.phoneIcon}`}>
-                            {call.direction === "test" ? <Bot size={17} /> : <PhoneIncoming size={17} />}
-                          </span>
-                          <span>
-                            <strong>{callTitle(call, agentNames.get(call.agentId))}</strong>
-                            <small>{call.direction === "test" ? "Browser test" : `${humanize(call.direction)} phone call`}</small>
-                          </span>
-                        </div>
-                      </td>
-                      <td><DateCell value={call.startedAt} /></td>
-                      <td className={styles.muted}>{call.direction === "test" ? "-" : call.callerNumber || "-"}</td>
-                      <td><RoutedEvent booking={booking} call={call} /></td>
-                      <td>{formatDurationSeconds(call.durationSeconds)}</td>
-                      <td><StatusBadge outcome={call.outcome} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {filteredCalls.length === 0 && (
-              <div className={styles.noResults}>No calls match this filter.</div>
-            )}
-            {filteredCalls.length > 0 && <footer className={styles.pagination}>
-              <span>Showing {(page - 1) * ROWS_PER_PAGE + 1} to {Math.min(page * ROWS_PER_PAGE, filteredCalls.length)} of {filteredCalls.length} results</span>
-              <div><button disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button"><ArrowLeft size={14} /></button>{Array.from({ length: pageCount }, (_, index) => <button className={page === index + 1 ? styles.activePage : ""} onClick={() => setPage(index + 1)} type="button" key={index}>{index + 1}</button>)}<button disabled={page === pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} type="button"><ArrowRight size={14} /></button></div>
-              <small>{ROWS_PER_PAGE} rows per page</small>
-            </footer>}
-          </div>
-
-          {selectedCall && (
-            <aside className={styles.panel}>
-              <div className={styles.panelHeader}>
-                <div>
-                  <strong><FileText size={18} /> Call transcript</strong>
-                  <span>{callTitle(selectedCall, agentNames.get(selectedCall.agentId))}</span>
-                </div>
-                <button aria-label="Close transcript" onClick={() => setSelectedId("")} type="button"><X size={18} /></button>
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHead>
+              <tr>
+                <th>Call</th>
+                <th>Date</th>
+                <th>Caller</th>
+                <th>Result</th>
+                <th>Duration</th>
+                <th>Status</th>
+              </tr>
+            </TableHead>
+            <TableBody>
+              {pagedCalls.map((call) => {
+                const booking = bookingsByCall.get(call.id) ?? null;
+                const selected = selectedId === call.id;
+                return (
+                  <tr
+                    key={call.id}
+                    onClick={() => void openDetails(call.id)}
+                    onKeyDown={(event) => { if (event.key === "Enter") void openDetails(call.id); }}
+                    tabIndex={0}
+                    aria-selected={selected}
+                    className={selected ? "cursor-pointer bg-tint/[0.04]" : "cursor-pointer"}
+                  >
+                    <td>
+                      <div className="flex items-center gap-3">
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-ink">{callTitle(call, agentNames.get(call.agentId))}</span>
+                          <span className="block text-xs text-fg-muted">{call.direction === "test" ? "Browser test" : `${humanize(call.direction)} call`}</span>
+                        </span>
+                      </div>
+                    </td>
+                    <td><DateCell value={call.startedAt} /></td>
+                    <td className="tabular-nums">{call.direction === "test" ? "—" : call.callerNumber || "—"}</td>
+                    <td><RoutedEvent booking={booking} call={call} /></td>
+                    <td className="tabular-nums">{formatDurationSeconds(call.durationSeconds)}</td>
+                    <td><StatusBadge outcome={call.outcome} /></td>
+                  </tr>
+                );
+              })}
+            </TableBody>
+          </Table>
+          {filteredCalls.length === 0 ? (
+            <p className="m-0 border-t border-line px-5 py-10 text-center text-sm text-fg-muted">No calls match these filters.</p>
+          ) : (
+            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-3 text-xs text-fg-muted">
+              <span>
+                {(page - 1) * ROWS_PER_PAGE + 1}–{Math.min(page * ROWS_PER_PAGE, filteredCalls.length)} of {filteredCalls.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" className="size-8 px-0" disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))} aria-label="Previous page"><ArrowLeft /></Button>
+                {Array.from({ length: pageCount }, (_, index) => (
+                  <Button
+                    key={index}
+                    size="sm"
+                    variant={page === index + 1 ? "primary" : "ghost"}
+                    className="size-8 px-0"
+                    onClick={() => setPage(index + 1)}
+                    aria-current={page === index + 1 ? "page" : undefined}
+                  >
+                    {index + 1}
+                  </Button>
+                ))}
+                <Button variant="ghost" size="sm" className="size-8 px-0" disabled={page === pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} aria-label="Next page"><ArrowRight /></Button>
               </div>
-
-              <section className={styles.panelSection}>
-                <button className={styles.sectionTitle} type="button">
-                  <span><FileText size={17} /> Details</span>
-                  <small>{formatCompactDate(selectedCall.startedAt)}</small>
-                  <ChevronDown size={16} />
-                </button>
-                <div className={styles.detailCard}>
-                  <DetailLine icon={CalendarCheck2} label="Booked event" value={selectedBooking ? `${selectedBooking.serviceType} - ${formatDate(selectedBooking.appointmentAt)}` : "No booking"} />
-                  <DetailLine icon={PhoneIncoming} label="Direction" value={selectedCall.direction === "test" ? "Browser test" : humanize(selectedCall.direction)} />
-                  <DetailLine icon={CheckCircle2} label="Status" value={humanize(selectedCall.outcome)} badge />
-                  <DetailLine icon={Clock3} label="Duration" value={formatDurationSeconds(selectedCall.durationSeconds)} />
-                  {selectedCall.languageDetected && <DetailLine icon={Headphones} label="Language" value={selectedCall.languageDetected.toUpperCase()} />}
-                  {selectedCall.intent && <DetailLine icon={SlidersHorizontal} label="Intent" value={humanize(selectedCall.intent)} />}
-                </div>
-              </section>
-
-              <section className={styles.panelSection}>
-                <div className={styles.sectionStatic}><span><Headphones size={17} /> Recording</span></div>
-                <div className={styles.recordingCard}>
-                  {selectedCall.recordingUrl
-                    ? <RecordingPlayer callId={selectedCall.id} />
-                    : selectedRecordingPending
-                      ? <span className={styles.unavailable}><LoaderCircle className="spin" size={15} /> Finalizing recording...</span>
-                      : <span className={styles.unavailable}>No recording captured</span>}
-                </div>
-              </section>
-
-              <section className={styles.panelSection}>
-                <div className={styles.sectionStatic}><span><FileText size={17} /> Transcription</span></div>
-                <Transcript turns={turns[selectedCall.id]} />
-              </section>
-
-              {(selectedCall.callSummary || selectedCall.intent || selectedCall.sentiment || selectedBooking) && <section className={`${styles.panelSection} ${styles["summary-section"]}`}>
-                <div className={styles.sectionStatic}><span><Sparkles size={17} /> AI summary</span></div>
-                <p>{selectedCall.callSummary || summaryFallback(selectedCall, selectedBooking)}</p>
-                <div className={styles["summary-grid"]}>
-                  <span><small>Outcome</small><strong>{humanize(selectedCall.outcome)}</strong></span>
-                  <span><small>Event</small><strong>{selectedBooking?.serviceType ?? "None"}</strong></span>
-                  <span><small>Intent</small><strong>{selectedCall.intent ? humanize(selectedCall.intent) : "Not detected"}</strong></span>
-                  <span><small>Sentiment</small><strong>{selectedCall.sentiment ? humanize(selectedCall.sentiment) : "Not analysed"}</strong></span>
-                </div>
-              </section>}
-            </aside>
+            </footer>
           )}
-        </section>
+        </Card>
       )}
-    </main>
+
+      <Drawer
+        open={Boolean(selectedCall)}
+        onOpenChange={(open) => { if (!open) setSelectedId(""); }}
+        title={selectedCall ? callTitle(selectedCall, agentNames.get(selectedCall.agentId)) : "Call"}
+        description={selectedCall ? `${formatCompactDate(selectedCall.startedAt)} · ${formatDurationSeconds(selectedCall.durationSeconds)}` : undefined}
+        actions={selectedCall ? <StatusBadge outcome={selectedCall.outcome} /> : null}
+      >
+        {selectedCall ? (
+          <div className="grid gap-6">
+            <dl className="m-0 grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] border border-line bg-line">
+              <DetailLine icon={CalendarCheck2} label="Booked event" value={selectedBooking ? `${selectedBooking.serviceType} · ${formatDate(selectedBooking.appointmentAt)}` : "No booking"} />
+              <DetailLine icon={PhoneIncoming} label="Direction" value={selectedCall.direction === "test" ? "Browser test" : humanize(selectedCall.direction)} />
+              <DetailLine icon={Clock3} label="Duration" value={formatDurationSeconds(selectedCall.durationSeconds)} />
+              <DetailLine icon={Headphones} label="Language" value={selectedCall.languageDetected ? selectedCall.languageDetected.toUpperCase() : "—"} />
+              {selectedCall.intent ? <DetailLine icon={SlidersHorizontal} label="Intent" value={humanize(selectedCall.intent)} /> : null}
+              {selectedCall.sentiment ? <DetailLine icon={Sparkles} label="Sentiment" value={humanize(selectedCall.sentiment)} /> : null}
+            </dl>
+
+            {(selectedCall.callSummary || selectedCall.intent || selectedCall.sentiment || selectedBooking) ? (
+              <section className="rounded-[var(--radius-card)] border border-signal/20 bg-signal/[0.05] p-4">
+                <p className="m-0 flex items-center gap-2 text-sm font-medium text-ink"><Sparkles className="size-4 text-signal" /> Summary</p>
+                <p className="m-0 mt-2 text-sm leading-relaxed text-fg-soft">{selectedCall.callSummary || summaryFallback(selectedCall, selectedBooking)}</p>
+              </section>
+            ) : null}
+
+            <section>
+              <p className="m-0 mb-3 flex items-center gap-2 text-xs font-medium text-fg-muted"><Headphones className="size-3.5" /> Recording</p>
+              {selectedCall.recordingUrl
+                ? <RecordingPlayer callId={selectedCall.id} />
+                : selectedRecordingPending
+                  ? <p className="m-0 flex items-center gap-2 text-sm text-fg-soft"><LoaderCircle className="size-4 animate-spin" /> Finalizing recording…</p>
+                  : <p className="m-0 text-sm text-fg-muted">No recording captured.</p>}
+            </section>
+
+            <section>
+              <p className="m-0 mb-3 flex items-center gap-2 text-xs font-medium text-fg-muted"><FileText className="size-3.5" /> Transcript</p>
+              <Transcript turns={turns[selectedCall.id]} />
+            </section>
+          </div>
+        ) : null}
+      </Drawer>
+    </div>
   );
 }
 
+const CALL_RANGE_PRESETS: DateRangePreset[] = [
+  { label: "Today", range: () => ({ from: new Date(), to: new Date() }) },
+  { label: "Last 7 days", range: () => ({ from: subDays(new Date(), 6), to: new Date() }) },
+  { label: "Last 14 days", range: () => ({ from: subDays(new Date(), 13), to: new Date() }) },
+  { label: "Last 30 days", range: () => ({ from: subDays(new Date(), 29), to: new Date() }) },
+];
+
 function DateRangeFilter({ value, onChange }: { value: DateRange | undefined; onChange: (range: DateRange | undefined) => void }) {
-  const label = value?.from
-    ? `${format(value.from, "MMM d, yyyy")} – ${format(value.to ?? value.from, "MMM d, yyyy")}`
-    : "All dates";
-  const setRecentRange = (days: number) => {
-    const to = new Date();
-    onChange({ from: subDays(to, days - 1), to });
-  };
-  return <Popover.Root>
-    <Popover.Trigger asChild><button className={`${styles.dateTrigger} ${value?.from ? styles.activeDateRange : ""}`} type="button"><CalendarDays size={16} /><span>{label}</span><ChevronDown size={14} /></button></Popover.Trigger>
-    <Popover.Portal><Popover.Content className={styles.datePopover} collisionPadding={12} sideOffset={8} align="start">
-      <DayPicker mode="range" selected={value} onSelect={onChange} defaultMonth={value?.from} numberOfMonths={2} resetOnSelect />
-      <footer><div><button onClick={() => setRecentRange(7)} type="button">Last 7 days</button><button onClick={() => setRecentRange(14)} type="button">Last 14 days</button><button onClick={() => setRecentRange(30)} type="button">Last 30 days</button></div><button onClick={() => onChange(undefined)} type="button">All time</button></footer>
-      <Popover.Arrow className={styles.popoverArrow} />
-    </Popover.Content></Popover.Portal>
-  </Popover.Root>;
+  return <DateRangePicker value={value} onChange={onChange} presets={CALL_RANGE_PRESETS} />;
 }
 
 function FilterSelect({ icon, label, value, onChange, options }: { icon: React.ReactNode; label: string; value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }> }) {
-  return <Select.Root value={value} onValueChange={onChange}>
-    <Select.Trigger className={styles.selectTrigger} aria-label={label}><span className={styles.selectIcon}>{icon}</span><Select.Value /><Select.Icon><ChevronDown size={14} /></Select.Icon></Select.Trigger>
-    <Select.Portal><Select.Content className={styles.selectContent} position="popper" sideOffset={7} align="start"><Select.ScrollUpButton className={styles.selectScroll}><ChevronDown size={14} /></Select.ScrollUpButton><Select.Viewport className={styles.selectViewport}>{options.map((option) => <Select.Item className={styles.selectItem} value={option.value} key={option.value}><Select.ItemIndicator><Check size={13} /></Select.ItemIndicator><Select.ItemText>{option.label}</Select.ItemText></Select.Item>)}</Select.Viewport><Select.ScrollDownButton className={styles.selectScroll}><ChevronDown size={14} /></Select.ScrollDownButton></Select.Content></Select.Portal>
-  </Select.Root>;
-}
-
-function CallMetric({ tone, icon, label, value, detail, values, ring }: { tone: string; icon: React.ReactNode; label: string; value: string; detail: string; values: number[]; ring?: number }) {
-  const max = Math.max(...values, 1);
-  const points = values.length > 1 ? values.map((item, index) => `${index * (130 / (values.length - 1))},${26 - item / max * 20}`).join(" ") : "0,20 130,20";
-  return <article className={styles.metricCard}>
-    {ring === undefined ? <span className={styles[`tone-${tone}`]}>{icon}</span> : <span className={styles.ring} style={{ background: `conic-gradient(#20e0d2 ${ring}%, rgba(114,150,183,.17) 0)` }}><i>{icon}</i></span>}
-    <div><small>{label}</small><strong>{value}</strong><p>{detail}</p></div>
-    <svg viewBox="0 0 130 30" preserveAspectRatio="none" aria-hidden="true"><polyline points={points} fill="none" stroke={tone === "violet" ? "#a96cff" : "#21dfd1"} strokeWidth="1.6" vectorEffect="non-scaling-stroke" /></svg>
-  </article>;
+  return <div className="w-44 max-sm:w-full"><UiSelect size="sm" icon={icon} ariaLabel={label} value={value} onValueChange={onChange} options={options} /></div>;
 }
 
 function DateCell({ value }: { value: string }) {
   const date = new Date(value);
-  return <span className={styles.dateCell}><strong>{new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit", year: "numeric" }).format(date)}</strong><small>{new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date)}</small></span>;
-}
-
-function RoutedEvent({ booking, call }: { booking: Booking | null; call: Call }) {
-  if (booking) {
-    return (
-      <span className={styles.routedSuccess}>
-        <CalendarCheck2 size={15} /> {booking.serviceType}
-      </span>
-    );
-  }
-  if (call.transferStatus) {
-    return <span className={styles.routedNeutral}>Transfer {humanize(call.transferStatus)}</span>;
-  }
-  return <span className={styles.routedEmpty}><XCircle size={15} /> No booking</span>;
-}
-
-function StatusBadge({ outcome }: { outcome: string }) {
-  const successful = ["completed", "booking", "faq_answered", "transferred"].includes(outcome);
-  const active = outcome === "active";
   return (
-    <span className={`${styles.status} ${active ? styles.statusActive : successful ? styles.statusGood : styles.statusNeutral}`}>
-      {active ? "Active" : successful ? "Answered" : humanize(outcome)}
+    <span className="block whitespace-nowrap">
+      <span className="block text-ink">{new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date)}</span>
+      <span className="block text-xs text-fg-muted">{new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(date)}</span>
     </span>
   );
 }
 
-function DetailLine({ icon: Icon, label, value, badge = false }: { icon: typeof CalendarCheck2; label: string; value: string; badge?: boolean }) {
+function RoutedEvent({ booking, call }: { booking: Booking | null; call: Call }) {
+  if (booking) return <span className="inline-flex items-center gap-1.5 text-ink"><CalendarCheck2 className="size-3.5 text-signal" /> {booking.serviceType}</span>;
+  if (call.transferStatus) return <span className="text-fg">Transferred</span>;
+  return <span className="text-fg-muted">—</span>;
+}
+
+function StatusBadge({ outcome }: { outcome: string }) {
+  const successful = ["completed", "booking", "faq_answered", "transferred"].includes(outcome);
+  const label = outcome === "active" ? "Live now" : successful ? "Answered" : humanize(outcome);
+  const dot = outcome === "active" ? "bg-signal animate-pulse" : successful ? "bg-success" : "bg-warning";
+  return <span className="inline-flex items-center gap-2 whitespace-nowrap text-fg"><span className={`size-1.5 rounded-full ${dot}`} aria-hidden="true" />{label}</span>;
+}
+
+function DetailLine({ icon: Icon, label, value }: { icon: typeof CalendarCheck2; label: string; value: string }) {
   return (
-    <div className={styles.detailLine}>
-      <Icon size={15} />
-      <span>{label}</span>
-      {badge ? <strong className={styles.inlineBadge}>{value}</strong> : <strong>{value}</strong>}
+    <div className="bg-popover p-3.5">
+      <dt className="flex items-center gap-1.5 text-xs text-fg-muted"><Icon className="size-3.5" /> {label}</dt>
+      <dd className="m-0 mt-1 text-sm text-ink">{value}</dd>
     </div>
   );
 }
 
 function Transcript({ turns }: { turns: CallTurn[] | undefined }) {
-  if (!turns) return <div className={styles.transcriptLoading}><LoaderCircle className="spin" size={18} /> Loading transcript...</div>;
-  if (turns.length === 0) return <p className={styles.noTranscript}>No transcript was captured.</p>;
+  if (!turns) return <p className="m-0 flex items-center gap-2 text-sm text-fg-soft"><LoaderCircle className="size-4 animate-spin" /> Loading transcript…</p>;
+  if (turns.length === 0) return <p className="m-0 text-sm text-fg-muted">No transcript was captured.</p>;
   return (
-    <div className={styles.transcript}>
+    <ol className="m-0 grid list-none gap-3 p-0">
       {turns.map((turn) => (
-        <div className={styles.turnGroup} key={turn.turnIndex}>
-          {turn.callerTranscript && <TranscriptLine role="Caller" text={turn.callerTranscript} time={turn.turnIndex} />}
-          {turn.agentResponse && <TranscriptLine role="Agent" text={turn.agentResponse} time={turn.turnIndex} />}
-        </div>
+        <li key={turn.turnIndex} className="grid gap-3">
+          {turn.callerTranscript ? <TranscriptLine role="Caller" text={turn.callerTranscript} time={turn.turnIndex} /> : null}
+          {turn.agentResponse ? <TranscriptLine role="Agent" text={turn.agentResponse} time={turn.turnIndex} /> : null}
+        </li>
       ))}
-    </div>
+    </ol>
   );
 }
 
 function TranscriptLine({ role, text, time }: { role: "Agent" | "Caller"; text: string; time: number }) {
+  const agent = role === "Agent";
   return (
-    <article className={styles.transcriptLine}>
-      <span className={role === "Agent" ? styles.agentDot : styles.callerDot} />
-      <div>
-        <header><strong>{role}</strong><small>{formatTurnTime(time)}</small></header>
-        <p>{text}</p>
-      </div>
-    </article>
+    <div className={agent ? "ml-auto max-w-[88%] text-right" : "max-w-[88%]"}>
+      <p className="m-0 mb-1 text-xs font-medium text-fg-muted">{role} · {formatTurnTime(time)}</p>
+      <p className={agent
+        ? "m-0 inline-block rounded-[var(--radius-card)] rounded-tr-md bg-signal/[0.1] px-3.5 py-2 text-left text-sm leading-snug text-ink"
+        : "m-0 inline-block rounded-[var(--radius-card)] rounded-tl-md bg-tint/[0.07] px-3.5 py-2 text-sm leading-snug text-fg"}
+      >
+        {text}
+      </p>
+    </div>
   );
 }
 
@@ -466,13 +442,15 @@ function RecordingPlayer({ callId }: { callId: string }) {
       .then((blob) => {
         if (cancelled || !waveformRef.current) return;
         currentUrl = URL.createObjectURL(blob);
+        const tokens = getComputedStyle(document.documentElement);
+        const token = (name: string, fallback: string) => tokens.getPropertyValue(name).trim() || fallback;
         const player = WaveSurfer.create({
           container: waveformRef.current,
           url: currentUrl,
-          height: 48,
-          waveColor: "#3a657b",
-          progressColor: "#22dfd1",
-          cursorColor: "#75fff4",
+          height: 44,
+          waveColor: token("--color-line-strong", "rgba(255,255,255,0.18)"),
+          progressColor: token("--color-signal", "#5eead4"),
+          cursorColor: token("--color-ink", "#ffffff"),
           cursorWidth: 1,
           barWidth: 2,
           barGap: 2,
@@ -496,13 +474,21 @@ function RecordingPlayer({ callId }: { callId: string }) {
     };
   }, [callId]);
 
-  if (failed) return <span className={styles.unavailable}>Could not load recording</span>;
+  if (failed) return <p className="m-0 text-sm text-fg-muted">Could not load the recording.</p>;
   return (
-    <div className={styles.wavePlayer}>
-      <button disabled={!ready} onClick={() => void playerRef.current?.playPause()} aria-label={playing ? "Pause recording" : "Play recording"} type="button">{!ready ? <LoaderCircle className="spin" size={16} /> : playing ? <Pause size={15} /> : <Play size={15} />}</button>
-      <span>{formatAudioTime(currentTime)}</span>
-      <div className={styles.waveform} ref={waveformRef} />
-      <span>{formatAudioTime(duration)}</span>
+    <div className="flex items-center gap-3 rounded-[var(--radius-card)] border border-line bg-tint/[0.02] p-3">
+      <button
+        type="button"
+        disabled={!ready}
+        onClick={() => void playerRef.current?.playPause()}
+        aria-label={playing ? "Pause recording" : "Play recording"}
+        className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-primary text-primary-fg transition-transform active:scale-95 disabled:cursor-wait disabled:opacity-60"
+      >
+        {!ready ? <LoaderCircle className="size-4 animate-spin" /> : playing ? <Pause className="size-4" /> : <Play className="size-4 translate-x-px" />}
+      </button>
+      <span className="font-mono text-xs text-fg-muted tabular-nums">{formatAudioTime(currentTime)}</span>
+      <div className="min-w-0 flex-1" ref={waveformRef} />
+      <span className="font-mono text-xs text-fg-muted tabular-nums">{formatAudioTime(duration)}</span>
     </div>
   );
 }

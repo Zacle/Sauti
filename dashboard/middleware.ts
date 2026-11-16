@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { isPreviewMode } from "@/lib/preview/mode";
 
 const CONSOLE_PREFIXES = [
   "/dashboard",
@@ -82,7 +83,7 @@ export function middleware(request: NextRequest) {
   const isConsoleRoute = CONSOLE_PREFIXES.some((prefix) => matchesRoute(pathname, prefix));
 
   if (isConsoleRoute) {
-    if (hasSession) return NextResponse.next();
+    if (hasSession || isPreviewMode()) return NextResponse.next();
 
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

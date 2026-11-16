@@ -1,3 +1,5 @@
+/* Layered so Tailwind utilities (declared after `reset` in styles/tailwind.css) can override it. */
+@layer reset {
 * {
   box-sizing: border-box;
 }
@@ -20,4 +22,5 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
 }

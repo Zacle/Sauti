@@ -14,6 +14,9 @@ import {
   type WhatsAppMessage,
 } from "@/lib/api/whatsapp";
 import type { Agent } from "@/types/api";
+import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/console";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import styles from "./WhatsAppInboxPage.module.css";
 
 export function WhatsAppInboxPage() {
@@ -109,13 +112,11 @@ export function WhatsAppInboxPage() {
   }
 
   return <section className={styles.page}>
-    <header className={styles.header}>
-      <div><span>Customer conversations</span><h1>WhatsApp inbox</h1>
-        <p>Let agents handle routine messages and step in without losing context.</p></div>
-      <button type="button" onClick={() => void refresh()} disabled={loading}>
-        <RefreshCw size={16} className={loading ? "spin" : ""} /> Refresh
-      </button>
-    </header>
+    <PageHeader className={styles.header} title="WhatsApp inbox"
+      description="Let agents handle routine messages and step in without losing context."
+      actions={<Button variant="secondary" size="xs" onClick={() => void refresh()} disabled={loading}>
+        <RefreshCw className={loading ? "spin" : ""} /> Refresh
+      </Button>} />
     {error && <div className={styles.error}>{error}</div>}
     <div className={styles.workspace}>
       <aside className={styles.listPane}>
@@ -141,20 +142,20 @@ export function WhatsAppInboxPage() {
           <header className={styles.threadHeader}>
             <div className={styles.identity}><span className={styles.avatar}>{(selected.customerName || selected.customerNumber).slice(0, 1).toUpperCase()}</span>
               <div><strong>{selected.customerName || selected.customerNumber}</strong><span>{selected.customerNumber}</span></div></div>
-            <div className={styles.assignment}>
-              <button type="button" className={selected.mode === "ai" ? styles.activeMode : ""}
-                disabled={working} onClick={() => void changeMode("ai")}><Bot size={15} /> AI</button>
-              <button type="button" className={selected.mode === "human" ? styles.activeMode : ""}
-                disabled={working} onClick={() => void changeMode("human")}><UserRound size={15} /> Take over</button>
-            </div>
+            <Tabs value={selected.mode} onValueChange={(mode) => { if (mode !== selected.mode) void changeMode(mode as "ai" | "human"); }}>
+              <TabsList aria-label="Who is replying">
+                <TabsTrigger value="ai" disabled={working}><Bot /> AI replying</TabsTrigger>
+                <TabsTrigger value="human" disabled={working}><UserRound /> Take over</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </header>
           <div className={styles.messages}>
             {messages.map((message) => <article key={message.id}
               className={message.direction === "outbound" ? styles.outbound : styles.inbound}>
               {message.type !== "text" && <small>{message.type === "audio" ? "Voice note" : message.type}</small>}
               <p>{message.body || `${message.type} message`}</p>
-              {message.mediaId && <button className={styles.mediaButton} type="button"
-                onClick={() => void openMedia(message)}>Open attachment</button>}
+              {message.mediaId && <Button variant="link" size="xs" className="mt-1.5 text-[0.8rem]"
+                onClick={() => void openMedia(message)}>Open attachment</Button>}
               <footer><span>{new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                 {message.direction === "outbound" && <span title={message.status}><CheckCheck size={13} /> {message.status}</span>}</footer>
               {message.failureReason && <em>{message.failureReason}</em>}
@@ -166,9 +167,9 @@ export function WhatsAppInboxPage() {
               <textarea value={draft} onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }}
                 placeholder="Write a WhatsApp reply…" rows={2} />
-              <button type="button" disabled={working || !draft.trim()} onClick={() => void sendMessage()}>
-                {working ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}
-              </button></>}
+              <Button size="icon" aria-label="Send reply" disabled={working || !draft.trim()} onClick={() => void sendMessage()}>
+                {working ? <LoaderCircle className="spin" /> : <Send />}
+              </Button></>}
           </footer>
         </>}
       </main>

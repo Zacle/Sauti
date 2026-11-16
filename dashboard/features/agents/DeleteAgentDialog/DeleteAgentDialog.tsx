@@ -1,8 +1,10 @@
 "use client";
 
-import styles from "./DeleteAgentDialog.module.css";
-import { LoaderCircle, Trash2, X } from "lucide-react";
+import { LoaderCircle, Trash2 } from "lucide-react";
 import type { Agent } from "@/types/api";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/field";
+import { Dialog, DialogContent } from "@/components/ui/overlays";
 
 export function DeleteAgentDialog({
   agent,
@@ -18,29 +20,27 @@ export function DeleteAgentDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className={styles.backdrop} role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !busy) onCancel();
-    }}>
-      <section aria-labelledby="delete-agent-title" aria-modal="true" className={styles.dialog} role="dialog">
-        <button aria-label="Close" className={styles.close} disabled={busy} onClick={onCancel} type="button">
-          <X size={18} />
-        </button>
-        <span className={styles.icon}><Trash2 size={22} /></span>
-        <h2 id="delete-agent-title">Delete {agent.name}?</h2>
-        <p>
-          This permanently removes the agent configuration, tools, and business variables.
-          Agents with call or booking history are protected from deletion.
-        </p>
-        {agent.active && <div className={styles.notice}>This agent is currently live. Deletion will take it offline immediately.</div>}
-        {error && <div className={styles.error}>{error}</div>}
-        <footer>
-          <button disabled={busy} onClick={onCancel} type="button">Cancel</button>
-          <button className={styles.danger} disabled={busy} onClick={onConfirm} type="button">
-            {busy ? <LoaderCircle className="spin" size={16} /> : <Trash2 size={16} />}
-            Delete agent
-          </button>
-        </footer>
-      </section>
-    </div>
+    <Dialog open onOpenChange={(open) => { if (!open && !busy) onCancel(); }}>
+      <DialogContent
+        title={`Delete ${agent.name}?`}
+        description="This permanently removes the agent's configuration, tools and business variables. Agents with call or booking history can't be deleted."
+        onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}
+        onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}
+      >
+        {agent.active ? (
+          <Alert tone="error">This agent is live. Deleting it takes it offline immediately.</Alert>
+        ) : null}
+        {error ? <Alert tone="error" className="mt-3">{error}</Alert> : null}
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
+          <Button variant="secondary" size="sm" disabled={busy} onClick={onCancel} autoFocus>
+            Keep agent
+          </Button>
+          <Button variant="danger" size="sm" disabled={busy} onClick={onConfirm}>
+            {busy ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
+            {busy ? "Deleting…" : "Delete agent"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

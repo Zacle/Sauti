@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { CalendarX2, LoaderCircle, Trash2, X } from "lucide-react";
+import { CalendarX2, LoaderCircle, Trash2 } from "lucide-react";
 import type { BookingViewModel } from "../domain/bookings";
 import { formatAppointment } from "../domain/bookings";
-import styles from "./BookingActionDialog.module.css";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/field";
+import { Dialog, DialogContent } from "@/components/ui/overlays";
 
 export type BookingAction = {
   kind: "cancel" | "delete";
   booking: BookingViewModel;
 };
 
+/** Confirmation for cancelling (kept in history) or permanently deleting a booking. */
 export function BookingActionDialog({
   action,
   busy,
@@ -24,79 +26,34 @@ export function BookingActionDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const deleting = action.kind === "delete";
-  const titleId = `booking-${action.kind}-title`;
-  const descriptionId = `booking-${action.kind}-description`;
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    cancelButtonRef.current?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [busy, onClose]);
+  const { booking } = action;
 
   return (
-    <div
-      className={styles.backdrop}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) onClose();
-      }}
-      role="presentation"
-    >
-      <section
-        aria-describedby={descriptionId}
-        aria-labelledby={titleId}
-        aria-modal="true"
-        className={styles.dialog}
-        role="dialog"
+    <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
+      <DialogContent
+        title={deleting ? "Delete this booking?" : "Cancel this appointment?"}
+        description={deleting
+          ? `Booking ${booking.bookingReference} for ${booking.callerName} will be permanently removed. This cannot be undone.`
+          : `${booking.serviceType} for ${booking.callerName} will be marked as cancelled and kept in your booking history.`}
+        onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}
+        onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}
       >
-        <button aria-label="Close dialog" className={styles.close} disabled={busy} onClick={onClose} type="button">
-          <X size={18} />
-        </button>
-        <span className={`${styles.icon} ${deleting ? styles.dangerIcon : styles.warningIcon}`}>
-          {deleting ? <Trash2 size={23} /> : <CalendarX2 size={23} />}
-        </span>
-        <span className={styles.eyebrow}>{deleting ? "Permanent action" : "Booking status"}</span>
-        <h2 id={titleId}>{deleting ? "Delete this booking?" : "Cancel this appointment?"}</h2>
-        <p id={descriptionId}>
-          {deleting ? (
-            <>
-              Booking <strong>{action.booking.bookingReference}</strong> for{" "}
-              <strong>{action.booking.callerName}</strong> will be permanently removed. This cannot be undone.
-            </>
-          ) : (
-            <>
-              <strong>{action.booking.serviceType}</strong> for <strong>{action.booking.callerName}</strong> will
-              be marked as cancelled and kept in your booking history.
-            </>
-          )}
-        </p>
-        <div className={styles.summary}>
-          <span>{formatAppointment(action.booking.appointmentDate)}</span>
-          <strong>{action.booking.bookingReference}</strong>
+        <div className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line bg-tint/[0.03] px-4 py-3 text-sm">
+          <span className="text-fg-soft">{formatAppointment(booking.appointmentDate)}</span>
+          <span className="text-xs tabular-nums text-fg">{booking.bookingReference}</span>
         </div>
-        {error && <div className={styles.error} role="alert">{error}</div>}
-        <footer>
-          <button disabled={busy} onClick={onClose} ref={cancelButtonRef} type="button">Keep booking</button>
-          <button className={styles.danger} disabled={busy} onClick={onConfirm} type="button">
-            {busy ? (
-              <><LoaderCircle className="spin" size={16} /> {deleting ? "Deleting..." : "Cancelling..."}</>
-            ) : (
-              <>{deleting ? <Trash2 size={16} /> : <CalendarX2 size={16} />} {deleting ? "Delete permanently" : "Cancel appointment"}</>
-            )}
-          </button>
-        </footer>
-      </section>
-    </div>
+        {error ? <Alert tone="error" className="mt-4">{error}</Alert> : null}
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
+          <Button variant="secondary" size="sm" disabled={busy} onClick={onClose} autoFocus>
+            Keep booking
+          </Button>
+          <Button size="sm" variant="danger" disabled={busy} onClick={onConfirm}>
+            {busy ? <LoaderCircle className="animate-spin" /> : deleting ? <Trash2 /> : <CalendarX2 />}
+            {busy ? (deleting ? "Deleting…" : "Cancelling…") : deleting ? "Delete permanently" : "Cancel appointment"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

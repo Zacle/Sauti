@@ -4,11 +4,11 @@ import { PublicAnalytics } from "@/features/marketing/PublicAnalytics/PublicAnal
 
 export default function MarketingLayout({ children }: { children: ReactNode }) {
   return (
-    <>
+    <div className="mk">
       <PublicAnalytics />
       <MarketingNav />
       {children}
       <MarketingFooter />
-    </>
+    </div>
   );
 }
