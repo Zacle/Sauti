@@ -1,19 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { isPreviewMode } from "@/lib/preview/mode";
+import { CONSOLE_PREFIXES } from "@/lib/console-routes";
 
-const CONSOLE_PREFIXES = [
-  "/dashboard",
-  "/agents",
-  "/calls",
-  "/bookings",
-  "/analytics",
-  "/billing",
-  "/settings",
-  "/help",
-  "/onboarding",
-  "/admin",
-];
 
 // These routes are part of completing authentication or are intentionally
 // shared with callers outside the workspace. They must remain reachable even

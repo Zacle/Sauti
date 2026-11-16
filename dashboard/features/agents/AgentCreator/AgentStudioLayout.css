@@ -433,3 +433,31 @@ html body .agent-studio :is(.console-primary-button, .console-secondary-button):
 html body .agent-studio :is(.console-primary-button, .console-secondary-button) svg { width: 14px !important; height: 14px !important; flex: none; }
 /* A button that completes an input row matches the input's height. */
 html body .agent-studio :is(input, select) + :is(.console-primary-button, .console-secondary-button) { height: 36px !important; min-height: 36px !important; align-self: center; }
+
+/* Toggle rows use the shared Switch (components/ui/primitives.tsx); this only places it. */
+html body .agent-studio .studio-toggle-row > .studio-toggle-control {
+  /* Older rules styled every direct <span> as an icon tile; this wrapper is not one. */
+  display: inline-flex !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  align-items: center;
+  justify-self: end;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+/* ---------- Studio kit fence ----------
+ * Sections rebuilt on the studio kit (studio-kit.tsx) use Tailwind and the shared
+ * components only. `revert-layer` drops every older unlayered rule (the label
+ * column, generic `.agent-studio-form input` rules, etc.) for anything inside,
+ * so only layered styles (Tailwind utilities and the console base) apply. */
+/* :not(#studio-kit-fence) adds ID-level specificity so no class-based legacy rule outranks it. */
+html body .studio-kit:not(#studio-kit-fence),
+html body .studio-kit *:not(#studio-kit-fence) {
+  all: revert-layer;
+}

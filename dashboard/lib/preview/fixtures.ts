@@ -29,8 +29,8 @@ const agentDefaults = {
   recordCalls: false,
   bargeInSensitivity: 0.7,
   bargeInGraceMs: 250,
-  endCallOnSilenceSeconds: 20,
-  reminderAfterSilenceSeconds: 8,
+  endCallOnSilenceSeconds: 300,
+  reminderAfterSilenceSeconds: 30,
   maxReminders: 2,
   detectVoicemail: true,
   handleCallScreening: true,
@@ -340,7 +340,9 @@ const routes: Record<string, unknown> = {
     ["custom_webhook", "Webhook", "Developer", "Send a signed JSON event to your own endpoint after each call.", false, true],
   ].map(([provider, name, category, description, duringCall, postCall]) => ({
     provider, name, category, description, duringCall, postCall, requiresConnection: !["telnyx_sms", "email"].includes(provider as string),
-    configurationFields: [], credentialFields: [], authorizationConfigured: true,
+    configurationFields: provider === "custom_webhook" ? ["webhookUrl", "authType"] : [],
+    credentialFields: provider === "custom_webhook" ? ["authToken", "apiKey", "hmacSecret"] : [],
+    authorizationConfigured: true,
   })),
   "GET /integrations/connections": [
     { id: "conn-cal", provider: "google_calendar", displayName: "Clinic calendar", status: "connected", credentialConfigured: true, configuration: {}, externalAccountId: "reception@brightsmile.example", lastTestedAt: iso(now - 3 * DAY), lastError: null, createdAt: iso(now - 60 * DAY) },
@@ -405,11 +407,30 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
 
   if (/^\/agents\/[^/]+\/(variables|knowledge-documents)$/.test(clean) && verb === "GET") return [];
 
+  if (/^\/agents\/[^/]+\/available-numbers$/.test(clean) && verb === "GET") {
+    const country = new URLSearchParams(path.split("?")[1] ?? "").get("countryCode") ?? "KE";
+    if (country !== "KE") return [];
+    return [
+      ["+254 20 765 4401", "local", "Nairobi", "Nairobi County", "8"],
+      ["+254 20 765 4418", "local", "Nairobi", "Nairobi County", "8"],
+      ["+254 41 222 1093", "local", "Mombasa", "Mombasa County", "8"],
+      ["+254 800 720 115", "toll_free", "", "", "22"],
+    ].map(([phoneNumber, type, locality, region, monthlyCost]) => ({ phoneNumber, type, locality, region, upfrontCost: "0", monthlyCost, currency: "USD" }));
+  }
+
   const agent = clean.match(/^\/agents\/([^/]+)$/);
   if (agent && verb === "GET") {
     const found = agents.find((item) => item.id === agent[1]);
     if (!found) throw new ApiError("We couldn’t find that. It may have been moved or deleted.", 404);
     return found;
+  }
+  if (agent && verb === "PUT") {
+    // Like the real API: the stored agent with the submitted changes applied.
+    const found = agents.find((item) => item.id === agent[1]);
+    if (!found) throw new ApiError("We couldn’t find that. It may have been moved or deleted.", 404);
+    const changes = typeof body === "string" ? (JSON.parse(body) as Record<string, unknown>) : {};
+    Object.assign(found, changes);
+    return structuredClone(found);
   }
 
   const whatsapp = clean.match(/^\/whatsapp\/conversations\/([^/]+)\/(messages|read|assignment)$/);

@@ -775,7 +775,7 @@
   border:1px dashed var(--color-line-strong);
   border-radius: 14px;
   color:var(--color-fg-muted);
-  background:var(--color-primary);
+  background:transparent;
   font-size: 0.82rem;
   text-align: center;
 }
@@ -799,8 +799,8 @@
   justify-content: space-between;
   gap: 18px;
   padding: 17px 30px;
-  border-top:1px solid var(--color-line-strong);
-  background:var(--color-primary);
+  border-top:1px solid var(--color-line);
+  background:var(--color-popover);
   backdrop-filter:none;
 }
 
@@ -3326,37 +3326,7 @@
   font-size: 0.68rem;
 }
 
-.studio-toggle-row > button {
-  position: relative;
-  width: 38px;
-  height: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background:var(--color-surface-3);
-  cursor: pointer;
-  transition: background 160ms ease;
-}
 
-.studio-toggle-row > button i {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background:var(--color-surface);
-  box-shadow:none;
-  transition: transform 160ms ease;
-}
-
-.studio-toggle-row > button.on {
-  background:var(--color-signal);
-}
-
-.studio-toggle-row > button.on i {
-  transform: translateX(16px);
-}
 
 .studio-greeting,
 .studio-prompt-editor {
@@ -4549,15 +4519,15 @@
 
 .international-phone-field select {
   width: 100%;
-  min-height: 50px;
+  min-height: 40px;
   padding: 0 12px;
   border:1px solid var(--color-line-strong);
-  border-radius: 13px;
+  border-radius: var(--radius-control);
   outline: none;
-  color:var(--color-signal-fg);
-  background:var(--color-primary);
+  color:var(--color-fg);
+  background:var(--color-surface);
   font: inherit;
-  color-scheme: dark;
+  color-scheme: light dark;
 }
 
 .international-phone-field select:focus {
@@ -4802,14 +4772,14 @@
 .agent-test-canvas > .test-diagnostics-download {
   margin-top: 9px;
   border-color:var(--color-line-strong);
-  color:var(--color-fg-muted);
-  background:var(--color-primary);
+  color:var(--color-fg-soft);
+  background:var(--color-surface);
   box-shadow:none;
 }
 
 .agent-test-canvas > .test-diagnostics-download:hover:not(:disabled) {
-  color:var(--color-signal-fg);
-  background:var(--color-signal);
+  color:var(--color-ink);
+  background:var(--color-surface-2);
   box-shadow:none;
   transform: none;
 }
@@ -5508,7 +5478,7 @@
 .agent-studio{margin:-18px -30px -34px;height:calc(100vh - 76px);grid-template-rows:82px minmax(0,1fr);color:var(--color-ink);background:var(--color-surface)}.console-content:has(>.agent-studio){height:calc(100vh - 76px)}.agent-studio-header{grid-template-columns:180px minmax(0,1fr) auto;min-height:82px;padding:0 24px;border-bottom-color:var(--color-line);background:var(--color-surface);backdrop-filter:none}.agent-studio-header>button{color:var(--color-fg-soft)}.agent-studio-header>button:hover{color:var(--color-signal)}.agent-studio-title{padding-left:20px;border-left:1px solid var(--color-line)}.agent-studio-title .agent-list-avatar{color:var(--color-primary-fg);background:var(--color-primary);box-shadow:none}.agent-studio-title small{color:var(--color-signal);letter-spacing:.08em}.agent-studio-title h1{color:var(--color-ink);font-size:1.05rem}.agent-live-badge{border:1px solid color-mix(in oklab, var(--color-signal) 35%, transparent);color:var(--color-signal);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}.studio-delete-button{border-color:color-mix(in oklab, var(--color-danger) 35%, transparent);color:var(--color-danger);background:color-mix(in oklab, var(--color-danger) 8%, transparent)}.studio-delete-button:hover{background:color-mix(in oklab, var(--color-danger) 8%, transparent)}.agent-studio-actions .console-secondary-button{border-color:var(--color-line);color:var(--color-ink);background:var(--color-surface-2)}
 .agent-studio-layout{grid-template-columns:220px minmax(540px,1.15fr) minmax(330px,.72fr);background:var(--color-surface)}.agent-studio-nav{padding:22px 14px;border-right-color:var(--color-line);background:var(--color-surface)}.agent-studio-nav>span{color:var(--color-fg-muted)}.agent-studio-nav>button{min-height:44px;border:1px solid transparent;color:var(--color-fg-soft)}.agent-studio-nav>button:hover{color:var(--color-ink);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}.agent-studio-nav>button.active{border-color:color-mix(in oklab, var(--color-signal) 35%, transparent);color:var(--color-signal);background:color-mix(in oklab, var(--color-signal) 8%, transparent);box-shadow:none}.studio-template-note{border-color:var(--color-line);background:var(--color-surface-2)}.studio-template-note>svg,.studio-template-note button{color:var(--color-signal)}.studio-template-note small{color:var(--color-fg-soft)}.studio-template-note strong{color:var(--color-ink)}
 .agent-studio-form{padding:28px 30px 80px;scrollbar-color:var(--color-line-strong) transparent;background:var(--color-surface)}.studio-heading{padding-bottom:18px;border-bottom:1px solid var(--color-line)}.studio-heading span{color:var(--color-signal)}.studio-heading h2{color:var(--color-ink);font-size:1.22rem}.studio-heading p{color:var(--color-fg-soft)}.studio-warning{border-color:color-mix(in oklab, var(--color-warning) 35%, transparent);color:var(--color-warning);background:color-mix(in oklab, var(--color-warning) 8%, transparent)}.studio-warning strong{color:var(--color-warning)}.studio-warning span{color:var(--color-warning)}.studio-warning button{border-color:var(--color-warning);color:var(--color-warning);background:color-mix(in oklab, var(--color-warning) 8%, transparent)}
-.agent-studio-form label,.studio-field{color:var(--color-fg-soft)}.agent-studio-form input,.agent-studio-form select,.agent-studio-form textarea,.studio-disabled-field{border-color:var(--color-line);color:var(--color-ink);background:var(--color-surface-2);box-shadow:none;color-scheme:dark}.agent-studio-form input::placeholder,.agent-studio-form textarea::placeholder{color:var(--color-fg-muted)}.agent-studio-form input:hover,.agent-studio-form select:hover,.agent-studio-form textarea:hover{border-color:color-mix(in oklab, var(--color-signal) 35%, transparent)}.agent-studio-form input:focus,.agent-studio-form select:focus,.agent-studio-form textarea:focus{border-color:var(--color-signal);box-shadow:none;background:var(--color-surface)}.studio-disabled-field{color:var(--color-fg-soft)}.studio-setting-group{border-color:var(--color-line)}.studio-setting-group>h3,.llm-tier-section h3{color:var(--color-ink)}.studio-setting-group>p{color:var(--color-fg-soft)}.studio-language-options button{border-color:var(--color-line);color:var(--color-fg);background:var(--color-surface-2)}.studio-language-options button:hover{border-color:color-mix(in oklab, var(--color-signal) 35%, transparent);color:var(--color-ink)}.studio-language-options button.selected{border-color:var(--color-signal);color:var(--color-signal);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}.studio-toggle-row{border-color:var(--color-line);background:var(--color-surface-2)}.studio-toggle-row>span{color:var(--color-signal);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}.studio-toggle-row strong{color:var(--color-ink)}.studio-toggle-row small{color:var(--color-fg-soft)}.studio-toggle-row>button{background:var(--color-surface-3)}.studio-toggle-row>button.on{background:var(--color-primary);box-shadow:none}
+.agent-studio-form label,.studio-field{color:var(--color-fg-soft)}.agent-studio-form input,.agent-studio-form select,.agent-studio-form textarea,.studio-disabled-field{border-color:var(--color-line);color:var(--color-ink);background:var(--color-surface-2);box-shadow:none;color-scheme:dark}.agent-studio-form input::placeholder,.agent-studio-form textarea::placeholder{color:var(--color-fg-muted)}.agent-studio-form input:hover,.agent-studio-form select:hover,.agent-studio-form textarea:hover{border-color:color-mix(in oklab, var(--color-signal) 35%, transparent)}.agent-studio-form input:focus,.agent-studio-form select:focus,.agent-studio-form textarea:focus{border-color:var(--color-signal);box-shadow:none;background:var(--color-surface)}.studio-disabled-field{color:var(--color-fg-soft)}.studio-setting-group{border-color:var(--color-line)}.studio-setting-group>h3,.llm-tier-section h3{color:var(--color-ink)}.studio-setting-group>p{color:var(--color-fg-soft)}.studio-language-options button{border-color:var(--color-line);color:var(--color-fg);background:var(--color-surface-2)}.studio-language-options button:hover{border-color:color-mix(in oklab, var(--color-signal) 35%, transparent);color:var(--color-ink)}.studio-language-options button.selected{border-color:var(--color-signal);color:var(--color-signal);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}.studio-toggle-row{border-color:var(--color-line);background:var(--color-surface-2)}.studio-toggle-row>span{color:var(--color-signal);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}.studio-toggle-row strong{color:var(--color-ink)}.studio-toggle-row small{color:var(--color-fg-soft)}
 .llm-tier-options button,.voice-card,.document-list article,.studio-integration-list article,.post-call-field,.hours-row,.dtmf-option,.web-voice-settings,.knowledge-card{border-color:var(--color-line)!important;color:var(--color-fg)!important;background:var(--color-surface-2)!important}.llm-tier-options button.selected,.voice-card.selected{border-color:var(--color-signal)!important;background:color-mix(in oklab, var(--color-signal) 8%, transparent)!important}.studio-integration-list h3,.document-list strong,.post-call-field strong{color:var(--color-ink)!important}.studio-integration-list p,.document-list small,.post-call-field small{color:var(--color-fg-soft)!important}.studio-prompt-preview{border-color:var(--color-line);color:var(--color-fg);background:var(--color-surface)}.studio-prompt-preview mark{color:var(--color-signal);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}
 .agent-test-panel{padding:14px;border-left-color:var(--color-line);background:var(--color-surface)}.agent-test-canvas{position:relative;isolation:isolate;border:1px solid var(--color-line);border-radius:18px;background:var(--color-surface);box-shadow:none;text-align:center}.agent-test-canvas::before,.agent-test-canvas::after{content:"";position:absolute;z-index:-2;inset:-25%;pointer-events:none}.agent-test-canvas::before{background:color-mix(in oklab, var(--color-signal) 8%, transparent);transform:rotate(-12deg) scale(1.15);animation:voiceWaveDrift 13s ease-in-out infinite alternate}.agent-test-canvas::after{z-index:-1;background:color-mix(in oklab, var(--color-signal) 8%, transparent);animation:voiceGlow 8s ease-in-out infinite alternate}.test-orb{position:relative;width:92px;height:92px;border-color:var(--color-signal);color:var(--color-ink);background:var(--color-surface);box-shadow:none;animation:orbPulse 3.2s ease-in-out infinite}.test-orb::before,.test-orb::after{content:"";position:absolute;border:1px solid color-mix(in oklab, var(--color-signal) 35%, transparent);border-radius:50%;inset:-13px;animation:ringPulse 3.2s ease-out infinite}.test-orb::after{inset:-27px;animation-delay:1.1s}.agent-test-canvas>small{color:var(--color-signal)}.agent-test-canvas h2{color:var(--color-ink);font-size:1.28rem}.agent-test-canvas p{color:var(--color-fg-soft)}.agent-test-canvas>button{min-height:44px;padding:0 20px;border-color:color-mix(in oklab, var(--color-signal) 35%, transparent);color:var(--color-primary-fg);background:var(--color-primary);box-shadow:none}.agent-test-canvas>button:hover:not(:disabled){transform:translateY(-2px);box-shadow:none}
 .agent-test-panel.active{background:var(--color-surface)}.test-call-header{border-bottom-color:var(--color-line);background:var(--color-surface)}.test-call-header small{color:var(--color-signal)}.test-call-header strong{color:var(--color-ink)}.test-call-transcript{background:var(--color-surface)}.test-call-transcript .agent p{color:var(--color-ink);background:var(--color-surface)}.test-call-transcript .caller p{color:var(--color-ink);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}.test-call-auto-state,.test-call-controls{border-color:var(--color-line);background:var(--color-surface)}.test-call-controls input{color:var(--color-ink);background:var(--color-surface)}.test-call-error{border-color:color-mix(in oklab, var(--color-danger) 35%, transparent);color:var(--color-danger);background:color-mix(in oklab, var(--color-danger) 8%, transparent)}
@@ -6173,8 +6143,8 @@
 .agent-studio .web-voice-settings .studio-toggle-row>span,.agent-studio .web-voice-settings .channel-status>svg{width:42px;height:42px;padding:10px;border-radius:12px;color:var(--color-signal);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}
 .agent-studio .web-voice-settings .studio-toggle-row strong,.agent-studio .web-voice-settings .channel-status strong{color:var(--color-ink);font-size:.85rem;font-weight:600}
 .agent-studio .web-voice-settings .studio-toggle-row small,.agent-studio .web-voice-settings .channel-status small{margin-top:5px;color:var(--color-fg-soft);font-size:.72rem;line-height:1.45}
-.agent-studio .web-voice-settings .studio-toggle-row>button{width:46px;height:26px;border:1px solid var(--color-line);background:var(--color-surface-3)}
-.agent-studio .web-voice-settings .studio-toggle-row>button i{width:18px;height:18px}.agent-studio .web-voice-settings .studio-toggle-row>button.on i{transform:translateX(20px)}
+
+
 .agent-studio .web-voice-settings .channel-status-actions>button{min-height:40px;padding:0 16px;border:1px solid color-mix(in oklab, var(--color-signal) 35%, transparent);border-radius:11px;color:var(--color-signal);background:color-mix(in oklab, var(--color-signal) 8%, transparent)}
 .agent-studio .voice-picker-modal{grid-template-rows:auto auto auto minmax(0,1fr) auto;width:min(1180px,calc(100vw - 48px));height:min(850px,calc(100vh - 24px));border:1px solid var(--color-line-strong);border-radius:24px;background:var(--color-surface);box-shadow:none}
 .agent-studio .voice-picker-modal>header{padding:22px 26px;background:var(--color-surface)}
