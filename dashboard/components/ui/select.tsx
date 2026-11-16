@@ -27,6 +27,8 @@ export type SelectOption = {
   /** Extra words matched by search (e.g. country code, aliases). */
   keywords?: string[];
   disabled?: boolean;
+  /** Small visual before the label, e.g. a country flag. Also shown in the trigger. */
+  leading?: React.ReactNode;
 };
 
 export type SelectProps = {
@@ -79,10 +81,10 @@ function Chevron() {
   );
 }
 
-function TriggerContent({ icon, label, placeholder }: { icon?: React.ReactNode; label?: string; placeholder?: string }) {
+function TriggerContent({ icon, leading, label, placeholder }: { icon?: React.ReactNode; leading?: React.ReactNode; label?: string; placeholder?: string }) {
   return (
     <>
-      {icon ? <span className="grid size-4 shrink-0 place-items-center text-signal [&_svg]:size-4">{icon}</span> : null}
+      {leading ? <span className="flex shrink-0 items-center">{leading}</span> : icon ? <span className="grid size-4 shrink-0 place-items-center text-signal [&_svg]:size-4">{icon}</span> : null}
       <span className={cn("min-w-0 flex-1 truncate", !label && "text-fg-muted")}>{label ?? placeholder ?? "Select…"}</span>
       <Chevron />
     </>
@@ -92,6 +94,7 @@ function TriggerContent({ icon, label, placeholder }: { icon?: React.ReactNode; 
 function ItemBody({ option, selected }: { option: SelectOption; selected: boolean }) {
   return (
     <>
+      {option.leading ? <span className="flex shrink-0 items-center">{option.leading}</span> : null}
       <span className="min-w-0 flex-1">
         <span className={cn("block truncate", selected && "font-medium text-ink")}>{option.label}</span>
         {option.description ? <span className="mt-0.5 block truncate text-xs text-fg-muted">{option.description}</span> : null}
@@ -137,7 +140,7 @@ function ListSelect({
       disabled={disabled}
     >
       <SelectPrimitive.Trigger id={id} aria-label={ariaLabel} className={cn(triggerBase, triggerSize[size], className)}>
-        <TriggerContent icon={icon} label={selected?.label} placeholder={placeholder} />
+        <TriggerContent icon={icon} leading={selected?.leading} label={selected?.label} placeholder={placeholder} />
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content
@@ -218,7 +221,7 @@ function SearchableSelect({
           data-state={open ? "open" : "closed"}
           className={cn(triggerBase, triggerSize[size], className)}
         >
-          <TriggerContent icon={icon} label={selected?.label} placeholder={placeholder} />
+          <TriggerContent icon={icon} leading={selected?.leading} label={selected?.label} placeholder={placeholder} />
         </Popover.Trigger>
         {name ? (
           // Keeps native form submission + `required` validation working.

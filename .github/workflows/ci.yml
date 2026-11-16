@@ -34,5 +34,6 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run test:voice
+      - run: npm run test:lib
       - run: npm run typecheck
       - run: npm run build

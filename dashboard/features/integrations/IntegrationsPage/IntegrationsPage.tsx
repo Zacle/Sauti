@@ -1,14 +1,14 @@
 "use client";
 
-import { Select } from "@/components/ui/select";
-import Image from "next/image";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot, CalendarDays, Check, CircleAlert, Database, LoaderCircle, MessageSquare,
-  Plug, Search, Settings2, ShieldCheck, TableProperties, TestTube2, Trash2, WalletCards, X,
+  Plug, Plus, Search, Settings2, ShieldCheck, TableProperties, TestTube2, Unplug, WalletCards, X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { listAgents } from "@/lib/api/agents";
 import {
   authorizeGoogleCalendar,
@@ -37,14 +37,16 @@ import {
 } from "@/lib/api/integrations";
 import type { Agent } from "@/types/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
-import { Card, EmptyState, Skeleton, Switch, Tooltip } from "@/components/ui/primitives";
+import { Alert, Input } from "@/components/ui/field";
+import { Badge, Card, EmptyState, Skeleton, Switch, Tabs, TabsCount, TabsList, TabsTrigger, Tooltip } from "@/components/ui/primitives";
 import { PageHeader } from "@/components/ui/console";
+import { Select } from "@/components/ui/select";
+import { IntegrationLogo } from "@/features/integrations/presentation/IntegrationLogo";
 import { cn } from "@/lib/utils";
 import { readSession } from "@/lib/session";
-import styles from "./IntegrationsPage.module.css";
 
-type Filter = "all" | "calendar" | "messaging" | "crm" | "data" | "notifications" | "payments" | "developer" | "during" | "post" | "connected";
+type Filter = "all" | "connected" | "calendar" | "messaging" | "crm" | "data" | "notifications" | "payments" | "developer";
+type Timing = "any" | "during" | "post";
 const oauthProviders = ["google_sheets", "hubspot", "salesforce", "calendly"];
 
 const disconnectImpact: Record<string, { resource: string; intact: string; stops: string }> = {
@@ -75,20 +77,6 @@ const disconnectImpact: Record<string, { resource: string; intact: string; stops
   },
 };
 
-const logos: Record<string, string> = {
-  google_calendar: "/logos/google-calendar.svg",
-  calendly: "/logos/calendly.svg",
-  telnyx_sms: "/logos/telnyx.svg",
-  custom_webhook: "/logos/webhook.svg",
-  whatsapp: "/logos/whatsapp.svg",
-  email: "/logos/email.svg",
-  slack: "/logos/slack.svg",
-  google_sheets: "/logos/google-sheets.svg",
-  hubspot: "/logos/hubspot.svg",
-  salesforce: "/logos/salesforce.svg",
-  mpesa: "/logos/mpesa.svg",
-};
-
 const labels: Record<string, string> = {
   webhookUrl: "Webhook URL", authType: "Authentication type", authToken: "Bearer token",
   apiKey: "API key", hmacSecret: "HMAC secret", wabaId: "WABA ID",
@@ -104,8 +92,9 @@ const labels: Record<string, string> = {
   bookingTitle: "Booking title",
 };
 
-const filterOptions: Array<{ value: Filter; label: string }> = [
+const FILTERS: Array<{ value: Filter; label: string }> = [
   { value: "all", label: "All" },
+  { value: "connected", label: "Connected" },
   { value: "calendar", label: "Calendar" },
   { value: "messaging", label: "Messaging" },
   { value: "crm", label: "CRM" },
@@ -113,10 +102,18 @@ const filterOptions: Array<{ value: Filter; label: string }> = [
   { value: "notifications", label: "Notifications" },
   { value: "payments", label: "Payments" },
   { value: "developer", label: "Developer" },
-  { value: "during", label: "During call" },
-  { value: "post", label: "Post call" },
-  { value: "connected", label: "Connected" },
 ];
+
+type Row = {
+  entry: IntegrationCatalogEntry;
+  binding?: AgentIntegration;
+  connection?: IntegrationConnection;
+  /** An account is connected (or the tool is built in and needs no account). */
+  ready: boolean;
+  builtIn: boolean;
+  /** Turned on for the selected agent. */
+  on: boolean;
+};
 
 export function IntegrationsPage() {
   const searchParams = useSearchParams();
@@ -126,6 +123,7 @@ export function IntegrationsPage() {
   const [connections, setConnections] = useState<IntegrationConnection[]>([]);
   const [bindings, setBindings] = useState<AgentIntegration[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
+  const [timing, setTiming] = useState<Timing>("any");
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<IntegrationCatalogEntry | null>(null);
   const [whatsappEditing, setWhatsappEditing] = useState(false);
@@ -181,45 +179,41 @@ export function IntegrationsPage() {
     setError(caught instanceof Error ? caught.message : "Unable to load integrations.");
   }
 
-  const visible = useMemo(() => catalog.filter((entry) => {
+  const rows = useMemo<Row[]>(() => catalog.map((entry) => {
     const binding = bindings.find((item) => item.provider === entry.provider);
-    const normalized = query.trim().toLowerCase();
-    if (normalized && ![
-      entry.name,
-      entry.category,
-      entry.description,
-      entry.provider,
-    ].some((value) => value.toLowerCase().includes(normalized))) return false;
-    if (filter === "during") return entry.duringCall;
-    if (filter === "post") return entry.postCall;
-    if (filter === "connected") return binding?.connectionStatus === "connected" || binding?.connectionStatus === "built_in";
-    if (filter !== "all") return categoryKey(entry.category) === filter;
-    return true;
-  }), [bindings, catalog, filter, query]);
+    const connection = connections.find((item) => item.provider === entry.provider);
+    const builtIn = binding?.connectionStatus === "built_in" || !entry.requiresConnection;
+    const ready = builtIn || binding?.connectionStatus === "connected" || Boolean(connection);
+    return { entry, binding, connection, ready, builtIn, on: Boolean(binding?.enabled) && ready };
+  }), [bindings, catalog, connections]);
 
-  const grouped = useMemo(() => {
-    const groups = new Map<string, IntegrationCatalogEntry[]>();
-    visible.forEach((entry) => {
-      const group = displayCategory(entry.category);
-      groups.set(group, [...(groups.get(group) ?? []), entry]);
-    });
-    return Array.from(groups.entries());
-  }, [visible]);
+  const matches = useCallback((row: Row, byFilter: Filter) => {
+    const normalized = query.trim().toLowerCase();
+    if (normalized && ![row.entry.name, row.entry.category, row.entry.description, row.entry.provider]
+      .some((value) => value.toLowerCase().includes(normalized))) return false;
+    if (timing === "during" && !row.entry.duringCall) return false;
+    if (timing === "post" && !row.entry.postCall) return false;
+    if (byFilter === "connected") return row.ready && !row.builtIn;
+    if (byFilter !== "all") return categoryKey(row.entry.category) === byFilter;
+    return true;
+  }, [query, timing]);
+
+  const counts = useMemo(() => Object.fromEntries(
+    FILTERS.map(({ value }) => [value, rows.filter((row) => matches(row, value)).length]),
+  ) as Record<Filter, number>, [matches, rows]);
+
+  const visible = rows.filter((row) => matches(row, filter));
+  const readyRows = visible.filter((row) => row.ready).sort((a, b) => Number(b.on) - Number(a.on) || a.entry.name.localeCompare(b.entry.name));
+  const availableRows = visible.filter((row) => !row.ready).sort((a, b) => a.entry.name.localeCompare(b.entry.name));
+  const onCount = rows.filter((row) => row.on).length;
+  const connectedCount = rows.filter((row) => row.ready && !row.builtIn).length;
+  const selectedAgent = agents.find((agent) => agent.id === agentId);
 
   async function toggle(entry: IntegrationCatalogEntry, enabled: boolean) {
     if (!agentId) return;
     const connection = connections.find((item) => item.provider === entry.provider);
     if (enabled && entry.requiresConnection && !connection) {
-      if (entry.provider === "whatsapp") {
-        setWhatsappEditing(true);
-        return;
-      }
-      if (entry.provider === "google_calendar" || oauthProviders.includes(entry.provider)) {
-        if (entry.provider.startsWith("google_")) setGoogleAuthorizing(entry);
-        else await startOAuth(entry);
-        return;
-      }
-      setEditing(entry);
+      configure(entry, connection);
       return;
     }
     setBusy(entry.provider);
@@ -230,7 +224,22 @@ export function IntegrationsPage() {
         configuration: currentBinding?.configuration,
       });
       await refresh(agentId);
+      toast.success(`${entry.name} ${enabled ? "on" : "off"} for ${selectedAgent?.name ?? "this agent"}`);
     } catch (caught) { showError(caught); } finally { setBusy(""); }
+  }
+
+  function configure(entry: IntegrationCatalogEntry, connection?: IntegrationConnection) {
+    if (entry.provider === "google_calendar") {
+      if (connection) setCalendarEditing(true);
+      else setGoogleAuthorizing(entry);
+    } else if (entry.provider === "whatsapp") {
+      setWhatsappEditing(true);
+    } else if (oauthProviders.includes(entry.provider) && !connection) {
+      if (entry.provider.startsWith("google_")) setGoogleAuthorizing(entry);
+      else void startOAuth(entry);
+    } else {
+      setEditing(entry);
+    }
   }
 
   async function startOAuth(entry: IntegrationCatalogEntry) {
@@ -254,6 +263,7 @@ export function IntegrationsPage() {
       const tested = await testIntegrationConnection(connection.id, agentId);
       await refresh(agentId);
       if (tested.status === "error") throw new Error(tested.lastError || `${connection.displayName} test failed.`);
+      toast.success(`${connection.displayName} is working`);
     }
     catch (caught) { showError(caught); } finally { setBusy(""); }
   }
@@ -265,42 +275,40 @@ export function IntegrationsPage() {
       await refresh(agentId);
       if (result.providerRevocationAttempted && !result.providerRevocationConfirmed) {
         setError(`${connection.displayName} was disconnected from Sauti, but Google did not confirm revocation. Remove Sauti from your Google Account permissions to finish revoking access.`);
+      } else {
+        toast.success(`${connection.displayName} disconnected`);
       }
       return true;
     }
     catch (caught) { showError(caught); return false; } finally { setBusy(""); }
   }
 
-  const counts = useMemo(() => {
-    const result = {} as Record<Filter, number>;
-    filterOptions.forEach(({ value }) => {
-      result[value] = catalog.filter((entry) => matchesFilter(entry, value, bindings.find((item) => item.provider === entry.provider))).length;
-    });
-    return result;
-  }, [bindings, catalog]);
-  const connectedCount = counts.connected ?? 0;
-  const selectedAgent = agents.find((agent) => agent.id === agentId);
+  const renderCard = (row: Row) => (
+    <IntegrationCard
+      key={row.entry.provider}
+      row={row}
+      agentName={selectedAgent?.name}
+      hasAgent={Boolean(agentId)}
+      working={busy === row.entry.provider}
+      onToggle={(enabled) => void toggle(row.entry, enabled)}
+      onConnect={() => configure(row.entry, row.connection)}
+      onConfigure={() => configure(row.entry, row.connection)}
+      onTest={row.connection ? () => void testConnection(row.connection!) : undefined}
+      onDisconnect={row.connection ? () => setDisconnecting(row.connection!) : undefined}
+    />
+  );
 
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-6 [&>*]:min-w-0">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6">
       <PageHeader
         title="Integrations"
-        description="Connect an account once, then choose which tools each agent can use."
-        actions={
-          <div className="flex items-center gap-2">
-            <span className="hidden text-[0.8rem] text-fg-muted sm:inline">Settings for</span>
-            <div className="w-52">
-              <Select
-                size="sm"
-                ariaLabel="Configure integrations for agent"
-                icon={<Bot />}
-                value={agentId || "none"}
-                onValueChange={(value) => value !== "none" && setAgentId(value)}
-                options={agents.length ? agents.map((agent) => ({ value: agent.id, label: agent.name })) : [{ value: "none", label: "No agents yet" }]}
-              />
-            </div>
-          </div>
-        }
+        description="Connect an account once for your workspace, then choose which agents can use it."
+        actions={(
+          <label className="relative w-full sm:w-64">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-muted" />
+            <Input aria-label="Search integrations" className="h-9 pl-9 text-[0.85rem]" onChange={(event) => setQuery(event.target.value)} placeholder="Search tools" value={query} />
+          </label>
+        )}
       />
 
       {searchParams.get("calendar") === "connected" ? <Notice tone="success">Google Calendar connected.</Notice> : null}
@@ -311,138 +319,85 @@ export function IntegrationsPage() {
       {searchParams.get("oauth") === "failed" ? <Notice tone="error">Google authorization couldn&apos;t finish. Check the OAuth client, callback URL, enabled APIs and test-user access.</Notice> : null}
       {error ? <Notice tone="error" onDismiss={() => setError("")}>{error}</Notice> : null}
 
-      <div className="grid grid-cols-1 gap-6 [&>*]:min-w-0 lg:grid-cols-[200px_minmax(0,1fr)]">
-        <aside className="lg:sticky lg:top-20 lg:self-start">
-          <nav aria-label="Integration filters" className="flex gap-1 overflow-x-auto pb-1 lg:flex-col lg:gap-px lg:overflow-visible lg:pb-0">
-            {filterOptions.map(({ value, label }, index) => (
-              <Fragment key={value}>
-                {index === 1 || index === 8 ? <span className="hidden h-px bg-line lg:my-2 lg:block" aria-hidden="true" /> : null}
-                <button
-                  type="button"
-                  aria-current={filter === value ? "true" : undefined}
-                  onClick={() => setFilter(value)}
-                  className={cn(
-                    "flex h-8 shrink-0 cursor-pointer items-center justify-between gap-3 rounded-[7px] border px-2.5 text-left font-sans text-[0.84rem] transition-colors",
-                    filter === value ? "border-line bg-surface font-medium text-ink shadow-[var(--shadow-card)]" : "border-transparent bg-transparent text-fg-soft hover:bg-tint/[0.05] hover:text-fg",
-                  )}
-                >
-                  {label}
-                  <span className="text-[0.75rem] tabular-nums text-fg-muted">{counts[value] ?? 0}</span>
-                </button>
-              </Fragment>
-            ))}
-          </nav>
-        </aside>
-
-        <section className="grid content-start gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="relative w-full sm:max-w-sm">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-muted" />
-              <Input aria-label="Search integrations" className="h-9 pl-9 text-[0.85rem]" onChange={(event) => setQuery(event.target.value)} placeholder="Search tools" value={query} />
-            </label>
-            <p className="m-0 text-[0.8rem] text-fg-muted sm:ml-auto">
-              {connectedCount} connected{selectedAgent ? <> · showing settings for <span className="text-fg">{selectedAgent.name}</span></> : null}
-            </p>
+      <Card className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3.5 sm:px-5">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-control)] bg-signal/10 text-signal"><Bot className="size-[18px]" /></span>
+          <div className="min-w-0">
+            <p className="m-0 text-[0.86rem] font-medium text-ink">Choosing tools for</p>
+            <p className="m-0 text-[0.76rem] leading-snug text-fg-muted">Switches apply to this agent only. Connected accounts are shared by every agent.</p>
           </div>
+        </div>
+        <div className="w-full sm:w-56">
+          <Select
+            size="sm"
+            ariaLabel="Agent"
+            icon={<Bot />}
+            value={agentId || "none"}
+            onValueChange={(value) => value !== "none" && setAgentId(value)}
+            options={agents.length ? agents.map((agent) => ({ value: agent.id, label: agent.name })) : [{ value: "none", label: "No agents yet" }]}
+          />
+        </div>
+        <div className="flex gap-5 text-[0.78rem] text-fg-muted max-sm:w-full">
+          <span><strong className="font-semibold tabular-nums text-ink">{onCount}</strong> on for this agent</span>
+          <span><strong className="font-semibold tabular-nums text-ink">{connectedCount}</strong> accounts connected</span>
+        </div>
+      </Card>
 
-          {loading ? (
-            <Card className="grid gap-3 p-4">{[1, 2, 3, 4].map((row) => <Skeleton key={row} className="h-14" />)}</Card>
-          ) : grouped.length === 0 ? (
-            <EmptyState icon={<Plug />} title="Nothing matches" description="Try another search or filter." />
-          ) : (
-            <div className="grid gap-6">
-              {grouped.map(([category, entries]) => (
-                <section key={category} className="grid gap-2">
-                  <h2 className="m-0 flex items-center gap-2 text-[0.8rem] font-medium text-fg-muted [&_svg]:size-3.5">
-                    {categoryIcon(category)} {category}
-                  </h2>
-                  <Card>
-                    <ul className="m-0 grid list-none divide-y divide-line p-0">
-                      {entries.map((entry) => {
-                        const binding = bindings.find((item) => item.provider === entry.provider);
-                        const connection = connections.find((item) => item.provider === entry.provider);
-                        const connected = binding?.connectionStatus === "connected" || binding?.connectionStatus === "built_in" || Boolean(connection);
-                        const builtIn = binding?.connectionStatus === "built_in";
-                        const working = busy === entry.provider;
-                        const needsConnection = entry.requiresConnection && !connection;
-                        const configure = () => {
-                          if (entry.provider === "google_calendar") {
-                            if (connection) setCalendarEditing(true);
-                            else setGoogleAuthorizing(entry);
-                          } else if (entry.provider === "whatsapp") {
-                            setWhatsappEditing(true);
-                          } else if (oauthProviders.includes(entry.provider) && !connection) {
-                            if (entry.provider.startsWith("google_")) setGoogleAuthorizing(entry);
-                            else void startOAuth(entry);
-                          } else {
-                            setEditing(entry);
-                          }
-                        };
-                        return (
-                          <li key={entry.provider} className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 px-4 py-3.5 sm:px-5 md:grid-cols-[36px_minmax(0,1fr)_8.5rem_auto]">
-                            <span className="grid size-9 place-items-center rounded-[8px] border border-line bg-surface">
-                              {logos[entry.provider]
-                                ? <Image alt="" height={22} src={logos[entry.provider]} width={22} />
-                                : <span className="text-fg-soft [&_svg]:size-4">{categoryIcon(entry.category)}</span>}
-                            </span>
-                            <div className="min-w-0">
-                              <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.9rem] font-medium text-ink">
-                                {entry.name}
-                                {entry.duringCall ? <span className="text-[0.72rem] font-normal text-fg-muted">During call</span> : null}
-                                {entry.duringCall && entry.postCall ? <span className="text-[0.72rem] text-fg-muted" aria-hidden="true">·</span> : null}
-                                {entry.postCall ? <span className="text-[0.72rem] font-normal text-fg-muted">After call</span> : null}
-                              </p>
-                              <p className="m-0 mt-0.5 text-[0.8rem] leading-snug text-fg-soft">{entry.description}</p>
-                              {connection?.externalAccountId ? <p className="m-0 mt-1 text-[0.75rem] text-fg-muted">Connected as {connection.externalAccountId}</p> : null}
-                              {!entry.authorizationConfigured ? <p className="m-0 mt-1 text-[0.75rem] text-warning">OAuth app credentials aren&apos;t configured on the server.</p> : null}
-                              {binding?.lastDelivery ? (
-                                <p className={cn("m-0 mt-1 text-[0.75rem]", binding.lastDelivery.status === "delivered" ? "text-fg-muted" : "text-danger")}>
-                                  Last delivery {binding.lastDelivery.status}{binding.lastDelivery.lastError ? ` — ${binding.lastDelivery.lastError}` : ""}
-                                </p>
-                              ) : null}
-                            </div>
-                            <p className="m-0 hidden items-center gap-2 pt-1 text-[0.8rem] text-fg md:flex">
-                              <span className={cn("size-1.5 rounded-full", connected ? "bg-success" : "bg-line-strong")} aria-hidden="true" />
-                              {builtIn ? "Built in" : connected ? "Connected" : "Not connected"}
-                            </p>
-                            <div className="flex items-center justify-end gap-1">
-                              {needsConnection && (entry.provider === "google_calendar" || entry.provider === "whatsapp" || oauthProviders.includes(entry.provider)) ? (
-                                <Button variant="secondary" size="xs" disabled={!entry.authorizationConfigured || working || !agentId} onClick={configure}>
-                                  {working ? <LoaderCircle className="animate-spin" /> : null} Connect
-                                </Button>
-                              ) : (
-                                <Tooltip content={agentId ? `Use with ${selectedAgent?.name ?? "this agent"}` : "Pick an agent first"}>
-                                  <span className="inline-flex">
-                                    <Switch
-                                      aria-label={`Use ${entry.name} with the selected agent`}
-                                      checked={binding?.enabled ?? false}
-                                      disabled={working || !agentId || (!(binding?.enabled ?? false) && !entry.authorizationConfigured)}
-                                      onCheckedChange={(checked) => void toggle(entry, checked)}
-                                    />
-                                  </span>
-                                </Tooltip>
-                              )}
-                              {entry.requiresConnection && !(needsConnection && (entry.provider === "google_calendar" || entry.provider === "whatsapp" || oauthProviders.includes(entry.provider))) ? (
-                                <IconAction label={entry.authorizationConfigured ? "Configure" : "OAuth app not configured"} disabled={!entry.authorizationConfigured} onClick={configure}><Settings2 /></IconAction>
-                              ) : null}
-                              {connection ? <IconAction label="Test connection" disabled={working} onClick={() => void testConnection(connection)}><TestTube2 /></IconAction> : null}
-                              {connection ? <IconAction label="Disconnect" danger onClick={() => setDisconnecting(connection)}><Trash2 /></IconAction> : null}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </Card>
-                </section>
-              ))}
-            </div>
-          )}
-        </section>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)} className="max-w-full overflow-x-auto [scrollbar-width:none]">
+          <TabsList aria-label="Category">
+            {FILTERS.map(({ value, label }) => (
+              <TabsTrigger key={value} value={value}>
+                {label}
+                {value !== "all" ? <TabsCount>{counts[value] ?? 0}</TabsCount> : null}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        <div className="w-40 max-sm:w-full">
+          <Select
+            size="sm"
+            ariaLabel="When it runs"
+            value={timing}
+            onValueChange={(value) => setTiming(value as Timing)}
+            options={[
+              { value: "any", label: "Any time" },
+              { value: "during", label: "During calls" },
+              { value: "post", label: "After calls" },
+            ]}
+          />
+        </div>
       </div>
+
+      {loading ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{[1, 2, 3, 4, 5, 6].map((item) => <Skeleton key={item} className="h-52" />)}</div>
+      ) : visible.length === 0 ? (
+        <EmptyState
+          icon={<Plug />}
+          title="Nothing matches"
+          description="Try another search, category or timing."
+          action={<Button variant="secondary" size="xs" onClick={() => { setQuery(""); setFilter("all"); setTiming("any"); }}>Clear filters</Button>}
+        />
+      ) : (
+        <div className="grid gap-8">
+          {readyRows.length ? (
+            <section className="grid gap-3">
+              <SectionLabel title="Ready to use" detail="Connected accounts and built-in tools. Turn each one on or off for the selected agent." count={readyRows.length} />
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{readyRows.map(renderCard)}</div>
+            </section>
+          ) : null}
+          {availableRows.length ? (
+            <section className="grid gap-3">
+              <SectionLabel title={readyRows.length ? "Available" : "Integrations"} detail="Connect an account to make it available to your agents." count={availableRows.length} />
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{availableRows.map(renderCard)}</div>
+            </section>
+          ) : null}
+        </div>
+      )}
 
       {editing && <ConnectionDialog agentId={agentId} connection={connections.find((item) => item.provider === editing.provider)}
         entry={editing} onClose={() => setEditing(null)} onSaved={async () => {
-        setEditing(null); await refresh(agentId);
+        setEditing(null); await refresh(agentId); toast.success(`${editing.name} saved`);
       }} />}
       {whatsappEditing && <WhatsAppSetupDialog
         agentId={agentId}
@@ -454,7 +409,7 @@ export function IntegrationsPage() {
         }}
       />}
       {calendarEditing && <GoogleCalendarDialog agentId={agentId} onClose={() => setCalendarEditing(false)}
-        onSaved={async () => { setCalendarEditing(false); await refresh(agentId); }} />}
+        onSaved={async () => { setCalendarEditing(false); await refresh(agentId); toast.success("Calendar saved"); }} />}
       {googleAuthorizing && <GoogleAuthorizationDialog
         busy={busy === googleAuthorizing.provider}
         entry={googleAuthorizing}
@@ -471,23 +426,142 @@ export function IntegrationsPage() {
   );
 }
 
-function matchesFilter(entry: IntegrationCatalogEntry, filter: Filter, binding: AgentIntegration | undefined) {
-  if (filter === "all") return true;
-  if (filter === "during") return entry.duringCall;
-  if (filter === "post") return entry.postCall;
-  if (filter === "connected") return binding?.connectionStatus === "connected" || binding?.connectionStatus === "built_in";
-  return categoryKey(entry.category) === filter;
+function SectionLabel({ title, detail, count }: { title: string; detail: string; count: number }) {
+  return (
+    <div className="flex items-end justify-between gap-4">
+      <div>
+        <h2 className="m-0 text-[0.95rem] font-semibold tracking-[-0.01em] text-ink">{title}</h2>
+        <p className="m-0 mt-0.5 text-[0.8rem] text-fg-muted">{detail}</p>
+      </div>
+      <span className="text-[0.76rem] tabular-nums text-fg-muted">{count}</span>
+    </div>
+  );
+}
+
+function IntegrationCard({
+  row,
+  agentName,
+  hasAgent,
+  working,
+  onToggle,
+  onConnect,
+  onConfigure,
+  onTest,
+  onDisconnect,
+}: {
+  row: Row;
+  agentName?: string;
+  hasAgent: boolean;
+  working: boolean;
+  onToggle: (enabled: boolean) => void;
+  onConnect: () => void;
+  onConfigure: () => void;
+  onTest?: () => void;
+  onDisconnect?: () => void;
+}) {
+  const { entry, binding, connection, ready, builtIn, on } = row;
+  const delivery = binding?.lastDelivery;
+  const deliveryFailed = delivery && delivery.status !== "delivered";
+  const timing = [entry.duringCall ? "During calls" : null, entry.postCall ? "After calls" : null].filter(Boolean).join(" · ");
+  const switchId = `use-${entry.provider}`;
+
+  return (
+    <article
+      className={cn(
+        "flex min-w-0 flex-col rounded-[var(--radius-card)] border bg-surface shadow-[var(--shadow-card)] transition-colors",
+        on ? "border-signal/30" : "border-line",
+      )}
+    >
+      <div className="flex flex-1 flex-col p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-control)] border border-line bg-surface">
+            <IntegrationLogo provider={entry.provider} fallback={<span className="text-fg-soft [&_svg]:size-[18px]">{categoryIcon(entry.category)}</span>} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="m-0 truncate text-[0.95rem] font-semibold tracking-[-0.01em] text-ink">{entry.name}</h3>
+            <p className="m-0 mt-0.5 truncate text-[0.74rem] text-fg-muted">{displayCategory(entry.category)}{timing ? ` · ${timing}` : ""}</p>
+          </div>
+          {builtIn ? (
+            <Badge tone="neutral">Built in</Badge>
+          ) : ready ? (
+            <Badge tone="success" dot>Connected</Badge>
+          ) : !entry.authorizationConfigured ? (
+            <Tooltip content="The OAuth app isn't configured on the server yet.">
+              <span><Badge tone="warning">Unavailable</Badge></span>
+            </Tooltip>
+          ) : null}
+        </div>
+
+        <p className="m-0 mt-3 line-clamp-3 text-[0.82rem] leading-relaxed text-fg-soft">{entry.description}</p>
+
+        {connection?.externalAccountId || delivery ? (
+          <div className="mt-3 grid gap-1 text-[0.74rem] text-fg-muted">
+            {connection?.externalAccountId ? <p className="m-0 truncate">Connected as <span className="text-fg-soft">{connection.externalAccountId}</span></p> : null}
+            {delivery ? (
+              <p className={cn("m-0 flex min-w-0 items-center gap-1.5", deliveryFailed && "text-danger")}>
+                <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", deliveryFailed ? "bg-danger" : "bg-success")} />
+                <span className="truncate">
+                  {deliveryFailed ? `Last run failed${delivery.lastError ? `: ${delivery.lastError}` : ""}` : `Last ran ${formatRelative(delivery.deliveredAt ?? delivery.createdAt)}`}
+                </span>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex min-h-[3.25rem] items-center gap-2 border-t border-line px-4 py-2.5 sm:px-5">
+        {ready ? (
+          <>
+            <label htmlFor={switchId} title={hasAgent ? undefined : "Create an agent first"} className={cn("flex min-w-0 flex-1 items-center gap-2.5", hasAgent ? "cursor-pointer" : "cursor-not-allowed")}>
+                <Switch
+                  id={switchId}
+                  checked={on}
+                  disabled={working || !hasAgent}
+                  onCheckedChange={onToggle}
+                />
+                <span className="min-w-0 truncate text-[0.8rem] text-fg-soft">
+                  {working ? "Saving…" : on ? <>On for <span className="font-medium text-ink">{agentName ?? "this agent"}</span></> : `Off for ${agentName ?? "this agent"}`}
+                </span>
+              </label>
+            {!builtIn && entry.requiresConnection ? <IconAction label="Settings" onClick={onConfigure} disabled={!entry.authorizationConfigured}><Settings2 /></IconAction> : null}
+            {onTest ? <IconAction label="Test connection" disabled={working} onClick={onTest}><TestTube2 /></IconAction> : null}
+            {onDisconnect ? <IconAction label="Disconnect" danger onClick={onDisconnect}><Unplug /></IconAction> : null}
+          </>
+        ) : (
+          <>
+            <span className="min-w-0 flex-1 truncate text-[0.78rem] text-fg-muted">
+              {oauthProviders.includes(entry.provider) || entry.provider.startsWith("google_") ? "Sign in to connect" : entry.provider === "whatsapp" ? "Connect through Meta" : "Add your details"}
+            </span>
+            <Button variant="secondary" size="xs" disabled={!entry.authorizationConfigured || working || !hasAgent} onClick={onConnect}>
+              {working ? <LoaderCircle className="spin" /> : <Plus />} Connect
+            </Button>
+          </>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function formatRelative(value?: string | null) {
+  if (!value) return "recently";
+  const minutes = Math.round((Date.now() - new Date(value).getTime()) / 60_000);
+  if (!Number.isFinite(minutes)) return "recently";
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
 function Notice({ tone, children, onDismiss }: { tone: "success" | "error"; children: React.ReactNode; onDismiss?: () => void }) {
   return (
     <div role={tone === "error" ? "alert" : "status"} className={cn(
-      "flex items-start gap-2.5 rounded-[8px] border px-3.5 py-2.5 text-[0.85rem]",
+      "flex items-start gap-2.5 rounded-[var(--radius-control)] border px-3.5 py-2.5 text-[0.85rem]",
       tone === "success" ? "border-success/30 bg-success/[0.06] text-fg" : "border-danger/30 bg-danger/[0.06] text-fg",
     )}>
       {tone === "success" ? <Check className="mt-0.5 size-4 shrink-0 text-success" /> : <CircleAlert className="mt-0.5 size-4 shrink-0 text-danger" />}
       <span className="flex-1">{children}</span>
-      {onDismiss ? <button type="button" aria-label="Dismiss" onClick={onDismiss} className="grid size-6 cursor-pointer place-items-center rounded-[5px] border-0 bg-transparent p-0 text-fg-muted hover:text-fg"><X className="size-3.5" /></button> : null}
+      {onDismiss ? <Button variant="ghost" size="icon-xs" aria-label="Dismiss" className="-my-1" onClick={onDismiss}><X /></Button> : null}
     </div>
   );
 }
@@ -509,6 +583,93 @@ function IconAction({ label, onClick, disabled, danger = false, children }: { la
   );
 }
 
+/* ---------- Dialogs ---------- */
+
+function DialogShell({
+  title,
+  description,
+  provider,
+  onClose,
+  busy = false,
+  footer,
+  children,
+  as = "section",
+  onSubmit,
+  width = "34rem",
+}: {
+  title: string;
+  description?: React.ReactNode;
+  provider?: string;
+  onClose: () => void;
+  busy?: boolean;
+  footer: React.ReactNode;
+  children: React.ReactNode;
+  as?: "section" | "form";
+  onSubmit?: (event: React.FormEvent) => void;
+  width?: string;
+}) {
+  const Body = as;
+  return (
+    <DialogPrimitive.Root open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[150] bg-scrim data-[state=open]:animate-[fade-in_180ms_ease-out]" />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          onInteractOutside={(event) => { if (busy) event.preventDefault(); }}
+          style={{ width: `min(94vw, ${width})` }}
+          className="fixed left-1/2 top-1/2 z-[151] flex max-h-[min(90dvh,780px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[var(--radius-card)] border border-line-strong bg-popover font-sans text-fg shadow-[var(--shadow-pop)] outline-none data-[state=open]:animate-[dialog-in_220ms_cubic-bezier(0.16,1,0.3,1)] max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:max-h-[92dvh] max-sm:!w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none"
+        >
+          <Body className="flex min-h-0 flex-col" onSubmit={onSubmit}>
+            <header className="flex items-start gap-3 px-6 pb-4 pt-5">
+              {provider ? (
+                <span className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-control)] border border-line bg-surface">
+                  <IntegrationLogo provider={provider} fallback={<Plug className="size-[18px] text-fg-muted" />} />
+                </span>
+              ) : null}
+              <div className="min-w-0 flex-1">
+                <DialogPrimitive.Title className="m-0 text-[1.05rem] font-semibold tracking-[-0.01em] text-ink">{title}</DialogPrimitive.Title>
+                {description ? <div className="m-0 mt-1 text-[0.84rem] leading-relaxed text-fg-soft">{description}</div> : null}
+              </div>
+              <DialogPrimitive.Close asChild>
+                <Button variant="ghost" size="icon-xs" aria-label="Close" disabled={busy} className="-mr-1.5"><X /></Button>
+              </DialogPrimitive.Close>
+            </header>
+            <div className="grid min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto px-6 pb-5">{children}</div>
+            <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-line px-6 py-3.5">{footer}</footer>
+          </Body>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+function DialogField({ label, hint, htmlFor, children }: { label: string; hint?: React.ReactNode; htmlFor?: string; children: React.ReactNode }) {
+  return (
+    <div className="grid min-w-0 gap-1.5">
+      <label htmlFor={htmlFor} className="text-[0.84rem] font-medium text-ink">{label}</label>
+      {children}
+      {hint ? <p className="m-0 text-[0.76rem] leading-relaxed text-fg-muted">{hint}</p> : null}
+    </div>
+  );
+}
+
+function InfoBlock({ icon, title, children, tone = "neutral" }: { icon: React.ReactNode; title?: string; children: React.ReactNode; tone?: "neutral" | "success" | "danger" }) {
+  return (
+    <div className={cn(
+      "flex items-start gap-3 rounded-[var(--radius-control)] border p-3.5",
+      tone === "neutral" && "border-line bg-tint/[0.025]",
+      tone === "success" && "border-success/30 bg-success/[0.06]",
+      tone === "danger" && "border-danger/30 bg-danger/[0.06]",
+    )}>
+      <span className={cn("mt-px shrink-0 [&_svg]:size-4", tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-fg-muted")}>{icon}</span>
+      <div className="min-w-0 text-[0.8rem] leading-relaxed text-fg-soft">
+        {title ? <p className="m-0 mb-0.5 text-[0.84rem] font-medium text-ink">{title}</p> : null}
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function GoogleAuthorizationDialog({ entry, busy, onClose, onContinue }: {
   entry: IntegrationCatalogEntry;
   busy: boolean;
@@ -516,24 +677,42 @@ function GoogleAuthorizationDialog({ entry, busy, onClose, onContinue }: {
   onContinue: () => Promise<void>;
 }) {
   const calendar = entry.provider === "google_calendar";
-  return <div className={styles.backdrop} onMouseDown={onClose}>
-    <section className={`${styles.dialog} ${styles.googleAuthorizationDialog}`} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="google-authorization-title">
-      <header><div><span className={styles.dialogEyebrow}>Before connecting</span><h2 id="google-authorization-title">Connect {entry.name}</h2><p>Google will ask you to approve only the access needed for this integration.</p></div><Button variant="ghost" size="icon-sm" aria-label="Close Google authorization dialog" onClick={onClose}><X /></Button></header>
-      <div className={styles.googleDataNotice}>
-        <ShieldCheck size={20} />
-        <div><h3>{calendar ? "Calendar events and availability" : "Spreadsheet content"}</h3><p>{calendar
-          ? "Sauti reads busy time ranges and creates, updates, or cancels booking events in the calendar you select. It does not request calendar sharing or full-calendar administration."
-          : "Sauti can read and update spreadsheets available to the connected Google account. In Sauti, access is limited to the spreadsheet and ranges you configure for the agent."}</p></div>
-      </div>
-      <ul className={styles.googleAuthorizationList}>
-        <li>OAuth tokens are encrypted and scoped to this workspace.</li>
-        <li>Google data is used only for the integration features you enable, not advertising or generalized model training.</li>
-        <li>You can disconnect later; Sauti deletes its token copy and asks Google to revoke the grant.</li>
+  return (
+    <DialogShell
+      title={`Connect ${entry.name}`}
+      description="Google asks you to approve only the access this integration needs."
+      provider={entry.provider}
+      busy={busy}
+      onClose={onClose}
+      footer={(
+        <>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button size="sm" disabled={busy} onClick={() => void onContinue()}>
+            {busy ? <LoaderCircle className="spin" /> : null}
+            {busy ? "Opening Google…" : "Continue to Google"}
+          </Button>
+        </>
+      )}
+    >
+      <InfoBlock icon={<ShieldCheck />} title={calendar ? "Calendar events and availability" : "Spreadsheet content"}>
+        {calendar
+          ? "Sauti reads busy times and creates, updates or cancels booking events in the calendar you choose. It never asks for sharing or admin rights."
+          : "Sauti can read and update spreadsheets in the connected Google account, limited to the spreadsheet and ranges you set for the agent."}
+      </InfoBlock>
+      <ul className="m-0 grid list-none gap-2 p-0 text-[0.8rem] leading-relaxed text-fg-soft">
+        {[
+          "Access tokens are encrypted and belong to this workspace only.",
+          "Google data is used only for the features you turn on, never for advertising or training models.",
+          "Disconnect any time: Sauti deletes its copy and asks Google to revoke access.",
+        ].map((item) => (
+          <li key={item} className="flex gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-success" />{item}</li>
+        ))}
       </ul>
-      <p className={styles.googlePolicyLinks}>See the <Link href="/privacy" target="_blank">Privacy Policy</Link> and <Link href="/terms" target="_blank">Terms</Link>.</p>
-      <footer><Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button><Button variant="primary" size="sm" disabled={busy} type="button" onClick={() => void onContinue()}>{busy && <LoaderCircle className="spin" />}{busy ? "Opening Google..." : "Continue to Google"}</Button></footer>
-    </section>
-  </div>;
+      <p className="m-0 text-[0.76rem] text-fg-muted">
+        Read the <Link href="/privacy" target="_blank" className="text-fg-soft underline underline-offset-2 hover:text-ink">Privacy Policy</Link> and <Link href="/terms" target="_blank" className="text-fg-soft underline underline-offset-2 hover:text-ink">Terms</Link>.
+      </p>
+    </DialogShell>
+  );
 }
 
 function GoogleCalendarDialog({ agentId, onClose, onSaved }: {
@@ -572,27 +751,35 @@ function GoogleCalendarDialog({ agentId, onClose, onSaved }: {
     finally { setBusy(false); }
   }
 
-  return <div className={styles.backdrop} onMouseDown={onClose}>
-    <form className={`${styles.dialog} ${styles.calendarDialog}`} onSubmit={(event) => void save(event)} onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><h2>Configure Google Calendar</h2><p>Choose the writable calendar used by this workspace connection.</p></div>
-        <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}><X /></Button></header>
-      <div className={styles.formFields}><label><span>Calendar ID</span>
-        <input required value={calendarId} onChange={(event) => setCalendarId(event.target.value)}
-          placeholder="primary or calendar-id@group.calendar.google.com" />
-        <small>Use “primary” for the connected account’s main calendar.</small>
-      </label></div>
-      {error && <div className={styles.formError}>{error}</div>}
-      {testState !== "idle" && <div className={testState === "success" ? styles.formSuccess : styles.formError} role="status">
-        {testState === "success" && <Check size={15} />}
-        {testState === "testing" ? "Checking calendar access..." : testMessage}
-      </div>}
-      <footer><Button variant="secondary" size="sm" disabled={busy || !status?.connected} onClick={() => void test()}>
-        {testState === "testing" && <LoaderCircle className="spin" />}
-        {testState === "testing" ? "Testing..." : "Test live connection"}
-      </Button>
-        <Button variant="primary" size="sm" type="submit" disabled={busy || !status?.connected}>{busy ? "Saving…" : "Save calendar"}</Button></footer>
-    </form>
-  </div>;
+  return (
+    <DialogShell
+      as="form"
+      onSubmit={(event) => void save(event)}
+      title="Google Calendar settings"
+      description="Choose which calendar the agent checks for free time and books into."
+      provider="google_calendar"
+      onClose={onClose}
+      footer={(
+        <>
+          <Button variant="ghost" size="sm" className="mr-auto" disabled={busy || !status?.connected} onClick={() => void test()}>
+            {testState === "testing" ? <LoaderCircle className="spin" /> : <TestTube2 />}
+            {testState === "testing" ? "Testing…" : "Test connection"}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" type="submit" disabled={busy || !status?.connected}>{busy && testState !== "testing" ? "Saving…" : "Save calendar"}</Button>
+        </>
+      )}
+    >
+      {status?.connected === false ? <InfoBlock icon={<CircleAlert />} tone="danger">Google Calendar isn&apos;t connected for this workspace yet.</InfoBlock> : null}
+      <DialogField label="Calendar ID" htmlFor="google-calendar-id" hint="Use “primary” for the account’s main calendar, or paste a calendar ID from Google Calendar settings.">
+        <Input id="google-calendar-id" required className="h-10 font-mono text-[0.85rem]" value={calendarId} onChange={(event) => setCalendarId(event.target.value)} placeholder="primary or calendar-id@group.calendar.google.com" />
+      </DialogField>
+      {error ? <Alert>{error}</Alert> : null}
+      {testState === "success" || testState === "error" ? (
+        <InfoBlock icon={testState === "success" ? <Check /> : <CircleAlert />} tone={testState === "success" ? "success" : "danger"}>{testMessage}</InfoBlock>
+      ) : null}
+    </DialogShell>
+  );
 }
 
 function DisconnectDialog({ connection, busy, onClose, onConfirm }: {
@@ -607,37 +794,30 @@ function DisconnectDialog({ connection, busy, onClose, onConfirm }: {
     stops: `Agents will stop using ${connection.displayName} until you reconnect it.`,
   };
 
-  return <div className={styles.backdrop} onMouseDown={onClose}>
-    <section
-      aria-describedby="disconnect-description"
-      aria-labelledby="disconnect-title"
-      aria-modal="true"
-      className={`${styles.dialog} ${styles.disconnectDialog}`}
-      onMouseDown={(event) => event.stopPropagation()}
-      role="dialog"
+  return (
+    <DialogShell
+      title={`Disconnect ${connection.displayName}?`}
+      description={<>This removes the connection for the whole workspace and turns off {impact.resource.toLowerCase()} for every agent using it.{connection.provider.startsWith("google_") ? " Sauti deletes its encrypted copy of the access token." : ""}</>}
+      provider={connection.provider}
+      busy={busy}
+      onClose={onClose}
+      width="30rem"
+      footer={(
+        <>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={onClose}>Keep connected</Button>
+          <Button variant="danger" size="sm" disabled={busy} onClick={() => void onConfirm()}>
+            {busy ? <LoaderCircle className="spin" /> : <Unplug />}
+            {busy ? "Disconnecting…" : "Disconnect"}
+          </Button>
+        </>
+      )}
     >
-      <header>
-        <div className={styles.dialogIcon}><Trash2 size={18} /></div>
-        <Button variant="ghost" size="icon-sm" aria-label="Close disconnect dialog" onClick={onClose}><X /></Button>
-      </header>
-      <div className={styles.disconnectCopy}>
-        <span className={styles.dialogEyebrow}>Connection settings</span>
-        <h2 id="disconnect-title">Disconnect {connection.displayName}?</h2>
-    <p id="disconnect-description">This removes the workspace connection and turns off {impact.resource} for agents using it.{connection.provider.startsWith("google_") ? " Sauti deletes its encrypted token copy. You can remove all Sauti access from Google Account permissions." : ""}</p>
-    <div className={styles.impactList}>
-     <div><Check size={15} /><span>{impact.intact}</span></div>
-     <div><CircleAlert size={15} /><span>{impact.stops}</span></div>
-        </div>
-      </div>
-      <footer>
-        <Button variant="secondary" size="sm" onClick={onClose}>Keep connected</Button>
-        <Button variant="danger" size="sm" disabled={busy} type="button" onClick={() => void onConfirm()}>
-          {busy && <LoaderCircle className="spin" />}
-          {busy ? "Disconnecting..." : "Disconnect"}
-        </Button>
-      </footer>
-    </section>
-  </div>;
+      <ul className="m-0 grid list-none gap-2 p-0 text-[0.82rem] leading-relaxed">
+        <li className="flex gap-2.5 text-fg-soft"><Check className="mt-0.5 size-4 shrink-0 text-success" />{impact.intact}</li>
+        <li className="flex gap-2.5 text-fg-soft"><CircleAlert className="mt-0.5 size-4 shrink-0 text-warning" />{impact.stops}</li>
+      </ul>
+    </DialogShell>
+  );
 }
 
 type MetaSignupSession = { wabaId: string; phoneNumberId: string };
@@ -722,7 +902,9 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
     Promise.all([
       getWhatsAppSignupConfiguration(),
       connection ? getWhatsAppTemplates(connection.id) : Promise.resolve([]),
-    ]).then(([loadedConfiguration, loadedTemplates]) => {
+    ]).then(([rawConfiguration, loadedTemplates]) => {
+      // Older servers (and the preview) may omit the country list.
+      const loadedConfiguration = { ...rawConfiguration, countries: rawConfiguration.countries ?? [] };
       setConfiguration(loadedConfiguration);
       setTemplates(loadedTemplates);
       const savedNumber = String(connection?.configuration.businessPhoneNumber
@@ -836,91 +1018,128 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
     (template) => `${template.name}::${template.language}` === selection,
   );
 
-  return <div className={styles.backdrop} onMouseDown={onClose}>
-    <section className={`${styles.dialog} ${styles.whatsappDialog}`} onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><h2>{connection ? "Configure" : "Connect"} WhatsApp</h2>
-        <p>Connect securely with Meta. Sauti captures account and phone IDs automatically.</p></div>
-        <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}><X /></Button></header>
-
-      {loading ? <div className={styles.dialogLoading}><LoaderCircle className="spin" size={18} /> Loading Meta configuration…</div> : <>
-        {!configuration?.configured && <div className={styles.formError}>
-          Meta Embedded Signup is not configured on the server. Add the app ID, app secret, and configuration ID.
-        </div>}
-        {connection && <div className={styles.connectionSummary}>
-          <div><span>Business</span><strong>{String(connection.configuration.verifiedName || connection.displayName)}</strong></div>
-          <div><span>Phone number</span><strong>{String(connection.configuration.displayPhoneNumber || "Connected")}</strong></div>
-          <span className={styles.secureBadge}><ShieldCheck size={14} /> Connected through Meta</span>
-        </div>}
-        <div className={styles.businessPhoneSection}>
-          <label htmlFor="whatsapp-business-country">Business WhatsApp number</label>
-          <div className={styles.businessPhoneEntry}>
-            <Select
-              id="whatsapp-business-country"
-              ariaLabel="Business country calling code"
-              value={businessCountryCode}
-              onValueChange={setBusinessCountryCode}
-              searchPlaceholder="Search country or code…"
-              options={(configuration?.countries ?? []).map((country) => ({
-                value: country.region,
-                label: `${country.name} (${country.dialingCode})`,
-                keywords: [country.region, country.dialingCode],
-              }))}
-            />
-            <input aria-label="Business WhatsApp national number" inputMode="tel" required
-              value={businessPhoneNumber}
-              onChange={(event) => setBusinessPhoneNumber(event.target.value.replace(/[^\d\s()-]/g, ""))}
-              placeholder="712 345 678" />
-          </div>
-          <small>Choose the country prefix, then enter the business number. It must match the number selected in Meta.</small>
-        </div>
-        <button className={styles.metaConnect}
-          disabled={connecting || !configuration?.configured || !businessCountryCode || !businessPhoneNumber.trim()}
-          onClick={() => void connect()} type="button">
-          {connecting ? <LoaderCircle className="spin" size={17} /> : <span className={styles.metaLogo}>f</span>}
-          {connecting ? "Connecting…" : connection ? "Reconnect with Meta" : "Continue with Facebook"}
-        </button>
-        {connection && <div className={styles.templateSection}>
-          <label><span>Outbound message template</span>
-            {templates.length ? <Select
-              ariaLabel="Outbound message template"
-              placeholder="Select an approved template"
-              value={selection}
-              onValueChange={(value) => {
-                setSelection(value);
-                setParameterMappings({});
-                setError("");
-              }}
-              options={templates.map((template) => ({
-                value: `${template.name}::${template.language}`,
-                label: template.name,
-                description: `${template.language} · ${template.category}`,
-              }))}
-            /> : <p>No approved templates found. Incoming WhatsApp conversations can still receive free-form replies.</p>}
-          </label>
-          {selectedTemplate && selectedTemplate.parameters.length > 0 && <div className={styles.parameterMappings}>
-            <div className={styles.mappingIntro}>
-              <strong>Populate template placeholders</strong>
-              <span>Map every Meta placeholder to trusted data from the booking created in this conversation.</span>
+  return (
+    <DialogShell
+      title={connection ? "WhatsApp settings" : "Connect WhatsApp"}
+      description="Sign in with Meta. Sauti picks up your business account and phone IDs automatically."
+      provider="whatsapp"
+      busy={connecting}
+      onClose={onClose}
+      footer={(
+        <>
+          <Button variant="secondary" size="sm" disabled={connecting} onClick={onClose}>{connection ? "Close" : "Cancel"}</Button>
+          {connection && templates.length > 0 ? (
+            <Button size="sm" disabled={!selection || connecting} onClick={() => void saveTemplate()}>Save template</Button>
+          ) : null}
+        </>
+      )}
+    >
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-10 text-[0.84rem] text-fg-muted"><LoaderCircle className="spin size-4" /> Loading Meta settings…</div>
+      ) : (
+        <>
+          {!configuration?.configured ? (
+            <InfoBlock icon={<CircleAlert />} tone="danger" title="Meta sign-up isn’t set up on the server">
+              Add the Meta app ID, app secret and configuration ID to the server settings, then try again.
+            </InfoBlock>
+          ) : null}
+          {connection ? (
+            <div className="grid gap-3 rounded-[var(--radius-control)] border border-line p-3.5 sm:grid-cols-2">
+              <div className="min-w-0">
+                <p className="m-0 text-[0.74rem] text-fg-muted">Business</p>
+                <p className="m-0 truncate text-[0.86rem] font-medium text-ink">{String(connection.configuration.verifiedName || connection.displayName)}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="m-0 text-[0.74rem] text-fg-muted">Phone number</p>
+                <p className="m-0 truncate font-mono text-[0.86rem] text-ink">{String(connection.configuration.displayPhoneNumber || "Connected")}</p>
+              </div>
+              <p className="m-0 flex items-center gap-1.5 text-[0.76rem] text-success sm:col-span-2"><ShieldCheck className="size-3.5" /> Connected through Meta</p>
             </div>
-            {selectedTemplate.parameters.map((parameter) => <label key={parameter.key}>
-              <span>{parameter.component === "header" ? "Header" : "Message"} {parameter.placeholder}</span>
+          ) : null}
+          <DialogField label="Business WhatsApp number" htmlFor="whatsapp-business-country" hint="Must match the number you pick in the Meta window.">
+            <div className="grid grid-cols-[minmax(0,13rem)_minmax(0,1fr)] gap-2 max-sm:grid-cols-1">
               <Select
-                placeholder="Select booking field"
-                value={parameterMappings[parameter.key] || ""}
-                onValueChange={(value) => setParameterMappings((current) => ({ ...current, [parameter.key]: value }))}
-                options={WHATSAPP_TEMPLATE_FIELDS.map((field) => ({ value: field.value, label: field.label }))}
+                id="whatsapp-business-country"
+                size="md"
+                className="h-10 text-[0.86rem]"
+                ariaLabel="Business country calling code"
+                value={businessCountryCode}
+                onValueChange={setBusinessCountryCode}
+                searchPlaceholder="Search country or code…"
+                options={(configuration?.countries ?? []).map((country) => ({
+                  value: country.region,
+                  label: `${country.name} (${country.dialingCode})`,
+                  keywords: [country.region, country.dialingCode],
+                }))}
               />
-            </label>)}
-          </div>}
-        </div>}
-      </>}
-      {error && <div className={styles.formError}>{error}</div>}
-      <footer><Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-        {connection && templates.length > 0 && <Button variant="primary" size="sm"
-          disabled={!selection || connecting} onClick={() => void saveTemplate()} type="button">Save template</Button>}
-      </footer>
-    </section>
-  </div>;
+              <Input aria-label="Business WhatsApp number" inputMode="tel" required className="h-10 font-mono text-[0.88rem]"
+                value={businessPhoneNumber}
+                onChange={(event) => setBusinessPhoneNumber(event.target.value.replace(/[^\d\s()-]/g, ""))}
+                placeholder="712 345 678" />
+            </div>
+          </DialogField>
+          <button
+            type="button"
+            disabled={connecting || !configuration?.configured || !businessCountryCode || !businessPhoneNumber.trim()}
+            onClick={() => void connect()}
+            className="inline-flex h-10 cursor-pointer items-center justify-center gap-2.5 rounded-[var(--radius-button)] border-0 bg-[#1877f2] px-4 font-sans text-[0.88rem] font-semibold text-white transition-colors hover:bg-[#166fe0] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {connecting ? <LoaderCircle className="spin size-4" /> : <span aria-hidden="true" className="grid size-5 place-items-center rounded-full bg-white text-[0.8rem] font-bold leading-none text-[#1877f2]">f</span>}
+            {connecting ? "Connecting…" : connection ? "Reconnect with Meta" : "Continue with Facebook"}
+          </button>
+          {connection ? (
+            <div className="grid gap-4 border-t border-line pt-4">
+              <DialogField label="Booking confirmation template" hint={templates.length ? "Sent to customers after a booking. Only templates Meta has approved are listed." : undefined}>
+                {templates.length ? (
+                  <Select
+                    size="md"
+                    className="h-10 text-[0.86rem]"
+                    ariaLabel="Outbound message template"
+                    placeholder="Choose an approved template"
+                    value={selection}
+                    onValueChange={(value) => {
+                      setSelection(value);
+                      setParameterMappings({});
+                      setError("");
+                    }}
+                    options={templates.map((template) => ({
+                      value: `${template.name}::${template.language}`,
+                      label: template.name,
+                      description: `${template.language} · ${template.category}`,
+                    }))}
+                  />
+                ) : (
+                  <p className="m-0 rounded-[var(--radius-control)] border border-dashed border-line-strong px-3.5 py-3 text-[0.8rem] text-fg-muted">No approved templates yet. Customers who message you can still get free-form replies.</p>
+                )}
+              </DialogField>
+              {selectedTemplate && selectedTemplate.parameters.length > 0 ? (
+                <div className="grid gap-3 rounded-[var(--radius-control)] border border-line p-3.5">
+                  <div>
+                    <p className="m-0 text-[0.84rem] font-medium text-ink">Fill the template’s placeholders</p>
+                    <p className="m-0 mt-0.5 text-[0.76rem] text-fg-muted">Choose which booking detail goes into each one.</p>
+                  </div>
+                  {selectedTemplate.parameters.map((parameter) => (
+                    <div key={parameter.key} className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] items-center gap-3 max-sm:grid-cols-1">
+                      <span className="text-[0.8rem] text-fg-soft">{parameter.component === "header" ? "Header" : "Message"} <code className="font-mono text-ink">{parameter.placeholder}</code></span>
+                      <Select
+                        size="sm"
+                        ariaLabel={`Value for ${parameter.placeholder}`}
+                        placeholder="Choose a booking detail"
+                        value={parameterMappings[parameter.key] || ""}
+                        onValueChange={(value) => setParameterMappings((current) => ({ ...current, [parameter.key]: value }))}
+                        options={WHATSAPP_TEMPLATE_FIELDS.map((field) => ({ value: field.value, label: field.label }))}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </>
+      )}
+      {error ? <Alert>{error}</Alert> : null}
+    </DialogShell>
+  );
 }
 
 const WHATSAPP_TEMPLATE_FIELDS = [
@@ -1081,62 +1300,100 @@ function ConnectionDialog({ entry, agentId, connection, onClose, onSaved }: {
     }
   }
 
-  return <div className={styles.backdrop} onMouseDown={onClose}>
-    <form className={styles.dialog} onSubmit={(event) => void save(event)} onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><h2>{connection ? "Configure" : "Connect"} {entry.name}</h2><p>
-        {entry.provider === "google_sheets"
-          ? "Use Sheets as an optional lightweight CRM and call log. Sauti remains the source of truth for calls and bookings."
-          : "Secrets are encrypted before being stored."}
-      </p></div>
-        <Button variant="ghost" size="icon-sm" aria-label="Close" onClick={onClose}><X /></Button></header>
-      {fields.length === 0 && <p className={styles.oauthNote}>This provider requires OAuth. Use its authorization flow when application credentials are configured.</p>}
-      {entry.provider === "google_sheets" && <section className={styles.sheetsGuide}>
-        <div><TableProperties size={18} /><div><strong>Customers</strong>
-          <p>Automatically adds confirmed booking customers by phone, safely fills missing name or email details, and supports caller-confirmed updates.</p>
-          <code>Phone · Name · Email</code>
-        </div></div>
-        <div><TableProperties size={18} /><div><strong>Calls</strong>
-          <p>Receives an automatic post-call record for reporting, follow-up, and lightweight CRM workflows.</p>
-          <code>Call ID · Started At · Caller Phone · Outcome · Summary · Sentiment</code>
-        </div></div>
-        <p className={styles.sheetsSafety}>Choose an empty spreadsheet or one that already has these tabs. Sauti creates only missing tabs, adds headers only to an empty first row, and never replaces existing headers.</p>
-      </section>}
-      <div className={styles.formFields}>
-      {visibleFields.map((field) => <label key={field}><span>{labels[field] ?? field}</span>
-        {field === "environment" || field === "authType" ? <Select
-          value={values[field] ?? ""}
-          onValueChange={(value) => setValues({ ...values, [field]: value })}
-          options={(field === "environment"
-            ? [["sandbox", "Sandbox"], ["production", "Production"]]
-            : [["none", "None"], ["bearer", "Bearer token"], ["api_key", "API key"], ["hmac", "HMAC-SHA256"]]
-          ).map(([value, text]) => ({ value, label: text }))}
-        /> : <input required={
-          (entry.provider === "google_sheets" && ["spreadsheetId", "range"].includes(field))
-          || (!connection && entry.credentialFields.includes(field)
-            && (entry.provider !== "custom_webhook" || !["authToken", "apiKey", "hmacSecret"].includes(field)))
-        }
-          type={entry.credentialFields.includes(field) ? "password" : "text"} value={values[field] ?? ""}
-          placeholder={placeholderFor(entry.provider, field)}
-          onChange={(event) => setValues({ ...values, [field]: event.target.value })} />}
-      </label>)}
-      </div>
-      {entry.provider === "google_sheets" && <div className={styles.sheetsInitializer}>
-        <Button variant="soft" size="sm" className="w-fit" onClick={() => void initializeSheets()}
-          disabled={initializing || saving || !connection || !(values.spreadsheetId ?? "").trim()}>
-          {initializing ? <><LoaderCircle className="spin" /> Creating tabs…</> : <><TableProperties /> Create tabs and headers</>}
-        </Button>
-        <p>{connection
-          ? "This saves the settings above, creates the missing tabs, adds safe default headers, and verifies access."
-          : "Connect your Google account first, then enter the spreadsheet ID."}</p>
-      </div>}
-      {initializationMessage && <div className={styles.formSuccess}><Check size={15} /> {initializationMessage}</div>}
-      {error && <div className={styles.formError}>{error}</div>}
-      <footer><Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" size="sm" type="submit" disabled={saving || initializing || fields.length === 0}>
-          {saving ? "Saving…" : entry.provider === "google_sheets" ? "Save" : "Save connection"}
-        </Button></footer>
-    </form>
-  </div>;
+  const sheets = entry.provider === "google_sheets";
+  return (
+    <DialogShell
+      as="form"
+      onSubmit={(event) => void save(event)}
+      title={`${connection ? "" : "Connect "}${entry.name}${connection ? " settings" : ""}`}
+      description={sheets
+        ? "Use a spreadsheet as a simple customer list and call log. Sauti stays the source of truth for calls and bookings."
+        : "Secrets are encrypted before they’re stored, and never shown again after saving."}
+      provider={entry.provider}
+      busy={saving || initializing}
+      onClose={onClose}
+      width={sheets ? "40rem" : "34rem"}
+      footer={(
+        <>
+          <Button variant="secondary" size="sm" disabled={saving || initializing} onClick={onClose}>Cancel</Button>
+          <Button size="sm" type="submit" disabled={saving || initializing || fields.length === 0}>
+            {saving ? "Saving…" : connection ? "Save changes" : "Connect"}
+          </Button>
+        </>
+      )}
+    >
+      {fields.length === 0 ? (
+        <InfoBlock icon={<ShieldCheck />}>This provider connects by signing in. Use its sign-in flow once the app credentials are set up on the server.</InfoBlock>
+      ) : null}
+      {sheets ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {[
+            ["Customers", "Adds booked customers by phone and fills in missing names or emails.", "Phone · Name · Email"],
+            ["Calls", "Gets a new row after every call for reporting and follow-up.", "Call ID · Started · Phone · Outcome · Summary · Sentiment"],
+          ].map(([title, text, columns]) => (
+            <div key={title} className="grid content-start gap-1.5 rounded-[var(--radius-control)] border border-line p-3.5">
+              <p className="m-0 flex items-center gap-2 text-[0.84rem] font-medium text-ink"><TableProperties className="size-4 text-fg-muted" /> {title} tab</p>
+              <p className="m-0 text-[0.78rem] leading-relaxed text-fg-soft">{text}</p>
+              <code className="font-mono text-[0.72rem] text-fg-muted">{columns}</code>
+            </div>
+          ))}
+          <p className="m-0 text-[0.76rem] leading-relaxed text-fg-muted sm:col-span-2">Use an empty spreadsheet or one that already has these tabs. Sauti only adds missing tabs and headers, and never overwrites existing ones.</p>
+        </div>
+      ) : null}
+      {visibleFields.length ? (
+        <div className={cn("grid gap-x-3 gap-y-4", sheets && "sm:grid-cols-2")}>
+          {visibleFields.map((field) => (
+            <DialogField key={field} label={labels[field] ?? field} htmlFor={`field-${field}`}>
+              {field === "environment" || field === "authType" ? (
+                <Select
+                  id={`field-${field}`}
+                  size="md"
+                  className="h-10 text-[0.86rem]"
+                  value={values[field] ?? ""}
+                  onValueChange={(value) => setValues({ ...values, [field]: value })}
+                  options={(field === "environment"
+                    ? [["sandbox", "Sandbox"], ["production", "Production"]]
+                    : [["none", "None"], ["bearer", "Bearer token"], ["api_key", "API key"], ["hmac", "HMAC-SHA256"]]
+                  ).map(([value, text]) => ({ value, label: text }))}
+                />
+              ) : (
+                <Input
+                  id={`field-${field}`}
+                  className={cn("h-10 text-[0.86rem]", (entry.credentialFields.includes(field) || /Range|Columns|Id$|Uri$|Url$/.test(field)) && "font-mono")}
+                  required={
+                    (sheets && ["spreadsheetId", "range"].includes(field))
+                    || (!connection && entry.credentialFields.includes(field)
+                      && (entry.provider !== "custom_webhook" || !["authToken", "apiKey", "hmacSecret"].includes(field)))
+                  }
+                  type={entry.credentialFields.includes(field) ? "password" : "text"}
+                  autoComplete={entry.credentialFields.includes(field) ? "new-password" : "off"}
+                  value={values[field] ?? ""}
+                  placeholder={connection && entry.credentialFields.includes(field) ? "Leave blank to keep the saved value" : placeholderFor(entry.provider, field)}
+                  onChange={(event) => setValues({ ...values, [field]: event.target.value })}
+                />
+              )}
+            </DialogField>
+          ))}
+        </div>
+      ) : null}
+      {sheets ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-control)] border border-line p-3.5">
+          <p className="m-0 min-w-0 flex-1 text-[0.78rem] leading-relaxed text-fg-soft">
+            {connection
+              ? "Saves the settings above, adds any missing tabs and headers, and checks access."
+              : "Connect your Google account first, then enter the spreadsheet ID."}
+          </p>
+          <Button variant="secondary" size="xs" onClick={() => void initializeSheets()}
+            disabled={initializing || saving || !connection || !(values.spreadsheetId ?? "").trim()}>
+            {initializing ? <LoaderCircle className="spin" /> : <TableProperties />}
+            {initializing ? "Setting up…" : "Set up tabs"}
+          </Button>
+        </div>
+      ) : null}
+      {initializationMessage ? <InfoBlock icon={<Check />} tone="success">{initializationMessage}</InfoBlock> : null}
+      {error ? <Alert>{error}</Alert> : null}
+    </DialogShell>
+  );
 }
 
 function categoryKey(category: string): Filter {

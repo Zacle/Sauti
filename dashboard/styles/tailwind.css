@@ -236,6 +236,11 @@ html.console-switching * {
     cursor: pointer;
   }
 
+  :where(html.console-light, html.console-dark) :where(input, textarea, select) {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
   :where(html.console-light, html.console-dark) :where(button:disabled) {
     cursor: not-allowed;
   }

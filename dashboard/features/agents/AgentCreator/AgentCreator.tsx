@@ -5,11 +5,32 @@ import "./AgentStudio.css";
 import "./AgentStudioLayout.css";
 import "./StudioOverlays.css";
 import Link from "next/link";
-import * as Slider from "@radix-ui/react-slider";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Alert, Textarea } from "@/components/ui/field";
+import { Badge, Checkbox, RadioCard, RadioDot, RadioGroup, Tabs, TabsList, TabsTrigger, Tooltip } from "@/components/ui/primitives";
+import { cn } from "@/lib/utils";
+import { IntegrationLogo } from "@/features/integrations/presentation/IntegrationLogo";
+import {
+  Chip,
+  ChipGroup,
+  Field,
+  FieldGrid,
+  Meta,
+  Note,
+  NumberField,
+  RowList,
+  SliderField,
+  StudioGroup,
+  StudioInput,
+  StudioSection,
+  SwitchRow,
+  studioSelectClass,
+} from "./studio-kit";
 import { ApiError } from "@/lib/api/client";
 import { LoadFailure } from "@/features/errors/ConsoleErrors";
 import {
@@ -23,7 +44,6 @@ import {
   Car,
   Check,
   ChevronDown,
-  ChevronRight,
   CircleAlert,
   ExternalLink,
   FileText,
@@ -36,7 +56,6 @@ import {
   LifeBuoy,
   LoaderCircle,
   MessageSquareText,
-  Mic2,
   Phone,
   PhoneCall,
   Play,
@@ -48,17 +67,20 @@ import {
   RadioTower,
   RefreshCw,
   Route,
-  Search,
   Settings2,
   ShieldCheck,
   ShoppingCart,
   Sparkles,
   UsersRound,
   WandSparkles,
-  Webhook,
   Trash2,
   Utensils,
   X,
+  ArrowUpRight,
+  Copy,
+  Eye,
+  PencilLine,
+  PanelRightClose,
 } from "lucide-react";
 import {
   activateAgent,
@@ -89,7 +111,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { VoicePicker } from "./VoicePicker";
 import { TestCallPanel } from "./TestCallPanel";
 import { AddVariableForm } from "../AgentVariables/AddVariableForm";
-import { getAgentIntegrations, type AgentIntegration } from "@/lib/api/integrations";
+import { getAgentIntegrations, getIntegrationCatalog, type AgentIntegration, type IntegrationCatalogEntry } from "@/lib/api/integrations";
 import { DeleteAgentDialog } from "@/features/agents/DeleteAgentDialog/DeleteAgentDialog";
 import { DarkSelect } from "@/components/DarkSelect/DarkSelect";
 import { Select } from "@/components/ui/select";
@@ -722,7 +744,7 @@ export function AgentCreator({
         }
         setExistingVariableKeys(customVariables.map((variable) => variable.key));
         setReadiness(await getAgentReadiness(agentId));
-        setSaved(true);
+        markSaved();
         setBusy(false);
         return;
       }
@@ -836,6 +858,33 @@ export function AgentCreator({
   if (knowledgeBase.trim()) completedStudioSections.add("knowledge");
   if (postCallExtractionFields.length) completedStudioSections.add("postcall");
 
+  /*
+   * Change tracking: a snapshot of everything Save sends. Compared with the
+   * snapshot taken after loading or saving, so switches, sliders, pickers and
+   * text fields all count as changes, not just native form input.
+   */
+  const snapshot = JSON.stringify([
+    name, description, greeting, prompt, language, supportedLanguages, voice, transferEnabled, transferNumber,
+    escalationPhrases, bookingEnabled, defaultBookingDurationMinutes, timezone, knowledgeBase, operatingHours,
+    afterHoursBehavior, afterHoursMessage, maxDuration, saveTranscript, recordCalls, llmTier, bargeInSensitivity,
+    bargeInGraceMs, endCallOnSilenceSeconds, reminderAfterSilenceSeconds, maxReminders, detectVoicemail,
+    handleCallScreening, dtmfEnabled, dtmfTerminationKey, dtmfInputTimeoutSeconds, dtmfMaxDigits, dtmfDigitMappings,
+    webVoiceEnabled, webVoiceAllowedOrigins, webVoiceRequireConsent, whatsappEnabled, whatsappPhoneNumberId,
+    sttEndpointingMs, sttVocabularyDomain, sttBoostedKeywords, safetyGuardrails, postCallExtractionFields,
+    bookingRequiredFields, bookingNotificationChannels, bookingNotificationRecipient, variableValues,
+  ]);
+  const snapshotRef = useRef(snapshot);
+  snapshotRef.current = snapshot;
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
+  useEffect(() => {
+    if (!loadingAgent && savedSnapshot === null && stage === "studio") setSavedSnapshot(snapshot);
+  }, [loadingAgent, savedSnapshot, snapshot, stage]);
+  const dirty = savedSnapshot !== null && snapshot !== savedSnapshot;
+  function markSaved() {
+    setSaved(true);
+    setSavedSnapshot(snapshotRef.current);
+  }
+
   return (
     <>
       {loadingAgent ? (
@@ -876,37 +925,73 @@ export function AgentCreator({
               <span className="agent-list-avatar"><Bot size={20} /></span>
               <div><small>{editing ? "Agent configuration" : "Draft agent"}</small><h1>{name || "Unnamed agent"}</h1></div>
             </div>
-            <div className="agent-studio-actions">
+            <div className="studio-kit ml-auto flex min-w-0 items-center gap-2 font-sans">
+              <div className="mr-1 hidden items-center gap-2 whitespace-nowrap text-[0.8rem] text-fg-muted lg:flex" aria-live="polite">
+                {editing ? (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-fg-soft">
+                    <span aria-hidden="true" className={cn("size-2 rounded-full", loadedAgent?.active ? "bg-success shadow-[0_0_0_3px_color-mix(in_oklab,var(--color-success)_20%,transparent)]" : "bg-fg-muted")} />
+                    {loadedAgent?.active ? "Live" : "Draft"}
+                  </span>
+                ) : null}
+                {editing ? <span aria-hidden="true" className="text-line-strong">·</span> : null}
+                {busy ? (
+                  <span className="inline-flex items-center gap-1.5"><LoaderCircle className="spin size-3.5" /> Saving…</span>
+                ) : editing && !dirty ? (
+                  <span className="inline-flex items-center gap-1.5"><Check className="size-3.5 text-success" /> All changes saved</span>
+                ) : editing ? (
+                  <span className="inline-flex items-center gap-1.5 text-fg-soft"><span aria-hidden="true" className="size-1.5 rounded-full bg-warning" /> Unsaved changes</span>
+                ) : (
+                  <span>Not saved yet</span>
+                )}
+              </div>
               {(needsBusinessDetails || (editing && readiness && readiness.nextStep !== "ready")) && (
-                <button
-                  className={`agent-setup-action ${needsBusinessDetails ? "attention" : ""}`}
+                <Button
+                  variant="secondary"
+                  size="sm"
                   disabled={busy}
+                  className={cn(needsBusinessDetails && "border-warning/40 bg-warning/[0.08] hover:bg-warning/[0.12]")}
                   onClick={() => needsBusinessDetails ? setShowPersonalisation(true) : void continueSetup()}
-                  type="button"
                 >
-                  <span className="agent-setup-action-icon">
-                    {needsBusinessDetails ? <CircleAlert size={16} /> : <Settings2 size={16} />}
-                  </span>
-                  <span className="agent-setup-action-copy">
-                    <small>{needsBusinessDetails ? "Setup incomplete" : "Next step"}</small>
-                    <span>{requiredDetailCount > 0 ? `${requiredDetailCount} details required` : setupActionLabel}</span>
-                  </span>
-                  <ArrowRight size={15} />
-                </button>
+                  {needsBusinessDetails ? <CircleAlert className="text-warning" /> : <Settings2 />}
+                  <span className="max-[1279px]:hidden">{requiredDetailCount > 0 ? `${requiredDetailCount} details required` : setupActionLabel}</span>
+                </Button>
               )}
-              {editing && loadedAgent?.active && <span className="agent-live-badge"><Check size={13} /> Live</span>}
-              <button className="console-secondary-button" type="button" aria-pressed={testPanelOpen} onClick={() => setTestPanelOpen((open) => !open)}><Play size={15} /> {testPanelOpen ? "Hide test" : "Test"}</button>
+              <Button
+                variant={testPanelOpen ? "soft" : "secondary"}
+                size="sm"
+                aria-pressed={testPanelOpen}
+                onClick={() => setTestPanelOpen((open) => !open)}
+              >
+                {testPanelOpen ? <PanelRightClose /> : <Play />}
+                {testPanelOpen ? "Hide test" : "Test"}
+              </Button>
               {editing && (
-                <button aria-label="Delete agent" className="studio-delete-button" onClick={() => {
-                  setDeleteError("");
-                  setShowDelete(true);
-                }} type="button"><Trash2 size={16} /></button>
+                <Tooltip content="Delete agent" side="bottom">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Delete agent"
+                    className="text-fg-muted hover:bg-danger/[0.08] hover:text-danger"
+                    onClick={() => {
+                      setDeleteError("");
+                      setShowDelete(true);
+                    }}
+                  >
+                    <Trash2 />
+                  </Button>
+                </Tooltip>
               )}
-              <button className="console-primary-button" disabled={busy} type="submit">
-                {busy && <LoaderCircle className="spin" size={16} />}
-                {saved && !busy ? <Check size={15} /> : null}
-                {editing ? saved ? "Saved" : "Save changes" : "Save draft"} <ArrowRight size={15} />
-              </button>
+              <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-line" />
+              <Button
+                type="submit"
+                size="sm"
+                variant={editing && !dirty && !busy ? "secondary" : "primary"}
+                disabled={busy || (editing && !dirty)}
+                className={cn("min-w-[7.5rem]", editing && !dirty && !busy && "disabled:opacity-100 disabled:text-fg-muted disabled:shadow-none")}
+              >
+                {busy ? <LoaderCircle className="spin" /> : editing && !dirty ? <Check /> : null}
+                {busy ? "Saving…" : editing ? dirty ? "Save changes" : "Saved" : "Save draft"}
+              </Button>
             </div>
           </header>
 
@@ -1147,7 +1232,7 @@ export function AgentCreator({
               onAssigned={(agent) => {
                 setLoadedAgent(agent);
                 setShowNumberPicker(false);
-                setSaved(true);
+                markSaved();
                 void getAgentReadiness(agent.id).then(setReadiness);
               }}
             />
@@ -1203,7 +1288,7 @@ export function AgentCreator({
         setLoadedAgent(await updateAgentTimezone(agentId, timezone));
       }
       setReadiness(await getAgentReadiness(agentId));
-      setSaved(true);
+      markSaved();
       setShowPersonalisation(false);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to save business details.";
@@ -1214,6 +1299,22 @@ export function AgentCreator({
     }
   }
 }
+
+function CountryFlag({ code }: { code: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`fi fi-${code.toLowerCase()} block h-[14px] w-[19px] shrink-0 overflow-hidden rounded-[3px] bg-cover bg-center shadow-[0_0_0_1px_rgb(0_0_0/0.12)]`}
+    />
+  );
+}
+
+const COUNTRY_OPTIONS = COUNTRIES.map((country) => ({
+  value: country.code,
+  label: country.name,
+  keywords: [country.code],
+  leading: <CountryFlag code={country.code} />,
+}));
 
 function PhoneNumberPicker({
   agentId,
@@ -1238,15 +1339,8 @@ function PhoneNumberPicker({
   const [error, setError] = useState("");
   const [providerChargesConfirmed, setProviderChargesConfirmed] = useState(false);
   const [warningDismissed, setWarningDismissed] = useState(false);
-  const [countryMenuOpen, setCountryMenuOpen] = useState(false);
-  const [countrySearch, setCountrySearch] = useState("");
   const selectedCountry = COUNTRIES.find((country) => country.code === countryCode);
-  const matchingCountries = COUNTRIES.filter((country) => {
-    const query = countrySearch.trim().toLowerCase();
-    return !query
-      || country.name.toLowerCase().includes(query)
-      || country.code.toLowerCase().includes(query);
-  });
+  const selected = numbers.find((number) => number.phoneNumber === selectedNumber);
 
   async function searchNumbers() {
     setLoading(true);
@@ -1289,200 +1383,158 @@ function PhoneNumberPicker({
   }
 
   return (
-    <div className="number-picker-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !ordering) onClose();
-    }}>
-      <section aria-labelledby="number-picker-title" aria-modal="true" className="number-picker-modal" role="dialog">
-        <header>
-          <span className="number-picker-icon"><Phone size={26} /></span>
-          <div>
-            <h2 id="number-picker-title">Choose a phone number</h2>
-            <p>Select the market your customers call from. Availability and regulatory requirements vary by country.</p>
-          </div>
-          <button aria-label="Close" className="number-picker-close" disabled={ordering} onClick={onClose} type="button"><X size={20} /></button>
-        </header>
+    <DialogPrimitive.Root open onOpenChange={(open) => { if (!open && !ordering) onClose(); }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[150] bg-scrim data-[state=open]:animate-[fade-in_180ms_ease-out]" />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          onInteractOutside={(event) => { if (ordering) event.preventDefault(); }}
+          className="fixed left-1/2 top-1/2 z-[151] flex max-h-[min(90dvh,760px)] w-[min(94vw,680px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[var(--radius-card)] border border-line-strong bg-popover font-sans text-fg shadow-[var(--shadow-pop)] outline-none data-[state=open]:animate-[dialog-in_220ms_cubic-bezier(0.16,1,0.3,1)] max-sm:inset-x-0 max-sm:bottom-0 max-sm:top-auto max-sm:max-h-[92dvh] max-sm:w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none"
+        >
+          <header className="flex items-start justify-between gap-4 px-6 pb-4 pt-5">
+            <div className="min-w-0">
+              <DialogPrimitive.Title className="m-0 text-[1.05rem] font-semibold tracking-[-0.01em] text-ink">
+                {existingNumber ? "Change phone number" : "Choose a phone number"}
+              </DialogPrimitive.Title>
+              <p className="m-0 mt-1 text-[0.85rem] leading-relaxed text-fg-soft">Pick the country your customers call from. Availability and paperwork vary by country.</p>
+            </div>
+            <DialogPrimitive.Close asChild>
+              <Button variant="ghost" size="icon-xs" aria-label="Close" disabled={ordering} className="-mr-1.5"><X /></Button>
+            </DialogPrimitive.Close>
+          </header>
 
-        <div className="number-picker-toolbar">
-          <div className="number-picker-country-field">
-            <span>Country or market</span>
-            <div className="number-picker-country">
-              <button
-                aria-expanded={countryMenuOpen}
-                className="number-picker-country-trigger"
-                onClick={() => {
-                  setCountryMenuOpen((open) => !open);
-                  setCountrySearch("");
-                }}
-                type="button"
+          <div className="flex items-end gap-2 px-6 pb-4">
+            <div className="grid min-w-0 flex-1 gap-1.5 sm:max-w-[18rem]">
+              <span className="text-[0.8rem] font-medium text-ink">Country</span>
+              <Select
+                size="md"
+                className="h-10 text-[0.88rem]"
+                ariaLabel="Country"
+                searchable
+                searchPlaceholder="Search countries"
+                value={countryCode}
+                onValueChange={setCountryCode}
+                options={COUNTRY_OPTIONS}
+                disabled={ordering}
+              />
+            </div>
+            <Button variant="secondary" size="sm" className="h-10" disabled={loading || ordering} onClick={() => void searchNumbers()}>
+              <RefreshCw className={loading ? "spin" : undefined} /> Refresh
+            </Button>
+          </div>
+
+          {existingNumber && !warningDismissed ? (
+            <div className="px-6 pb-4">
+              <Note
+                tone="warning"
+                icon={<CircleAlert />}
+                title={`This replaces ${existingNumber}`}
+                action={<Button variant="ghost" size="icon-xs" aria-label="Dismiss" onClick={() => setWarningDismissed(true)}><X /></Button>}
               >
-                <span
-                  className={`fi fi-${countryCode.toLowerCase()} number-picker-flag`}
-                  aria-hidden="true"
-                />
-                <span>{selectedCountry?.name ?? countryCode}</span>
-                <ChevronDown className={countryMenuOpen ? "open" : ""} size={16} />
-              </button>
-              {countryMenuOpen && (
-                <div className="number-picker-country-menu">
-                  <label>
-                    <Search size={15} />
-                    <input
-                      autoFocus
-                      onChange={(event) => setCountrySearch(event.target.value)}
-                      placeholder="Search countries"
-                      value={countrySearch}
-                    />
-                  </label>
-                  <div role="listbox" aria-label="Countries and markets">
-                    {matchingCountries.map((country) => (
-                      <button
-                        aria-selected={country.code === countryCode}
-                        className={country.code === countryCode ? "selected" : ""}
-                        key={country.code}
-                        onClick={() => {
-                          setCountryCode(country.code);
-                          setCountryMenuOpen(false);
-                          setCountrySearch("");
-                        }}
-                        role="option"
-                        type="button"
-                      >
-                        <span
-                          className={`fi fi-${country.code.toLowerCase()} number-picker-flag`}
-                          aria-hidden="true"
-                        />
-                        <span>{country.name}</span>
-                        {country.code === countryCode && <Check size={14} />}
-                      </button>
-                    ))}
-                    {!matchingCountries.length && (
-                      <span className="number-picker-country-empty">No countries match your search.</span>
-                    )}
-                  </div>
-                </div>
-              )}
+                Your current {readableProvider(existingProvider)} number stays in that provider account and may keep billing until you release it there.
+              </Note>
             </div>
-          </div>
-          <button className="number-picker-refresh" disabled={loading || ordering} onClick={() => void searchNumbers()} type="button">
-            {loading ? <LoaderCircle className="spin" size={18} /> : <RefreshCw size={18} />} Refresh
-          </button>
-        </div>
+          ) : null}
 
-        {existingNumber && !warningDismissed && (
-          <div className="number-replacement-warning">
-            <CircleAlert size={18} />
-            <div>
-              <strong>You are replacing {existingNumber}</strong>
-              <span>
-                The existing {readableProvider(existingProvider)} number remains in that provider account and may continue billing until you release it there.
-              </span>
-            </div>
-            <button
-              aria-label="Dismiss warning"
-              className="number-warning-dismiss"
-              onClick={() => setWarningDismissed(true)}
-              type="button"
-            >
-              <X size={15} />
-            </button>
+          <div className="flex items-center justify-between gap-3 border-y border-line bg-tint/[0.02] px-6 py-2 text-[0.75rem] text-fg-muted">
+            <span className="font-medium text-fg-soft">Available in {selectedCountry?.name ?? countryCode}</span>
+            <span className="tabular-nums">{loading ? "Checking…" : `${numbers.length} ${numbers.length === 1 ? "number" : "numbers"}`}</span>
           </div>
-        )}
 
-        <div className="number-picker-results">
-          {loading ? (
-            <div className="number-picker-state"><LoaderCircle className="spin" size={24} /><span>Checking availability...</span></div>
-          ) : numbers.length ? (
-            numbers.map((number, index) => {
-              const selected = selectedNumber === number.phoneNumber;
-              const isRecommended = index === 0;
-              return (
-                <button
-                  aria-pressed={selected}
-                  className={selected ? "selected" : ""}
-                  key={number.phoneNumber}
-                  onClick={() => {
-                    setSelectedNumber(number.phoneNumber);
-                    setProviderChargesConfirmed(false);
-                  }}
-                  type="button"
-                >
-                  <span className="number-picker-radio">{selected && <span className="number-picker-radio-dot" />}</span>
-                  <span className="number-picker-number">
-                    <strong>{number.phoneNumber}</strong>
-                    <small>
-                      {[number.locality || countryCode, number.region, readableNumberType(number.type)].filter(Boolean).join(" · ")}
-                      {isRecommended && (
-                        <span className="number-recommended-badge">
-                          <Sparkles size={11} /> Recommended
-                        </span>
+          <div className="min-h-[200px] flex-1 overflow-y-auto px-3 py-2">
+            {loading ? (
+              <div className="grid gap-2 p-3">{[0, 1, 2, 3].map((item) => <div key={item} className="h-14 animate-pulse rounded-lg bg-tint/[0.05]" />)}</div>
+            ) : numbers.length ? (
+              <div role="radiogroup" aria-label="Available numbers" className="grid gap-0.5">
+                {numbers.map((number, index) => {
+                  const checked = selectedNumber === number.phoneNumber;
+                  const place = [number.locality, number.region].filter(Boolean).join(", ");
+                  return (
+                    <div
+                      key={number.phoneNumber}
+                      role="radio"
+                      aria-checked={checked}
+                      tabIndex={0}
+                      onClick={() => { setSelectedNumber(number.phoneNumber); setProviderChargesConfirmed(false); }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedNumber(number.phoneNumber);
+                          setProviderChargesConfirmed(false);
+                        }
+                      }}
+                      className={cn(
+                        "group grid cursor-pointer grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border px-3 py-2.5 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-signal/40",
+                        checked ? "border-signal/35 bg-signal/[0.07]" : "border-transparent hover:bg-tint/[0.04]",
                       )}
-                    </small>
-                  </span>
-                  <span className="number-picker-price">
-                    <strong>{formatPhoneNumberCost(number.monthlyCost, number.currency)}</strong>
-                    <small>per month</small>
-                  </span>
-                  <ChevronRight className="number-row-chevron" size={17} />
-                </button>
-              );
-            })
-          ) : (
-            <div className="number-picker-state">
-              <span className="number-picker-state-icon"><Phone size={22} /></span>
-              <strong>No browsable numbers found</strong>
-              <span>{error || "This provider or market does not currently expose selectable numbers."}</span>
-            </div>
-          )}
-        </div>
-
-        {error && numbers.length > 0 && <div className="number-picker-error"><CircleAlert size={15} /> {error}</div>}
-        {selectedNumber && (
-          <label className="number-cost-confirmation">
-            <input
-              checked={providerChargesConfirmed}
-              disabled={ordering}
-              onChange={(event) => setProviderChargesConfirmed(event.target.checked)}
-              type="checkbox"
-            />
-            <span>
-              <strong>I authorize this provider purchase</strong>
-              <small>
-                I understand this number creates the displayed recurring monthly charge
-                {numbers.find((number) => number.phoneNumber === selectedNumber)?.upfrontCost
-                  ? " and may include the displayed upfront charge"
-                  : ""}. SMS, calls, taxes, and carrier fees are billed separately.
-              </small>
-            </span>
-          </label>
-        )}
-        <footer>
-          <div className="number-picker-footer-notice">
-            <ShieldCheck className="number-picker-shield" size={36} />
-            <p>Purchasing a number may create a recurring provider charge. Numbers requiring identity documents can remain pending until approved.</p>
-          </div>
-          <div className="number-picker-footer-actions">
-            <button className="number-picker-cancel" disabled={ordering} onClick={onClose} type="button">Cancel</button>
-            {numbers.length > 0 && (
-              <button className="number-picker-select-rec" disabled={ordering} onClick={() => {
-                setSelectedNumber(numbers[0].phoneNumber);
-                setProviderChargesConfirmed(false);
-              }} type="button">
-                <Sparkles size={14} /> Select recommended
-              </button>
+                    >
+                      <RadioDot checked={checked} />
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[0.92rem] font-medium tabular-nums text-ink">{number.phoneNumber}</span>
+                          {index === 0 ? <span className="rounded-[4px] bg-signal/10 px-1.5 py-[3px] text-[0.68rem] font-medium leading-none text-signal">Recommended</span> : null}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[0.76rem] text-fg-muted">
+                          {[place || selectedCountry?.name, readableNumberType(number.type)].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                      <span className="text-right">
+                        <span className="block text-[0.88rem] font-medium tabular-nums text-ink">{formatPhoneNumberCost(number.monthlyCost, number.currency)}</span>
+                        <span className="block text-[0.72rem] text-fg-muted">per month</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid place-items-center gap-1.5 px-6 py-12 text-center">
+                <span className="mb-1 grid size-10 place-items-center rounded-full bg-tint/[0.06] text-fg-muted"><Phone className="size-[18px]" /></span>
+                <p className="m-0 text-[0.9rem] font-medium text-ink">No numbers to choose from in {selectedCountry?.name ?? countryCode}</p>
+                <p className="m-0 max-w-sm text-[0.82rem] leading-relaxed text-fg-soft">{error || "Try another country, or contact support and we’ll source one for you."}</p>
+              </div>
             )}
-            <button
-              className="number-picker-assign"
-              disabled={!selectedNumber || !providerChargesConfirmed || ordering}
-              onClick={() => void assignNumber(selectedNumber)}
-              type="button"
-            >
-              {ordering && <LoaderCircle className="spin" size={16} />}
-              Assign number
-            </button>
           </div>
-        </footer>
-      </section>
-    </div>
+
+          {error && numbers.length > 0 ? <div className="px-6 pt-3"><Alert>{error}</Alert></div> : null}
+
+          {selected ? (
+            <div className="px-6 pt-4">
+              <label className="flex cursor-pointer items-start gap-3 rounded-[var(--radius-control)] border border-line p-3.5 transition-colors hover:bg-tint/[0.02]">
+                <Checkbox
+                  checked={providerChargesConfirmed}
+                  disabled={ordering}
+                  onCheckedChange={(next) => setProviderChargesConfirmed(next === true)}
+                  className="mt-px"
+                />
+                <span className="min-w-0">
+                  <span className="block text-[0.86rem] font-medium text-ink">
+                    I agree to pay {formatPhoneNumberCost(selected.monthlyCost, selected.currency)} a month for {selected.phoneNumber}
+                  </span>
+                  <span className="mt-0.5 block text-[0.78rem] leading-relaxed text-fg-muted">
+                    {Number(selected.upfrontCost) > 0 ? `Plus a one-off ${formatPhoneNumberCost(selected.upfrontCost, selected.currency)} setup charge. ` : ""}Calls, texts, taxes and carrier fees are billed separately. Numbers that need identity documents stay pending until approved.
+                  </span>
+                </span>
+              </label>
+            </div>
+          ) : null}
+
+          <footer className="mt-4 flex items-center justify-between gap-3 border-t border-line px-6 py-3.5 max-sm:flex-col max-sm:items-stretch">
+            <p className="m-0 flex items-center gap-1.5 text-[0.76rem] text-fg-muted">
+              <ShieldCheck className="size-3.5 shrink-0" /> Nothing is charged until you assign a number.
+            </p>
+            <div className="flex gap-2 max-sm:justify-end">
+              <DialogPrimitive.Close asChild>
+                <Button variant="secondary" size="sm" disabled={ordering}>Cancel</Button>
+              </DialogPrimitive.Close>
+              <Button size="sm" disabled={!selectedNumber || !providerChargesConfirmed || ordering} onClick={() => void assignNumber(selectedNumber)}>
+                {ordering ? <LoaderCircle className="spin" /> : null}
+                {ordering ? "Assigning…" : "Assign number"}
+              </Button>
+            </div>
+          </footer>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
 
@@ -1517,6 +1569,14 @@ function formatPhoneNumberCost(value: string, currency: string) {
   }
 }
 
+const BRIEF_EXAMPLES = [
+  "Answer calls for our dental clinic, book check-ups and send urgent cases to the front desk.",
+  "Take bookings for a hair salon, quote prices from our menu and confirm by SMS.",
+  "Handle after-hours calls for a property agency and take detailed messages.",
+];
+
+const GENERATION_STEPS = ["Reading your description", "Writing the prompt", "Choosing tools and safety rules", "Setting languages and details"];
+
 function TemplateSelection({
   brief,
   category,
@@ -1542,80 +1602,162 @@ function TemplateSelection({
   onSelect: (template: Template) => void;
   onBack: () => void;
 }) {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (!generating) { setStep(0); return; }
+    const timer = window.setInterval(() => setStep((current) => Math.min(current + 1, GENERATION_STEPS.length - 1)), 1800);
+    return () => window.clearInterval(timer);
+  }, [generating]);
+
+  const blank: Template = {
+    ...templates[0],
+    id: "blank",
+    name: "Blank agent",
+    category: "Custom",
+    group: "Custom",
+    description: "Start without predefined behavior.",
+    greeting: "Open naturally in the caller's language. Introduce yourself as {{agent_name}} once, and ask one simple question about what the caller needs.",
+    prompt: "",
+    bookingEnabled: false,
+    source: "custom",
+    defaultLanguage: "en",
+    supportedLanguages: ["en"],
+    escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
+  };
+
   return (
-    <section className="agent-template-page">
-      <button className="page-back-button" type="button" onClick={onBack}><ArrowLeft size={16} /> Agents</button>
-      <div className="template-page-heading">
-        <span className="page-eyebrow">Create an agent</span>
-        <h1>How should your agent help callers?</h1>
-        <p>Describe the job in your own words or start from a proven template. Everything remains editable.</p>
-      </div>
+    <section className="studio-kit mx-auto grid w-full max-w-[64rem] grid-cols-[minmax(0,1fr)] gap-10 px-1 pb-16 pt-2 font-sans text-fg">
+      <header className="grid grid-cols-[minmax(0,1fr)] gap-4">
+        <Button variant="ghost" size="xs" className="-ml-3 w-fit" onClick={onBack}><ArrowLeft /> Agents</Button>
+        <div>
+          <p className="m-0 text-[0.78rem] font-medium text-fg-muted">New agent</p>
+          <h1 className="m-0 mt-1 text-[1.6rem] font-semibold leading-tight tracking-[-0.02em] text-ink">How should your agent help callers?</h1>
+          <p className="m-0 mt-2 max-w-2xl text-[0.92rem] leading-relaxed text-fg-soft">
+            Describe the job in your own words, or start from a template. You can change everything afterwards.
+          </p>
+        </div>
+      </header>
 
-      <div className="agent-brief-composer">
-        <div className="agent-brief-body">
-          <span><WandSparkles size={21} /></span>
-          <textarea maxLength={1000} value={brief} onChange={(event) => onBriefChange(event.target.value)} placeholder="Example: Answer calls for our clinic, book appointments, and transfer urgent requests to the front desk." />
-        </div>
-        <div className="agent-brief-footer">
-          <span>{brief.length} / 1000</span>
-          <button disabled={!brief.trim() || generating} type="button" onClick={onGenerate}>
-            {generating ? <><LoaderCircle className="spin" size={15} /> Generating</> : <>Generate setup <Sparkles size={15} /></>}
-          </button>
-        </div>
-      </div>
-      {generating && (
-        <div className="agent-generation-state" role="status">
-          <span><LoaderCircle className="spin" size={21} /></span>
-          <div>
-            <strong>Generating your agent</strong>
-            <p>Analyzing the role, conversation flow, tools, safety rules, languages, and business details.</p>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
+        <div
+          className={cn(
+            "rounded-[var(--radius-card)] border bg-surface shadow-[var(--shadow-card)] transition-[border-color,box-shadow] focus-within:border-signal/50 focus-within:ring-4 focus-within:ring-signal/10",
+            generating ? "border-signal/40" : "border-line-strong",
+          )}
+        >
+          <label htmlFor="agent-brief" className="sr-only">Describe what the agent should do</label>
+          <textarea
+            id="agent-brief"
+            rows={4}
+            maxLength={1000}
+            disabled={generating}
+            value={brief}
+            onChange={(event) => onBriefChange(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && brief.trim() && !generating) onGenerate();
+            }}
+            placeholder="For example: answer calls for our clinic, book appointments, and transfer urgent requests to the front desk."
+            className="block min-h-28 w-full resize-none border-0 bg-transparent px-5 pt-4 font-sans text-[0.98rem] leading-relaxed text-fg outline-none placeholder:text-fg-muted disabled:opacity-60"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
+            <span className="text-[0.76rem] tabular-nums text-fg-muted">
+              {brief.length} / 1000 <span className="max-sm:hidden">· Ctrl + Enter to generate</span>
+            </span>
+            <Button size="sm" disabled={!brief.trim() || generating} onClick={onGenerate}>
+              {generating ? <LoaderCircle className="spin" /> : <Sparkles />}
+              {generating ? "Setting up…" : "Set up my agent"}
+            </Button>
           </div>
-          <i><span /></i>
         </div>
-      )}
-      {error && <div className="form-alert error template-generation-error">{error}</div>}
 
-      <div className="template-section-head">
-        <div><h2>Start with a template</h2><p>Preconfigured prompts and tools for common call workflows.</p></div>
-        <div className="template-filters">
-          {categories.map((item) => <button className={category === item ? "active" : ""} disabled={generating} type="button" onClick={() => onCategoryChange(item)} key={item}>{item}</button>)}
-        </div>
+        {!brief.trim() && !generating ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[0.76rem] text-fg-muted">Try:</span>
+            {BRIEF_EXAMPLES.map((example) => (
+              <button
+                key={example}
+                type="button"
+                onClick={() => onBriefChange(example)}
+                className="max-w-full cursor-pointer truncate rounded-full border border-line bg-transparent px-3 py-1.5 text-left font-sans text-[0.78rem] text-fg-soft transition-colors hover:border-line-strong hover:text-ink"
+              >
+                {example}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {generating ? (
+          <div role="status" className="rounded-[var(--radius-card)] border border-line bg-tint/[0.025] p-4">
+            <div className="h-1 overflow-hidden rounded-full bg-tint/[0.08]">
+              <div className="h-full rounded-full bg-signal transition-[width] duration-700" style={{ width: `${((step + 1) / GENERATION_STEPS.length) * 100}%` }} />
+            </div>
+            <ol className="m-0 mt-3 grid list-none gap-1.5 p-0 sm:grid-cols-4">
+              {GENERATION_STEPS.map((label, index) => (
+                <li key={label} className={cn("flex items-center gap-2 text-[0.8rem]", index <= step ? "text-ink" : "text-fg-muted")}>
+                  {index < step ? <Check className="size-3.5 text-signal" /> : index === step ? <LoaderCircle className="spin size-3.5 text-signal" /> : <span className="size-3.5 rounded-full border border-line-strong" />}
+                  {label}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
+
+        {error ? <Alert>{error}</Alert> : null}
       </div>
 
-      <div className="agent-template-grid">
-        {visibleTemplates.map((template) => {
-          const Icon = template.icon;
-          return (
-            <button disabled={generating} type="button" key={template.id} onClick={() => onSelect(template)}>
-              <span className="template-card-top">
-                <span className="template-card-icon"><Icon size={21} /></span>
-                <h3>{template.name}</h3>
-                <small>{template.group}</small>
-              </span>
-              <p>{template.description}</p>
-              <i>Use template <ArrowRight size={15} /></i>
-            </button>
-          );
-        })}
-        <button className="blank-template-card" disabled={generating} type="button" onClick={() => onSelect({
-          ...templates[0],
-          id: "blank",
-          name: "Blank agent",
-          category: "Custom",
-          group: "Custom",
-          description: "Start without predefined behavior.",
-          greeting: "Open naturally in the caller's language. Introduce yourself as {{agent_name}} once, and ask one simple question about what the caller needs.",
-          prompt: "",
-          bookingEnabled: false,
-          source: "custom",
-          defaultLanguage: "en",
-          supportedLanguages: ["en"],
-          escalationPhrases: ["speak to a person", "talk to a human", "human agent"],
-        })}>
-          <span className="template-card-top"><span className="template-card-icon"><Bot size={21} /></span><h3>Blank agent</h3><small>Custom</small></span><p>Configure every behavior and tool yourself.</p><i>Start blank <ArrowRight size={15} /></i>
-        </button>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-t border-line pt-8">
+          <div>
+            <h2 className="m-0 text-[1.05rem] font-semibold tracking-[-0.01em] text-ink">Or start from a template</h2>
+            <p className="m-0 mt-1 text-[0.84rem] text-fg-muted">Ready-made prompts and tools for common call jobs.</p>
+          </div>
+          <Tabs value={category} onValueChange={onCategoryChange}>
+            <TabsList aria-label="Template category">
+              {categories.map((item) => <TabsTrigger key={item} value={item} disabled={generating}>{item}</TabsTrigger>)}
+            </TabsList>
+          </Tabs>
+        </div>
+
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleTemplates.map((template) => (
+            <TemplateCard key={template.id} template={template} disabled={generating} onSelect={() => onSelect(template)} />
+          ))}
+          <TemplateCard template={blank} disabled={generating} blank onSelect={() => onSelect(blank)} />
+        </div>
       </div>
     </section>
+  );
+}
+
+function TemplateCard({ template, disabled, blank = false, onSelect }: { template: Template; disabled: boolean; blank?: boolean; onSelect: () => void }) {
+  const Icon = blank ? Plus : template.icon;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onSelect}
+      className={cn(
+        "group flex min-h-[11.5rem] cursor-pointer flex-col rounded-[var(--radius-card)] border p-5 text-left font-sans transition-[border-color,background-color,box-shadow,transform] duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal disabled:cursor-not-allowed disabled:opacity-50",
+        blank
+          ? "border-dashed border-line-strong bg-transparent hover:border-fg-muted/50 hover:bg-tint/[0.02]"
+          : "border-line bg-surface shadow-[var(--shadow-card)] hover:-translate-y-px hover:border-line-strong hover:shadow-[var(--shadow-pop)]",
+      )}
+    >
+      <span className="flex items-start justify-between gap-3">
+        <span className={cn("grid size-9 place-items-center rounded-[var(--radius-control)] [&_svg]:size-[18px]", blank ? "bg-tint/[0.05] text-fg-soft" : "bg-signal/10 text-signal")}>
+          <Icon />
+        </span>
+        <span className="text-[0.72rem] font-medium text-fg-muted">{blank ? "Custom" : template.group}</span>
+      </span>
+      <span className="mt-4 block text-[0.95rem] font-semibold tracking-[-0.01em] text-ink">{template.name}</span>
+      <span className="mt-1 line-clamp-3 block text-[0.82rem] leading-relaxed text-fg-soft">
+        {blank ? "Write the prompt and choose every setting yourself." : template.description}
+      </span>
+      <span className="mt-auto flex items-center gap-1.5 pt-4 text-[0.8rem] font-medium text-fg-muted transition-colors group-hover:text-ink">
+        {blank ? "Start blank" : "Use template"}
+        <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+      </span>
+    </button>
   );
 }
 
@@ -1643,7 +1785,7 @@ function MainSettings(props: {
   onWebVoiceRequireConsent: (value: boolean) => void;
   onWhatsappEnabled: (value: boolean) => void; onWhatsappPhoneNumberId: (value: string) => void;
 }) {
-  const channelSettingsRef = useRef<HTMLDivElement>(null);
+  const channelSettingsRef = useRef<HTMLElement>(null);
   const [highlightChannels, setHighlightChannels] = useState(false);
   const [widgetColor, setWidgetColor] = useState("#31d9c9");
   const [widgetPosition, setWidgetPosition] = useState<"right" | "left">("right");
@@ -1676,275 +1818,321 @@ function MainSettings(props: {
   const widgetEmbedCode = props.webVoicePublicId
     ? `<script src="https://YOUR_SAUTI_DOMAIN/sauti-widget.js" data-base-url="https://YOUR_SAUTI_DOMAIN" data-agent="${props.webVoicePublicId}" data-lang="${widgetLanguage}" data-color="${widgetColor}" data-position="${widgetPosition}" data-label="${widgetLabel.replaceAll("\"", "&quot;")}" defer></script>`
     : "";
+  const customLanguages = props.supportedLanguages.filter((code) => !LANGUAGE_OPTIONS.some(([known]) => known === code));
+  const languageCodeValid = /^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(languageCodeToAdd.trim());
+
+  function toggleLanguage(code: string) {
+    if (code === props.language) return;
+    props.onSupportedLanguages(props.supportedLanguages.includes(code)
+      ? props.supportedLanguages.filter((item) => item !== code)
+      : [...props.supportedLanguages, code]);
+  }
+
+  function addLanguage() {
+    if (!languageCodeValid) return;
+    props.onSupportedLanguages(Array.from(new Set([...props.supportedLanguages, languageCodeToAdd.trim()])));
+    setLanguageCodeToAdd("");
+  }
+
   return (
-    <div className="main-settings-page">
-      <section className="main-settings-card main-identity-card">
-      <StudioHeading eyebrow="Main settings" title="Identity and call setup" description="Configure the essentials callers experience on every conversation." />
+    <StudioSection eyebrow="Main settings" title="Identity and call setup" description="Configure the essentials callers experience on every conversation.">
       {!channelConfigured && (
-        <div className="identity-channel-notice">
-          <span className="identity-channel-notice-icon" aria-hidden="true"><RadioTower size={16} /></span>
-          <div className="identity-channel-notice-content">
-            <div className="identity-channel-notice-heading">
-              <strong>Customer channel</strong>
-              <span>Not connected</span>
-            </div>
-            <p>Add Web Voice, WhatsApp, or a phone number to receive calls.</p>
-          </div>
-          <button type="button" onClick={focusChannels}><Plus size={14} /> Add channel</button>
+        <div className="pb-6">
+          <Note
+            tone="warning"
+            icon={<RadioTower />}
+            title="No customer channel yet"
+            action={<Button variant="secondary" size="xs" onClick={focusChannels}><Plus /> Add channel</Button>}
+          >
+            Turn on Web Voice or WhatsApp, or choose a phone number, so customers can reach this agent.
+          </Note>
         </div>
       )}
-      <div className="identity-settings-section">
-        <div className="identity-settings-section-heading">
-          <span><Bot size={16} /></span>
-          <div><h3>Agent profile</h3><p>How this agent is identified inside your workspace.</p></div>
-        </div>
-        <div className="studio-form-grid identity-profile-grid">
-          <label>Agent name<input value={props.name} onChange={(event) => props.onName(event.target.value)} /></label>
-          <label>Short description<input maxLength={500} value={props.description} onChange={(event) => props.onDescription(event.target.value)} placeholder="Describe this agent&apos;s role" /></label>
-        </div>
-      </div>
-      <div className="identity-settings-section">
-        <div className="identity-settings-section-heading">
-          <span><PhoneCall size={16} /></span>
-          <div><h3>Call defaults</h3><p>Channel, language, and local time used for conversations.</p></div>
-        </div>
-        <div className="studio-form-grid identity-call-grid">
-          <label className="identity-phone-field">
-            Phone number
-            <button
-              className="studio-disabled-field studio-phone-selector"
-              disabled={!props.onAssignPhone}
-              onClick={props.onAssignPhone}
-              type="button"
-            >
-              <Phone size={16} />
-              {props.phoneNumber ?? (props.onAssignPhone ? "Choose an available number" : "Save the agent first")}
-              <ChevronDown size={15} />
-            </button>
-          </label>
-          <label>Primary language<DarkSelect ariaLabel="Primary language" icon={<Languages size={16} />} value={props.language} onValueChange={props.onLanguage}
-            options={Array.from(new Set([...LANGUAGE_OPTIONS.map(([value]) => value), ...props.supportedLanguages]))
-              .map((value) => ({ value, label: languageName(value) }))} /></label>
-          <label>
-            Timezone
-            <DarkSelect ariaLabel="Agent timezone" icon={<Clock3 size={16} />} value={props.timezone} onValueChange={props.onTimezone}
-              options={TIMEZONE_OPTIONS} />
-          </label>
-        </div>
-      </div>
-      </section>
-      <div
-        className={`studio-setting-group main-settings-card web-voice-settings${highlightChannels ? " channel-focus" : ""}`}
+
+      <StudioGroup title="Agent profile" description="How this agent is identified inside your workspace.">
+        <FieldGrid>
+          <Field label="Agent name" htmlFor="agent-name">
+            <StudioInput id="agent-name" value={props.name} onChange={(event) => props.onName(event.target.value)} placeholder="e.g. Front desk" />
+          </Field>
+          <Field label="Short description" htmlFor="agent-description">
+            <StudioInput id="agent-description" maxLength={500} value={props.description} onChange={(event) => props.onDescription(event.target.value)} placeholder="What this agent handles" />
+          </Field>
+        </FieldGrid>
+      </StudioGroup>
+
+      <StudioGroup title="Call defaults" description="The language and local time the agent uses on every conversation.">
+        <FieldGrid>
+          <Field label="Primary language" hint="Callers are greeted in this language.">
+            <Select
+              size="md"
+              className={studioSelectClass}
+              ariaLabel="Primary language"
+              icon={<Languages />}
+              value={props.language}
+              onValueChange={props.onLanguage}
+              options={Array.from(new Set([...LANGUAGE_OPTIONS.map(([value]) => value), ...props.supportedLanguages]))
+                .map((value) => ({ value, label: languageName(value) }))}
+            />
+          </Field>
+          <Field label="Timezone" hint="Used for opening hours and bookings.">
+            <Select
+              size="md"
+              className={studioSelectClass}
+              ariaLabel="Agent timezone"
+              icon={<Clock3 />}
+              searchable
+              searchPlaceholder="Find a city or timezone"
+              value={props.timezone}
+              onValueChange={props.onTimezone}
+              options={TIMEZONE_OPTIONS}
+            />
+          </Field>
+        </FieldGrid>
+      </StudioGroup>
+
+      <StudioGroup
         id="agent-channel-settings"
-        ref={channelSettingsRef}
-        tabIndex={-1}
+        groupRef={channelSettingsRef}
+        highlight={highlightChannels}
+        title="Live channels"
+        description="Customers can reach this agent through any combination of these."
       >
-        <h3>Live channels</h3>
-        <p>Web Voice and phone calls can operate together. Enabling one does not disable the other.</p>
-        <ToggleRow icon={Mic2} title="Web Voice" detail="Let visitors speak with this agent from a browser without calling a phone number." value={props.webVoiceEnabled} onChange={props.onWebVoiceEnabled} />
-        {props.webVoiceEnabled && (
-          <div className="web-voice-config">
-            <ToggleRow icon={ShieldCheck} title="Require microphone consent" detail="Visitors must explicitly accept microphone use before a session starts." value={props.webVoiceRequireConsent} onChange={props.onWebVoiceRequireConsent} />
-            <label>
-              Allowed website origins
-              <textarea value={props.webVoiceAllowedOrigins} onChange={(event) => props.onWebVoiceAllowedOrigins(event.target.value)} placeholder={"https://example.com\nhttps://booking.example.com"} />
-              <small>One origin per line. Leave empty while testing the hosted call page.</small>
-            </label>
-            {props.webVoicePublicId ? (
-              <div className="web-voice-share">
-                <div><span>Hosted call page</span><code>/call/{props.webVoicePublicId}</code></div>
-                <Link href={`/call/${props.webVoicePublicId}`} target="_blank">Open page <ExternalLink size={14} /></Link>
-                <div className="web-voice-widget-options">
-                  <label>
-                    Button label
-                    <input maxLength={40} value={widgetLabel} onChange={(event) => setWidgetLabel(event.target.value)} />
-                  </label>
-                  <label>
-                    Language
-                    <DarkSelect ariaLabel="Widget language" value={widgetLanguage} onValueChange={setWidgetLanguage}
-                      options={props.supportedLanguages.map((code) => ({ value: code, label: languageName(code) }))} />
-                  </label>
-                  <label>
-                    Accent color
-                    <span className="web-voice-color"><input type="color" value={widgetColor} onChange={(event) => setWidgetColor(event.target.value)} /><code>{widgetColor}</code></span>
-                  </label>
-                  <label>
-                    Position
-                    <DarkSelect ariaLabel="Widget position" value={widgetPosition} onValueChange={(value) => setWidgetPosition(value as "right" | "left")}
-                      options={[{ value: "right", label: "Bottom right" }, { value: "left", label: "Bottom left" }]} />
-                  </label>
-                </div>
-                <div className="web-voice-embed">
-                  <span>Embed code</span>
-                  <code>{widgetEmbedCode}</code>
-                  <button className="console-secondary-button" type="button" onClick={() => void navigator.clipboard.writeText(widgetEmbedCode).then(() => toast.success("Embed code copied"))}>Copy embed code</button>
-                </div>
-              </div>
-            ) : <small className="field-help">Save the agent to generate its hosted page and embed code.</small>}
+        <RowList>
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 pb-3.5">
+            <div className="min-w-0">
+              <span className="flex flex-wrap items-center gap-2 text-[0.88rem] font-medium text-ink">
+                Phone calls
+                {props.phoneNumber ? (
+                  <Badge tone={phoneConfigured ? "success" : "warning"} dot>{readablePhoneStatus(props.phoneNumberStatus)}</Badge>
+                ) : null}
+              </span>
+              <span className="mt-0.5 block text-[0.78rem] leading-relaxed text-fg-muted">
+                {props.phoneNumber
+                  ? `${props.phoneNumber} · ${readableProvider(props.phoneNumberProvider)}`
+                  : "Pick a local business number. You confirm the price before anything is bought."}
+              </span>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              {props.phoneNumber && props.phoneNumberStatus !== "active" && props.onRefreshPhone ? (
+                <Button variant="ghost" size="xs" onClick={props.onRefreshPhone}><RefreshCw /> Refresh</Button>
+              ) : null}
+              <Button variant="secondary" size="xs" disabled={!props.onAssignPhone} onClick={props.onAssignPhone}>
+                <Phone /> {props.phoneNumber ? "Change number" : props.onAssignPhone ? "Choose number" : "Save agent first"}
+              </Button>
+            </div>
           </div>
-        )}
-        <ToggleRow
-          icon={MessageSquareText}
-          title="WhatsApp"
-          detail="Reply to customer WhatsApp messages with this agent. Text is available now; voice notes are the next channel step."
-          value={props.whatsappEnabled}
-          onChange={props.onWhatsappEnabled}
-        />
-        {props.whatsappEnabled && (
-          <div className="whatsapp-channel-config">
-            <label>
-              Meta phone number ID
-              <input
+
+          <SwitchRow
+            title="Web Voice"
+            description="Visitors talk to this agent from your website, without a phone call."
+            checked={props.webVoiceEnabled}
+            onChange={props.onWebVoiceEnabled}
+          >
+            <RowList>
+              <SwitchRow
+                title="Ask for microphone consent"
+                description="Visitors accept microphone use before the conversation starts."
+                checked={props.webVoiceRequireConsent}
+                onChange={props.onWebVoiceRequireConsent}
+              />
+            </RowList>
+            <Field label="Allowed websites" htmlFor="web-voice-origins" hint="One address per line. Leave empty while you test the hosted page.">
+              <Textarea
+                id="web-voice-origins"
+                rows={3}
+                className="min-h-0 font-mono text-[0.82rem]"
+                value={props.webVoiceAllowedOrigins}
+                onChange={(event) => props.onWebVoiceAllowedOrigins(event.target.value)}
+                placeholder={"https://example.com\nhttps://booking.example.com"}
+              />
+            </Field>
+            {props.webVoicePublicId ? (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line bg-surface px-3.5 py-2.5">
+                  <div className="min-w-0">
+                    <p className="m-0 text-[0.74rem] text-fg-muted">Hosted call page</p>
+                    <code className="block truncate font-mono text-[0.82rem] text-ink">/call/{props.webVoicePublicId}</code>
+                  </div>
+                  <Button asChild variant="secondary" size="xs">
+                    <Link href={`/call/${props.webVoicePublicId}`} target="_blank">Open page <ExternalLink /></Link>
+                  </Button>
+                </div>
+                <FieldGrid>
+                  <Field label="Button label" htmlFor="widget-label">
+                    <StudioInput id="widget-label" maxLength={40} value={widgetLabel} onChange={(event) => setWidgetLabel(event.target.value)} />
+                  </Field>
+                  <Field label="Widget language">
+                    <Select size="md" className={studioSelectClass} ariaLabel="Widget language" value={widgetLanguage} onValueChange={setWidgetLanguage}
+                      options={props.supportedLanguages.map((code) => ({ value: code, label: languageName(code) }))} />
+                  </Field>
+                  <Field label="Accent colour" htmlFor="widget-color">
+                    <div className="flex h-10 items-center gap-2.5 rounded-[var(--radius-control)] border border-line-strong bg-tint/[0.03] px-2">
+                      <input
+                        id="widget-color"
+                        type="color"
+                        value={widgetColor}
+                        onChange={(event) => setWidgetColor(event.target.value)}
+                        className="size-7 cursor-pointer rounded-[5px] border-0 bg-transparent p-0"
+                      />
+                      <code className="font-mono text-[0.82rem] uppercase text-fg-soft">{widgetColor}</code>
+                    </div>
+                  </Field>
+                  <Field label="Position">
+                    <Select size="md" className={studioSelectClass} ariaLabel="Widget position" value={widgetPosition} onValueChange={(value) => setWidgetPosition(value as "right" | "left")}
+                      options={[{ value: "right", label: "Bottom right" }, { value: "left", label: "Bottom left" }]} />
+                  </Field>
+                </FieldGrid>
+                <Field
+                  label="Embed code"
+                  hint="Paste this just before the closing </body> tag on your site."
+                  badge={(
+                    <Button variant="ghost" size="xs" className="-my-1 h-7" onClick={() => void navigator.clipboard.writeText(widgetEmbedCode).then(() => toast.success("Embed code copied"))}>
+                      <Copy /> Copy
+                    </Button>
+                  )}
+                >
+                  <pre className="m-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-[var(--radius-control)] border border-line bg-tint/[0.04] p-3 font-mono text-[0.74rem] leading-relaxed text-fg-soft">{widgetEmbedCode}</pre>
+                </Field>
+              </>
+            ) : (
+              <p className="m-0 text-[0.78rem] text-fg-muted">Save the agent to get its hosted page and embed code.</p>
+            )}
+          </SwitchRow>
+
+          <SwitchRow
+            title="WhatsApp"
+            description="Reply to customer WhatsApp messages. Text works today; voice notes are coming next."
+            checked={props.whatsappEnabled}
+            onChange={props.onWhatsappEnabled}
+          >
+            <Field label="Meta phone number ID" htmlFor="whatsapp-number-id" hint="The ID shown in WhatsApp Manager, not the phone number itself.">
+              <StudioInput
+                id="whatsapp-number-id"
                 inputMode="numeric"
+                className="font-mono"
                 value={props.whatsappPhoneNumberId}
                 onChange={(event) => props.onWhatsappPhoneNumberId(event.target.value.replace(/\D/g, ""))}
                 placeholder="123456789012345"
               />
-              <small>Use the phone number ID shown in WhatsApp Manager, not the visible phone number.</small>
-            </label>
-            <p>Configure the Meta webhook as <code>https://YOUR_BACKEND/webhooks/whatsapp</code>.</p>
-          </div>
-        )}
-        <div className="channel-status">
-          <Phone size={18} />
-          <div>
-            <strong>Phone calls</strong>
-            <small>
-              {phoneConfigured
-                ? `${props.phoneNumber} · ${readableProvider(props.phoneNumberProvider)}`
-                : props.phoneNumber
-                  ? `${props.phoneNumber} · ${readablePhoneStatus(props.phoneNumberStatus)}`
-                  : "Browse available business numbers and confirm before purchasing."}
-            </small>
-          </div>
-          <div className="channel-status-actions">
-            {props.phoneNumber && <span className={`phone-status ${props.phoneNumberStatus ?? "active"}`}>{readablePhoneStatus(props.phoneNumberStatus)}</span>}
-            {props.phoneNumber && props.phoneNumberStatus !== "active" && props.onRefreshPhone && (
-              <button className="console-secondary-button" onClick={props.onRefreshPhone} type="button">Refresh status</button>
-            )}
-            <button className="console-secondary-button" disabled={!props.onAssignPhone} onClick={props.onAssignPhone} type="button">
-              {props.phoneNumber ? "Change number" : "Choose number"}
-            </button>
-          </div>
-        </div>
-      </div>
-      <div className="studio-setting-group main-settings-card">
-        <h3>Supported caller languages</h3>
-        <p>The agent detects these languages during a call. The primary language cannot be removed.</p>
-        <div className="studio-language-options">
-          {LANGUAGE_OPTIONS.map(([code, label]) => {
-            const selected = props.supportedLanguages.includes(code);
-            return (
-              <button
-                className={selected ? "selected" : ""}
-                disabled={code === props.language}
-                key={code}
-                type="button"
-                onClick={() => props.onSupportedLanguages(selected
-                  ? props.supportedLanguages.filter((item) => item !== code)
-                  : [...props.supportedLanguages, code])}
-              >
-                {selected && <Check size={15} />} {label}
-              </button>
-            );
-          })}
-        </div>
-        <div className="add-language-control">
-          <input
-            aria-label="BCP 47 language code"
-            onChange={(event) => setLanguageCodeToAdd(event.target.value)}
-            placeholder="Add another language code, e.g. nl or fr-CA"
-            value={languageCodeToAdd}
-          />
-          <button
-            disabled={!/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(languageCodeToAdd.trim())}
-            onClick={() => {
-              const code = languageCodeToAdd.trim();
-              props.onSupportedLanguages(Array.from(new Set([...props.supportedLanguages, code])));
-              setLanguageCodeToAdd("");
-            }}
-            type="button"
-            className="console-secondary-button"
-          ><Plus size={14} /> Add language</button>
-        </div>
-        {props.supportedLanguages.filter((code) => !LANGUAGE_OPTIONS.some(([known]) => known === code)).length > 0 && (
-          <div className="studio-language-options custom-language-options">
-            {props.supportedLanguages.filter((code) => !LANGUAGE_OPTIONS.some(([known]) => known === code)).map((code) => (
-              <button className="selected" disabled={code === props.language} key={code} onClick={() => props.onSupportedLanguages(props.supportedLanguages.filter((item) => item !== code))} type="button">
-                <Check size={15} /> {code} {code !== props.language && <X size={13} />}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="studio-setting-group main-settings-card">
-        <h3>Capabilities</h3>
-        <ToggleRow icon={CalendarCheck} title="Appointment booking" detail="Allow the agent to check availability and create bookings." value={props.bookingEnabled} onChange={props.onBooking} />
-        {props.bookingEnabled && (
-          <div className="booking-workflow-settings">
-            <BookingDurationSetting
-              value={props.defaultBookingDurationMinutes}
-              onChange={props.onDefaultBookingDurationMinutes}
+            </Field>
+            <p className="m-0 text-[0.78rem] leading-relaxed text-fg-muted">
+              Set the Meta webhook to <code className="rounded-[4px] bg-tint/[0.06] px-1 py-0.5 font-mono text-[0.76rem] text-fg-soft">https://YOUR_BACKEND/webhooks/whatsapp</code>.
+            </p>
+          </SwitchRow>
+        </RowList>
+      </StudioGroup>
+
+      <StudioGroup
+        title="Caller languages"
+        description="The agent understands and replies in these languages. The primary language is always on."
+        action={<Meta>{props.supportedLanguages.length} on</Meta>}
+      >
+        <ChipGroup label="Supported languages">
+          {LANGUAGE_OPTIONS.map(([code, label]) => (
+            <Chip
+              key={code}
+              selected={props.supportedLanguages.includes(code)}
+              locked={code === props.language}
+              onClick={() => toggleLanguage(code)}
+              trailing={code === props.language ? <span className="text-[0.72rem] font-normal text-fg-muted">Primary</span> : undefined}
+            >
+              {label}
+            </Chip>
+          ))}
+          {customLanguages.map((code) => (
+            <Chip
+              key={code}
+              selected
+              locked={code === props.language}
+              onClick={() => toggleLanguage(code)}
+              trailing={code !== props.language ? <X className="text-fg-muted" aria-label={`Remove ${code}`} /> : undefined}
+            >
+              {languageName(code)}
+            </Chip>
+          ))}
+        </ChipGroup>
+        <Field label="Add another language" htmlFor="language-code" hint="Use a language code, for example nl for Dutch or fr-CA for Canadian French.">
+          <div className="flex gap-2">
+            <StudioInput
+              id="language-code"
+              className="font-mono"
+              value={languageCodeToAdd}
+              onChange={(event) => setLanguageCodeToAdd(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addLanguage(); } }}
+              placeholder="nl"
             />
-            <BookingFieldPicker
-              fields={props.bookingRequiredFields}
-              onChange={props.onBookingRequiredFields}
-              suggestions={props.bookingFieldSuggestions}
-            />
-            <div className="booking-notification-settings">
-              <span>Notify the business owner</span>
-              <div className="studio-language-options">
+            <Button variant="secondary" size="sm" className="h-10 shrink-0" disabled={!languageCodeValid} onClick={addLanguage}><Plus /> Add</Button>
+          </div>
+        </Field>
+      </StudioGroup>
+
+      <StudioGroup title="Bookings" description="Let the agent check your calendar and book appointments during the call.">
+        <RowList>
+          <SwitchRow
+            title="Appointment booking"
+            description="Check availability and create bookings while the caller is on the line."
+            checked={props.bookingEnabled}
+            onChange={props.onBooking}
+          >
+            <BookingDurationSetting value={props.defaultBookingDurationMinutes} onChange={props.onDefaultBookingDurationMinutes} />
+            <BookingFieldPicker fields={props.bookingRequiredFields} onChange={props.onBookingRequiredFields} suggestions={props.bookingFieldSuggestions} />
+            <Field label="Notify the business owner" hint="Where new bookings are announced.">
+              <ChipGroup label="Booking notifications">
                 {[{ value: "dashboard", label: "Dashboard" }, { value: "email", label: "Email" }].map((channel) => {
                   const selected = props.bookingNotificationChannels.includes(channel.value);
                   return (
-                    <button
-                      className={selected ? "selected" : ""}
+                    <Chip
                       key={channel.value}
+                      selected={selected}
                       onClick={() => props.onBookingNotificationChannels(selected
                         ? props.bookingNotificationChannels.filter((item) => item !== channel.value)
                         : [...props.bookingNotificationChannels, channel.value])}
-                      type="button"
                     >
-                      {selected && <Check size={15} />} {channel.label}
-                    </button>
+                      {channel.label}
+                    </Chip>
                   );
                 })}
-              </div>
-            </div>
+              </ChipGroup>
+            </Field>
             {props.bookingNotificationChannels.includes("email") && (
-              <label className="booking-notification-email">
-                <span>Notification email <small>Optional override</small></span>
-                <input
-                    inputMode="email"
-                    onChange={(event) => props.onBookingNotificationRecipient(event.target.value)}
-                    placeholder="owner@business.com"
-                    type="email"
-                    value={props.bookingNotificationRecipient}
-                  />
-                <small>Leave blank to notify the workspace owner.</small>
-              </label>
+              <Field label="Notification email" htmlFor="booking-email" badge={<Meta>Optional</Meta>} hint="Leave blank to email the workspace owner.">
+                <StudioInput
+                  id="booking-email"
+                  inputMode="email"
+                  type="email"
+                  value={props.bookingNotificationRecipient}
+                  onChange={(event) => props.onBookingNotificationRecipient(event.target.value)}
+                  placeholder="owner@business.com"
+                />
+              </Field>
             )}
-          </div>
-        )}
-      </div>
-      <div className="studio-setting-group main-settings-card">
-        <h3>Privacy and call records</h3>
-        <ToggleRow icon={MessageSquareText} title="Save transcript" detail="Store the transcript for call review and analytics." value={props.saveTranscript} onChange={props.onSaveTranscript} />
-        <ToggleRow
-          icon={Mic2}
-          title="Record phone calls"
-          detail="Capture both caller and agent audio. Make sure your greeting provides any consent notice required in your callers' locations."
-          value={props.recordCalls}
-          onChange={props.onRecordCalls}
+          </SwitchRow>
+        </RowList>
+      </StudioGroup>
+
+      <StudioGroup title="Privacy and call records" description="What Sauti keeps after each call.">
+        <RowList>
+          <SwitchRow title="Save transcripts" description="Keep a written record of each call for review and analytics." checked={props.saveTranscript} onChange={props.onSaveTranscript} />
+          <SwitchRow
+            title="Record phone calls"
+            description="Keep audio of both sides. Make sure your greeting gives any consent notice your callers’ location requires."
+            checked={props.recordCalls}
+            onChange={props.onRecordCalls}
+          />
+        </RowList>
+      </StudioGroup>
+
+      <StudioGroup title="Greeting" description="The first thing callers hear when the agent answers." action={<Meta>{props.greeting.length} characters</Meta>}>
+        <Textarea
+          aria-label="Greeting"
+          rows={3}
+          className="min-h-0 text-[0.9rem]"
+          value={props.greeting}
+          onChange={(event) => props.onGreeting(event.target.value)}
+          placeholder="Hello, you’ve reached {{business_name}}. How can I help?"
         />
-      </div>
-      <div className="studio-setting-group main-settings-card">
-        <h3>Inbound greeting</h3>
-        <p>The first message callers hear when the agent answers.</p>
-        <textarea className="studio-greeting" value={props.greeting} onChange={(event) => props.onGreeting(event.target.value)} />
-        <small className="field-help">Use clear, natural language. Variables can be added later.</small>
-      </div>
-    </div>
+      </StudioGroup>
+    </StudioSection>
   );
 }
 
@@ -1962,29 +2150,19 @@ function bookingDurationLabel(minutes: number) {
   return `${minutes} minutes`;
 }
 
-function BookingDurationSetting({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  const options = bookingDurationOptions(value);
+function BookingDurationSetting({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   return (
-    <label className="booking-duration-setting">
-      <span>Standard booking duration <small>Required</small></span>
-      <DarkSelect
+    <Field label="Standard appointment length" hint="Used to find free slots, unless the caller asks for a different length.">
+      <Select
+        size="md"
+        className={cn(studioSelectClass, "sm:max-w-[calc(50%-0.5rem)]")}
         ariaLabel="Standard booking duration"
-        icon={<Clock3 size={16} />}
+        icon={<Clock3 />}
         value={String(value)}
         onValueChange={(next) => onChange(Number(next))}
-        options={options.map((minutes) => ({
-          value: String(minutes),
-          label: bookingDurationLabel(minutes),
-        }))}
+        options={bookingDurationOptions(value).map((minutes) => ({ value: String(minutes), label: bookingDurationLabel(minutes) }))}
       />
-      <small>Used for availability checks and new bookings unless the caller explicitly requests a different duration.</small>
-    </label>
+    </Field>
   );
 }
 
@@ -1998,13 +2176,13 @@ function BookingFieldPicker({
   onChange: (value: string[]) => void;
 }) {
   const [customField, setCustomField] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const normalizedFields = Array.from(new Set([...DEFAULT_BOOKING_FIELDS, ...fields]));
-  const suggestedFields = Array.from(new Set(suggestions))
-    .filter((field) => !CORE_BOOKING_FIELDS.has(field));
-  const optionalFields = Array.from(new Set([...suggestedFields, ...BOOKING_FIELD_CATALOG, ...fields]))
-    .filter((field) => !CORE_BOOKING_FIELDS.has(field));
-  const selectedCount = normalizedFields.length;
-  const atLimit = selectedCount >= 25;
+  const suggestedFields = Array.from(new Set(suggestions)).filter((field) => !CORE_BOOKING_FIELDS.has(field));
+  const moreFields = Array.from(new Set([...BOOKING_FIELD_CATALOG, ...fields]))
+    .filter((field) => !CORE_BOOKING_FIELDS.has(field) && !suggestedFields.includes(field));
+  const atLimit = normalizedFields.length >= 25;
+  const normalizedCustom = normalizeBookingField(customField);
 
   function toggleField(field: string) {
     if (CORE_BOOKING_FIELDS.has(field)) return;
@@ -2014,67 +2192,66 @@ function BookingFieldPicker({
   }
 
   function addCustomField() {
-    const normalized = normalizeBookingField(customField);
-    if (!normalized) return;
-    if (!normalizedFields.includes(normalized)) onChange([...normalizedFields, normalized]);
+    if (!normalizedCustom) return;
+    if (!normalizedFields.includes(normalizedCustom)) onChange([...normalizedFields, normalizedCustom]);
     setCustomField("");
   }
 
+  const chip = (field: string) => {
+    const selected = normalizedFields.includes(field);
+    return (
+      <Chip key={field} selected={selected} disabled={atLimit && !selected} onClick={() => toggleField(field)}>
+        {bookingFieldLabel(field)}
+      </Chip>
+    );
+  };
+
   return (
-    <div className="booking-field-picker">
-      <header>
-        <div><strong>Required booking details</strong><small>The agent collects every selected field before creating the booking.</small></div>
-        <span>{selectedCount} selected</span>
-      </header>
-      <div className="booking-field-group">
-        <span>Always required</span>
-        <div className="booking-field-options core">
-          {DEFAULT_BOOKING_FIELDS.map((field) => (
-            <button aria-pressed key={field} type="button" title="Required for every booking">
-              <ShieldCheck size={14} /> {bookingFieldLabel(field)} <small>Required</small>
-            </button>
-          ))}
+    <div className="grid gap-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="m-0 text-[0.84rem] font-medium text-ink">Details to collect</p>
+          <p className="m-0 mt-0.5 text-[0.76rem] leading-relaxed text-fg-muted">The agent asks for every selected detail before it books.</p>
         </div>
+        <Meta>{normalizedFields.length} of 25</Meta>
+      </div>
+      <div className="grid gap-2">
+        <p className="m-0 text-[0.74rem] font-medium text-fg-muted">Always collected</p>
+        <ChipGroup label="Always collected">
+          {DEFAULT_BOOKING_FIELDS.map((field) => <Chip key={field} selected locked>{bookingFieldLabel(field)}</Chip>)}
+        </ChipGroup>
       </div>
       {suggestedFields.length > 0 && (
-        <div className="booking-field-group">
-          <span>Suggested for this business</span>
-          <div className="booking-field-options">
-            {suggestedFields.map((field) => {
-              const selected = normalizedFields.includes(field);
-              return <button aria-pressed={selected} className={selected ? "selected" : ""} disabled={atLimit && !selected} key={field} onClick={() => toggleField(field)} type="button">{selected ? <Check size={14} /> : <Plus size={14} />} {bookingFieldLabel(field)}</button>;
-            })}
-          </div>
+        <div className="grid gap-2">
+          <p className="m-0 text-[0.74rem] font-medium text-fg-muted">Suggested for your business</p>
+          <ChipGroup label="Suggested details">{suggestedFields.map(chip)}</ChipGroup>
         </div>
       )}
-      <details className="booking-field-library">
-        <summary>Browse more fields <ChevronDown size={15} /></summary>
-        <div className="booking-field-options">
-          {optionalFields.filter((field) => !suggestedFields.includes(field)).map((field) => {
-            const selected = normalizedFields.includes(field);
-            return <button aria-pressed={selected} className={selected ? "selected" : ""} disabled={atLimit && !selected} key={field} onClick={() => toggleField(field)} type="button">{selected ? <Check size={14} /> : <Plus size={14} />} {bookingFieldLabel(field)}</button>;
-          })}
+      {moreFields.length > 0 && (
+        <div className="grid gap-2">
+          {showAll ? <ChipGroup label="More details">{moreFields.map(chip)}</ChipGroup> : null}
+          <Button variant="ghost" size="xs" className="-ml-3 w-fit" onClick={() => setShowAll((current) => !current)}>
+            <ChevronDown className={cn("transition-transform", showAll && "rotate-180")} />
+            {showAll ? "Show fewer details" : `Show ${moreFields.length} more details`}
+          </Button>
         </div>
-      </details>
-      <div className="booking-custom-field">
-        <label htmlFor="custom-booking-field">Need another detail?</label>
-        <div>
-          <input
+      )}
+      <Field
+        label="Add your own"
+        htmlFor="custom-booking-field"
+        hint={normalizedCustom ? <>Saved as <code className="font-mono text-fg-soft">{normalizedCustom}</code></> : "For example, insurance member number."}
+      >
+        <div className="flex gap-2">
+          <StudioInput
             id="custom-booking-field"
-            onChange={(event) => setCustomField(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                addCustomField();
-              }
-            }}
-            placeholder="e.g. Insurance member number"
             value={customField}
+            onChange={(event) => setCustomField(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addCustomField(); } }}
+            placeholder="Insurance member number"
           />
-          <button className="console-secondary-button" disabled={atLimit || !normalizeBookingField(customField)} onClick={addCustomField} type="button"><Plus size={14} /> Add field</button>
+          <Button variant="secondary" size="sm" className="h-10 shrink-0" disabled={atLimit || !normalizedCustom} onClick={addCustomField}><Plus /> Add</Button>
         </div>
-        {customField && <small>Saved as <code>{normalizeBookingField(customField)}</code></small>}
-      </div>
+      </Field>
     </div>
   );
 }
@@ -2108,41 +2285,58 @@ function BehaviorSettings({
   variables: AgentVariableDefinition[];
   values: Record<string, string>;
 }) {
-  const [preview, setPreview] = useState(variables.length > 0);
+  const [view, setView] = useState<"edit" | "preview">(variables.length > 0 ? "preview" : "edit");
+  const showPreview = view === "preview" && variables.length > 0;
   return (
-    <>
-      <StudioHeading eyebrow="Prompt" title="Agent prompt" description="Define what the agent should accomplish and the boundaries it must follow." />
-      <div className="prompt-toolbar">
-        <button type="button"><Sparkles size={15} /> {template}</button>
-        {variables.length > 0 && (
-          <div className="prompt-view-toggle">
-            <button className={!preview ? "active" : ""} type="button" onClick={() => setPreview(false)}>Raw prompt</button>
-            <button className={preview ? "active" : ""} type="button" onClick={() => setPreview(true)}>Preview details</button>
-          </div>
-        )}
+    <StudioSection eyebrow="Prompt" title="Agent prompt" description="Define what the agent should accomplish and the boundaries it must follow.">
+      <StudioGroup
+        title="Instructions"
+        description={<>Started from <span className="font-medium text-fg-soft">{template}</span>. Use <code className="font-mono text-fg-soft">{"{{variable}}"}</code> to insert business details.</>}
+        action={variables.length > 0 ? (
+          <Tabs value={view} onValueChange={(next) => setView(next as "edit" | "preview")}>
+            <TabsList aria-label="Prompt view">
+              <TabsTrigger value="edit"><PencilLine /> Edit</TabsTrigger>
+              <TabsTrigger value="preview"><Eye /> Preview</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        ) : undefined}
+      >
+        {showPreview
+          ? <PromptPreview prompt={prompt} values={values} />
+          : (
+            <Textarea
+              aria-label="Agent prompt"
+              spellCheck
+              className="min-h-[min(64vh,600px)] resize-y font-mono text-[0.84rem] leading-6"
+              value={prompt}
+              onChange={(event) => onPrompt(event.target.value)}
+            />
+          )}
+        <div className="-mt-2 flex justify-between gap-4 text-[0.74rem] text-fg-muted">
+          <span>{showPreview ? "Highlighted text comes from your business details." : "Drag the corner to resize."}</span>
+          <span className="tabular-nums">{prompt.length.toLocaleString()} characters</span>
+        </div>
+      </StudioGroup>
+      <div className="border-t border-line pt-6">
+        <Note tone="signal" icon={<ShieldCheck />} title="Keep instructions testable">
+          Spell out the goal, the details to collect, when to use each tool, when to hand over to a person, and the tone to use.
+        </Note>
       </div>
-      {preview && variables.length > 0
-        ? <PromptPreview prompt={prompt} values={values} />
-        : <textarea className="studio-prompt-editor" value={prompt} onChange={(event) => onPrompt(event.target.value)} spellCheck />}
-      <div className="prompt-guidance">
-        <ShieldCheck size={19} />
-        <div><strong>Keep instructions testable</strong><p>Specify goals, required details, tool rules, escalation conditions, and the desired conversation style.</p></div>
-      </div>
-    </>
+    </StudioSection>
   );
 }
 
 function PromptPreview({ prompt, values }: { prompt: string; values: Record<string, string> }) {
   const segments = prompt.split(/(\{\{[a-zA-Z0-9_]+}})/g);
   return (
-    <pre className="studio-prompt-preview">
+    <pre className="m-0 min-h-[min(64vh,600px)] overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-line bg-tint/[0.03] p-3.5 font-mono text-[0.84rem] leading-6 text-fg">
       {segments.map((segment, index) => {
         const match = segment.match(/^\{\{([a-zA-Z0-9_]+)}}$/);
         if (!match) return <span key={`${index}-${segment.slice(0, 8)}`}>{segment}</span>;
         const value = values[match[1]]?.trim();
         return value
-          ? <mark key={`${index}-${match[1]}`}>{value}</mark>
-          : <em key={`${index}-${match[1]}`}>Not provided</em>;
+          ? <mark key={`${index}-${match[1]}`} className="rounded-[3px] bg-signal/15 px-0.5 text-ink">{value}</mark>
+          : <em key={`${index}-${match[1]}`} className="rounded-[3px] bg-warning/15 px-0.5 not-italic text-warning">{match[1]} not provided</em>;
       })}
     </pre>
   );
@@ -2156,23 +2350,68 @@ function SpeechSettings(props: {
   onVocabularyDomain: (value: string) => void; onBoostedKeywords: (value: string) => void;
 }) {
   return (
-    <>
-      <StudioHeading eyebrow="Speech & transcription" title="Voice and turn-taking" description="Tune how the agent sounds, listens, and decides that a caller has finished speaking." />
-      <div className="studio-setting-group first">
-        <h3>Agent voice</h3>
-        <p>Select and preview a voice from the enabled TTS provider.</p>
+    <StudioSection eyebrow="Speech & transcription" title="Voice and turn-taking" description="Tune how the agent sounds, listens, and decides that a caller has finished speaking.">
+      <StudioGroup title="Voice" description="What callers hear. Listen to each voice before choosing.">
         <VoicePicker value={props.voice} primaryLanguage={props.language} supportedLanguages={props.supportedLanguages} onChange={props.onVoice} />
-      </div>
-      <RangeSetting label="Interruption sensitivity" detail="Higher values make the agent stop speaking more quickly when the caller talks." value={props.bargeInSensitivity} min={0} max={1} step={0.05} suffix={props.bargeInSensitivity.toFixed(2)} onChange={props.onBargeInSensitivity} />
-      <RangeSetting label="Interruption grace period" detail="Minimum caller speech before an interruption is accepted." value={props.bargeInGraceMs} min={0} max={1500} step={50} suffix={`${props.bargeInGraceMs} ms`} onChange={props.onBargeInGraceMs} />
-      <RangeSetting label="Response latency" detail="Silence Deepgram waits before finalizing the caller's turn." value={props.sttEndpointingMs} min={100} max={1500} step={50} suffix={`${props.sttEndpointingMs} ms`} onChange={props.onSttEndpointingMs} />
-      <div className="studio-form-grid advanced-grid">
-        <label>Vocabulary specialization<DarkSelect ariaLabel="Vocabulary specialization" value={props.vocabularyDomain} onValueChange={props.onVocabularyDomain}
-          options={[{ value: "general", label: "General" }, { value: "medical", label: "Medical" }]} /></label>
-        <label>Boosted keyterms<input value={props.boostedKeywords} onChange={(event) => props.onBoostedKeywords(event.target.value)} placeholder="Kibera, Ouagadougou, Thiong'o" /></label>
-      </div>
-    </>
+      </StudioGroup>
+      <StudioGroup title="Turn-taking" description="How quickly the agent replies, and how easily callers can interrupt it.">
+        <SliderField
+          label="Interruption sensitivity"
+          description="How readily the agent stops talking when the caller starts speaking."
+          value={props.bargeInSensitivity}
+          min={0}
+          max={1}
+          step={0.05}
+          format={(value) => `${Math.round(value * 100)}%`}
+          lowLabel="Finishes its sentence"
+          highLabel="Stops straight away"
+          onChange={props.onBargeInSensitivity}
+        />
+        <SliderField
+          label="Interruption grace period"
+          description="How long the caller must speak before it counts as an interruption."
+          value={props.bargeInGraceMs}
+          min={0}
+          max={1500}
+          step={50}
+          format={(value) => `${value} ms`}
+          lowLabel="Any sound"
+          highLabel="A full phrase"
+          onChange={props.onBargeInGraceMs}
+        />
+        <SliderField
+          label="Reply delay"
+          description="How long the caller must be silent before the agent answers."
+          value={props.sttEndpointingMs}
+          min={100}
+          max={1500}
+          step={50}
+          format={(value) => `${value} ms`}
+          lowLabel="Quick replies"
+          highLabel="Waits for long pauses"
+          onChange={props.onSttEndpointingMs}
+        />
+      </StudioGroup>
+      <StudioGroup title="Transcription" description="Help speech recognition with your field and the names callers say.">
+        <FieldGrid>
+          <Field label="Vocabulary">
+            <Select size="md" className={studioSelectClass} ariaLabel="Vocabulary specialization" value={props.vocabularyDomain || "general"} onValueChange={props.onVocabularyDomain}
+              options={[{ value: "general", label: "General" }, { value: "medical", label: "Medical" }]} />
+          </Field>
+          <Field label="Words to listen for" htmlFor="boosted-keyterms" hint="Separate with commas: names, places, products.">
+            <StudioInput id="boosted-keyterms" value={props.boostedKeywords} onChange={(event) => props.onBoostedKeywords(event.target.value)} placeholder="Kibera, Thiong'o, Invisalign" />
+          </Field>
+        </FieldGrid>
+      </StudioGroup>
+    </StudioSection>
   );
+}
+
+function formatSeconds(total: number) {
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  if (!minutes) return `${seconds} s`;
+  return seconds ? `${minutes} min ${seconds} s` : `${minutes} min`;
 }
 
 function CallBehaviorSettings(props: {
@@ -2209,84 +2448,154 @@ function CallBehaviorSettings(props: {
   }
 
   return (
-    <>
-      <StudioHeading eyebrow="Call behaviour" title="Silence, screening, and safety" description="Control how the agent handles unattended calls, long pauses, and sensitive topics." />
-      <div className="studio-setting-group first">
-        <ToggleRow icon={PhoneCall} title="Voicemail detection" detail="End the call when the first transcript matches a voicemail greeting." value={props.detectVoicemail} onChange={props.onDetectVoicemail} />
-        <ToggleRow icon={ShieldCheck} title="Call-screen handling" detail="Recognize screening prompts such as “Who is calling?”" value={props.handleCallScreening} onChange={props.onHandleCallScreening} />
-        <ToggleRow icon={Settings2} title="DTMF keypad input" detail="Capture keypad sequences when call-control support is enabled." value={props.dtmfEnabled} onChange={props.onDtmfEnabled} />
-      </div>
-      {props.dtmfEnabled && (
-        <div className="dtmf-configuration">
-          <div className="dtmf-heading">
-            <div><h3>Keypad menu</h3><p>Translate caller key presses into explicit intents the agent can follow.</p></div>
-            <button onClick={addMapping} type="button"><Plus size={15} /> Add option</button>
-          </div>
-          <div className="studio-form-grid advanced-grid">
-            <label>
-              Completion key
-              <DarkSelect ariaLabel="DTMF completion key" value={props.dtmfTerminationKey} onValueChange={(value) => props.onDtmfTerminationKey(value as "#" | "*")}
-                options={[{ value: "#", label: "# Hash" }, { value: "*", label: "* Star" }]} />
-              <small>Submits the digits immediately and is not included in the value.</small>
-            </label>
-            <label>
-              Input timeout
-              <div className="input-with-suffix"><input type="number" min="1" max="30" value={props.dtmfInputTimeoutSeconds} onChange={(event) => props.onDtmfInputTimeoutSeconds(Number(event.target.value))} /><span>seconds</span></div>
-              <small>Submits automatically after the caller stops entering digits.</small>
-            </label>
-            <label>
-              Maximum digits
-              <input type="number" min="1" max="32" value={props.dtmfMaxDigits} onChange={(event) => props.onDtmfMaxDigits(Number(event.target.value))} />
-              <small>Useful for confirmation codes and reference numbers.</small>
-            </label>
-          </div>
-          <div className="dtmf-options">
-            {mappings.length === 0 ? (
-              <div className="dtmf-empty">No menu options yet. Unmapped digit sequences are still passed to the agent.</div>
-            ) : mappings.map(([digits, meaning], index) => (
-              <div className="dtmf-option" key={`${digits}-${index}`}>
-                <label><span>Digits</span><input inputMode="numeric" maxLength={props.dtmfMaxDigits} value={digits} onChange={(event) => updateMapping(index, event.target.value, meaning)} placeholder="1" /></label>
-                <label><span>Caller intent</span><input value={meaning} onChange={(event) => updateMapping(index, digits, event.target.value)} placeholder="Confirm the appointment" /></label>
-                <button aria-label={`Remove keypad option ${digits}`} onClick={() => removeMapping(digits)} type="button"><Trash2 size={16} /></button>
+    <StudioSection eyebrow="Call behaviour" title="Silence, screening, and safety" description="Control how the agent handles unattended calls, long pauses, and sensitive topics.">
+      <StudioGroup title="Call handling" description="How the agent deals with voicemail, call screeners and keypad presses.">
+        <RowList>
+          <SwitchRow title="Voicemail detection" description="Hang up when the call reaches a voicemail greeting." checked={props.detectVoicemail} onChange={props.onDetectVoicemail} />
+          <SwitchRow title="Call-screen handling" description="Answer screening prompts such as “Who is calling?”" checked={props.handleCallScreening} onChange={props.onHandleCallScreening} />
+          <SwitchRow title="Keypad input" description="Understand numbers callers type on their keypad." checked={props.dtmfEnabled} onChange={props.onDtmfEnabled}>
+            <FieldGrid columns={3}>
+              <Field label="Finish key" hint="Sends the digits straight away.">
+                <Select size="md" className={studioSelectClass} ariaLabel="DTMF completion key" value={props.dtmfTerminationKey} onValueChange={(value) => props.onDtmfTerminationKey(value as "#" | "*")}
+                  options={[{ value: "#", label: "# Hash" }, { value: "*", label: "* Star" }]} />
+              </Field>
+              <Field label="Wait for input" hint="Sends after the caller stops typing.">
+                <NumberField ariaLabel="Input timeout in seconds" value={props.dtmfInputTimeoutSeconds} min={1} max={30} unit="sec" onChange={props.onDtmfInputTimeoutSeconds} />
+              </Field>
+              <Field label="Maximum digits" hint="For codes and reference numbers.">
+                <NumberField ariaLabel="Maximum digits" value={props.dtmfMaxDigits} min={1} max={32} onChange={props.onDtmfMaxDigits} />
+              </Field>
+            </FieldGrid>
+            <div className="grid gap-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="m-0 text-[0.84rem] font-medium text-ink">Keypad menu</p>
+                  <p className="m-0 mt-0.5 text-[0.76rem] leading-relaxed text-fg-muted">Tell the agent what each key means, for example “1 = confirm the appointment”.</p>
+                </div>
+                <Button variant="secondary" size="xs" className="shrink-0" onClick={addMapping} disabled={mappings.length >= 10}><Plus /> Add key</Button>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-      <RangeSetting label="Maximum call duration" detail="End calls that exceed this duration." value={Number(props.maxDuration)} min={1} max={60} step={1} suffix={`${props.maxDuration} min`} onChange={(value) => props.onMaxDuration(String(value))} />
-      <RangeSetting label="End call on silence" detail="End an unattended call after sustained silence." value={props.endCallOnSilenceSeconds} min={60} max={900} step={30} suffix={`${Math.round(props.endCallOnSilenceSeconds / 60)} min`} onChange={props.onEndCallOnSilenceSeconds} />
-      <div className="studio-form-grid advanced-grid">
-        <label>Reminder after silence<div className="input-with-suffix"><input type="number" min="30" max="600" value={props.reminderAfterSilenceSeconds} onChange={(event) => props.onReminderAfterSilenceSeconds(Number(event.target.value))} /><span>seconds</span></div></label>
-        <label>Maximum reminders<input type="number" min="0" max="10" value={props.maxReminders} onChange={(event) => props.onMaxReminders(Number(event.target.value))} /></label>
-      </div>
-      <div className="studio-setting-group">
-        <h3>Safety guardrails</h3><p>These constraints are appended after the editable business prompt.</p>
-        <div className="studio-language-options">{guardrails.map(([value, label]) => <button className={props.safetyGuardrails.includes(value) ? "selected" : ""} type="button" key={value} onClick={() => props.onSafetyGuardrails(props.safetyGuardrails.includes(value) ? props.safetyGuardrails.filter((item) => item !== value) : [...props.safetyGuardrails, value])}>{props.safetyGuardrails.includes(value) && <Check size={15} />}{label}</button>)}</div>
-      </div>
-    </>
+              {mappings.length === 0 ? (
+                <p className="m-0 rounded-[var(--radius-control)] border border-dashed border-line-strong px-4 py-5 text-center text-[0.8rem] text-fg-muted">
+                  No keys mapped yet. Anything the caller types is still passed to the agent.
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  <div className="grid grid-cols-[5.5rem_minmax(0,1fr)_2rem] gap-2 text-[0.74rem] font-medium text-fg-muted">
+                    <span>Keys</span><span>What it means</span><span />
+                  </div>
+                  {mappings.map(([digits, meaning], index) => (
+                    <div className="grid grid-cols-[5.5rem_minmax(0,1fr)_2rem] items-center gap-2" key={`${index}-${digits}`}>
+                      <StudioInput aria-label="Keys" inputMode="numeric" className="text-center font-mono" maxLength={props.dtmfMaxDigits} value={digits} onChange={(event) => updateMapping(index, event.target.value, meaning)} placeholder="1" />
+                      <StudioInput aria-label="What it means" value={meaning} onChange={(event) => updateMapping(index, digits, event.target.value)} placeholder="Confirm the appointment" />
+                      <Button variant="ghost" size="icon-xs" aria-label={`Remove key ${digits}`} className="hover:bg-danger/[0.08] hover:text-danger" onClick={() => removeMapping(digits)}><Trash2 /></Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </SwitchRow>
+        </RowList>
+      </StudioGroup>
+
+      <StudioGroup title="Duration and silence" description="Limits that stop calls running on.">
+        <SliderField
+          label="Maximum call length"
+          description="The agent politely wraps up and ends the call at this point."
+          value={Number(props.maxDuration)}
+          min={1}
+          max={60}
+          step={1}
+          format={(value) => `${value} min`}
+          marks={[{ value: 1, label: "1 min" }, { value: 15, label: "15" }, { value: 30, label: "30" }, { value: 45, label: "45" }, { value: 60, label: "60 min" }]}
+          onChange={(value) => props.onMaxDuration(String(value))}
+        />
+        <SliderField
+          label="End call after silence"
+          description="Hang up when nobody has spoken for this long."
+          value={props.endCallOnSilenceSeconds}
+          min={60}
+          max={900}
+          step={30}
+          format={formatSeconds}
+          marks={[{ value: 60, label: "1 min" }, { value: 300, label: "5" }, { value: 600, label: "10" }, { value: 900, label: "15 min" }]}
+          onChange={props.onEndCallOnSilenceSeconds}
+        />
+        <FieldGrid>
+          <Field label="Check in after" hint="The agent asks if the caller is still there.">
+            <NumberField ariaLabel="Reminder after silence in seconds" value={props.reminderAfterSilenceSeconds} min={30} max={600} step={5} unit="sec" onChange={props.onReminderAfterSilenceSeconds} />
+          </Field>
+          <Field label="Check-ins before hanging up" hint="Set 0 to end without checking in.">
+            <NumberField ariaLabel="Maximum reminders" value={props.maxReminders} min={0} max={10} onChange={props.onMaxReminders} />
+          </Field>
+        </FieldGrid>
+      </StudioGroup>
+
+      <StudioGroup
+        title="Safety guardrails"
+        description="Topics the agent politely declines. These rules are added after your prompt."
+        action={<Meta>{props.safetyGuardrails.length} on</Meta>}
+      >
+        <ChipGroup label="Safety guardrails">
+          {guardrails.map(([value, label]) => {
+            const selected = props.safetyGuardrails.includes(value);
+            return (
+              <Chip key={value} selected={selected} onClick={() => props.onSafetyGuardrails(selected ? props.safetyGuardrails.filter((item) => item !== value) : [...props.safetyGuardrails, value])}>
+                {label}
+              </Chip>
+            );
+          })}
+        </ChipGroup>
+      </StudioGroup>
+    </StudioSection>
   );
 }
+
+const POST_CALL_FIELDS: Array<[string, string, string]> = [
+  ["summary", "Call summary", "A short paragraph describing what happened on the call."],
+  ["successful", "Call outcome", "Whether the caller got what they needed."],
+  ["sentiment", "Caller sentiment", "Positive, neutral or negative, from the caller’s words and tone."],
+  ["intent", "Reason for calling", "The main thing the caller wanted."],
+];
 
 function PostCallSettings({ fields, onFields }: { fields: string[]; onFields: (fields: string[]) => void }) {
-  const options = [["summary", "Call summary"], ["successful", "Call successful"], ["sentiment", "User sentiment"], ["intent", "Caller intent"]];
+  const extraFields = fields.filter((field) => !POST_CALL_FIELDS.some(([value]) => value === field));
   return (
-    <>
-      <StudioHeading eyebrow="Post-call" title="Structured call analysis" description="Choose the fields generated after the call for reporting and downstream workflows." />
-      <div className="studio-setting-group first">
-        {options.map(([value, title]) => <ToggleRow icon={Check} title={title} detail={`Extract ${title.toLowerCase()} after the call ends.`} value={fields.includes(value)} onChange={(enabled) => onFields(enabled ? [...fields, value] : fields.filter((item) => item !== value))} key={value} />)}
+    <StudioSection eyebrow="Post-call" title="Structured call analysis" description="Choose the fields generated after the call for reporting and downstream workflows.">
+      <StudioGroup
+        title="Fields to extract"
+        description="Filled in from the transcript after every call, then shown on the call and sent to connected tools."
+        action={<Meta>{POST_CALL_FIELDS.filter(([value]) => fields.includes(value)).length} of {POST_CALL_FIELDS.length} on</Meta>}
+      >
+        <RowList>
+          {POST_CALL_FIELDS.map(([value, title, description]) => (
+            <SwitchRow
+              key={value}
+              title={title}
+              description={description}
+              checked={fields.includes(value)}
+              onChange={(enabled) => onFields(enabled ? [...fields, value] : fields.filter((item) => item !== value))}
+            />
+          ))}
+        </RowList>
+        {extraFields.length > 0 && (
+          <Field label="Other fields" hint="Added for this agent elsewhere. Click one to stop extracting it.">
+            <ChipGroup label="Other extracted fields">
+              {extraFields.map((field) => (
+                <Chip key={field} selected onClick={() => onFields(fields.filter((item) => item !== field))} trailing={<X className="text-fg-muted" />}>
+                  {bookingFieldLabel(field)}
+                </Chip>
+              ))}
+            </ChipGroup>
+          </Field>
+        )}
+      </StudioGroup>
+      <div className="border-t border-line pt-6">
+        <Note icon={<ShieldCheck />} title="Analysis follows your transcript setting">
+          These fields are only generated when a transcript is saved. Turn on transcripts in Main settings to use them.
+        </Note>
       </div>
-      <div className="prompt-guidance"><ShieldCheck size={19} /><div><strong>Analysis respects transcript retention</strong><p>Post-call fields are only generated when a transcript is available.</p></div></div>
-    </>
+    </StudioSection>
   );
-}
-
-function RangeSetting({ label, detail, value, min, max, step, suffix, onChange }: { label: string; detail: string; value: number; min: number; max: number; step: number; suffix: string; onChange: (value: number) => void }) {
-  return <div className="range-setting"><div><strong>{label}</strong><small>{detail}</small></div><span>{suffix}</span>
-    <Slider.Root className="studio-slider" value={[value]} min={min} max={max} step={step} onValueChange={([next]) => onChange(next)} aria-label={label}>
-      <Slider.Track className="studio-slider-track"><Slider.Range className="studio-slider-range" /></Slider.Track>
-      <Slider.Thumb className="studio-slider-thumb" />
-    </Slider.Root>
-  </div>;
 }
 
 function RoutingSettings(props: {
@@ -2304,52 +2613,69 @@ function RoutingSettings(props: {
   onAfterHoursBehavior: (value: AfterHoursBehavior) => void;
   onAfterHoursMessage: (value: string) => void;
 }) {
+  const alwaysOpen = props.operatingHours === "always" || props.operatingHours === "workspace";
   return (
-    <>
-      <StudioHeading eyebrow="Routing" title="Escalation and availability" description="Control when calls stay with the agent and when they move to your team." />
-      <div className="studio-setting-group"><h3>Human transfer</h3><ToggleRow icon={UsersRound} title="Allow live transfer" detail="Transfer callers when they request a person or the agent cannot safely continue." value={props.transferEnabled} onChange={props.onTransferEnabled} /></div>
-      <div className="studio-form-grid"><label>Transfer number<input disabled={!props.transferEnabled} inputMode="tel" value={props.transferNumber} onChange={(event) => props.onTransferNumber(event.target.value)} placeholder="+254..." /></label></div>
-      <div className="studio-setting-group">
-        <h3>Escalation phrases</h3>
-        <p>Comma-separated caller phrases that should trigger a transfer.</p>
-        <textarea className="studio-greeting" value={props.escalationPhrases} onChange={(event) => props.onEscalationPhrases(event.target.value)} />
-      </div>
-      <div className="studio-setting-group">
-        <h3>Operating hours</h3>
-        <p>Calls are evaluated in {props.timezone}. Overnight ranges such as 20:00–02:00 are supported.</p>
+    <StudioSection eyebrow="Routing" title="Escalation and availability" description="Control when calls stay with the agent and when they move to your team.">
+      <StudioGroup title="Human transfer" description="Hand the call to your team when the caller asks for a person, or the agent can’t safely continue.">
+        <RowList>
+          <SwitchRow title="Allow live transfer" description="The agent tells the caller it’s connecting them, then transfers the call." checked={props.transferEnabled} onChange={props.onTransferEnabled}>
+            <Field label="Transfer to" htmlFor="transfer-number" hint="Include the country code.">
+              <StudioInput id="transfer-number" inputMode="tel" className="sm:max-w-[calc(50%-0.5rem)]" value={props.transferNumber} onChange={(event) => props.onTransferNumber(event.target.value)} placeholder="+254 7XX XXX XXX" />
+            </Field>
+            <Field label="Phrases that trigger a transfer" htmlFor="escalation-phrases" hint="Separate phrases with commas.">
+              <Textarea id="escalation-phrases" rows={3} className="min-h-0 text-[0.88rem]" value={props.escalationPhrases} onChange={(event) => props.onEscalationPhrases(event.target.value)} placeholder="speak to a person, manager, complaint" />
+            </Field>
+          </SwitchRow>
+        </RowList>
+      </StudioGroup>
+
+      <StudioGroup
+        title="Operating hours"
+        description={<>Checked against <span className="font-medium text-fg-soft">{props.timezone}</span>. Overnight ranges such as 20:00–02:00 work.</>}
+      >
         <WeeklyHoursEditor value={props.operatingHours} onChange={props.onOperatingHours} />
-      </div>
-      <div className="studio-setting-group">
-        <h3>Outside operating hours</h3>
-        <p>Choose what callers experience when your team is closed.</p>
-        <div className="after-hours-options">
+      </StudioGroup>
+
+      <StudioGroup
+        title="Outside operating hours"
+        description={alwaysOpen ? "Only used once you set a weekly schedule above." : "What callers experience when your team is closed."}
+      >
+        <RadioGroup
+          aria-label="After-hours behaviour"
+          value={props.afterHoursBehavior}
+          onValueChange={(value) => props.onAfterHoursBehavior(value as AfterHoursBehavior)}
+          className="sm:grid-cols-3"
+        >
           {([
-            ["answer", "Answer normally", "Keep the full agent and its tools available."],
-            ["take_message", "Collect a message", "Capture the caller’s name, number, and reason for calling."],
-            ["closed", "Announce closure", "Play a short message, thank the caller, and end the call."],
+            ["answer", "Answer normally", "The agent and its tools work as usual."],
+            ["take_message", "Take a message", "Collect the caller’s name, number and reason for calling."],
+            ["closed", "Say you’re closed", "Play a short message, thank the caller and end the call."],
           ] as Array<[AfterHoursBehavior, string, string]>).map(([value, title, detail]) => (
-            <button className={props.afterHoursBehavior === value ? "selected" : ""} key={value} onClick={() => props.onAfterHoursBehavior(value)} type="button">
-              <span className="selection-dot">{props.afterHoursBehavior === value && <Check size={12} />}</span>
-              <span><strong>{title}</strong><small>{detail}</small></span>
-            </button>
+            <RadioCard key={value} value={value} title={title} description={detail} />
           ))}
-        </div>
+        </RadioGroup>
         {props.afterHoursBehavior !== "answer" && (
-          <label className="after-hours-message">
-            Message callers hear
-            <textarea
+          <Field
+            label="What callers hear"
+            htmlFor="after-hours-message"
+            badge={<Meta>{props.afterHoursMessage.length} / 1000</Meta>}
+            hint="Leave empty to use Sauti’s default message in the caller’s language."
+          >
+            <Textarea
+              id="after-hours-message"
+              rows={3}
               maxLength={1000}
+              className="min-h-0 text-[0.88rem]"
               value={props.afterHoursMessage}
               onChange={(event) => props.onAfterHoursMessage(event.target.value)}
               placeholder={props.afterHoursBehavior === "closed"
-                ? "Thank you for calling. We are currently closed. Please call again during business hours."
-                : "We are currently closed, but I can take your details and ask the team to call you back."}
+                ? "Thank you for calling. We’re closed right now. Please call again during business hours."
+                : "We’re closed right now, but I can take your details and ask the team to call you back."}
             />
-            <small>Leave empty to use Sauti’s localized default message.</small>
-          </label>
+          </Field>
         )}
-      </div>
-    </>
+      </StudioGroup>
+    </StudioSection>
   );
 }
 
@@ -2357,7 +2683,7 @@ function WeeklyHoursEditor({ value, onChange }: { value: string; onChange: (valu
   const custom = value !== "always" && value !== "workspace";
   const schedule = parseWeeklyHours(value);
 
-  function setMode(mode: "always" | "custom") {
+  function setMode(mode: string) {
     onChange(mode === "always" ? "always" : JSON.stringify(schedule));
   }
 
@@ -2366,32 +2692,36 @@ function WeeklyHoursEditor({ value, onChange }: { value: string; onChange: (valu
   }
 
   return (
-    <div className="weekly-hours">
-      <div className="weekly-hours-mode" role="group" aria-label="Operating-hours mode">
-        <button className={!custom ? "selected" : ""} onClick={() => setMode("always")} type="button">Always available</button>
-        <button className={custom ? "selected" : ""} onClick={() => setMode("custom")} type="button">Weekly schedule</button>
-      </div>
-      {custom && (
-        <div className="weekly-hours-days">
+    <div className="grid gap-4">
+      <Tabs value={custom ? "custom" : "always"} onValueChange={setMode}>
+        <TabsList aria-label="Operating-hours mode">
+          <TabsTrigger value="always">Always open</TabsTrigger>
+          <TabsTrigger value="custom">Weekly schedule</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {custom ? (
+        <div className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line">
           {OPERATING_WEEK_DAYS.map(({ key, label }) => {
             const hours = schedule[key];
             return (
-              <div className={`weekly-hours-row ${hours.enabled ? "" : "disabled"}`} key={key}>
-                <label>
-                  <input checked={hours.enabled} onChange={(event) => updateDay(key, { enabled: event.target.checked })} type="checkbox" />
-                  <span>{label}</span>
+              <div className="grid min-h-[3.25rem] grid-cols-[9rem_minmax(0,1fr)] items-center gap-4 px-4 py-2 max-sm:grid-cols-1 max-sm:gap-2" key={key}>
+                <label className="flex cursor-pointer items-center gap-2.5 text-[0.86rem] font-medium text-ink">
+                  <Checkbox checked={hours.enabled} onCheckedChange={(checked) => updateDay(key, { enabled: checked === true })} aria-label={`Open on ${label}`} />
+                  {label}
                 </label>
                 {hours.enabled ? (
-                  <div>
-                    <input aria-label={`${label} opening time`} type="time" value={hours.start} onChange={(event) => updateDay(key, { start: event.target.value })} />
-                    <span>to</span>
-                    <input aria-label={`${label} closing time`} type="time" value={hours.end} onChange={(event) => updateDay(key, { end: event.target.value })} />
+                  <div className="flex items-center gap-2">
+                    <StudioInput aria-label={`${label} opening time`} type="time" className="h-9 w-[9rem] tabular-nums" value={hours.start} onChange={(event) => updateDay(key, { start: event.target.value })} />
+                    <span className="text-[0.8rem] text-fg-muted">to</span>
+                    <StudioInput aria-label={`${label} closing time`} type="time" className="h-9 w-[9rem] tabular-nums" value={hours.end} onChange={(event) => updateDay(key, { end: event.target.value })} />
                   </div>
-                ) : <small>Closed</small>}
+                ) : <span className="text-[0.84rem] text-fg-muted">Closed</span>}
               </div>
             );
           })}
         </div>
+      ) : (
+        <p className="m-0 text-[0.82rem] text-fg-muted">The agent answers at any hour, every day. Choose a weekly schedule to set opening times.</p>
       )}
     </div>
   );
@@ -2422,6 +2752,7 @@ function KnowledgeSettings({ agentId, knowledgeBase, onKnowledgeBase }: { agentI
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [documentBusy, setDocumentBusy] = useState(false);
   const [documentError, setDocumentError] = useState("");
+  const [openChunk, setOpenChunk] = useState<number | null>(0);
 
   useEffect(() => {
     if (!agentId) return;
@@ -2437,6 +2768,7 @@ function KnowledgeSettings({ agentId, knowledgeBase, onKnowledgeBase }: { agentI
     try {
       const document = await uploadKnowledgeDocument(agentId, file);
       setDocuments((current) => [document, ...current]);
+      toast.success(`${file.name} added`, { description: "The agent can use it on the next call." });
     } catch (caught) {
       setDocumentError(caught instanceof Error ? caught.message : "Unable to index this document.");
     } finally {
@@ -2458,85 +2790,127 @@ function KnowledgeSettings({ agentId, knowledgeBase, onKnowledgeBase }: { agentI
     }
   }
 
+  const usage = Math.min(100, (promptCharacters / 3000) * 100);
+
   return (
-    <>
-      <StudioHeading eyebrow="Knowledge" title="Ground the agent in approved information" description="Add notes directly or index business documents for semantic retrieval." />
-      <div className="knowledge-overview">
-        <div><strong>{knowledgeBase.length.toLocaleString()}</strong><small>of 10,000 manual characters</small></div>
-        <div><strong>{chunks.length}</strong><small>manual knowledge chunks</small></div>
-        <div><strong>{promptCharacters.toLocaleString()}</strong><small>manual characters per call</small></div>
-      </div>
-      <div className="knowledge-budget"><span style={{ width: `${Math.min(100, (knowledgeBase.length / 10000) * 100)}%` }} /></div>
-      <label className="knowledge-text">
-        Approved knowledge
-        <textarea maxLength={10000} value={knowledgeBase} onChange={(event) => onKnowledgeBase(event.target.value)} placeholder={"Add short, factual sections separated by blank lines.\n\nServices\nConsultations are available Monday to Friday.\n\nCancellation policy\nPlease give at least 24 hours’ notice."} />
-        <small>{knowledgeBase.length.toLocaleString()} / 10,000</small>
-      </label>
-      <div className={`knowledge-budget-note ${omitted ? "warning" : ""}`}>
-        <ShieldCheck size={18} />
-        <div>
-          <strong>{omitted ? "Some manual knowledge will be held outside the live prompt" : "Within the manual prompt budget"}</strong>
-          <p>Sauti injects at most 3,000 manual characters per call. Uploaded documents are searched separately and only relevant excerpts are added.</p>
+    <StudioSection eyebrow="Knowledge" title="Ground the agent in approved information" description="Add notes directly or index business documents for semantic retrieval.">
+      <StudioGroup
+        title="Approved knowledge"
+        description="Facts the agent may quote: services, prices, policies. Separate topics with a blank line."
+        action={<Meta>{knowledgeBase.length.toLocaleString()} / 10,000</Meta>}
+      >
+        <Textarea
+          aria-label="Approved knowledge"
+          maxLength={10000}
+          className="min-h-[340px] text-[0.88rem] leading-relaxed"
+          value={knowledgeBase}
+          onChange={(event) => onKnowledgeBase(event.target.value)}
+          placeholder={"Services\nConsultations are available Monday to Friday.\n\nCancellation policy\nPlease give at least 24 hours’ notice."}
+        />
+        <div className="grid gap-2">
+          <div className="flex flex-wrap justify-between gap-2 text-[0.76rem] text-fg-muted">
+            <span><span className="font-medium tabular-nums text-fg-soft">{promptCharacters.toLocaleString()}</span> of 3,000 characters added to each call</span>
+            <span className="tabular-nums">{chunks.length} {chunks.length === 1 ? "section" : "sections"}</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-tint/[0.08]">
+            <div className={cn("h-full rounded-full transition-[width] duration-300", omitted ? "bg-warning" : "bg-signal")} style={{ width: `${usage}%` }} />
+          </div>
         </div>
-      </div>
-      <div className="knowledge-chunks">
-        <header><div><strong>Manual chunk preview</strong><p>This is how directly entered knowledge is divided.</p></div><span>{chunks.length} {chunks.length === 1 ? "chunk" : "chunks"}</span></header>
+        {omitted && (
+          <Note tone="warning" icon={<CircleAlert />} title="Some of this won’t fit in a call">
+            Only the first 3,000 characters go into each call. Move longer material into a document below; documents are searched and only the relevant parts are used.
+          </Note>
+        )}
+      </StudioGroup>
+
+      <StudioGroup title="How it’s split" description="What you write above is divided into sections like these." action={<Meta>{chunks.length} {chunks.length === 1 ? "section" : "sections"}</Meta>}>
         {chunks.length === 0 ? (
-          <div className="knowledge-empty"><BookOpen size={20} /><span>Add knowledge above to preview its chunks.</span></div>
-        ) : chunks.map((chunk, index) => {
-          const offset = chunks.slice(0, index).reduce((total, item) => total + item.length, 0);
-          const status = offset >= 3000 ? "Held back" : offset + chunk.length > 3000 ? "Partially included" : "Included";
-          return (
-            <details key={`${index}-${chunk.slice(0, 20)}`} open={index === 0}>
-              <summary><span>Chunk {index + 1}</span><small>{chunk.length} characters · {status}</small><ChevronDown size={15} /></summary>
-              <p>{chunk}</p>
-            </details>
-          );
-        })}
-      </div>
-      <div className="document-knowledge">
-        <header>
-          <div><strong>Document knowledge</strong><p>Relevant excerpts are retrieved with pgvector for every caller turn.</p></div>
-          {agentId ? (
-            <label className={documentBusy ? "disabled" : ""}>
-              {documentBusy ? <LoaderCircle className="spin" size={16} /> : <FileUp size={16} />}
-              {documentBusy ? "Indexing…" : "Upload document"}
-              <input
-                accept=".pdf,.doc,.docx,.txt,.md,.csv,.html,.htm"
-                disabled={documentBusy}
-                onChange={(event) => {
-                  void addDocument(event.target.files?.[0]);
-                  event.currentTarget.value = "";
-                }}
-                type="file"
-              />
-            </label>
-          ) : <button disabled type="button"><FileUp size={16} /> Save agent before uploading</button>}
-        </header>
-        <p className="document-formats">PDF, Word, text, Markdown, CSV, and HTML · 10 MB maximum · 20 documents per agent</p>
-        {documentError && <div className="document-error">{documentError}</div>}
-        {documents.length === 0 ? (
-          <div className="document-empty"><FileText size={22} /><strong>No indexed documents</strong><span>Upload policies, service catalogues, FAQs, or operating procedures.</span></div>
+          <EmptyBox icon={<BookOpen />} title="Nothing to preview yet" text="Add knowledge above to see how it’s divided." />
         ) : (
-          <div className="document-list">
-            {documents.map((document) => (
-              <article key={document.id}>
-                <span><FileText size={18} /></span>
-                <div>
-                  <strong>{document.fileName}</strong>
-                  <small>
-                    {document.chunkCount} chunks · {document.characterCount.toLocaleString()} characters
-                    {document.originalStored && document.originalSizeBytes ? ` · Original secured (${formatFileSize(document.originalSizeBytes)})` : ""}
-                  </small>
+          <div className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line">
+            {chunks.map((chunk, index) => {
+              const offset = chunks.slice(0, index).reduce((total, item) => total + item.length, 0);
+              const status = offset >= 3000 ? "Left out" : offset + chunk.length > 3000 ? "Partly included" : "Included";
+              const open = openChunk === index;
+              return (
+                <div key={`${index}-${chunk.slice(0, 20)}`}>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() => setOpenChunk(open ? null : index)}
+                    className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-tint/[0.03]"
+                  >
+                    <span className="text-[0.86rem] font-medium text-ink">Section {index + 1}</span>
+                    <span className="text-[0.76rem] tabular-nums text-fg-muted">{chunk.length} characters</span>
+                    <Badge tone={status === "Included" ? "success" : status === "Left out" ? "warning" : "neutral"} className="ml-auto">{status}</Badge>
+                    <ChevronDown className={cn("size-4 text-fg-muted transition-transform", open && "rotate-180")} />
+                  </button>
+                  {open ? <p className="m-0 whitespace-pre-wrap px-4 pb-4 text-[0.82rem] leading-relaxed text-fg-soft">{chunk}</p> : null}
                 </div>
-                <i>{document.status}</i>
-                <button aria-label={`Delete ${document.fileName}`} disabled={documentBusy} onClick={() => void removeDocument(document.id)} type="button"><Trash2 size={15} /></button>
-              </article>
+              );
+            })}
+          </div>
+        )}
+      </StudioGroup>
+
+      <StudioGroup
+        title="Documents"
+        description="Upload policies, menus or FAQs. The agent searches them on every call and uses only the parts that are relevant."
+        action={agentId ? (
+          <label className={cn(buttonVariants({ variant: "secondary", size: "xs" }), documentBusy && "pointer-events-none opacity-45")}>
+            {documentBusy ? <LoaderCircle className="spin" /> : <FileUp />}
+            {documentBusy ? "Adding…" : "Upload"}
+            <input
+              className="sr-only"
+              accept=".pdf,.doc,.docx,.txt,.md,.csv,.html,.htm"
+              disabled={documentBusy}
+              type="file"
+              onChange={(event) => {
+                void addDocument(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+        ) : (
+          <Button variant="secondary" size="xs" disabled><FileUp /> Save agent first</Button>
+        )}
+      >
+        {documentError ? <Alert>{documentError}</Alert> : null}
+        {documents.length === 0 ? (
+          <EmptyBox icon={<FileText />} title="No documents yet" text="PDF, Word, text, Markdown, CSV or HTML. Up to 10 MB each, 20 per agent." />
+        ) : (
+          <div className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line">
+            {documents.map((document) => (
+              <div key={document.id} className="flex items-center gap-3 px-4 py-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-control)] bg-tint/[0.05] text-fg-soft"><FileText className="size-4" /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="m-0 truncate text-[0.86rem] font-medium text-ink">{document.fileName}</p>
+                  <p className="m-0 mt-0.5 text-[0.76rem] text-fg-muted">
+                    {document.chunkCount} sections · {document.characterCount.toLocaleString()} characters
+                    {document.originalStored && document.originalSizeBytes ? ` · ${formatFileSize(document.originalSizeBytes)}` : ""}
+                  </p>
+                </div>
+                <Badge tone={document.status === "ready" ? "success" : "neutral"} className="capitalize">{document.status}</Badge>
+                <Button variant="ghost" size="icon-xs" aria-label={`Delete ${document.fileName}`} disabled={documentBusy} className="hover:bg-danger/[0.08] hover:text-danger" onClick={() => void removeDocument(document.id)}>
+                  <Trash2 />
+                </Button>
+              </div>
             ))}
           </div>
         )}
-      </div>
-    </>
+        {documents.length > 0 ? <p className="m-0 text-[0.76rem] text-fg-muted">PDF, Word, text, Markdown, CSV or HTML · up to 10 MB each · {documents.length} of 20 used</p> : null}
+      </StudioGroup>
+    </StudioSection>
+  );
+}
+
+function EmptyBox({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <div className="grid place-items-center gap-1.5 rounded-[var(--radius-card)] border border-dashed border-line-strong px-6 py-8 text-center">
+      <span className="mb-1 grid size-9 place-items-center rounded-full bg-tint/[0.05] text-fg-muted [&_svg]:size-4">{icon}</span>
+      <p className="m-0 text-[0.86rem] font-medium text-ink">{title}</p>
+      <p className="m-0 max-w-sm text-[0.78rem] leading-relaxed text-fg-muted">{text}</p>
+    </div>
   );
 }
 
@@ -2712,56 +3086,126 @@ function PersonalisationDrawer({
         </div>
         <footer>
           <span>{agentSaved ? "Save these details before starting a new test call." : "These details will be saved when you create the agent."}</span>
-          <button className="console-primary-button" disabled={saving} onClick={() => void finish()} type="button">{saving ? <><LoaderCircle className="spin" size={16} /> Saving...</> : agentSaved ? "Save details" : "Done"}</button>
+          <Button size="sm" disabled={saving} onClick={() => void finish()}>{saving ? <><LoaderCircle className="spin" /> Saving…</> : agentSaved ? "Save details" : "Done"}</Button>
         </footer>
       </aside>
     </div>
   );
 }
 
+const FALLBACK_AGENT_INTEGRATIONS: IntegrationCatalogEntry[] = [
+  { provider: "google_calendar", name: "Google Calendar", category: "Calendar", description: "Check free slots during the call and create the event when the caller books.", duringCall: true, postCall: false, requiresConnection: true, configurationFields: [], credentialFields: [], authorizationConfigured: true },
+  { provider: "custom_webhook", name: "Webhook", category: "Developer", description: "Send a signed JSON event to your own endpoint after each call.", duringCall: false, postCall: true, requiresConnection: true, configurationFields: [], credentialFields: [], authorizationConfigured: true },
+];
+
+const CALENDAR_PROVIDERS = new Set(["google_calendar", "calendly"]);
+
 function IntegrationsSettings({ agentId, bookingEnabled }: { agentId?: string; bookingEnabled: boolean }) {
-  const [calendarIntegration, setCalendarIntegration] = useState<AgentIntegration | null>(null);
+  const [catalog, setCatalog] = useState<IntegrationCatalogEntry[]>([]);
+  const [bindings, setBindings] = useState<AgentIntegration[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!agentId) return;
-    getAgentIntegrations(agentId)
-      .then((integrations) => setCalendarIntegration(
-        integrations.find((integration) => integration.provider === "google_calendar") ?? null,
-      ))
-      .catch(() => setCalendarIntegration(null));
+    let active = true;
+    Promise.allSettled([getIntegrationCatalog(), agentId ? getAgentIntegrations(agentId) : Promise.resolve([] as AgentIntegration[])])
+      .then(([catalogResult, bindingResult]) => {
+        if (!active) return;
+        setCatalog(catalogResult.status === "fulfilled" && catalogResult.value.length ? catalogResult.value : FALLBACK_AGENT_INTEGRATIONS);
+        setBindings(bindingResult.status === "fulfilled" ? bindingResult.value : []);
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [agentId]);
 
-  const calendarConnected = calendarIntegration?.connectionStatus === "connected";
-  const calendarEnabled = calendarConnected && calendarIntegration?.enabled === true;
-  const calendarLabel = calendarEnabled
-    ? "Connected"
-    : calendarConnected ? "Connected · disabled" : "Not connected";
+  const stateOf = (provider: string) => {
+    const binding = bindings.find((item) => item.provider === provider);
+    const connected = Boolean(binding && ["connected", "built_in", "active"].includes(binding.connectionStatus));
+    return { binding, connected, active: connected && binding?.enabled === true };
+  };
+  const rows = catalog.map((entry) => ({ entry, ...stateOf(entry.provider) }));
+  const activeRows = rows.filter((row) => row.active);
+  const otherRows = rows.filter((row) => !row.active)
+    .sort((left, right) => Number(right.connected) - Number(left.connected) || left.entry.name.localeCompare(right.entry.name));
+  const calendarReady = rows.some((row) => CALENDAR_PROVIDERS.has(row.entry.provider) && row.active);
+  const manageHref = (provider: string) => `/dashboard/integrations?provider=${provider}${agentId ? `&agentId=${agentId}` : ""}`;
+
+  const renderRow = ({ entry, binding, connected, active }: (typeof rows)[number]) => (
+    <div key={entry.provider} className="flex items-start gap-3.5 px-4 py-3.5 max-sm:flex-wrap">
+      <span className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-control)] border border-line bg-surface">
+        <IntegrationLogo provider={entry.provider} fallback={<Plug className="size-[18px] text-fg-muted" />} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="m-0 flex flex-wrap items-center gap-2 text-[0.88rem] font-medium text-ink">
+          {entry.name}
+          {active ? <Badge tone="success" dot>On for this agent</Badge> : connected ? <Badge tone="neutral">Connected · off</Badge> : null}
+        </p>
+        <p className="m-0 mt-0.5 text-[0.78rem] leading-relaxed text-fg-muted">{entry.description}</p>
+        <p className="m-0 mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[0.72rem] text-fg-muted">
+          <span>{entry.category}</span>
+          {entry.duringCall ? <span>· Used during calls</span> : null}
+          {entry.postCall ? <span>· Runs after calls</span> : null}
+          {binding?.lastDelivery?.deliveredAt ? <span>· Last used {new Date(binding.lastDelivery.deliveredAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}</span> : null}
+        </p>
+      </div>
+      <div className="shrink-0 self-center max-sm:ml-[3.375rem]">
+        {agentId ? (
+          <Button asChild variant={active || connected ? "ghost" : "secondary"} size="xs">
+            <Link href={manageHref(entry.provider)}>{active || connected ? "Manage" : "Connect"} <ArrowUpRight /></Link>
+          </Button>
+        ) : (
+          <Button variant="secondary" size="xs" disabled>Save agent first</Button>
+        )}
+      </div>
+    </div>
+  );
 
   return (
-    <>
-      <StudioHeading eyebrow="Tools & integrations" title="Connect actions this agent can perform" description="Integrations provide live data and controlled actions during a call." />
-      {!agentId && (
-        <div className="integration-save-first"><CircleAlert size={18} /><div><strong>Save the agent first</strong><p>A saved agent ID is required before credentials can be connected securely.</p></div></div>
+    <StudioSection
+      eyebrow="Tools & integrations"
+      title="Connect actions this agent can perform"
+      description="Integrations give the agent live information and let it take actions during and after calls."
+      actions={(
+        <Button asChild variant="ghost" size="xs">
+          <Link href="/dashboard/integrations">All integrations <ArrowUpRight /></Link>
+        </Button>
       )}
-      <div className="studio-integration-list">
-        <article>
-          <span className="integration-card-icon"><CalendarCheck size={21} /></span>
-          <div><h3>Google Calendar</h3><p>Check availability and create confirmed booking events during calls.</p><small>{bookingEnabled ? "Used by appointment-booking tools" : "Enable appointment booking to use this tool"}</small></div>
-          <i className={calendarEnabled ? "connected" : ""}>{calendarLabel}</i>
-          {agentId
-            ? <Link href={`/dashboard/integrations?provider=google_calendar&agentId=${agentId}`}>{calendarConnected ? "Manage" : "Connect"} <ExternalLink size={14} /></Link>
-            : <button disabled type="button">Connect after saving</button>}
-        </article>
-        <article>
-          <span className="integration-card-icon"><Webhook size={21} /></span>
-          <div><h3>Custom webhook</h3><p>Call your own API for availability, CRM actions, or business workflows.</p><small>Developer tool</small></div>
-          <i>Not configured</i>
-          {agentId
-            ? <Link href={`/dashboard/integrations?provider=webhook&agentId=${agentId}`}>Configure <ExternalLink size={14} /></Link>
-            : <button disabled type="button">Configure after saving</button>}
-        </article>
-      </div>
-    </>
+    >
+      {!agentId ? (
+        <div className="pb-6">
+          <Note tone="warning" icon={<CircleAlert />} title="Save the agent first">Integrations are linked to a saved agent so credentials stay secure.</Note>
+        </div>
+      ) : null}
+      {bookingEnabled && !calendarReady && !loading ? (
+        <div className="pb-6">
+          <Note
+            tone="warning"
+            icon={<CalendarCheck />}
+            title="Bookings need a calendar"
+            action={agentId ? (
+              <Button asChild variant="secondary" size="xs"><Link href={manageHref("google_calendar")}>Connect calendar</Link></Button>
+            ) : undefined}
+          >
+            Appointment booking is on, but no calendar is connected for this agent yet.
+          </Note>
+        </div>
+      ) : null}
+
+      <StudioGroup title="On for this agent" description="Tools the agent uses right now." action={<Meta>{loading ? "…" : activeRows.length}</Meta>}>
+        {loading ? (
+          <div className="grid gap-2">{[0, 1].map((item) => <div key={item} className="h-[72px] animate-pulse rounded-[var(--radius-card)] bg-tint/[0.05]" />)}</div>
+        ) : activeRows.length ? (
+          <div className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line">{activeRows.map(renderRow)}</div>
+        ) : (
+          <EmptyBox icon={<Plug />} title="No tools on yet" text="Connect a tool below and the agent can use it on its next call." />
+        )}
+      </StudioGroup>
+
+      {!loading && otherRows.length ? (
+        <StudioGroup title="Available" description="Connect once for the workspace, then choose which agents use it." action={<Meta>{otherRows.length}</Meta>}>
+          <div className="divide-y divide-line overflow-hidden rounded-[var(--radius-card)] border border-line">{otherRows.map(renderRow)}</div>
+        </StudioGroup>
+      ) : null}
+    </StudioSection>
   );
 }
 
@@ -3105,10 +3549,4 @@ function serializeSchedule(schedule: WeeklySchedule) {
     .join("; ");
 }
 
-function StudioHeading({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
-  return <div className="studio-heading"><span>{eyebrow}</span><h2>{title}</h2><p>{description}</p></div>;
-}
 
-function ToggleRow({ icon: Icon, title, detail, value, onChange, disabled = false }: { icon: LucideIcon; title: string; detail: string; value: boolean; onChange: (value: boolean) => void; disabled?: boolean }) {
-  return <div className="studio-toggle-row"><span><Icon size={18} /></span><div><strong>{title}</strong><small>{detail}</small></div><button className={value ? "on" : ""} disabled={disabled} type="button" role="switch" aria-checked={value} onClick={() => onChange(!value)}><i /></button></div>;
-}

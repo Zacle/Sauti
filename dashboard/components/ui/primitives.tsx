@@ -126,6 +126,22 @@ export function RadioGroup({ className, ...props }: React.ComponentProps<typeof 
   return <RadioPrimitive.Root className={cn("grid gap-2", className)} {...props} />;
 }
 
+/** The one radio indicator: an empty ring, or a filled accent circle with a centre dot. */
+export function RadioDot({ checked, className }: { checked: boolean; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "grid size-[18px] shrink-0 place-items-center rounded-full border transition-colors",
+        checked ? "border-signal bg-signal" : "border-line-strong bg-surface",
+        className,
+      )}
+    >
+      {checked ? <span className="size-1.5 rounded-full bg-signal-fg" /> : null}
+    </span>
+  );
+}
+
 export function RadioCard({
   className,
   title,
@@ -136,18 +152,20 @@ export function RadioCard({
   return (
     <RadioPrimitive.Item
       className={cn(
-        "group flex w-full cursor-pointer items-start gap-3 rounded-[var(--radius-popover)] border border-line bg-tint/[0.02] p-4 text-left font-sans text-fg transition-colors hover:border-line-strong focus-visible:outline-2 focus-visible:outline-signal data-[state=checked]:border-signal/45 data-[state=checked]:bg-signal/[0.07]",
+        "group flex w-full cursor-pointer items-start gap-3 rounded-[var(--radius-card)] border border-line bg-transparent p-4 text-left font-sans text-fg transition-colors hover:border-line-strong hover:bg-tint/[0.02] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal data-[state=checked]:border-signal/40 data-[state=checked]:bg-signal/[0.06]",
         className,
       )}
       {...props}
     >
-      {icon ? <span className="mt-0.5 text-fg-soft group-data-[state=checked]:text-signal [&_svg]:size-[18px]">{icon}</span> : null}
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-ink">{title}</span>
-        {description ? <span className="mt-0.5 block text-xs leading-relaxed text-fg-muted">{description}</span> : null}
+      <span className="mt-px grid size-[18px] shrink-0 place-items-center rounded-full border border-line-strong bg-surface transition-colors group-hover:border-fg-muted group-data-[state=checked]:border-signal group-data-[state=checked]:bg-signal">
+        <RadioPrimitive.Indicator className="size-1.5 rounded-full bg-signal-fg" />
       </span>
-      <span className="mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border border-line-strong group-data-[state=checked]:border-signal">
-        <RadioPrimitive.Indicator className="size-2 rounded-full bg-signal" />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2 text-[0.88rem] font-medium text-ink">
+          {icon ? <span className="text-fg-soft group-data-[state=checked]:text-signal [&_svg]:size-4">{icon}</span> : null}
+          {title}
+        </span>
+        {description ? <span className="mt-1 block text-[0.78rem] leading-relaxed text-fg-muted">{description}</span> : null}
       </span>
     </RadioPrimitive.Item>
   );

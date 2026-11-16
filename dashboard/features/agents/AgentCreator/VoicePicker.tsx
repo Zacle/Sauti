@@ -6,6 +6,7 @@ import { CircleAlert, Languages, LoaderCircle, Mic2, Pause, Play, Search, X } fr
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { RadioDot } from "@/components/ui/primitives";
 import { cn } from "@/lib/utils";
 import { listVoices } from "@/lib/api/voices";
 import type { VoiceOption } from "@/types/api";
@@ -339,15 +340,7 @@ export function VoicePicker({ value, primaryLanguage, supportedLanguages, onChan
                           selected ? "border-signal/35 bg-signal/[0.07]" : "border-transparent hover:bg-tint/[0.04]",
                         )}
                       >
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            "grid size-[18px] place-items-center rounded-full border transition-colors",
-                            selected ? "border-signal bg-signal" : "border-line-strong bg-surface group-hover:border-fg-muted",
-                          )}
-                        >
-                          {selected ? <span className="size-1.5 rounded-full bg-signal-fg" /> : null}
-                        </span>
+                        <RadioDot checked={selected} />
                         <VoiceAvatar name={name} playing={playing} />
                         <span className="min-w-0">
                           <span className="flex min-w-0 items-center gap-2">
