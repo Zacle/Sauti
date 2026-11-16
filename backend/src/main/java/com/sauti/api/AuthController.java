@@ -1,5 +1,6 @@
 package com.sauti.api;
 
+import com.sauti.auth.AuthDtos;
 import com.sauti.auth.AuthDtos.AuthResponse;
 import com.sauti.auth.AuthDtos.ForgotPasswordRequest;
 import com.sauti.auth.AuthDtos.GoogleLoginRequest;
@@ -158,6 +159,19 @@ public class AuthController {
             @Valid @RequestBody ChangePasswordRequest request
     ) {
         return authService.changePassword(user.userId(), request);
+    }
+
+    @GetMapping("/appearance")
+    AuthDtos.ConsoleAppearanceResponse consoleAppearance(@AuthenticationPrincipal AuthenticatedUser user) {
+        return authService.consoleAppearance(user.userId());
+    }
+
+    @PutMapping("/appearance")
+    AuthDtos.ConsoleAppearanceResponse configureConsoleAppearance(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @Valid @RequestBody AuthDtos.ConsoleAppearanceRequest request
+    ) {
+        return authService.configureConsoleAppearance(user.userId(), request);
     }
 
     private String encode(String value) {

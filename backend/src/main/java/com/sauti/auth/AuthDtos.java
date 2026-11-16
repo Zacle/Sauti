@@ -62,6 +62,17 @@ public final class AuthDtos {
     ) {
     }
 
+    public record ConsoleAppearanceRequest(
+            @NotBlank @Size(max = 16) String mode,
+            @NotBlank @Size(max = 16) String accent
+    ) { }
+
+    public record ConsoleAppearanceResponse(String mode, String accent) {
+        public static ConsoleAppearanceResponse from(User user) {
+            return new ConsoleAppearanceResponse(user.getConsoleThemeMode(), user.getConsoleThemeAccent());
+        }
+    }
+
     public record MessageResponse(String status, String message, String devCode) {
     }
 

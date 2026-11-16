@@ -203,6 +203,24 @@ public class AuthService {
         return new MessageResponse("ok", "Password has been reset.", null);
     }
 
+    @Transactional(readOnly = true)
+    public AuthDtos.ConsoleAppearanceResponse consoleAppearance(UUID userId) {
+        return AuthDtos.ConsoleAppearanceResponse.from(requireUser(userId));
+    }
+
+    @Transactional
+    public AuthDtos.ConsoleAppearanceResponse configureConsoleAppearance(
+            UUID userId, AuthDtos.ConsoleAppearanceRequest request) {
+        User user = requireUser(userId);
+        user.configureConsoleAppearance(request.mode(), request.accent());
+        return AuthDtos.ConsoleAppearanceResponse.from(user);
+    }
+
+    private User requireUser(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+    }
+
     @Transactional
     public MessageResponse changePassword(UUID userId, ChangePasswordRequest request) {
         User user = userRepository.findById(userId)

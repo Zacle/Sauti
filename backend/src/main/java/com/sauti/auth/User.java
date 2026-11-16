@@ -9,6 +9,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -32,6 +33,16 @@ public class User extends Auditable {
 
     @Column(nullable = false)
     private boolean emailVerified = false;
+
+    /** Console appearance chosen by this person; follows them across browsers. */
+    @Column(nullable = false, length = 16)
+    private String consoleThemeMode = "light";
+
+    @Column(nullable = false, length = 16)
+    private String consoleThemeAccent = "green";
+
+    public static final Set<String> CONSOLE_THEME_MODES = Set.of("light", "dark", "system");
+    public static final Set<String> CONSOLE_THEME_ACCENTS = Set.of("green", "blue", "violet", "amber", "rose", "graphite");
 
     protected User() {
     }
@@ -73,5 +84,26 @@ public class User extends Auditable {
 
     public void updatePasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public String getConsoleThemeMode() {
+        return consoleThemeMode;
+    }
+
+    public String getConsoleThemeAccent() {
+        return consoleThemeAccent;
+    }
+
+    public void configureConsoleAppearance(String mode, String accent) {
+        var normalizedMode = mode == null ? "" : mode.trim().toLowerCase();
+        var normalizedAccent = accent == null ? "" : accent.trim().toLowerCase();
+        if (!CONSOLE_THEME_MODES.contains(normalizedMode)) {
+            throw new IllegalArgumentException("Theme mode must be light, dark or system");
+        }
+        if (!CONSOLE_THEME_ACCENTS.contains(normalizedAccent)) {
+            throw new IllegalArgumentException("Unknown accent colour");
+        }
+        this.consoleThemeMode = normalizedMode;
+        this.consoleThemeAccent = normalizedAccent;
     }
 }
