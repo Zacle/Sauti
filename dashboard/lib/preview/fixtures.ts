@@ -405,7 +405,32 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
     ];
   }
 
-  if (/^\/agents\/[^/]+\/(variables|knowledge-documents)$/.test(clean) && verb === "GET") return [];
+  if (/^\/agents\/[^/]+\/variables$/.test(clean) && verb === "GET") {
+    return ([
+      ["business_name", "Business name", "Customer-facing legal or trading name", "Bright Smile Dental", true],
+      ["business_description", "Business description", "Short description or tagline", "", true],
+      ["business_address", "Business address", "Primary address or location list", "Ngong Road, Kilimani, Nairobi", true],
+      ["business_hours", "Business hours", "Weekly hours plus holiday exceptions", "Mon 08:00-18:00; Wed 08:00-18:00; Fri 08:00-18:00", true],
+      ["business_phone", "Business phone", "Number callers may use for callbacks", "", true],
+      ["business_website", "Business website", "Public website", "", false],
+      ["supported_languages", "Supported languages", "Languages the business wants this agent to support", "English, Swahili", true],
+      ["fallback_language", "Fallback language", "Language to use when caller language is uncertain", "", true],
+      ["after_hours_behavior", "After-hours behavior", "Voicemail, callback capture, or emergency line", "take_message", true],
+      ["tone", "Tone", "Formal, casual, warm, efficient, or another style", "Warm and efficient", false],
+      ["transfer_number", "Transfer number", "Human destination number or extension", "", false],
+      ["escalation_triggers", "Escalation triggers", "Human request, anger, risk, or out-of-scope conditions", "", false],
+      ["appointment_lead_time", "Appointment lead time", "Minimum time before a new booking", "", false],
+      ["appointment_buffer", "Appointment buffer", "Gap required between appointments", "", false],
+      ["cancellation_policy", "Cancellation policy", "Policy text the agent may explain", "", false],
+      ["confirmation_channels", "Customer confirmations", "SMS, email, both, or none", "", false],
+      ["services", "Services", "Approved dental services", "Check-up and cleaning – KES 3,500, Whitening – KES 12,000", true],
+      ["dentists", "Dentists", "Dentists and specialties", "", false],
+      ["dental_urgency_policy", "Dental urgency policy", "Urgent-call routing", "", false],
+      ["faq", "Frequently asked questions", "Approved question and answer pairs", "Parking: available behind the building", false],
+      ["prohibited_statements", "Prohibited statements", "Claims or advice the agent must never provide", "", false],
+    ] as const).map(([key, label, description, value, required]) => ({ key, label, description, value, required, filled: Boolean(value) }));
+  }
+  if (/^\/agents\/[^/]+\/knowledge-documents$/.test(clean) && verb === "GET") return [];
 
   if (/^\/agents\/[^/]+\/available-numbers$/.test(clean) && verb === "GET") {
     const country = new URLSearchParams(path.split("?")[1] ?? "").get("countryCode") ?? "KE";

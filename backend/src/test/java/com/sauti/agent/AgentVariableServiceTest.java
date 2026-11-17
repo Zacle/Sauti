@@ -201,6 +201,30 @@ class AgentVariableServiceTest {
                 .doesNotContain("Booking link");
     }
 
+    @Test
+    void serviceCatalogKeepsThousandsSeparatorsInsideOneEntry() {
+        assertThat(AgentVariableService.catalogEntries("Check-up and cleaning – KES 3,500, Whitening – KES 12,000"))
+                .containsExactly("Check-up and cleaning – KES 3,500", "Whitening – KES 12,000");
+        assertThat(AgentVariableService.catalogEntries("Crown $1,250.00; Filling $90\nX-ray $45"))
+                .containsExactly("Crown $1,250.00", "Filling $90", "X-ray $45");
+        assertThat(AgentVariableService.catalogEntries("Massage,Facial, Pedicure 1,000,000 KES"))
+                .containsExactly("Massage", "Facial", "Pedicure 1,000,000 KES");
+        assertThat(AgentVariableService.catalogEntries("  ")).isEmpty();
+    }
+
+    @Test
+    void conversationContextListsPricedServicesWithoutSplittingPrices() {
+        var repository = mock(AgentVariableRepository.class);
+        var agent = new Agent(new Tenant("Clinic", "owner@example.com", "KE"), "Amina", "Hello", "Prompt");
+        var services = new AgentVariable(agent, "services", "Services", null, true);
+        services.updateValue("Cleaning – KES 3,500, Whitening – KES 12,000");
+        when(repository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId())).thenReturn(List.of(services));
+
+        assertThat(service(repository).conversationContext(agent))
+                .contains("  * Cleaning – KES 3,500\n  * Whitening – KES 12,000")
+                .doesNotContain("* 500");
+    }
+
     private static AgentVariableService service(AgentVariableRepository repository) {
         return new AgentVariableService(repository, mock(AgentRepository.class),
                 new InternationalPhoneNumberService());

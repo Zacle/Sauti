@@ -40,7 +40,8 @@ public class AgentVariableService {
             "lead_qualification_fields", "message_fields", "order_lookup_fields",
             "qualification_fields", "quote_intake_fields", "ticket_fields"
     );
-    private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-zA-Z0-9_]+)}}");
+    private static final Pattern CATALOG_SEPARATOR = Pattern.compile("\\r?\\n|;|,(?!\\d{3}(?!\\d))");
+    private static final Pattern PLACEHOLDER =Pattern.compile("\\{\\{([a-zA-Z0-9_]+)}}");
     private static final Pattern VARIABLE_KEY = Pattern.compile("[a-z][a-z0-9_]{0,99}");
     private static final Set<String> SYSTEM_MANAGED_VARIABLES = Set.of(
             "agent_name", "timezone", "business_timezone", "calendar_system",
@@ -268,14 +269,25 @@ public class AgentVariableService {
         if (!SERVICE_CATALOG_KEYS.contains(variable.getKey())) {
             return heading + ": " + value;
         }
-        var entries = java.util.Arrays.stream(value.split("[,;\\r\\n]+"))
-                .map(String::trim)
-                .filter(entry -> !entry.isBlank())
-                .toList();
+        var entries = catalogEntries(value);
         if (entries.isEmpty()) return heading + ": " + value;
         return heading + " — exact approved catalog; keep each service and its price together:\n"
                 + entries.stream().map(entry -> "  * " + entry)
                         .collect(java.util.stream.Collectors.joining("\n"));
+    }
+
+    /**
+     * Splits a service catalogue on new lines, semicolons and commas, but keeps
+     * thousands separators inside an entry: "Cleaning – KES 3,500, Whitening –
+     * KES 12,000" is two entries, not four. A comma followed by exactly three
+     * digits (and no fourth) is read as part of a number.
+     */
+    static List<String> catalogEntries(String value) {
+        if (value == null || value.isBlank()) return List.of();
+        return java.util.Arrays.stream(CATALOG_SEPARATOR.split(value))
+                .map(String::trim)
+                .filter(entry -> !entry.isBlank())
+                .toList();
     }
 
     private String conversationValue(Agent agent, AgentVariable variable) {
