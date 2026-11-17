@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { ArrowRight, Mic, PhoneOff, ShieldCheck, Sparkles, X } from "lucide-react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { ArrowRight, Check, LoaderCircle, Mic, PhoneOff, ShieldCheck, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { AiVoiceAnimation, type VoiceAnimationActivity } from "@/features/agents/AgentCreator/AiVoiceAnimation";
 import {
   connectBrowserVoiceRuntime,
@@ -21,10 +23,15 @@ import {
   startPublicDemoVoiceSession,
   type PublicDemoVoiceConfiguration,
 } from "@/lib/api/public-demo-voice";
-import styles from "./PublicDemoVoice.module.css";
 import { trackPublicAnalyticsEvent } from "@/lib/api/public-analytics";
 
-type Readiness = "preparing" | "ready" | "unavailable";
+const DEMO_PROMPTS = [
+  "Can you book appointments for a dental clinic?",
+  "Which languages can you speak?",
+  "How would you handle a caller after hours?",
+];
+
+type Readiness ="preparing" | "ready" | "unavailable";
 type CallState = "idle" | "connecting" | "listening" | "thinking" | "speaking" | "ending" | "ended";
 
 function deviceId() {
@@ -233,51 +240,136 @@ export function PublicDemoVoice() {
         ? "listening"
         : "calm";
   const status = callState === "speaking"
-    ? "Sauti is speaking"
+    ? { title: "Sauti is speaking", detail: "Interrupt any time. Just start talking." }
     : callState === "thinking"
-      ? "Thinking"
-      : callState === "ending"
-        ? "Closing the conversation"
-        : "Ready when you are";
+      ? { title: "Thinking…", detail: "Working out the best answer." }
+      : callState === "listening"
+        ? { title: "Listening", detail: "Go ahead and ask a question." }
+        : callState === "ending"
+          ? { title: "Wrapping up", detail: "Closing the conversation." }
+          : { title: "Connecting…", detail: "Getting the line ready." };
+  const maxSeconds = configuration?.maxDurationSeconds ?? 60;
+  const remaining = Math.max(0, Math.min(1, secondsLeft / maxSeconds));
+  const clock = `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`;
+  const ended = callState === "ended";
+  // Only offer the demo once it is confirmed available (or a call is already running);
+  // while checking, or when the service is down, the button is simply not shown.
+  const showTrigger = readiness === "ready" || callState !== "idle";
 
   return (
     <>
-      <button
-        className={styles.trigger}
-        disabled={readiness === "preparing" || callState !== "idle"}
-        onClick={() => readiness === "unavailable" ? void prepare() : void start()}
-        type="button"
-      >
-        <Mic size={15} /> {!visible && callState !== "idle" ? "Starting voice…" : readiness === "unavailable" ? "Retry voice demo" : "Talk to Sauti"}
-      </button>
-      {error && !visible ? <span className={styles.triggerError}>{error}</span> : null}
-      {visible ? createPortal((
-        <div className={styles.backdrop} role="dialog" aria-modal="true" aria-label="Talk to Sauti voice demo">
-          <section className={styles.dialog}>
-            <header>
-              <div><Sparkles size={18} /><span><small>LIVE SAUTI DEMO</small><strong>Talk to Sauti</strong></span></div>
-              <button aria-label="Close voice demo" onClick={closeDialog} type="button"><X size={19} /></button>
+      {showTrigger ? (
+      <span className="inline-flex flex-col items-start gap-1.5 animate-[fade-in_300ms_ease-out]">
+        <Button
+          variant="secondary"
+          size="lg"
+          disabled={callState !== "idle"}
+          onClick={() => void start()}
+        >
+          {callState !== "idle" && !visible ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Mic aria-hidden="true" />}
+          {!visible && callState !== "idle" ? "Connecting…" : "Talk to Sauti"}
+        </Button>
+        {error && !visible ? <span role="alert" className="max-w-xs text-[0.78rem] leading-snug text-danger">{error}</span> : null}
+      </span>
+      ) : null}
+
+      <DialogPrimitive.Root open={visible} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm data-[state=open]:animate-[fade-in_200ms_ease-out]" />
+          <DialogPrimitive.Content
+            aria-describedby={undefined}
+            onOpenAutoFocus={(event) => event.preventDefault()}
+            className="fixed left-1/2 top-1/2 z-[151] w-[min(92vw,26rem)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[1.75rem] border border-line bg-surface font-sans text-fg shadow-[0_40px_120px_-30px_rgb(0_0_0/0.9)] outline-none data-[state=open]:animate-[dialog-in_260ms_cubic-bezier(0.16,1,0.3,1)]"
+          >
+            <header className="flex items-center justify-between gap-3 px-5 pt-5">
+              <div className="flex items-center gap-2.5">
+                {ended ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-1 font-mono text-[0.66rem] uppercase tracking-[0.14em] text-fg-muted">Call ended</span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-signal/25 bg-signal/[0.08] px-2.5 py-1 font-mono text-[0.66rem] uppercase tracking-[0.14em] text-signal">
+                    <span aria-hidden="true" className="relative flex size-1.5">
+                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-signal opacity-60" />
+                      <span className="relative inline-flex size-1.5 rounded-full bg-signal" />
+                    </span>
+                    Live
+                  </span>
+                )}
+                <DialogPrimitive.Title className="m-0 text-[0.92rem] font-medium text-ink">Talk to Sauti</DialogPrimitive.Title>
+              </div>
+              <DialogPrimitive.Close asChild>
+                <Button variant="ghost" size="icon-xs" aria-label="Close voice demo" className="-mr-1.5"><X /></Button>
+              </DialogPrimitive.Close>
             </header>
-            {callState === "ended" ? (
-              <div className={styles.ended}>
-                <span><ShieldCheck size={25} /></span>
-                <h2>That was Sauti in action.</h2>
-                <p>Tell us about your customer journey and we’ll prepare a tailored demonstration for your business.</p>
-                <Link href="/request-demo">Request a tailored demo <ArrowRight size={16} /></Link>
+
+            {ended ? (
+              <div className="grid justify-items-center gap-3 px-7 pb-7 pt-10 text-center">
+                <span className="grid size-12 place-items-center rounded-full border border-signal/30 bg-signal/10 text-signal"><Check className="size-5" aria-hidden="true" /></span>
+                <h2 className="m-0 mt-2 text-[1.6rem] font-medium leading-tight tracking-[-0.02em] text-ink">That was Sauti.</h2>
+                <p className="m-0 max-w-[19rem] text-[0.9rem] leading-relaxed text-fg-soft">
+                  Imagine it answering your phone, in your customers’ languages, and booking straight into your calendar.
+                </p>
+                <div className="mt-4 grid w-full gap-2">
+                  <Button asChild size="lg" className="w-full">
+                    <Link href="/request-demo" onClick={() => setVisible(false)}>Book a tailored demo <ArrowRight aria-hidden="true" /></Link>
+                  </Button>
+                  <DialogPrimitive.Close asChild>
+                    <Button variant="ghost" size="md" className="w-full">Close</Button>
+                  </DialogPrimitive.Close>
+                </div>
               </div>
             ) : (
-              <>
-                <div className={styles.animation}><AiVoiceAnimation activity={activity} /></div>
-                <div className={styles.liveStatus}><strong>{status}</strong><span>{secondsLeft}s remaining</span></div>
-                <p className={styles.hint}>Ask about voice agents, supported channels, languages, integrations, or how Sauti could fit your business.</p>
-                {error ? <div className={styles.error}>{error}</div> : null}
-                <button className={styles.end} onClick={() => void finish(true)} type="button"><PhoneOff size={16} /> End conversation</button>
-                <small className={styles.privacy}><ShieldCheck size={13} /> One-minute product demo. No customer tools or workspace data are available.</small>
-              </>
+              <div className="grid justify-items-center px-6 pb-6">
+                <div className="relative mt-2 grid place-items-center">
+                  <div aria-hidden="true" className="pointer-events-none absolute size-56 rounded-full bg-signal/10 blur-3xl" />
+                  <AiVoiceAnimation activity={activity} size={208} />
+                </div>
+
+                <div className="mt-1 grid justify-items-center gap-1 text-center" aria-live="polite">
+                  <p className="m-0 text-[1.05rem] font-medium text-ink">{status.title}</p>
+                  <p className="m-0 text-[0.84rem] text-fg-muted">{status.detail}</p>
+                </div>
+
+                <div className="mt-5 w-full">
+                  <div className="flex items-center justify-between text-[0.72rem] text-fg-muted">
+                    <span>Demo time left</span>
+                    <span className="font-mono tabular-nums text-fg-soft">{clock}</span>
+                  </div>
+                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-tint/[0.08]">
+                    <div
+                      className={cn("h-full rounded-full transition-[width] duration-500 ease-linear", secondsLeft <= 10 ? "bg-warning" : "bg-signal")}
+                      style={{ width: `${remaining * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-5 w-full rounded-2xl border border-line bg-tint/[0.02] p-4">
+                  <p className="m-0 font-mono text-[0.66rem] uppercase tracking-[0.14em] text-fg-muted">Try asking</p>
+                  <ul className="m-0 mt-2.5 grid list-none gap-2 p-0 text-[0.86rem] text-fg-soft">
+                    {DEMO_PROMPTS.map((prompt) => (
+                      <li key={prompt} className="flex gap-2"><span aria-hidden="true" className="text-signal">“</span>{prompt}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                {error ? <p role="alert" className="m-0 mt-4 w-full rounded-xl border border-danger/30 bg-danger/[0.08] px-3.5 py-2.5 text-[0.82rem] text-danger">{error}</p> : null}
+
+                <Button
+                  variant="danger-soft"
+                  size="md"
+                  className="mt-5 w-full rounded-full"
+                  disabled={callState === "ending"}
+                  onClick={() => void finish(true)}
+                >
+                  <PhoneOff aria-hidden="true" /> {callState === "ending" ? "Ending…" : "End call"}
+                </Button>
+                <p className="m-0 mt-3 flex items-center gap-1.5 text-[0.72rem] text-fg-muted">
+                  <ShieldCheck className="size-3.5" aria-hidden="true" /> One-minute demo. No customer data is used.
+                </p>
+              </div>
             )}
-          </section>
-        </div>
-      ), document.body) : null}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
     </>
   );
 }
