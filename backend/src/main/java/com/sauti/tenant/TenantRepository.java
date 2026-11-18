@@ -11,11 +11,14 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface TenantRepository extends JpaRepository<Tenant, UUID> {
-    Optional<Tenant> findByEmail(String email);
-
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select tenant from Tenant tenant where tenant.id = :id")
     Optional<Tenant> findByIdForBillingUpdate(@Param("id") UUID id);
+
+    /** Serialises membership changes in one workspace so concurrent requests cannot remove the last Owner. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select tenant from Tenant tenant where tenant.id = :id")
+    Optional<Tenant> findLockedById(@Param("id") UUID id);
 
     @Query("""
             select tenant from Tenant tenant

@@ -7,9 +7,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.sauti.auth.AuthDtos.RegisterResponse;
-import com.sauti.auth.AuthService;
-import com.sauti.auth.UserRepository;
+import com.sauti.auth.application.AuthDtos.RegisterResponse;
+import com.sauti.auth.application.AccountRegistration;
+import com.sauti.auth.domain.UserRepository;
 import com.sauti.tenant.TenantDtos.TenantResponse;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -21,7 +21,7 @@ class PilotInvitationServiceTest {
     private final DemoRequestRepository requests = mock(DemoRequestRepository.class);
     private final PilotInvitationRepository invitations = mock(PilotInvitationRepository.class);
     private final UserRepository users = mock(UserRepository.class);
-    private final AuthService auth = mock(AuthService.class);
+    private final AccountRegistration auth = mock(AccountRegistration.class);
     private final ApplicationEventPublisher events = mock(ApplicationEventPublisher.class);
     private final PilotInvitationService service = new PilotInvitationService(requests, invitations, users, auth, events,
             mock(PilotProvisioningPolicyService.class));

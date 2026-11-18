@@ -25,12 +25,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const { session, ready, logout } = useAuth();
 
   if (!ready) return <main className={styles.loading}>Opening Sauti Admin…</main>;
-  if (!session || session.role !== "PLATFORM_ADMIN") {
+  if (!session || !session.platformAdminSession) {
     return (
       <main className={styles.denied}>
         <ShieldCheck size={34} />
         <h1>Platform administrator access required</h1>
-        <p>This area is separate from business workspaces and customer-facing operations.</p>
+        <p>This area is separate from business workspaces. Sign in with your password and authenticator code.</p>
+        <Link href="/login?surface=admin">Sign in to administration</Link>
         <Link href="/dashboard">Return to workspace</Link>
       </main>
     );
@@ -57,7 +58,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <section className={styles.main}>
         <header>
           <div><span>SAUTI PLATFORM</span><strong>Operations console</strong></div>
-          <div className={styles.identity}><span><UserRound size={18}/></span><strong>{session.tenant.email}</strong><ChevronDown size={16}/></div>
+          <div className={styles.identity}><span><UserRound size={18}/></span><strong>{session.account.email}</strong><ChevronDown size={16}/></div>
         </header>
         <div className={styles.content}>{children}</div>
       </section>

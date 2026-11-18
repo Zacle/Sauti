@@ -204,6 +204,14 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         );
     }
 
+    /** Uses the bulk delete job, which accepts E.164 numbers, so no Telnyx number id needs to be stored. */
+    @Override
+    public void releasePhoneNumber(String phoneNumber) {
+        requireConfigured();
+        if (phoneNumber == null || phoneNumber.isBlank()) return;
+        send("POST", apiBaseUrl + "/phone_numbers/jobs/delete_phone_numbers", Map.of("phone_numbers", List.of(phoneNumber)));
+    }
+
     private void configureMessaging(String phoneNumber) {
         send("PATCH", apiBaseUrl + "/messaging_phone_numbers/" + encodePath(phoneNumber),
                 Map.of("messaging_profile_id", messagingProfileId));

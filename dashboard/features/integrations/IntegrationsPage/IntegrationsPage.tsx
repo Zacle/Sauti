@@ -894,7 +894,7 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [businessCountryCode, setBusinessCountryCode] = useState(
-    () => readSession()?.tenant.countryCode || "KE",
+    () => readSession()?.tenant?.countryCode || "KE",
   );
   const [businessPhoneNumber, setBusinessPhoneNumber] = useState("");
 
@@ -912,7 +912,7 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
       if (savedNumber) {
         const savedCountry = String(connection?.configuration.businessCountryCode || "");
         const preferred = loadedConfiguration.countries.find(
-          (country) => country.region === (savedCountry || readSession()?.tenant.countryCode || ""),
+          (country) => country.region === (savedCountry || readSession()?.tenant?.countryCode || ""),
         );
         const matchedCountry = preferred && savedNumber.startsWith(preferred.dialingCode.slice(1))
           ? preferred
@@ -924,7 +924,7 @@ function WhatsAppSetupDialog({ agentId, connection, onClose, onSaved }: {
           setBusinessPhoneNumber(savedNumber.slice(matchedCountry.dialingCode.length - 1));
         }
       } else {
-        const tenantCountry = readSession()?.tenant.countryCode || "";
+        const tenantCountry = readSession()?.tenant?.countryCode || "";
         setBusinessCountryCode(loadedConfiguration.countries.find(
           (country) => country.region === tenantCountry,
         )?.region || loadedConfiguration.countries[0]?.region || "");

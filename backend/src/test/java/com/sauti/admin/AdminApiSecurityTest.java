@@ -5,9 +5,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.sauti.auth.JwtService;
-import com.sauti.auth.User;
-import com.sauti.auth.UserRepository;
+import com.sauti.testsupport.TestAccounts;
+import com.sauti.auth.domain.User;
+import com.sauti.auth.domain.UserRepository;
 import com.sauti.agent.Agent;
 import com.sauti.agent.AgentRepository;
 import com.sauti.call.Call;
@@ -32,7 +32,7 @@ class AdminApiSecurityTest {
     @Autowired TenantRepository tenants;
     @Autowired UserRepository users;
     @Autowired PasswordEncoder passwords;
-    @Autowired JwtService jwt;
+    @Autowired TestAccounts accounts;
     @Autowired AgentRepository agents;
     @Autowired CallRepository calls;
     @Autowired DemoRequestRepository demoRequests;
@@ -42,29 +42,29 @@ class AdminApiSecurityTest {
         var admin = user("Admin workspace", "platform-admin@sauti.test");
         var owner = user("Customer workspace", "customer-owner@sauti.test");
 
-        mvc.perform(get("/api/v1/admin/overview").header("Authorization", "Bearer " + jwt.issueAccessToken(owner)))
+        mvc.perform(get("/api/v1/admin/overview").header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isForbidden());
 
-        mvc.perform(get("/api/v1/admin/overview").header("Authorization", "Bearer " + jwt.issueAccessToken(admin)))
+        mvc.perform(get("/api/v1/admin/overview").header("Authorization", "Bearer " + admin.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workspaces").isNumber());
 
         mvc.perform(get("/api/v1/admin/billing/readiness")
-                        .header("Authorization", "Bearer " + jwt.issueAccessToken(owner)))
+                        .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isForbidden());
 
         mvc.perform(get("/api/v1/admin/billing/readiness")
-                        .header("Authorization", "Bearer " + jwt.issueAccessToken(admin)))
+                        .header("Authorization", "Bearer " + admin.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.provider").value("whop"))
                 .andExpect(jsonPath("$.variants.length()").value(6));
 
         mvc.perform(get("/api/v1/admin/launch-readiness")
-                        .header("Authorization", "Bearer " + jwt.issueAccessToken(owner)))
+                        .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isForbidden());
 
         mvc.perform(get("/api/v1/admin/launch-readiness")
-                        .header("Authorization", "Bearer " + jwt.issueAccessToken(admin)))
+                        .header("Authorization", "Bearer " + admin.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").isString())
                 .andExpect(jsonPath("$.automatedChecks.length()").value(8));
@@ -74,9 +74,9 @@ class AdminApiSecurityTest {
     void searchesWorkspaceAndTenantSeparatedCustomerDetails() throws Exception {
         var admin = user("Admin workspace", "platform-admin@sauti.test");
         var owner = user("Acme Dental", "dental-owner@sauti.test");
-        var agent = agents.save(new Agent(owner.getTenant(), "Amina", "Hello", "Help callers"));
-        calls.save(new Call(owner.getTenant(), agent, "admin-customer-query-call", "+254799998877", "inbound"));
-        var authorization = "Bearer " + jwt.issueAccessToken(admin);
+        var agent = agents.save(new Agent(tenants.findById(owner.workspaceId()).orElseThrow(), "Amina", "Hello", "Help callers"));
+        calls.save(new Call(tenants.findById(owner.workspaceId()).orElseThrow(), agent, "admin-customer-query-call", "+254799998877", "inbound"));
+        var authorization = "Bearer " + admin.token();
 
         mvc.perform(get("/api/v1/admin/workspaces").param("query", "Acme")
                         .header("Authorization", authorization))
@@ -89,10 +89,10 @@ class AdminApiSecurityTest {
                         .header("Authorization", authorization))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.total").value(1))
-                .andExpect(jsonPath("$.customers[0].tenantId").value(owner.getTenant().getId().toString()))
+                .andExpect(jsonPath("$.customers[0].tenantId").value(owner.workspaceId().toString()))
                 .andExpect(jsonPath("$.customers[0].phone").value("+254799998877"));
 
-        mvc.perform(get("/api/v1/admin/customers/{tenantId}", owner.getTenant().getId())
+        mvc.perform(get("/api/v1/admin/customers/{tenantId}", owner.workspaceId())
                         .param("phone", "+254799998877")
                         .header("Authorization", authorization))
                 .andExpect(status().isOk())
@@ -116,18 +116,18 @@ class AdminApiSecurityTest {
 
         mvc.perform(patch("/api/v1/admin/demo-requests/{id}", request.getId())
                         .contentType("application/json").content(payload)
-                        .header("Authorization", "Bearer " + jwt.issueAccessToken(owner)))
+                        .header("Authorization", "Bearer " + owner.token()))
                 .andExpect(status().isForbidden());
 
         mvc.perform(patch("/api/v1/admin/demo-requests/{id}", request.getId())
                         .contentType("application/json").content(payload)
-                        .header("Authorization", "Bearer " + jwt.issueAccessToken(admin)))
+                        .header("Authorization", "Bearer " + admin.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.assignedTo").value("operator@sauti.uk"))
                 .andExpect(jsonPath("$.internalNotes").value("Qualified for pilot"));
 
         mvc.perform(get("/api/v1/admin/audit")
-                        .header("Authorization", "Bearer " + jwt.issueAccessToken(admin)))
+                        .header("Authorization", "Bearer " + admin.token()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.events[0].actorEmail").value("platform-admin@sauti.test"))
                 .andExpect(jsonPath("$.events[0].action").value("demo.request.operations_updated"))
@@ -138,9 +138,9 @@ class AdminApiSecurityTest {
     void platformAdminControlsPilotBudgetAndPaidCapabilities() throws Exception {
         var admin = user("Admin workspace", "platform-admin@sauti.test");
         var pilot = user("Pilot workspace", "pilot-owner@sauti.test");
-        var authorization = "Bearer " + jwt.issueAccessToken(admin);
+        var authorization = "Bearer " + admin.token();
 
-        mvc.perform(patch("/api/v1/admin/workspaces/{id}/pilot-policy", pilot.getTenant().getId())
+        mvc.perform(patch("/api/v1/admin/workspaces/{id}/pilot-policy", pilot.workspaceId())
                         .contentType("application/json")
                         .content("""
                                 {"status":"approved","currency":"USD","monthlyBudget":25.00,
@@ -165,9 +165,9 @@ class AdminApiSecurityTest {
     void platformAdminReviewsEvidenceBackedPilotReadiness() throws Exception {
         var admin = user("Admin workspace", "platform-admin@sauti.test");
         var pilot = user("Pilot workspace", "readiness-owner@sauti.test");
-        var authorization = "Bearer " + jwt.issueAccessToken(admin);
+        var authorization = "Bearer " + admin.token();
 
-        mvc.perform(get("/api/v1/admin/workspaces/{id}/readiness", pilot.getTenant().getId())
+        mvc.perform(get("/api/v1/admin/workspaces/{id}/readiness", pilot.workspaceId())
                         .header("Authorization", authorization))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.blockingChecks").value(3))
@@ -175,7 +175,7 @@ class AdminApiSecurityTest {
                 .andExpect(jsonPath("$.checks[1].status").value("not_required"))
                 .andExpect(jsonPath("$.checks[2].status").value("not_required"));
 
-        mvc.perform(patch("/api/v1/admin/workspaces/{id}/readiness", pilot.getTenant().getId())
+        mvc.perform(patch("/api/v1/admin/workspaces/{id}/readiness", pilot.workspaceId())
                         .contentType("application/json")
                         .content("""
                                 {"supportContactName":"Zachary","supportContactEmail":"support@example.com",
@@ -193,10 +193,7 @@ class AdminApiSecurityTest {
                 .andExpect(jsonPath("$.events[0].action").value("pilot.readiness.updated"));
     }
 
-    private User user(String business, String email) {
-        var tenant = tenants.save(new Tenant(business, email, "KE"));
-        var user = new User(tenant, email, passwords.encode("password123"));
-        user.verifyEmail();
-        return users.save(user);
+    private TestAccounts.Member user(String business, String email) {
+        return accounts.owner(business, email, "KE");
     }
 }

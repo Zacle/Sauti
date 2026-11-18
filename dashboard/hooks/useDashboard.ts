@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadDashboard } from "@/lib/api/dashboard";
-import { consumeOAuthSessionFromHash, readSession } from "@/lib/session";
+import { readSession } from "@/lib/session";
+import { ensureSession } from "@/lib/api/client";
 import { previewDashboardData } from "@/features/dashboard/data/preview-data";
 import type { DashboardData } from "@/types/api";
 
@@ -12,7 +13,7 @@ let cachedAt = 0;
 let pendingRequest: Promise<DashboardData> | null = null;
 
 async function loadCachedDashboard(force = false) {
-  if (!readSession() && !consumeOAuthSessionFromHash()) return previewDashboardData;
+  if (!(await ensureSession())) return previewDashboardData;
   if (!force && cachedData && Date.now() - cachedAt < CACHE_TTL_MS) return cachedData;
   if (!force && pendingRequest) return pendingRequest;
 

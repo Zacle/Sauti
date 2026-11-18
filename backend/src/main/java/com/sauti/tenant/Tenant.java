@@ -1,6 +1,7 @@
 package com.sauti.tenant;
 
 import com.sauti.shared.Auditable;
+import com.sauti.tenant.domain.WorkspaceStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -17,7 +18,8 @@ public class Tenant extends Auditable {
     @Column(nullable = false)
     private String businessName;
 
-    @Column(nullable = false, unique = true)
+    /** Where Sauti contacts the workspace. Not unique: one person may own several workspaces. */
+    @Column(name = "contact_email", nullable = false)
     private String email;
 
     @Column(nullable = false, length = 2)
@@ -101,6 +103,23 @@ public class Tenant extends Auditable {
 
     public String getStatus() {
         return status;
+    }
+
+    public WorkspaceStatus workspaceStatus() {
+        return WorkspaceStatus.fromStored(status);
+    }
+
+    /** Closing keeps the data (erasure is a separate, later step) but makes the workspace unreachable. */
+    public void close() {
+        this.status = WorkspaceStatus.CLOSED.stored();
+    }
+
+    public void suspend() {
+        this.status = WorkspaceStatus.SUSPENDED.stored();
+    }
+
+    public void reactivate() {
+        this.status = WorkspaceStatus.ACTIVE.stored();
     }
 
     public int getMonthlyMinutesLimit() {

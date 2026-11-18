@@ -10,9 +10,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sauti.auth.JwtService;
-import com.sauti.auth.User;
-import com.sauti.auth.UserRepository;
+import com.sauti.testsupport.TestAccounts;
+import com.sauti.auth.domain.User;
+import com.sauti.auth.domain.UserRepository;
 import com.sauti.tenant.Tenant;
 import com.sauti.tenant.TenantRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,21 +43,22 @@ class AgentTemplateApiTest {
     UserRepository userRepository;
 
     @Autowired
-    JwtService jwtService;
+    TestAccounts accounts;
 
-    String ownerToken;
-    String otherTenantToken;
+    TestAccounts.Member owner;
+    TestAccounts.Member otherTenant;
 
     @BeforeEach
     void createTenants() {
-        ownerToken = createTenantToken("Template Owner", "templates-owner@example.com", "KE");
-        otherTenantToken = createTenantToken("Other Tenant", "templates-other@example.com", "TZ");
+        owner = createOwner("Template Owner", "templates-owner@example.com", "KE");
+        accounts.approveProviderSpending(owner.workspaceId());
+        otherTenant = createOwner("Other Tenant", "templates-other@example.com", "TZ");
     }
 
     @Test
     void managesTenantTemplatesAndCreatesIndependentAgentCopy() throws Exception {
-        var systemTemplatesJson = mvc.perform(get("/api/v1/agent-templates")
-                        .header("Authorization", bearer(ownerToken)))
+        var systemTemplatesJson = mvc.perform(get(owner.path("/agent-templates"))
+                        .header("Authorization", owner.bearer()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.name == 'Medical Receptionist')].scope").value("system"))
                 .andExpect(jsonPath("$[?(@.name == 'Medical Receptionist')].editable").value(false))
@@ -77,8 +78,8 @@ class AgentTemplateApiTest {
         }
         assertThat(systemTemplateConfiguration).contains("\"bookingDurationMinutes\":60");
 
-        var createdJson = mvc.perform(post("/api/v1/agent-templates")
-                        .header("Authorization", bearer(ownerToken))
+        var createdJson = mvc.perform(post(owner.path("/agent-templates"))
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(templateBody("Clinic Reception", "Karibu, how may I help?", 1)))
                 .andExpect(status().isOk())
@@ -89,26 +90,26 @@ class AgentTemplateApiTest {
 
         String templateId = objectMapper.readTree(createdJson).get("id").asText();
 
-        mvc.perform(get("/api/v1/agent-templates/" + templateId)
-                        .header("Authorization", bearer(otherTenantToken)))
+        mvc.perform(get(otherTenant.path("/agent-templates/") + templateId)
+                        .header("Authorization", otherTenant.bearer()))
                 .andExpect(status().isNotFound());
 
-        mvc.perform(put("/api/v1/agent-templates/" + templateId)
-                        .header("Authorization", bearer(ownerToken))
+        mvc.perform(put(owner.path("/agent-templates/") + templateId)
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(templateBody("Clinic Reception v2", "Habari, how may I help?", 2)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Clinic Reception v2"))
                 .andExpect(jsonPath("$.version").value(2));
 
-        mvc.perform(put("/api/v1/agent-templates/" + systemTemplateId)
-                        .header("Authorization", bearer(ownerToken))
+        mvc.perform(put(owner.path("/agent-templates/") + systemTemplateId)
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(templateBody("Changed system template", "Hello", 1)))
                 .andExpect(status().isNotFound());
 
-        mvc.perform(put("/api/v1/tenant/workspace-profile")
-                        .header("Authorization", bearer(ownerToken))
+        mvc.perform(put(owner.path("/tenant/workspace-profile"))
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -119,8 +120,8 @@ class AgentTemplateApiTest {
                                 """))
                 .andExpect(status().isOk());
 
-        var agentJson = mvc.perform(post("/api/v1/agents/from-template/" + systemTemplateId)
-                        .header("Authorization", bearer(ownerToken))
+        var agentJson = mvc.perform(post(owner.path("/agents/from-template/") + systemTemplateId)
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -139,20 +140,20 @@ class AgentTemplateApiTest {
                 .andReturn().getResponse().getContentAsString();
         var agentId = objectMapper.readTree(agentJson).get("id").asText();
 
-        var variablesJson = mvc.perform(get("/api/v1/agents/" + agentId + "/variables")
-                        .header("Authorization", bearer(ownerToken)))
+        var variablesJson = mvc.perform(get(owner.path("/agents/") + agentId + "/variables")
+                        .header("Authorization", owner.bearer()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.key == 'business_name')].required").value(true))
                 .andExpect(jsonPath("$[?(@.key == 'business_name')].filled").value(false))
                 .andExpect(jsonPath("$[?(@.required == false)]").isNotEmpty())
                 .andReturn().getResponse().getContentAsString();
 
-        mvc.perform(post("/api/v1/agents/" + agentId + "/activate")
-                        .header("Authorization", bearer(ownerToken)))
+        mvc.perform(post(owner.path("/agents/") + agentId + "/activate")
+                        .header("Authorization", owner.bearer()))
                 .andExpect(status().isBadRequest());
 
-        mvc.perform(patch("/api/v1/agents/" + agentId + "/variables/business_name")
-                        .header("Authorization", bearer(ownerToken))
+        mvc.perform(patch(owner.path("/agents/") + agentId + "/variables/business_name")
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"value\":\"Nairobi Family Health\"}"))
                 .andExpect(status().isOk())
@@ -167,15 +168,15 @@ class AgentTemplateApiTest {
                 case "business_phone" -> "+254712345678";
                 default -> "Configured test value";
             };
-            mvc.perform(patch("/api/v1/agents/" + agentId + "/variables/" + key)
-                            .header("Authorization", bearer(ownerToken))
+            mvc.perform(patch(owner.path("/agents/") + agentId + "/variables/" + key)
+                            .header("Authorization", owner.bearer())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(java.util.Map.of("value", configuredValue))))
                     .andExpect(status().isOk());
         }
 
-        mvc.perform(post("/api/v1/agents/" + agentId + "/variables")
-                        .header("Authorization", bearer(ownerToken))
+        mvc.perform(post(owner.path("/agents/") + agentId + "/variables")
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -190,16 +191,16 @@ class AgentTemplateApiTest {
                 .andExpect(jsonPath("$.key").value("parking_instructions"))
                 .andExpect(jsonPath("$.filled").value(true));
 
-        mvc.perform(post("/api/v1/agents/" + agentId + "/variables")
-                        .header("Authorization", bearer(ownerToken))
+        mvc.perform(post(owner.path("/agents/") + agentId + "/variables")
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"key":"Invalid Key","label":"Invalid","value":"","required":false}
                                 """))
                 .andExpect(status().isBadRequest());
 
-        mvc.perform(put("/api/v1/agents/" + agentId + "/variables")
-                        .header("Authorization", bearer(ownerToken))
+        mvc.perform(put(owner.path("/agents/") + agentId + "/variables")
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -211,30 +212,30 @@ class AgentTemplateApiTest {
                                 """))
                 .andExpect(status().isOk());
 
-        mvc.perform(post("/api/v1/agents/" + agentId + "/provision-number")
-                        .header("Authorization", bearer(ownerToken))
+        mvc.perform(post(owner.path("/agents/") + agentId + "/provision-number")
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phoneNumber\":\"+254712345679\",\"providerChargesConfirmed\":true}"))
                 .andExpect(status().isOk());
 
-        mvc.perform(post("/api/v1/agents/" + agentId + "/activate")
-                        .header("Authorization", bearer(ownerToken)))
+        mvc.perform(post(owner.path("/agents/") + agentId + "/activate")
+                        .header("Authorization", owner.bearer()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.active").value(true));
 
-        mvc.perform(delete("/api/v1/agent-templates/" + templateId)
-                        .header("Authorization", bearer(ownerToken)))
+        mvc.perform(delete(owner.path("/agent-templates/") + templateId)
+                        .header("Authorization", owner.bearer()))
                 .andExpect(status().isNoContent());
 
-        mvc.perform(get("/api/v1/agent-templates/" + templateId)
-                        .header("Authorization", bearer(ownerToken)))
+        mvc.perform(get(owner.path("/agent-templates/") + templateId)
+                        .header("Authorization", owner.bearer()))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void rejectsInvalidConfigurationAndUnsupportedLanguage() throws Exception {
-        mvc.perform(post("/api/v1/agent-templates")
-                        .header("Authorization", bearer(ownerToken))
+        mvc.perform(post(owner.path("/agent-templates"))
+                        .header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -252,12 +253,8 @@ class AgentTemplateApiTest {
                 .andExpect(status().isBadRequest());
     }
 
-    private String createTenantToken(String businessName, String email, String countryCode) {
-        var tenant = tenantRepository.save(new Tenant(businessName, email, countryCode));
-        var user = new User(tenant, email, "not-used");
-        user.verifyEmail();
-        userRepository.save(user);
-        return jwtService.issueAccessToken(user);
+    private TestAccounts.Member createOwner(String businessName, String email, String countryCode) {
+        return accounts.owner(businessName, email, countryCode);
     }
 
     private String templateBody(String name, String greeting, int revision) {

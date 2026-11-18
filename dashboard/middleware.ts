@@ -7,7 +7,7 @@ import { CONSOLE_PREFIXES } from "@/lib/console-routes";
 // These routes are part of completing authentication or are intentionally
 // shared with callers outside the workspace. They must remain reachable even
 // when the browser also has an authenticated Sauti workspace session.
-const SESSION_NEUTRAL_PREFIXES = ["/oauth/callback", "/call", "/forgot-password", "/reset-password"];
+const SESSION_NEUTRAL_PREFIXES = ["/oauth/callback", "/call", "/forgot-password", "/reset-password", "/invitations"];
 
 function requestHostname(request: NextRequest) {
   const forwarded = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();

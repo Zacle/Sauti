@@ -158,3 +158,36 @@
   .actionBar, .dangerZone { align-items: stretch; flex-direction: column; }
   .supportBar { align-items: flex-start; flex-direction: column; }
 }
+
+/* Members */
+.inviteForm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 0.45fr) auto; align-items: end; gap: 12px; padding: 16px 20px 2px; }
+.inviteForm .inputField { margin-bottom: 14px; }
+.inviteForm > button { margin-bottom: 16px; }
+.memberList { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--color-line); }
+.memberRow { display: grid; grid-template-columns: 32px minmax(0, 1fr) 170px 150px; align-items: center; gap: 14px; padding: 10px 20px; border-bottom: 1px solid var(--color-line); }
+.avatar { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; color: var(--color-fg-soft); background: var(--color-surface-3); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; }
+.memberIdentity { min-width: 0; }
+.memberIdentity strong, .memberIdentity small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memberIdentity strong { color: var(--color-ink); font-size: 0.86rem; font-weight: 500; }
+.memberIdentity em, .roleGuide em { color: var(--color-fg-muted); font-style: normal; font-weight: 400; }
+.memberIdentity small { margin-top: 2px; color: var(--color-fg-muted); font-size: 0.78rem; }
+.memberRole b { display: block; padding-left: 11px; color: var(--color-fg); font-size: 0.84rem; font-weight: 400; }
+.memberActions { display: flex; justify-content: flex-end; gap: 4px; }
+.memberEmpty { display: flex; align-items: center; gap: 8px; margin: 0; padding: 14px 20px; border-top: 1px solid var(--color-line); color: var(--color-fg-muted); font-size: 0.84rem; }
+.roleGuide { border-top: 1px solid var(--color-line); }
+.roleGuide > :last-child { border-bottom: 0; }
+.transferControls { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; min-width: 260px; }
+.transferControls > :first-child { flex: 1; min-width: 0; }
+.dangerZone .transferControls span { color: var(--color-fg); font-weight: 400; }
+
+@media (max-width: 760px) {
+  .inviteForm { grid-template-columns: 1fr; }
+  .memberRow { grid-template-columns: 32px minmax(0, 1fr); }
+  .memberRole, .memberActions { grid-column: 2; justify-content: flex-start; }
+  .transferControls { min-width: 0; width: 100%; }
+}
+
+/* Activity */
+.activityRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 11px 20px; border-bottom: 1px solid var(--color-line); }
+.activityRow time { color: var(--color-fg-muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.memberIdentity code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.74rem; }

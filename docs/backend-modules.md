@@ -5,8 +5,8 @@ Sauti is intentionally a Spring Boot modular monolith. It deploys as one applica
 | Java package | Responsibility |
 | --- | --- |
 | `com.sauti.api` | HTTP/WebSocket adapters, request validation, CORS, and OpenAPI. Controllers delegate to feature services and never import repositories. |
-| `com.sauti.auth` | Registration, login, JWT and refresh-token lifecycle, OAuth login, verification, and password reset. |
-| `com.sauti.tenant` | Workspace identity, tenancy, and onboarding state. |
+| `com.sauti.auth` | Accounts, password and Google sign-in, verification, password recovery, cookie sessions with refresh-token families, and request security (workspace routing and route permissions). Layered: `domain`, `application` (use cases + ports), `infrastructure`. |
+| `com.sauti.tenant` | Workspaces: profile and settings, memberships, roles and permissions, invitations. New code is layered like `auth`; `Tenant` and the settings services at the root predate it. |
 | `com.sauti.agent` | Agent identity, prompt, voice, languages, schedules, templates, and call behavior. |
 | `com.sauti.call` | Call lifecycle, browser/phone media runtimes, transcripts, recordings, interruption handling, and voice-runtime metrics. |
 | `com.sauti.voice` | Provider-facing voice catalog and preview behavior. |
@@ -43,3 +43,9 @@ Sauti is intentionally a Spring Boot modular monolith. It deploys as one applica
 The Next.js App Router is an adapter layer. Route `page.tsx` files should remain thin. Feature behavior lives under `dashboard/features/<feature>`, API clients under `dashboard/lib/api`, and shared transport types in `dashboard/types/api.ts`.
 
 ESLint, type checking, and the production build all run in CI. Feature-specific styling should use CSS modules; global styles are reserved for true design tokens and application-wide primitives.
+
+## Workspace requests
+
+- Every workspace feature is called as `/api/v1/workspaces/{workspaceId}/...`. `WorkspacePathFilter` hands it to the existing feature route and `WorkspaceAccessFilter` checks membership, workspace status and the route permission from `WorkspaceRoutePolicy` before the controller runs. `AuthenticatedUser.tenantId()` is the workspace from the URL.
+- Account and platform routes (`/auth`, `/me`, `/workspaces`, `/invitations`, `/public`, `/admin`, `/operator`, `/voices`) never take a workspace.
+- `LayeredModuleArchitectureTest` enforces the layering of `auth` and `tenant`. Add a module to it when it is restructured.

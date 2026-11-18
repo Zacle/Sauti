@@ -19,6 +19,11 @@ public interface BillingCheckoutGateway {
         throw new IllegalStateException("Subscription cancellation is not available for this billing provider");
     }
 
+    /** Stops an add-on renewing. Providers without separate add-on subscriptions have nothing to cancel. */
+    default CancellationResponse cancelAddOn(UUID tenantId, String providerSubscriptionId) {
+        throw new IllegalStateException("Add-on cancellation is not available for this billing provider");
+    }
+
     default CancellationResponse resume(UUID tenantId) {
         throw new IllegalStateException("Subscription renewal cannot be resumed for this billing provider");
     }

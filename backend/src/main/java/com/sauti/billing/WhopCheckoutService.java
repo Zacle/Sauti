@@ -139,7 +139,17 @@ public class WhopCheckoutService implements BillingCheckoutGateway {
         if (!provider().equals(subscription.getProvider())) {
             throw new IllegalStateException("This workspace subscription belongs to a different billing provider");
         }
-        var membershipId = subscription.getProviderSubscriptionId();
+        return cancelMembership(subscription.getProviderSubscriptionId());
+    }
+
+    /** Add-ons are separate Whop memberships; they are cancelled the same way, at period end. */
+    @Override
+    public CancellationResponse cancelAddOn(UUID tenantId, String membershipId) {
+        if (!coreConfigured()) throw new IllegalStateException("Whop billing is not configured");
+        return cancelMembership(membershipId);
+    }
+
+    private CancellationResponse cancelMembership(String membershipId) {
         if (membershipId == null || !membershipId.matches("[A-Za-z0-9_=-]+")) {
             throw new IllegalStateException("The Whop membership reference is invalid");
         }

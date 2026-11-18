@@ -222,6 +222,29 @@ const daysBack = (n: number, fn: (i: number) => Record<string, unknown>) =>
 const volume = (i: number) => 18 + Math.round(9 * Math.sin(i / 1.7) + (i % 7 === 5 || i % 7 === 6 ? -8 : 4) + i * 0.4);
 
 const routes: Record<string, unknown> = {
+  "GET /workspaces/tenant-preview/api-keys": [
+    { id: "key-1", name: "CRM sync", hint: "sauti_sk_3f9a1c2e_…", access: "READ_ONLY", createdAt: iso(now - 86_400_000 * 30), lastUsedAt: iso(now - 3_600_000), revokedAt: null },
+    { id: "key-2", name: "Old website form", hint: "sauti_sk_7b20d4aa_…", access: "FULL", createdAt: iso(now - 86_400_000 * 90), lastUsedAt: iso(now - 86_400_000 * 40), revokedAt: iso(now - 86_400_000 * 35) },
+  ],
+  "GET /activity": [
+    { id: "a-1", action: "member.role_changed", actor: "owner@brightsmile.example", summary: "Changed joseph@brightsmile.example from Member to Admin", at: iso(now - 3_600_000 * 2) },
+    { id: "a-2", action: "invitation.sent", actor: "amina.otieno@brightsmile.example", summary: "Invited reception@brightsmile.example as Member", at: iso(now - 86_400_000 * 2) },
+    { id: "a-3", action: "api_key.created", actor: "owner@brightsmile.example", summary: "Created API key \"CRM sync\" with read-only access", at: iso(now - 86_400_000 * 30) },
+  ],
+  "GET /me/activity": [
+    { id: "s-1", action: "session.started", actor: "owner@brightsmile.example", summary: "Signed in", at: iso(now - 3_600_000) },
+    { id: "s-2", action: "password.changed", actor: "owner@brightsmile.example", summary: "Changed the password", at: iso(now - 86_400_000 * 6) },
+  ],
+  "GET /me/deletion-impact": [{ workspaceId: "tenant-preview", name: "Bright Smile Dental", otherMembers: 2 }],
+  "GET /workspaces/tenant-preview/members": [
+    { userId: "user-preview", email: "owner@brightsmile.example", role: "OWNER", joinedAt: iso(now - 86_400_000 * 120) },
+    { userId: "user-amina", email: "amina.otieno@brightsmile.example", role: "ADMIN", joinedAt: iso(now - 86_400_000 * 40) },
+    { userId: "user-joseph", email: "joseph@brightsmile.example", role: "MEMBER", joinedAt: iso(now - 86_400_000 * 9) },
+  ],
+  "GET /workspaces/tenant-preview/invitations": [
+    { id: "inv-1", email: "reception@brightsmile.example", role: "MEMBER", createdAt: iso(now - 86_400_000 * 2), expiresAt: iso(now + 86_400_000 * 5), expired: false },
+  ],
+  "GET /invitations/preview": { workspaceName: "Bright Smile Dental", email: "reception@brightsmile.example", role: "MEMBER", expiresAt: iso(now + 86_400_000 * 5), accountExists: false },
   "GET /agents": agents,
   "GET /agents/readiness": agents.map((agent) => ({
     agentId: agent.id,

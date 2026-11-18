@@ -1,8 +1,8 @@
 package com.sauti.demo;
 
-import com.sauti.auth.AuthDtos.RegisterResponse;
-import com.sauti.auth.AuthService;
-import com.sauti.auth.UserRepository;
+import com.sauti.auth.application.AuthDtos.RegisterResponse;
+import com.sauti.auth.application.AccountRegistration;
+import com.sauti.auth.domain.UserRepository;
 import com.sauti.demo.PilotInvitationDtos.InvitationIssued;
 import com.sauti.demo.PilotInvitationDtos.InvitationPreview;
 import java.nio.charset.StandardCharsets;
@@ -25,13 +25,13 @@ public class PilotInvitationService {
     private final DemoRequestRepository requests;
     private final PilotInvitationRepository invitations;
     private final UserRepository users;
-    private final AuthService authService;
+    private final AccountRegistration authService;
     private final ApplicationEventPublisher events;
     private final PilotProvisioningPolicyService provisioningPolicies;
     private final SecureRandom random = new SecureRandom();
 
     public PilotInvitationService(DemoRequestRepository requests, PilotInvitationRepository invitations,
-                                  UserRepository users, AuthService authService, ApplicationEventPublisher events,
+                                  UserRepository users, AccountRegistration authService, ApplicationEventPublisher events,
                                   PilotProvisioningPolicyService provisioningPolicies) {
         this.requests = requests;
         this.invitations = invitations;

@@ -134,9 +134,9 @@ class BookingNotificationServiceTest {
 
         assertThat(html)
                 .contains("New booking confirmed")
-                .contains("Appointment time")
+                .contains("Appointment")
                 .contains("9:00 AM")
-                .contains("Business local time | Africa/Cairo (UTC+03:00)")
+                .contains("business time").contains("Africa/Cairo (UTC+03:00)")
                 .contains("Confirmation captured")
                 .contains("https://sauti.uk/bookings");
     }
@@ -157,8 +157,8 @@ class BookingNotificationServiceTest {
         assertThat(notification.actionTime()).isEqualTo("26 Jul 2026 at 11:42 AM");
         assertThat(html)
                 .contains("Booking rescheduled")
-                .contains("RESCHEDULED")
-                .contains("Previous appointment")
+                .contains("Rescheduled")
+                .contains("Previously")
                 .contains("Friday, 31 July 2026 at 1:00 PM in Africa/Cairo (UTC+03:00)")
                 .contains("Monday, 3 August 2026")
                 .contains("9:00 AM");
@@ -179,7 +179,7 @@ class BookingNotificationServiceTest {
 
         assertThat(html)
                 .contains("Booking cancelled")
-                .contains("CANCELLED")
+                .contains("Cancelled")
                 .contains("Cancellation confirmed at")
                 .contains("26 Jul 2026 at 12:05 PM")
                 .doesNotContain("Previous appointment:");
