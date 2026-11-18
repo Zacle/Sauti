@@ -32,6 +32,13 @@ public interface TelephonyProvider {
         return null;
     }
 
+    /**
+     * Gives a number back to the carrier so it stops costing money. Providers without a real carrier
+     * (the local fake) have nothing to release.
+     */
+    default void releasePhoneNumber(String phoneNumber) {
+    }
+
     default PhoneNumberCostQuote quotePhoneNumber(String tenantCountryCode, String phoneNumber) {
         return new PhoneNumberCostQuote(phoneNumber, BigDecimal.ZERO, BigDecimal.ZERO, "USD");
     }

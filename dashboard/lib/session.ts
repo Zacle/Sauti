@@ -1,77 +1,141 @@
-import type { AuthSession } from "@/types/api";
+import type { Account, AuthSession, SessionResponse, WorkspaceMembership } from "@/types/api";
 
-const SESSION_KEY = "sauti.auth.session";
-const PENDING_EMAIL_KEY = "sauti.auth.pending-email";
+/**
+ * The signed-in session for this tab.
+ *
+ * The access token is kept in memory only. The refresh token is an HttpOnly cookie that page
+ * scripts can never read; the backend rotates it on each refresh. A non-secret marker cookie
+ * tells the Next.js middleware that a session probably exists, so it can redirect to /login early.
+ *
+ * Each tab remembers its own active workspace (sessionStorage), so two tabs can work in two
+ * workspaces at once. New tabs start from the last workspace used (localStorage, then the account).
+ */
 export const SESSION_PRESENT_COOKIE = "sauti.session.present";
 export const SESSION_CHANGED_EVENT = "sauti:session-changed";
 
-export function readSession(): AuthSession | null {
-  if (typeof window === "undefined") return null;
+const PENDING_EMAIL_KEY = "sauti.auth.pending-email";
+const TAB_WORKSPACE_KEY = "sauti.workspace.active";
+const LAST_WORKSPACE_KEY = "sauti.workspace.last";
+const SIGN_OUT_SIGNAL_KEY = "sauti.auth.signed-out";
+/** Tokens used to live here. Removed on load so they no longer sit in browser storage. */
+const LEGACY_SESSION_KEY = "sauti.auth.session";
+
+let current: AuthSession | null = null;
+
+function storage(kind: "local" | "session"): Storage | null {
   try {
-    const value = window.localStorage.getItem(SESSION_KEY);
-    return value ? (JSON.parse(value) as AuthSession) : null;
+    return kind === "local" ? window.localStorage : window.sessionStorage;
   } catch {
-    window.localStorage.removeItem(SESSION_KEY);
     return null;
   }
 }
 
+export function removeLegacyStoredSession() {
+  if (typeof window === "undefined") return;
+  storage("local")?.removeItem(LEGACY_SESSION_KEY);
+}
+
+export function readSession(): AuthSession | null {
+  return current;
+}
+
+export function hasSessionMarker() {
+  if (typeof document === "undefined") return false;
+  return document.cookie.split(";").some((part) => part.trim() === `${SESSION_PRESENT_COOKIE}=1`);
+}
+
 export function writeSession(session: AuthSession) {
-  window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  current = session;
   document.cookie = `${SESSION_PRESENT_COOKIE}=1; Path=/; Max-Age=2592000; SameSite=Lax`;
+  if (session.tenant) rememberWorkspaceLocally(session.tenant.id);
   window.dispatchEvent(new Event(SESSION_CHANGED_EVENT));
 }
 
 export function clearSession() {
-  window.localStorage.removeItem(SESSION_KEY);
+  current = null;
   document.cookie = `${SESSION_PRESENT_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`;
+  storage("session")?.removeItem(TAB_WORKSPACE_KEY);
   window.dispatchEvent(new Event(SESSION_CHANGED_EVENT));
 }
 
+/** Tells other open tabs to drop their in-memory session after this tab signs out. */
+export function announceSignOut() {
+  storage("local")?.setItem(SIGN_OUT_SIGNAL_KEY, String(Date.now()));
+}
+
+export function isSignOutSignal(event: StorageEvent) {
+  return event.key === SIGN_OUT_SIGNAL_KEY;
+}
+
+/** Builds the tab's session from a sign-in or refresh response, keeping this tab's workspace if it still can. */
+export function sessionFromResponse(response: SessionResponse, preferredWorkspaceId?: string | null): AuthSession {
+  const membership = chooseWorkspace(response.account, preferredWorkspaceId);
+  return {
+    accessToken: response.accessToken,
+    account: response.account,
+    tenant: membership?.workspace ?? null,
+    role: membership?.role ?? null,
+    platformAdminSession: Boolean(response.platformAdminSession),
+  };
+}
+
+/** Switches this tab to another workspace the person belongs to. Returns false if they don't. */
+export function selectWorkspace(workspaceId: string) {
+  if (!current) return false;
+  const membership = current.account.workspaces.find((item) => item.workspace.id === workspaceId);
+  if (!membership) return false;
+  writeSession({ ...current, tenant: membership.workspace, role: membership.role });
+  return true;
+}
+
+export function activeWorkspaceId() {
+  return current?.tenant?.id ?? storage("session")?.getItem(TAB_WORKSPACE_KEY) ?? null;
+}
+
+function chooseWorkspace(account: Account, preferredWorkspaceId?: string | null): WorkspaceMembership | null {
+  const candidates = [
+    preferredWorkspaceId,
+    typeof window === "undefined" ? null : storage("session")?.getItem(TAB_WORKSPACE_KEY),
+    typeof window === "undefined" ? null : storage("local")?.getItem(LAST_WORKSPACE_KEY),
+    account.lastWorkspaceId,
+  ];
+  for (const id of candidates) {
+    const match = id ? account.workspaces.find((item) => item.workspace.id === id) : undefined;
+    if (match) return match;
+  }
+  return account.workspaces[0] ?? null;
+}
+
+function rememberWorkspaceLocally(workspaceId: string) {
+  storage("session")?.setItem(TAB_WORKSPACE_KEY, workspaceId);
+  storage("local")?.setItem(LAST_WORKSPACE_KEY, workspaceId);
+}
+
 export function writePendingEmail(email: string) {
-  window.localStorage.setItem(PENDING_EMAIL_KEY, email);
+  storage("local")?.setItem(PENDING_EMAIL_KEY, email);
 }
 
 export function readPendingEmail() {
   if (typeof window === "undefined") return "";
-  return window.localStorage.getItem(PENDING_EMAIL_KEY) ?? "";
+  return storage("local")?.getItem(PENDING_EMAIL_KEY) ?? "";
 }
 
 export function clearPendingEmail() {
-  window.localStorage.removeItem(PENDING_EMAIL_KEY);
+  storage("local")?.removeItem(PENDING_EMAIL_KEY);
 }
 
-export function consumeOAuthSessionFromHash(): AuthSession | null {
-  if (typeof window === "undefined" || !window.location.hash) return null;
-  const values = new URLSearchParams(window.location.hash.slice(1));
-  const accessToken = values.get("accessToken");
-  const refreshToken = values.get("refreshToken");
-  if (!accessToken || !refreshToken) return null;
-
-  try {
-    const payloadPart = accessToken.split(".")[1] ?? "";
-    const normalizedPayload = payloadPart.replace(/-/g, "+").replace(/_/g, "/")
-      .padEnd(Math.ceil(payloadPart.length / 4) * 4, "=");
-    const payload = JSON.parse(window.atob(normalizedPayload)) as { tenant_id?: string; email?: string; role?: string };
-    const session: AuthSession = {
-      accessToken,
-      refreshToken,
-      role: values.get("role") ?? payload.role ?? "OWNER",
-      tenant: {
-        id: values.get("tenantId") ?? payload.tenant_id ?? "",
-        businessName: values.get("businessName") ?? "Sauti workspace",
-        email: values.get("email") ?? payload.email ?? "",
-        countryCode: values.get("countryCode") ?? "",
-        plan: values.get("plan") ?? "starter",
-        status: values.get("status") ?? "active",
-        monthlyMinutesLimit: Number(values.get("monthlyMinutesLimit") ?? 0),
-        minutesUsedThisCycle: Number(values.get("minutesUsedThisCycle") ?? 0),
-      },
-    };
-    writeSession(session);
-    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-    return session;
-  } catch {
-    return null;
-  }
+/** The same session with the active workspace renamed everywhere it appears. */
+export function renameActiveWorkspace(session: AuthSession, businessName: string): AuthSession {
+  if (!session.tenant) return session;
+  const id = session.tenant.id;
+  return {
+    ...session,
+    tenant: { ...session.tenant, businessName },
+    account: {
+      ...session.account,
+      workspaces: session.account.workspaces.map((item) =>
+        item.workspace.id === id ? { ...item, workspace: { ...item.workspace, businessName } } : item,
+      ),
+    },
+  };
 }

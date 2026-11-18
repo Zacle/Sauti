@@ -95,6 +95,8 @@ sauti:
   auth:
     expose-dev-tokens: ${AUTH_EXPOSE_DEV_TOKENS:true}
     public-registration-enabled: ${SAUTI_PUBLIC_REGISTRATION_ENABLED:false}
+    # The refresh cookie is Secure by default; browsers accept Secure cookies on http://localhost.
+    refresh-cookie-secure: ${AUTH_REFRESH_COOKIE_SECURE:true}
     google:
       client-id: ${GOOGLE_OAUTH_CLIENT_ID:}
       client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET:}

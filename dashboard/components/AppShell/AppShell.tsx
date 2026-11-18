@@ -34,6 +34,8 @@ import { loadConsoleAppearance, saveConsoleAppearance } from "@/lib/api/appearan
 
 const appearanceApi = { load: loadConsoleAppearance, save: saveConsoleAppearance };
 import { AppearanceMenu } from "@/components/ui/theme-controls";
+import { WorkspaceSwitcher } from "@/features/workspaces/presentation/WorkspaceSwitcher";
+import { NoWorkspace } from "@/features/workspaces/presentation/NoWorkspace";
 
 type NavItem = { label: string; href: string; icon: ComponentType<{ className?: string }> };
 
@@ -75,7 +77,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [shortcut, setShortcut] = useState("Ctrl K");
   const isAgentStudio = pathname === "/agents/new" || /^\/agents\/[^/]+$/.test(pathname);
   const current = allNav.find((item) => isActive(pathname, item.href));
-  const initial = tenant?.businessName?.trim().slice(0, 1).toUpperCase() ?? "S";
 
   // Theme the whole document so portaled menus, dialogs and toasts match the console.
   useApplyConsoleTheme();
@@ -126,19 +127,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const sidebar = (compact: boolean) => (
     <div className="flex h-full flex-col gap-5 px-3 pb-3 pt-3">
       <div className={cn("flex items-center gap-2", compact && "flex-col")}>
-        <Link
-          href="/dashboard"
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[7px] px-1.5 py-1.5 no-underline transition-colors hover:bg-tint/[0.05]"
-          title={tenant?.businessName}
-        >
-          <span className="grid size-7 shrink-0 place-items-center rounded-[6px] bg-primary text-[0.8rem] font-semibold text-primary-fg">{initial}</span>
-          {!compact ? (
-            <span className="min-w-0 leading-tight">
-              <span className="block truncate text-[0.84rem] font-semibold text-ink">{tenant?.businessName ?? "Workspace"}</span>
-              <span className="block truncate text-[0.72rem] capitalize text-fg-muted">{tenant?.plan ?? "starter"} plan</span>
-            </span>
-          ) : null}
-        </Link>
+        <WorkspaceSwitcher compact={compact} />
         <button
           type="button"
           onClick={toggleCollapsed}
@@ -285,7 +274,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ) : null}
 
           <main className={cn("console-content min-w-0 flex-1", !isAgentStudio && "!w-full !max-w-[1280px] !px-4 !py-6 sm:!px-6 lg:!px-8 lg:!py-8")}>
-            {children}
+            {session && !session.tenant && !isPreviewMode() ? <NoWorkspace /> : children}
           </main>
         </div>
       </div>

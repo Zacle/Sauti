@@ -1,6 +1,6 @@
 package com.sauti.api;
 
-import com.sauti.auth.AuthDtos.RegisterResponse;
+import com.sauti.auth.application.AuthDtos.RegisterResponse;
 import com.sauti.demo.PilotInvitationDtos.AcceptInvitation;
 import com.sauti.demo.PilotInvitationDtos.InvitationIssued;
 import com.sauti.demo.PilotInvitationDtos.InvitationPreview;

@@ -35,6 +35,7 @@ public class ProductionSafetyValidator implements ApplicationRunner {
         requireValue(errors, "sauti.telephony.provider", List.of("telnyx"));
         requireFalse(errors, "sauti.auth.expose-dev-tokens");
         requireFalse(errors, "sauti.auth.public-registration-enabled");
+        requireTrue(errors, "sauti.auth.refresh-cookie-secure");
         requireFalse(errors, "spring.h2.console.enabled");
         requirePrefix(errors, "spring.datasource.url", "jdbc:postgresql:");
         requirePrefix(errors, "sauti.dashboard.base-url", "https://");

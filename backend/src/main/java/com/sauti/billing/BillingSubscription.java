@@ -23,6 +23,8 @@ public class BillingSubscription extends Auditable {
     @Column(nullable = false, length = 20) private String plan;
     @Column(nullable = false, length = 20) private String billingInterval;
     @Column(nullable = false, length = 30) private String providerStatus;
+    /** Set once Sauti asked the provider to stop renewal because the workspace closed. */
+    private java.time.OffsetDateTime closureCancelRequestedAt;
     @Column(nullable = false) private boolean testMode;
     private OffsetDateTime renewsAt;
     private OffsetDateTime endsAt;
@@ -81,6 +83,7 @@ public class BillingSubscription extends Auditable {
         return paidThrough != null && checkedAt.isBefore(paidThrough);
     }
 
+    public UUID getId() { return id; }
     public UUID getTenantId() { return tenantId; }
     public String getProvider() { return provider; }
     public String getProviderSubscriptionId() { return providerSubscriptionId; }
@@ -101,4 +104,14 @@ public class BillingSubscription extends Auditable {
         return value.trim();
     }
     private static String optional(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+
+    /** Renews unless cancelled: anything not already cancelled, cancelling or expired. */
+    public boolean stillRenews() {
+        return closureCancelRequestedAt == null
+                && !java.util.List.of("canceled", "cancelled", "canceling", "expired").contains(providerStatus);
+    }
+
+    public void markClosureCancelRequested(java.time.OffsetDateTime now) {
+        if (closureCancelRequestedAt == null) closureCancelRequestedAt = now;
+    }
 }

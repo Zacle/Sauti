@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<!--
+  Shared pieces for every Sauti email, in the console's look: warm paper background, white card
+  with a hairline border, ink text, dot-and-text statuses, one dark primary button. No gradients,
+  glows, emoji badges or uppercase labels. Styles are inline because email clients drop <style>.
+
+  Palette (mirrors html.console-light in the dashboard):
+    canvas #f7f6f3  surface #ffffff  surface-2 #f2f1ed  line #e7e5df
+    ink #141412  fg #23221f  soft #5f5c55  muted #8f8b82  primary #1f1e1b
+    success #2f7a4b  warning #a86a14  danger #b8432f
+-->
+<body>
+
+<!-- Hidden one-line summary shown by inbox previews. -->
+<div th:fragment="preheader(text)" style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;" th:text="${text}">Preview text</div>
+
+<!-- Wordmark above the card. -->
+<div th:fragment="wordmark" style="padding:0 4px 20px;font-size:17px;font-weight:600;letter-spacing:-0.2px;color:#141412;">Sauti</div>
+
+<!-- Main heading inside the card. -->
+<h1 th:fragment="heading(text)" style="margin:0;font-size:21px;line-height:1.3;font-weight:600;letter-spacing:-0.3px;color:#141412;" th:text="${text}">Heading</h1>
+
+<!-- Body paragraph. -->
+<p th:fragment="paragraph(text)" style="margin:12px 0 0;font-size:15px;line-height:1.6;color:#5f5c55;" th:text="${text}">Paragraph</p>
+
+<!-- A status as a coloured dot plus words. tone: success | warning | danger | neutral -->
+<span th:fragment="status(tone, label)" style="display:inline-block;font-size:13px;line-height:1;color:#5f5c55;">
+    <span th:style="'display:inline-block;width:7px;height:7px;margin-right:7px;border-radius:50%;vertical-align:1px;background:'
+            + (${tone} == 'success' ? '#2f7a4b' : (${tone} == 'warning' ? '#a86a14' : (${tone} == 'danger' ? '#b8432f' : '#d6d3cb')))"></span><span th:text="${label}">Status</span>
+</span>
+
+<!-- The one primary action. -->
+<table th:fragment="button(url, label)" role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 0;">
+    <tr>
+        <td style="border-radius:7px;background:#1f1e1b;">
+            <a th:href="${url}" href="#" style="display:inline-block;padding:11px 18px;font-size:14px;font-weight:500;color:#ffffff;text-decoration:none;border-radius:7px;" th:text="${label}">Action</a>
+        </td>
+    </tr>
+</table>
+
+<!-- A quieter second action, shown as a text link. -->
+<p th:fragment="link(url, label)" style="margin:14px 0 0;font-size:14px;">
+    <a th:href="${url}" href="#" style="color:#23221f;text-decoration:underline;text-underline-offset:3px;" th:text="${label}">Secondary action</a>
+</p>
+
+<!-- One label/value row in a details table. Use inside <table th:replace="~{email/parts :: details}">. -->
+<tr th:fragment="row(label, value)">
+    <td style="padding:11px 0;border-top:1px solid #e7e5df;font-size:13px;color:#8f8b82;" th:text="${label}">Label</td>
+    <td align="right" style="padding:11px 0;border-top:1px solid #e7e5df;font-size:13px;color:#23221f;" th:text="${value}">Value</td>
+</tr>
+
+<!-- Small grey note under a hairline, inside the card. -->
+<table th:fragment="note(text)" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:28px 0 0;border-top:1px solid #e7e5df;">
+    <tr>
+        <td style="padding:16px 0 0;font-size:13px;line-height:1.6;color:#8f8b82;" th:text="${text}">Note</td>
+    </tr>
+</table>
+
+<!-- Line under the card. -->
+<div th:fragment="footer(text)" style="padding:18px 4px 0;font-size:12px;line-height:1.6;color:#8f8b82;" th:text="${text}">Footer</div>
+
+</body>
+</html>

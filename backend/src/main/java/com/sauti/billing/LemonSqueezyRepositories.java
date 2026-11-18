@@ -11,10 +11,16 @@ interface BillingSubscriptionRepository extends JpaRepository<BillingSubscriptio
     Optional<BillingSubscription> findByProviderAndProviderSubscriptionId(
             String provider, String providerSubscriptionId);
     List<BillingSubscription> findAllByProviderAndProviderCustomerId(String provider, String providerCustomerId);
+    @org.springframework.data.jpa.repository.Query("select s from BillingSubscription s where s.closureCancelRequestedAt is null"
+            + " and s.tenantId in (select t.id from Tenant t where t.status = 'closed')")
+    List<BillingSubscription> findUncancelledInClosedWorkspaces();
 }
 
 interface BillingAddOnSubscriptionRepository extends JpaRepository<BillingAddOnSubscription, UUID> {
     List<BillingAddOnSubscription> findAllByTenantId(UUID tenantId);
+    @org.springframework.data.jpa.repository.Query("select s from BillingAddOnSubscription s where s.closureCancelRequestedAt is null"
+            + " and s.tenantId in (select t.id from Tenant t where t.status = 'closed')")
+    List<BillingAddOnSubscription> findUncancelledInClosedWorkspaces();
     Optional<BillingAddOnSubscription> findByProviderAndProviderSubscriptionId(
             String provider, String providerSubscriptionId);
 }

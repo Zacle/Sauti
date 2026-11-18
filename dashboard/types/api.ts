@@ -9,11 +9,66 @@ export type Tenant = {
   minutesUsedThisCycle: number;
 };
 
+export type WorkspaceRole = "OWNER" | "ADMIN" | "MEMBER";
+
+export type WorkspacePermission =
+  | "VIEW"
+  | "HANDLE_CONVERSATIONS"
+  | "CONFIGURE"
+  | "MANAGE_MEMBERS"
+  | "MANAGE_BILLING"
+  | "OWN_WORKSPACE";
+
+/** A workspace as seen by one member. */
+export type WorkspaceMembership = {
+  workspace: Tenant;
+  role: WorkspaceRole;
+  permissions: WorkspacePermission[];
+};
+
+/** The signed-in person and every workspace they can open. */
+export type Account = {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  hasPassword: boolean;
+  platformAdmin: boolean;
+  lastWorkspaceId: string | null;
+  workspaces: WorkspaceMembership[];
+};
+
+/** Returned by sign-in and refresh. The refresh token is an HttpOnly cookie, never in the body. */
+export type SessionResponse = {
+  accessToken: string;
+  expiresInSeconds: number;
+  account: Account;
+  /** True only for sessions started with an authenticator code. */
+  platformAdminSession: boolean;
+};
+
+/** This tab's session. `tenant` is the workspace the tab is working in, or null if the account has none yet. */
 export type AuthSession = {
   accessToken: string;
-  refreshToken: string;
-  tenant: Tenant;
-  role: "OWNER" | "PLATFORM_ADMIN" | string;
+  account: Account;
+  tenant: Tenant | null;
+  role: WorkspaceRole | null;
+  platformAdminSession: boolean;
+};
+
+export type WorkspaceMember = {
+  userId: string;
+  email: string;
+  role: WorkspaceRole;
+  joinedAt: string;
+};
+
+export type WorkspaceInvitation = {
+  id: string;
+  email: string;
+  role: WorkspaceRole;
+  createdAt: string;
+  expiresAt: string;
+  expired: boolean;
 };
 
 export type AdminOverview = {
@@ -869,3 +924,43 @@ export type DashboardData = {
   daily: DailyVolume[];
   usage: BillingUsage;
 };
+
+/** What an invitation link shows before anyone signs in. */
+export type InvitationPreview = {
+  workspaceName: string;
+  email: string;
+  role: WorkspaceRole;
+  expiresAt: string;
+  accountExists: boolean;
+};
+
+export type ApiKeyAccess = "READ_ONLY" | "FULL";
+
+export type WorkspaceApiKey = {
+  id: string;
+  name: string;
+  hint: string;
+  access: ApiKeyAccess;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+};
+
+/** Returned once, at creation. `secret` cannot be shown again. */
+export type CreatedApiKey = { key: WorkspaceApiKey; secret: string };
+
+export type ActivityEntry = {
+  id: string;
+  action: string;
+  actor: string;
+  summary: string;
+  at: string;
+};
+
+/** Administration sign-in, step one. `authenticatorReady` false means set up the app first. */
+export type AdminChallenge = { challenge: string; authenticatorReady: boolean };
+
+export type AuthenticatorSetup = { secret: string; otpauthUri: string };
+
+/** A workspace that closes if its only Owner deletes their account. */
+export type SoleOwnedWorkspace = { workspaceId: string; name: string; otherMembers: number };

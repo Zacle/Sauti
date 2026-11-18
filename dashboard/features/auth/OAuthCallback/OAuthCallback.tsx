@@ -4,25 +4,37 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
-import { consumeOAuthSessionFromHash } from "@/lib/session";
+import { refreshSession } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { PixelGlow, glowPalettes } from "@/features/marketing/VoiceHome/PixelGlow";
 
 const ALLOWED_DESTINATIONS = new Set(["/dashboard", "/agents"]);
 
+/**
+ * Google sends the person back here after the backend has set the session cookie. No token is in
+ * the URL; the page exchanges the cookie for an access token and continues.
+ */
 export function OAuthCallback() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const session = consumeOAuthSessionFromHash();
-    if (!session) {
-      setError("Google sign-in did not return a valid session. Please try again.");
-      return;
-    }
-    const requested = searchParams.get("next") ?? "/dashboard";
-    router.replace(ALLOWED_DESTINATIONS.has(requested) ? requested : "/dashboard");
+    let active = true;
+    void refreshSession()
+      .then((session) => {
+        if (!active) return;
+        if (!session) {
+          setError("Google sign-in did not return a valid session. Please try again.");
+          return;
+        }
+        const requested = searchParams.get("next") ?? "/dashboard";
+        router.replace(ALLOWED_DESTINATIONS.has(requested) ? requested : "/dashboard");
+      })
+      .catch(() => active && setError("Google sign-in did not return a valid session. Please try again."));
+    return () => {
+      active = false;
+    };
   }, [router, searchParams]);
 
   return (

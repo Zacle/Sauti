@@ -17,11 +17,14 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sauti.auth.AuthEmailService;
-import com.sauti.auth.AuthRateLimitService;
-import com.sauti.auth.User;
-import com.sauti.auth.VerificationCodeService;
+import com.sauti.api.SessionCookies;
+import com.sauti.auth.application.AuthRateLimitService;
+import com.sauti.auth.application.port.AuthMailer;
+import com.sauti.auth.application.port.OneTimeCodes;
+import com.sauti.auth.domain.OneTimeCodePurpose;
 import com.sauti.call.CallPipelineService;
+import jakarta.servlet.http.Cookie;
+import org.springframework.test.web.servlet.MvcResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -42,14 +45,19 @@ class AuthAgentFlowTest {
     @Autowired
     CallPipelineService callPipelineService;
 
+    @Autowired
+    com.sauti.testsupport.TestAccounts accounts;
+
+    private static final String EMAIL = "owner@example.com";
+
     @MockitoBean
-    AuthEmailService authEmailService;
+    AuthMailer authEmailService;
 
     @MockitoBean
     AuthRateLimitService authRateLimitService;
 
     @MockitoBean
-    VerificationCodeService verificationCodeService;
+    OneTimeCodes verificationCodeService;
 
     @Test
     void registerThenExerciseCoreAppFlows() throws Exception {
@@ -57,18 +65,25 @@ class AuthAgentFlowTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("unauthorized"));
 
-        when(verificationCodeService.generateAndStoreEmailVerificationCode(any(User.class)))
+        when(verificationCodeService.issue(OneTimeCodePurpose.EMAIL_VERIFICATION, EMAIL))
                 .thenReturn("111111", "222222");
-        when(verificationCodeService.generateAndStorePasswordResetCode(any(User.class)))
+        when(verificationCodeService.issue(OneTimeCodePurpose.PASSWORD_RESET, EMAIL))
                 .thenReturn("333333");
-        when(verificationCodeService.verifyEmailCode(any(User.class), eq("222222")))
+        when(verificationCodeService.verify(OneTimeCodePurpose.EMAIL_VERIFICATION, EMAIL, "222222"))
                 .thenReturn(true);
-        when(verificationCodeService.verifyPasswordResetCode(any(User.class), eq("333333")))
+        when(verificationCodeService.verify(OneTimeCodePurpose.PASSWORD_RESET, EMAIL, "333333"))
                 .thenReturn(true);
 
-        String token = registerVerifyResetPasswordAndReturnToken();
+        var session = registerVerifyResetPasswordAndSignIn();
+        String token = session.token();
+        String ws = "/api/v1/workspaces/" + session.workspaceId();
+        accounts.approveProviderSpending(java.util.UUID.fromString(session.workspaceId()));
 
-        mvc.perform(put("/api/v1/tenant/workspace-profile")
+        mvc.perform(get("/api/v1/agents").header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("workspace_required"));
+
+        mvc.perform(put(ws + "/tenant/workspace-profile")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -85,7 +100,7 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.timezone").value("Africa/Dakar"))
                 .andExpect(jsonPath("$.defaultBookingDurationMinutes").value(45));
 
-        mvc.perform(get("/api/v1/tenant/workspace-profile")
+        mvc.perform(get(ws + "/tenant/workspace-profile")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.businessName").value("Demo Clinic Group"))
@@ -112,7 +127,7 @@ class AuthAgentFlowTest {
                 }
                 """;
 
-        var agentJson = mvc.perform(post("/api/v1/agents")
+        var agentJson = mvc.perform(post(ws + "/agents")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(agentBody))
@@ -133,13 +148,13 @@ class AuthAgentFlowTest {
         JsonNode agent = objectMapper.readTree(agentJson);
         String agentId = agent.get("id").asText();
 
-        mvc.perform(get("/api/v1/integrations/catalog")
+        mvc.perform(get(ws + "/integrations/catalog")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.provider == 'whatsapp')].postCall").value(false))
                 .andExpect(jsonPath("$[?(@.provider == 'mpesa')].duringCall").value(true));
 
-        var connectionJson = mvc.perform(post("/api/v1/integrations/connections")
+        var connectionJson = mvc.perform(post(ws + "/integrations/connections")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -161,7 +176,7 @@ class AuthAgentFlowTest {
         assertThat(connectionJson).doesNotContain("customer-secret-token");
         String connectionId = objectMapper.readTree(connectionJson).get("id").asText();
 
-        mvc.perform(put("/api/v1/agents/" + agentId + "/integrations")
+        mvc.perform(put(ws + "/agents/" + agentId + "/integrations")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -171,7 +186,7 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.enabled").value(true))
                 .andExpect(jsonPath("$.connectionStatus").value("connected"));
 
-        var provisionedAgentJson = mvc.perform(post("/api/v1/agents/" + agentId + "/provision-number")
+        var provisionedAgentJson = mvc.perform(post(ws + "/agents/" + agentId + "/provision-number")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"phoneNumber\":\"+221770000001\",\"providerChargesConfirmed\":true}"))
@@ -182,7 +197,7 @@ class AuthAgentFlowTest {
                 .getContentAsString();
         String twilioNumber = objectMapper.readTree(provisionedAgentJson).get("twilioPhoneNumber").asText();
 
-        mvc.perform(get("/api/v1/billing/account")
+        mvc.perform(get(ws + "/billing/account")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("preview"))
@@ -195,7 +210,7 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.recentEntries[0].category").value("phone_number_purchase"))
                 .andExpect(jsonPath("$.recentEntries[0].direction").value("debit"));
 
-        mvc.perform(post("/api/v1/agents/generate-from-brief")
+        mvc.perform(post(ws + "/agents/generate-from-brief")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"brief\":\"Book clinic appointments and escalate medical emergencies\"}"))
@@ -205,7 +220,7 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.systemPrompt").value(containsString("## Tool Rules")))
                 .andExpect(jsonPath("$.variables").isArray());
 
-        mvc.perform(get("/api/v1/tenant/onboarding-status")
+        mvc.perform(get(ws + "/tenant/onboarding-status")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.hasAgent").value(true))
@@ -213,14 +228,14 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.hasActiveAgent").value(false))
                 .andExpect(jsonPath("$.nextStep").value("activate_agent"));
 
-        mvc.perform(post("/api/v1/agents/" + agentId + "/activate")
+        mvc.perform(post(ws + "/agents/" + agentId + "/activate")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.active").value(true));
 
-        activateSeededTools(token, agentId);
+        activateSeededTools(token, ws, agentId);
 
-        mvc.perform(get("/api/v1/billing/usage")
+        mvc.perform(get(ws + "/billing/usage")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.plan").value("trial"))
@@ -236,7 +251,7 @@ class AuthAgentFlowTest {
                 }
                 """.formatted(agentId);
 
-        var bookingJson = mvc.perform(post("/api/v1/bookings")
+        var bookingJson = mvc.perform(post(ws + "/bookings")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(bookingBody))
@@ -248,21 +263,21 @@ class AuthAgentFlowTest {
                 .getContentAsString();
 
         String bookingId = objectMapper.readTree(bookingJson).get("id").asText();
-        mvc.perform(delete("/api/v1/bookings/" + bookingId)
+        mvc.perform(delete(ws + "/bookings/" + bookingId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("cancelled"));
 
         callPipelineService.startInboundCall(twilioNumber, "CA123", "+221771234567");
 
-        mvc.perform(post("/api/v1/calls/CA123/simulate-turn")
+        mvc.perform(post(ws + "/calls/CA123/simulate-turn")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"transcript\":\"My name is Fatou and I want to book a consultation tomorrow\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response").value(containsString("Would you like me to confirm it?")));
 
-        mvc.perform(post("/api/v1/calls/CA123/simulate-turn")
+        mvc.perform(post(ws + "/calls/CA123/simulate-turn")
                         .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"transcript\":\"yes confirm it\"}"))
@@ -270,14 +285,14 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$.response").value(containsString("Before I save the booking")))
                 .andExpect(jsonPath("$.response").value(containsString("the name Fatou")));
 
-        mvc.perform(post("/api/v1/calls/CA123/simulate-turn")
+        mvc.perform(post(ws + "/calls/CA123/simulate-turn")
                         .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"transcript\":\"yes, all of those details are correct\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response").value("Perfect, you're all booked!"));
 
-        mvc.perform(get("/api/v1/bookings")
+        mvc.perform(get(ws + "/bookings")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[1].callerName").value("Fatou"))
@@ -285,33 +300,33 @@ class AuthAgentFlowTest {
                 .andExpect(jsonPath("$[1].externalEventId").doesNotExist())
                 .andExpect(jsonPath("$[1].calendarSyncStatus").value("not_configured"));
 
-        mvc.perform(get("/api/v1/calls")
+        mvc.perform(get(ws + "/calls")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA123')].outcome").value("booking_made"));
 
         callPipelineService.startInboundCall(twilioNumber, "CA124", "+221771234568");
 
-        mvc.perform(post("/api/v1/calls/CA124/simulate-turn")
+        mvc.perform(post(ws + "/calls/CA124/simulate-turn")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"transcript\":\"I want to speak to a human\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.response").value("I am transferring you to a team member."));
 
-        mvc.perform(get("/api/v1/calls")
+        mvc.perform(get(ws + "/calls")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].outcome").value("active"));
 
-        mvc.perform(get("/api/v1/analytics/summary")
+        mvc.perform(get(ws + "/analytics/summary")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalCalls").value(2))
                 .andExpect(jsonPath("$.transferredCalls").value(0))
                 .andExpect(jsonPath("$.bookingCalls").value(1));
 
-        mvc.perform(get("/api/v1/agents/stats")
+        mvc.perform(get(ws + "/agents/stats")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].agentId").value(agentId))
@@ -327,47 +342,51 @@ class AuthAgentFlowTest {
                 "RE123"
         );
 
-        mvc.perform(get("/api/v1/calls")
+        mvc.perform(get(ws + "/calls")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].outcome").value("completed"))
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].durationSeconds").value(73))
                 .andExpect(jsonPath("$[?(@.twilioCallSid == 'CA124')].recordingUrl").value("https://api.telnyx.com/recordings/RE123"));
 
-        mvc.perform(delete("/api/v1/bookings/" + bookingId + "/permanent")
+        mvc.perform(delete(ws + "/bookings/" + bookingId + "/permanent")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNoContent())
                 .andExpect(content().string(""));
 
-        mvc.perform(get("/api/v1/bookings/" + bookingId)
+        mvc.perform(get(ws + "/bookings/" + bookingId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound());
     }
 
-    private String registerVerifyResetPasswordAndReturnToken() throws Exception {
+    private record SignedIn(String token, String workspaceId) {
+    }
+
+    /**
+     * Registers, verifies, rotates the session cookie, resets the password and signs in again.
+     * Returns the final access token and the workspace created at registration.
+     */
+    private SignedIn registerVerifyResetPasswordAndSignIn() throws Exception {
         String registerBody = """
                 {
                   "businessName": "Demo Clinic",
                   "email": "owner@example.com",
                   "countryCode": "SN",
-                  "password": "password123"
+                  "password": "river-mango-42"
                 }
                 """;
 
-        var authJson = mvc.perform(post("/api/v1/auth/register")
+        mvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerBody))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("verification_required"))
                 .andExpect(jsonPath("$.devVerificationCode").isString())
-                .andExpect(jsonPath("$.tenant.businessName").value("Demo Clinic"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                .andExpect(jsonPath("$.tenant.businessName").value("Demo Clinic"));
 
         mvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"owner@example.com\",\"password\":\"password123\"}"))
+                        .content("{\"email\":\"owner@example.com\",\"password\":\"river-mango-42\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("email_not_verified"));
 
@@ -381,41 +400,32 @@ class AuthAgentFlowTest {
                 .getContentAsString();
 
         String verificationCode = objectMapper.readTree(resendJson).get("devCode").asText();
-        var verifiedJson = mvc.perform(post("/api/v1/auth/verify-email")
+        var verified = mvc.perform(post("/api/v1/auth/verify-email")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"owner@example.com\",\"code\":\"" + verificationCode + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
-                .andExpect(jsonPath("$.refreshToken").isString())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                .andExpect(jsonPath("$.refreshToken").doesNotExist())
+                .andExpect(jsonPath("$.account.workspaces[0].role").value("OWNER"))
+                .andReturn();
+        var verifiedCookie = refreshCookie(verified);
+        org.assertj.core.api.Assertions.assertThat(verifiedCookie.isHttpOnly()).isTrue();
 
         mvc.perform(post("/api/v1/auth/verify-email")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"owner@example.com\",\"code\":\"" + verificationCode + "\"}"))
                 .andExpect(status().isOk());
-        verify(authEmailService, times(1)).sendWelcomeEmail("owner@example.com", "Demo Clinic");
+        verify(authEmailService, times(1)).sendWelcome(EMAIL, "Demo Clinic");
 
-        String verifiedRefreshToken = objectMapper.readTree(verifiedJson).get("refreshToken").asText();
-
-        var rotatedJson = mvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + verifiedRefreshToken + "\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.refreshToken").isString())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        mvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + verifiedRefreshToken + "\"}"))
+        var rotated = mvc.perform(post("/api/v1/auth/refresh").cookie(verifiedCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
-                .andExpect(jsonPath("$.refreshToken").isString());
+                .andReturn();
+        var activeCookie = refreshCookie(rotated);
 
-        String activeRefreshToken = objectMapper.readTree(rotatedJson).get("refreshToken").asText();
+        // A second tab refreshing with the same cookie inside the grace window is not treated as theft.
+        mvc.perform(post("/api/v1/auth/refresh").cookie(verifiedCookie))
+                .andExpect(status().isOk());
 
         var forgotJson = mvc.perform(post("/api/v1/auth/forgot-password")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -429,59 +439,51 @@ class AuthAgentFlowTest {
         String resetCode = objectMapper.readTree(forgotJson).get("devCode").asText();
         mvc.perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"owner@example.com\",\"code\":\"" + resetCode + "\",\"newPassword\":\"newPassword123\"}"))
+                        .content("{\"email\":\"owner@example.com\",\"code\":\"" + resetCode + "\",\"newPassword\":\"lantern-orbit-77\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ok"));
 
-        mvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + activeRefreshToken + "\"}"))
-                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/auth/refresh").cookie(activeCookie))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("session_expired"));
 
         mvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"owner@example.com\",\"password\":\"password123\"}"))
+                        .content("{\"email\":\"owner@example.com\",\"password\":\"river-mango-42\"}"))
                 .andExpect(status().isBadRequest());
 
-        var loginJson = mvc.perform(post("/api/v1/auth/login")
+        var login = mvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"owner@example.com\",\"password\":\"newPassword123\"}"))
+                        .content("{\"email\":\"owner@example.com\",\"password\":\"lantern-orbit-77\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").isString())
-                .andExpect(jsonPath("$.refreshToken").isString())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+                .andReturn();
+        var loginCookie = refreshCookie(login);
 
-        String logoutRefreshToken = objectMapper.readTree(loginJson).get("refreshToken").asText();
-        mvc.perform(post("/api/v1/auth/logout")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + logoutRefreshToken + "\"}"))
+        mvc.perform(post("/api/v1/auth/logout").cookie(loginCookie))
                 .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/auth/refresh").cookie(loginCookie))
+                .andExpect(status().isUnauthorized());
 
-        mvc.perform(post("/api/v1/auth/refresh")
+        var finalLogin = mvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"refreshToken\":\"" + logoutRefreshToken + "\"}"))
-                .andExpect(status().isBadRequest());
-
-        loginJson = mvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"email\":\"owner@example.com\",\"password\":\"newPassword123\"}"))
+                        .content("{\"email\":\"owner@example.com\",\"password\":\"lantern-orbit-77\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isString())
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-
-        JsonNode verified = objectMapper.readTree(verifiedJson);
-        if (!verified.hasNonNull("accessToken")) {
-            throw new IllegalStateException("Email verification did not issue an access token");
-        }
-        return objectMapper.readTree(loginJson).get("accessToken").asText();
+                .andReturn();
+        JsonNode body = objectMapper.readTree(finalLogin.getResponse().getContentAsString());
+        return new SignedIn(body.get("accessToken").asText(), body.at("/account/lastWorkspaceId").asText());
     }
 
-    private void activateSeededTools(String token, String agentId) throws Exception {
-        var toolsJson = mvc.perform(get("/api/v1/agents/" + agentId + "/tools")
+    private Cookie refreshCookie(MvcResult result) {
+        var cookie = result.getResponse().getCookie(SessionCookies.NAME);
+        if (cookie == null || cookie.getValue().isBlank()) {
+            throw new IllegalStateException("Expected a refresh cookie on " + result.getRequest().getRequestURI());
+        }
+        return cookie;
+    }
+
+    private void activateSeededTools(String token, String ws, String agentId) throws Exception {
+        var toolsJson = mvc.perform(get(ws + "/agents/" + agentId + "/tools")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(16))
@@ -501,7 +503,7 @@ class AuthAgentFlowTest {
                     "active", true,
                     "displayOrder", tool.get("displayOrder").asInt()
             ));
-            mvc.perform(put("/api/v1/agents/" + agentId + "/tools/" + tool.get("id").asText())
+            mvc.perform(put(ws + "/agents/" + agentId + "/tools/" + tool.get("id").asText())
                             .header("Authorization", "Bearer " + token)
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))

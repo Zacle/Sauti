@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sauti.auth.AuthenticatedUser;
+import com.sauti.tenant.domain.WorkspaceRole;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -13,7 +14,7 @@ class DashboardSocketTicketServiceTest {
     @Test
     void issuesPurposeBoundTenantTicket() {
         var service = new DashboardSocketTicketService("sauti", SECRET);
-        var user = new AuthenticatedUser(UUID.randomUUID(), UUID.randomUUID(), "owner@example.com", "OWNER");
+        var user = AuthenticatedUser.person(UUID.randomUUID(), "owner@example.com", false).inWorkspace(UUID.randomUUID(), WorkspaceRole.OWNER);
 
         var principal = service.verify(service.issue(user).ticket());
 
@@ -25,7 +26,7 @@ class DashboardSocketTicketServiceTest {
     void rejectsTicketFromAnotherIssuer() {
         var first = new DashboardSocketTicketService("first", SECRET);
         var second = new DashboardSocketTicketService("second", SECRET);
-        var user = new AuthenticatedUser(UUID.randomUUID(), UUID.randomUUID(), "owner@example.com", "OWNER");
+        var user = AuthenticatedUser.person(UUID.randomUUID(), "owner@example.com", false).inWorkspace(UUID.randomUUID(), WorkspaceRole.OWNER);
 
         assertThatThrownBy(() -> second.verify(first.issue(user).ticket())).isInstanceOf(RuntimeException.class);
     }

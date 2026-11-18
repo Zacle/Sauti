@@ -4,6 +4,13 @@ import jakarta.persistence.EntityNotFoundException;
 import com.sauti.auth.RateLimitExceededException;
 import com.sauti.auth.RegistrationClosedException;
 import com.sauti.auth.UnverifiedEmailException;
+import com.sauti.auth.InvalidSessionException;
+import com.sauti.auth.WorkspaceRequiredException;
+import com.sauti.tenant.domain.InvitationLimitExceededException;
+import com.sauti.tenant.domain.InvitationUnavailableException;
+import com.sauti.tenant.domain.MembershipRuleException;
+import com.sauti.tenant.domain.WorkspaceActionForbiddenException;
+import com.sauti.tenant.domain.WorkspaceNotFoundException;
 import com.sauti.call.PublicWebVoiceRateLimitExceededException;
 import com.sauti.call.ManagedVoiceProviderException;
 import com.sauti.call.VoiceRuntimeUnavailableException;
@@ -91,6 +98,41 @@ public class ApiExceptionHandler {
     ResponseEntity<ApiError> managedVoiceProvider(ManagedVoiceProviderException exception) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ApiError("managed_voice_provider_error", exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidSessionException.class)
+    ResponseEntity<ApiError> invalidSession(InvalidSessionException exception) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ApiError("session_expired", exception.getMessage()));
+    }
+
+    @ExceptionHandler(WorkspaceRequiredException.class)
+    ResponseEntity<ApiError> workspaceRequired(WorkspaceRequiredException exception) {
+        return ResponseEntity.badRequest().body(new ApiError("workspace_required", exception.getMessage()));
+    }
+
+    @ExceptionHandler(WorkspaceNotFoundException.class)
+    ResponseEntity<ApiError> workspaceNotFound(WorkspaceNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError("not_found", exception.getMessage()));
+    }
+
+    @ExceptionHandler(WorkspaceActionForbiddenException.class)
+    ResponseEntity<ApiError> workspaceActionForbidden(WorkspaceActionForbiddenException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiError("forbidden", exception.getMessage()));
+    }
+
+    @ExceptionHandler(MembershipRuleException.class)
+    ResponseEntity<ApiError> membershipRule(MembershipRuleException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ApiError("conflict", exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvitationUnavailableException.class)
+    ResponseEntity<ApiError> invitationUnavailable(InvitationUnavailableException exception) {
+        return ResponseEntity.status(HttpStatus.GONE).body(new ApiError("invitation_unavailable", exception.getMessage()));
+    }
+
+    @ExceptionHandler(InvitationLimitExceededException.class)
+    ResponseEntity<ApiError> invitationLimit(InvitationLimitExceededException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(new ApiError("rate_limited", exception.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

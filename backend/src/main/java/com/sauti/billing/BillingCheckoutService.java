@@ -44,6 +44,19 @@ public class BillingCheckoutService {
         return gateway.cancel(tenantId);
     }
 
+    /** Cancels with the provider that owns the subscription, not necessarily the one active today. */
+    public BillingCheckoutGateway.CancellationResponse cancelWith(String provider, UUID tenantId) {
+        var gateway = gateways.get(provider);
+        if (gateway == null) throw new IllegalStateException("Billing provider " + provider + " is not available");
+        return gateway.cancel(tenantId);
+    }
+
+    public BillingCheckoutGateway.CancellationResponse cancelAddOnWith(String provider, UUID tenantId, String providerSubscriptionId) {
+        var gateway = gateways.get(provider);
+        if (gateway == null) throw new IllegalStateException("Billing provider " + provider + " is not available");
+        return gateway.cancelAddOn(tenantId, providerSubscriptionId);
+    }
+
     public BillingCheckoutGateway.CancellationResponse resume(UUID tenantId) {
         var gateway = gateways.get(activeProvider);
         if (gateway == null) throw new IllegalStateException("Configured billing provider is not available");

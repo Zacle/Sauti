@@ -38,7 +38,7 @@ public class TenantController {
 
     @GetMapping("/onboarding-status")
     OnboardingStatusResponse onboardingStatus(@AuthenticationPrincipal AuthenticatedUser user) {
-        return tenantFlowService.onboardingStatus(user.tenantId(), user.userId());
+        return tenantFlowService.onboardingStatus(user.tenantId());
     }
 
     @GetMapping("/webhook")

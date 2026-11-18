@@ -43,7 +43,7 @@ export function NotificationMenu() {
     if (!isPreviewMode()) void createDashboardSocketTicket().then(({ ticket }) => {
       if (stopped) return;
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      socket = new WebSocket(`${protocol}//${window.location.host}/ws/dashboard/${session.tenant.id}?ticket=${encodeURIComponent(ticket)}`);
+      socket = new WebSocket(`${protocol}//${window.location.host}/ws/dashboard/${session.tenant?.id ?? ""}?ticket=${encodeURIComponent(ticket)}`);
       socket.onmessage = (message) => {
         try {
           const event = JSON.parse(message.data) as { type?: string };
@@ -62,7 +62,7 @@ export function NotificationMenu() {
     };
   // refresh intentionally uses the current authenticated session.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.accessToken, session?.tenant.id]);
+  }, [session?.accessToken, session?.tenant?.id]);
 
   useEffect(() => {
     if (!open) return;

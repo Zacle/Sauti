@@ -604,7 +604,7 @@ export function AgentCreator({
     () => [...selectedTemplate.variables, ...customVariables],
     [selectedTemplate.variables, customVariables],
   );
-  const countryName = COUNTRIES.find((country) => country.code === session?.tenant.countryCode)?.name
+  const countryName = COUNTRIES.find((country) => country.code === session?.tenant?.countryCode)?.name
     ?? "your country";
 
   function selectTemplate(template: Template) {
@@ -1179,7 +1179,7 @@ export function AgentCreator({
             <PersonalisationDrawer
               agentSaved={Boolean(agentId)}
               countryName={countryName}
-              defaultPhoneRegion={session?.tenant.countryCode || ""}
+              defaultPhoneRegion={session?.tenant?.countryCode || ""}
               phoneCountries={phoneCountries}
               timezone={timezone}
               bookingEnabled={bookingEnabled}
@@ -1215,7 +1215,7 @@ export function AgentCreator({
           {showNumberPicker && agentId && (
             <PhoneNumberPicker
               agentId={agentId}
-              defaultCountryCode={session?.tenant.countryCode ?? "US"}
+              defaultCountryCode={session?.tenant?.countryCode ?? "US"}
               existingNumber={loadedAgent?.twilioPhoneNumber}
               existingProvider={loadedAgent?.phoneNumberProvider}
               onClose={() => setShowNumberPicker(false)}

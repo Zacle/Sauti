@@ -12462,3 +12462,186 @@ Expected:
   repository's expected LF-to-CRLF warnings.
 - Deployment status: not deployed. Changes remain uncommitted for maintainer
   review and the normal CI/CD path.
+
+### 2026-11-18 - Multi-workspace identity, Phase 1 (backend core and dashboard plumbing)
+
+- Why: a person could belong to only one workspace as an implicit owner; tokens
+  sat in localStorage; tenant isolation and the platform-admin role were
+  conventions; several auth gaps. Agreed target: one person, many workspaces,
+  a role per workspace, workspace named in the URL.
+- Schema (V75, expand step): `workspace_memberships`, `workspace_invitations`,
+  `user_identities`; `refresh_tokens.family_id/last_used_at/user_agent`;
+  `app_users.last_workspace_id`; `tenants.contact_email` (no longer unique).
+  Every existing user is backfilled as OWNER of their workspace. Legacy
+  `app_users.tenant_id/role` and `tenants.email` are now nullable and unwritten;
+  drop them in a later contract migration. All existing refresh tokens are
+  revoked (everyone signs in once after deploy).
+- Layout: `auth` and the new workspace code in `tenant` follow
+  domain / application (use cases + ports) / infrastructure. Repositories are
+  domain ports implemented by Spring Data adapters. `tenant` never depends on
+  `auth`; the `MemberDirectory` port inverts it. `LayeredModuleArchitectureTest`
+  (ArchUnit, new test dependency) enforces these rules.
+- Routing: `WorkspacePathFilter` (servlet filter before Spring Security) serves
+  every feature under `/api/v1/workspaces/{id}/...` by handing it on as the
+  existing `/api/v1/...` route, so no feature controller changed.
+  `WorkspaceAccessFilter` then checks membership (404 if not a member),
+  status (423 suspended, 404 closed) and the route's permission from
+  `WorkspaceRoutePolicy` (403). A signed-in call to a feature without a
+  workspace returns 400 `workspace_required`. JWTs no longer carry a tenant.
+- Roles: OWNER / ADMIN / MEMBER mapped to permissions. Members are read-only
+  except conversations and notifications; billing, closing and ownership
+  transfer are Owner-only; new routes default to Admin+. `MembershipPolicy`
+  keeps at least one Owner; changes lock the workspace row.
+- New endpoints: `GET /me`, `PUT /me/last-workspace`, `GET|POST /workspaces`,
+  `GET|DELETE /workspaces/{id}`, members list/role/remove,
+  `transfer-ownership`, invitations list/create/resend/revoke,
+  `GET /invitations/preview`, `POST /invitations/accept`,
+  `POST /invitations/accept-new`, `POST /auth/logout-all`.
+- Sessions: refresh token only in an HttpOnly, Secure, SameSite=Strict cookie
+  on `/api/v1/auth` (`sauti.auth.refresh-cookie-secure`, required true in
+  production). Reuse of a rotated token after the 30 s grace revokes the
+  session family. The Google callback sets the cookie; no token in URLs.
+- Security fixes: verify-email no longer issues a session for an already
+  verified account without a valid code (it previously did); SecureRandom
+  codes stored hashed, constant-time compare, 5 guesses per code; Google
+  linked by subject; same error and bcrypt work for unknown emails; per-account
+  login limit; password policy (common, repeated, email); no default "SN"
+  country; account emails sent off the request thread.
+- Spending: every newly created workspace now gets the deny-by-default pilot
+  provider policy in the creating transaction (`WorkspaceCreated` event). A
+  workspace without a policy was unrestricted.
+- Dashboard: access token in memory only, legacy localStorage session removed
+  on load, bootstrap via `/auth/refresh`, per-tab active workspace, API client
+  adds the workspace prefix (`lib/api/workspace-path.ts`), cross-tab sign-out
+  signal, admin check uses `account.platformAdmin`. No new screens yet.
+- Verification: full backend suite (582 + new tests) passed after fixes;
+  dashboard typecheck, zero-warning lint, `test:lib` (incl. new routing test)
+  and production build passed. Not exercised live: Docker/Redis were not
+  running locally, so no browser sign-in or Google round trip was performed.
+- Deployment status: not deployed. Changes remain uncommitted for maintainer
+  review and the normal CI/CD path. Deploying signs every user out once.
+- Follow-ups: Phase 2 UI (workspace switcher, create workspace, Members page,
+  invitation accept page at `/invitations/accept`, sessions list); Phase 3
+  (platform admins as separate identity with 2FA, API keys, audit log, GDPR
+  export/delete, Hibernate tenant filter, contract migration). Membership
+  cache is per instance with a 30 s TTL.
+
+### 2026-11-18 - Multi-workspace identity, Phase 2 (console screens)
+
+- Workspace switcher: the workspace name at the top of the sidebar opens a
+  list of the person's workspaces (with their role), "Members and roles" and
+  "Create workspace". Switching reloads this tab in the chosen workspace.
+- Create workspace dialog (name + country); the copy says phone numbers and
+  live calls wait for Sauti approval, matching the deny-by-default policy.
+  A signed-in person with no workspace sees a "not in a workspace yet" page.
+- Settings → Members tab: invite by email with a role, change roles, remove,
+  leave, resend/cancel pending invitations, hand over ownership, and a plain
+  "what each role can do" guide. Controls follow
+  `features/workspaces/domain/members.ts` (pure, unit-tested); the backend
+  still enforces every rule.
+- Settings → Security: shows the account email (was the workspace contact
+  email) and adds "Sign out everywhere"; copy updated for the new behaviour.
+- `/invitations/accept`: matches the sign-in pages via the new shared
+  `features/auth/AuthShell` (extracted from `AuthForm`, no visual change).
+  Handles signed in as the invitee, signed in as someone else, existing
+  account (sign in, then return), and new account (choose a password).
+  Middleware treats `/invitations` as session-neutral; login honours
+  `next=/invitations/accept`.
+- Invitation email restyled to the console look (warm paper, white card,
+  ink text, one dark button); the inviter is named once. Other account emails
+  (verification, welcome, pilot) still use the old dark style.
+- Verification: dashboard typecheck, zero-warning lint, `test:lib` (24 tests,
+  incl. new members rules) and production build passed; backend email
+  template test renders the real template. Visually checked in preview mode
+  (Members tab, switcher, create dialog, accept page, login, rendered email).
+  Not exercised against a live backend.
+- Deployment status: not deployed; uncommitted for maintainer review.
+
+### 2026-11-18 - Account and notification emails restyled to the console look
+
+- All emails (verification/reset code, welcome, booking confirmed /
+  rescheduled / cancelled, call summary, payment confirmation, pilot
+  invitation, demo request received / rejected, internal demo-request alert,
+  workspace invitation) now share `templates/email/parts.html`: warm paper
+  background, white card with hairline border, ink text, dot-and-text
+  statuses, one dark primary button, plain detail rows. No dark navy, neon,
+  glows or uppercase labels. Same variables as before; no Java changes.
+- Copy tidied (plain wording, uppercase statuses shown as "Confirmed" etc.,
+  rejection note only when a reason exists). Booking calendar-sync failure is
+  an amber callout telling the team to update their calendar by hand.
+- Thymeleaf note: put `th:if` on a wrapping `th:block`, not on an element
+  that also has `th:replace` (the replace runs first and the condition is
+  ignored). Apostrophes in fragment arguments use `${'can''t'}`.
+- Verification: `EmailTemplateRenderingTest` renders every template (writes
+  previews to `backend/build/email-previews/`) and fails if the old dark
+  palette or uppercase labels return; booking email assertions updated; full
+  backend suite passed. Rendered emails checked visually in the browser.
+- Deployment status: not deployed; uncommitted for maintainer review.
+
+### 2026-11-18 - Multi-workspace identity, Phase 3 (in progress)
+
+- Done (backend, V76): activity log module `com.sauti.audit` (listens to
+  `WorkspaceActivity` / `AccountActivity` events; `GET /workspaces/{id}/activity`
+  Admin+, `GET /me/activity`); workspace API keys (`sauti_sk_…`, hashed,
+  read_only/full, never member/billing/ownership routes, own workspace only;
+  `/workspaces/{id}/api-keys`); platform admins as a table with mandatory
+  authenticator (TOTP) sign-in (`/auth/admin/login|authenticator|verify`), only
+  elevated sessions (12 h) carry admin rights, email allowlist only bootstraps;
+  workspace export (`GET /workspaces/{id}/export`, Owner) via per-module
+  `WorkspaceDataExporter`; account deletion (`DELETE /me`, anonymises, blocked
+  while sole Owner); `CrossWorkspaceIsolationTest`. Full backend suite: 597
+  tests passed.
+- Done (dashboard): types and API calls for all of the above; admin sign-in
+  two-step screen (`AdminTwoFactor`); AdminShell requires `platformAdminSession`.
+  Typecheck and lint pass. Not yet viewed in the browser.
+- Left: Settings panels for API keys (Developer tab), Activity tab, data export
+  (Data & privacy), recent sign-ins and delete account (Security); dashboard
+  build + visual check. Deferred by design: contract migration dropping legacy
+  columns (ship one release after Phase 1) and a Hibernate tenant filter.
+- Note: admins must re-sign in through the admin login and set up an
+  authenticator after deploy; Google-only admin accounts need a password first.
+- Deployment status: not deployed; uncommitted.
+
+### 2026-11-18 - Phase 3 completed (dashboard) and account deletion rule changed
+
+- Account deletion no longer refuses sole Owners. Anyone can delete their
+  account; workspaces where they are the only Owner close with it.
+  `GET /me/deletion-impact` lists those workspaces and how many other
+  members lose access; `DELETE /me` needs `closeOwnedWorkspaces: true` when
+  that list is not empty (409 otherwise). Workspaces with another Owner stay
+  open and the person just leaves.
+- Dashboard: Settings → Developer gets an API keys panel (create with name
+  and access, key shown once with copy, revoke); new Activity tab for Admins
+  and Owners; Data & privacy gets "Download workspace data" (Owner); Security
+  gets recent account activity and Delete account (dialog lists workspaces
+  that will close and needs an explicit tick plus password, or the typed
+  phrase for Google-only accounts).
+- Verification: full backend suite green earlier in Phase 3 plus the updated
+  deletion test; dashboard typecheck, lint, `test:lib` and production build
+  pass; API keys, Activity, Security and the delete dialog checked in preview.
+  The admin authenticator screen was not exercised (needs a running backend).
+- Follow-up risk: closing a workspace only sets its status. It does not yet
+  cancel the paid subscription, release phone numbers or deactivate agents;
+  that should happen before account deletion is offered to paying customers.
+- Deployment status: not deployed; uncommitted.
+
+### 2026-11-18 - Closing a workspace stops agents, phone numbers and billing
+
+- `WorkspaceService.close` publishes `WorkspaceClosed` (used by Owner close and
+  by account deletion for sole-owned workspaces).
+- Agent module (`ClosedWorkspaceAgentShutdown`): switches every agent off in
+  the closing transaction; after commit releases each number through the
+  carrier (`TelephonyProvider.releasePhoneNumber`, Telnyx bulk job
+  `POST /phone_numbers/jobs/delete_phone_numbers` with E.164) and marks it
+  `released`. Failures retry every 10 min (`sauti.workspace-shutdown.*`).
+- Billing module (`ClosedWorkspaceBillingShutdown`): cancels the plan and each
+  add-on at period end with the provider that owns it (Whop add-ons now
+  cancellable via `cancelAddOn`), records `closure_cancel_requested_at` (V77)
+  so it is never sent twice, skips ones already cancelling, retries on failure.
+- Provider calls happen outside database transactions; bookkeeping uses
+  REQUIRES_NEW because it runs after the closing commit.
+- Verification: new billing unit test and end-to-end closure test; full
+  backend suite (601 tests) passed.
+- Not verified live: the Telnyx release call and Whop add-on cancel against real
+  provider sandboxes; check both before relying on them.
+- Deployment status: not deployed; uncommitted.

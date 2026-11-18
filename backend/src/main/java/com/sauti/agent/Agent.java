@@ -276,6 +276,14 @@ public class Agent extends Auditable {
         this.isActive = false;
     }
 
+    /** The number was given back to the carrier; the agent can no longer receive calls on it. */
+    public void releasePhoneNumber() {
+        this.isActive = false;
+        this.twilioPhoneNumber = null;
+        this.twilioPhoneNumberSid = null;
+        this.phoneNumberStatus = "released";
+    }
+
     public UUID getId() {
         return id;
     }
