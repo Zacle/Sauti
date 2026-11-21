@@ -18,9 +18,20 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
 
+/**
+ * Calls an owner's own HTTPS endpoint. The caller is waiting on the line, so the request has hard
+ * time limits, and each delivery carries an {@code Idempotency-Key} that stays the same when the voice
+ * provider repeats a tool call, so the owner's system can ignore the repeat.
+ */
 @Component
 public class WebhookToolFulfillment implements ToolFulfillment {
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    static final java.time.Duration CONNECT_TIMEOUT = java.time.Duration.ofSeconds(5);
+    /** Below the voice provider's own tool limit, so Sauti answers before the provider gives up. */
+    static final java.time.Duration REQUEST_TIMEOUT = java.time.Duration.ofSeconds(12);
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(CONNECT_TIMEOUT)
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
     private final ObjectMapper objectMapper;
     private final CredentialEncryption credentialEncryption;
     private final WebhookDestinationValidator webhookDestinationValidator;
@@ -38,8 +49,10 @@ public class WebhookToolFulfillment implements ToolFulfillment {
     @Override
     public LlmToolResult execute(Call call, AgentTool toolConfig, LlmToolCall toolCall) {
         try {
+            var idempotencyKey = idempotencyKey(call, toolCall);
             var body = objectMapper.writeValueAsString(Map.of(
                     "toolName", toolCall.name(),
+                    "idempotencyKey", idempotencyKey,
                     "callId", call.getId(),
                     "agentId", call.getAgent().getId(),
                     "tenantId", call.getTenant().getId(),
@@ -47,9 +60,11 @@ public class WebhookToolFulfillment implements ToolFulfillment {
                     "arguments", toolCall.arguments(),
                     "timestamp", Instant.now().toString()
             ));
-            var request = request(toolConfig, body);
+            var request = request(toolConfig, body, idempotencyKey);
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             return parse(toolCall, response);
+        } catch (java.net.http.HttpTimeoutException exception) {
+            return LlmToolResult.error(toolCall, "The business system did not answer in time");
         } catch (IOException exception) {
             return LlmToolResult.error(toolCall, "Webhook request failed: " + exception.getMessage());
         } catch (InterruptedException exception) {
@@ -60,11 +75,29 @@ public class WebhookToolFulfillment implements ToolFulfillment {
         }
     }
 
-    private HttpRequest request(AgentTool toolConfig, String body) {
+    /**
+     * The same for every delivery of one provider tool call; new for each call Sauti's own model loop
+     * makes, because that loop can reuse its ids across turns.
+     */
+    static String idempotencyKey(Call call, LlmToolCall toolCall) {
+        var id = toolCall.id() == null ? "" : toolCall.id().trim();
+        if (!ToolActionLog.providerDelivered(id)) return "sauti-" + java.util.UUID.randomUUID();
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest((call.getId() + ":" + id).getBytes(StandardCharsets.UTF_8));
+            return "sauti-" + HexFormat.of().formatHex(digest, 0, 16);
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    private HttpRequest request(AgentTool toolConfig, String body, String idempotencyKey) {
         var uri = URI.create(toolConfig.getWebhookUrl());
         webhookDestinationValidator.validatePublicHost(uri.getHost());
         var builder = HttpRequest.newBuilder(uri)
-                .header("Content-Type", "application/json");
+                .timeout(REQUEST_TIMEOUT)
+                .header("Content-Type", "application/json")
+                .header("Idempotency-Key", idempotencyKey);
         if ("GET".equalsIgnoreCase(toolConfig.getWebhookMethod())) {
             builder.GET();
         } else {

@@ -47,6 +47,11 @@ public interface TelephonyProvider {
         throw new UnsupportedOperationException("Outbound calls are not supported by this provider");
     }
 
+    /** As {@link #transfer(String, String, String)}, tagging the new leg so its events can be matched. */
+    default void transfer(String callControlId, String to, String from, String clientState) {
+        transfer(callControlId, to, from);
+    }
+
     default void transfer(String callControlId, String to, String from) {
         throw new UnsupportedOperationException("Call transfers are not supported by this provider");
     }

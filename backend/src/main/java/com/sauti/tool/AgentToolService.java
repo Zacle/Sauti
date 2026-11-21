@@ -126,7 +126,7 @@ public class AgentToolService {
         var confirmation = request.confirmationPolicy() == null || request.confirmationPolicy().isBlank()
                 ? (creating ? defaultConfirmation(effect) : tool.confirmationPolicy())
                 : ToolConfirmationPolicy.from(request.confirmationPolicy());
-        validatePolicy(effect, confirmation);
+        validatePolicy(request.fulfillmentType(), request.toolName(), effect, confirmation);
         tool.configureActionPolicy(effect, confirmation);
     }
 
@@ -178,14 +178,26 @@ public class AgentToolService {
         return effect.isSideEffecting() ? ToolConfirmationPolicy.EXPLICIT : ToolConfirmationPolicy.NONE;
     }
 
-    private void validatePolicy(ToolActionEffect effect, ToolConfirmationPolicy confirmation) {
+    /**
+     * Refuses any policy weaker than {@link ToolSafetyFloor}: a built-in action marked as something
+     * milder, a side effect without confirmation, or a verified review on a tool that has none.
+     */
+    private void validatePolicy(String fulfillmentType, String toolName, ToolActionEffect effect,
+                                ToolConfirmationPolicy confirmation) {
         if (effect == ToolActionEffect.READ_ONLY && confirmation != ToolConfirmationPolicy.NONE) {
             throw new IllegalArgumentException("Read-only tools cannot require action confirmation");
         }
-        if ((effect == ToolActionEffect.FINANCIAL || effect == ToolActionEffect.TRANSFER
-                || effect == ToolActionEffect.TERMINAL)
-                && confirmation == ToolConfirmationPolicy.NONE) {
-            throw new IllegalArgumentException(effect.value() + " tools require confirmation");
+        if (ToolSafetyFloor.effect(fulfillmentType, toolName, effect) != effect) {
+            throw new IllegalArgumentException(toolName + " must be declared as "
+                    + ToolSafetyFloor.minimumEffect(fulfillmentType, toolName).value());
+        }
+        if (effect.isSideEffecting() && confirmation == ToolConfirmationPolicy.NONE) {
+            throw new IllegalArgumentException(
+                    "Tools that change something (" + effect.value() + ") require confirmation from the caller");
+        }
+        if (confirmation == ToolConfirmationPolicy.VERIFIED_REVIEW
+                && !ToolSafetyFloor.REVIEW_FULFILLMENT.equals(fulfillmentType)) {
+            throw new IllegalArgumentException("Verified review is only available for calendar bookings; use explicit");
         }
     }
 

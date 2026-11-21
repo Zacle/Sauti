@@ -2,6 +2,49 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-21: FR4 actions during a call, phase 2 (transfers connect, webhook limits, tool rules shown)
+
+- **Transfers now connect.** Before this, `transfer_to_human` on a live phone call only set
+  `transferStatus=requested` (`CallTransferService.request`). Nothing called `initiateAsync` or
+  `handleDialResult`, so the agent said it was connecting the caller and nothing happened.
+  - `TelnyxTransferFulfillment` now calls `CallTransferService.dialAfterCommit` (after the request commits,
+    or straight away outside a transaction). That sends Telnyx `/actions/transfer` with client state
+    `sauti-transfer:<callId>`, via the new `TelephonyProvider.transfer(..., clientState)`.
+  - `TelnyxCallControlService` recognises events on the team member's leg by that client state:
+    - `call.answered` or `call.bridged` mean the transfer completed.
+    - A `call.hangup` before that is busy, no_answer, canceled or failed, with the reason stored on the call.
+    - These events never touch the caller's call record, and a late replay never expires or hangs them up.
+  - `handleDialResult` ignores the team member's leg hanging up after a completed transfer.
+  - A call that ends after a completed transfer gets the outcome `transferred`.
+  - Browser tests still only simulate the transfer.
+- **Webhook tools** (`WebhookToolFulfillment`):
+  - 5 s to connect and 12 s for the whole request (below Telnyx's 30 s tool limit). Before, there was no
+    limit at all.
+  - Redirects are refused. A timeout reaches the model as "did not answer in time".
+  - Each request carries an `Idempotency-Key` header and an `idempotencyKey` body field. The key is the same
+    on every redelivery of one Telnyx tool call (a hash of the call id and the Telnyx id) and new for each
+    local model call.
+- **Tool rules shown:**
+  - `InstructionsPreview` gains `toolRules` (`name`, `effect`, `confirmation`), computed after the safety
+    floor by `AgentToolLoader.actionRules`. Platform tools are `read_only`.
+  - The "On calls" tab lists "What the agent can do": each tool, what it does, and "Asks the caller first",
+    "Reads the details back first" or "No confirmation needed".
+- **Calls page:** the routed-event column distinguishes "Transferred", "Transfer started" and
+  "Transfer failed" (the reason shows on hover) instead of showing "Transferred" for any transfer status.
+- **Tests:**
+  - `CallTransferFlowTest` (5)
+  - `WebhookToolFulfillmentTest` (2)
+  - Transfer-leg cases in `TelnyxEventReplayTest`
+  - A transfer client-state case in `TelnyxTelephonyProviderTest`
+  - Tool rules in `AgentSetupApiTest`
+  - Backend: 679 passing. Dashboard: typecheck and lint pass. The "On calls" list was checked in preview.
+- **Not verified on a live Telnyx call:**
+  - that the transfer leg's webhooks carry the `client_state` set on `/actions/transfer`
+  - what the caller hears if the team member doesn't answer (whether the AI assistant resumes on the
+    caller's leg)
+- **Still open:** owners can still declare a custom `POST` webhook as `read_only`. The "On calls" list makes
+  that visible, but Sauti can't verify it.
+
 ### 2026-11-21: FR4 actions during a call, phase 1 (confirmation floor, run-once, action record)
 
 - **How it works:** every tool call, from the Telnyx assistant (`ManagedVoiceToolService`) or from Sauti's
@@ -53,7 +96,7 @@ This document lets a new coding agent continue safely from the previous state. U
   - that Telnyx's `x-telnyx-tool-call-id` stays the same on a redelivery (if it is missing, Sauti falls back
     to a fingerprint of the name and arguments)
   - how the model handles `outcome_unknown` in practice
-- **Still open for FR4:**
+- **Still open for FR4 (after phase 1):**
   - Custom webhook tools can still be declared `read_only` by the owner even when they `POST` changes.
   - The dashboard has no screen to view or edit a tool's effect and confirmation.
 

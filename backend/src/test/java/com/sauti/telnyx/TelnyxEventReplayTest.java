@@ -39,6 +39,7 @@ class TelnyxEventReplayTest {
     private CallPipelineService pipeline;
     private TelnyxTelephonyProvider telnyx;
     private TelnyxCallControlService service;
+    private final com.sauti.call.CallTransferService transfers = mock(com.sauti.call.CallTransferService.class);
 
     @BeforeEach
     void setUp() {
@@ -47,7 +48,8 @@ class TelnyxEventReplayTest {
         telnyx = mock(TelnyxTelephonyProvider.class);
         service = new TelnyxCallControlService(new ObjectMapper(), events, pipeline, telnyx,
                 mock(CallQueryService.class), mock(ProviderCostReconciliationService.class),
-                mock(PilotProvisioningPolicyService.class), mock(BillingAccessPolicy.class), new SimpleMeterRegistry());
+                mock(PilotProvisioningPolicyService.class), mock(BillingAccessPolicy.class), new SimpleMeterRegistry(),
+                transfers);
         service.useClock(Clock.fixed(NOW.toInstant(), ZoneOffset.UTC));
     }
 
@@ -122,6 +124,37 @@ class TelnyxEventReplayTest {
         service.process("hangup-3", "call.hangup", json(HANGUP), NOW);
 
         verify(pipeline, never()).completeActiveCall(anyString(), anyString());
+    }
+
+    @Test
+    void theTeamMembersLegReportsTheTransferEvenWhenReplayedLate() {
+        var callId = java.util.UUID.randomUUID();
+        var state = java.util.Base64.getEncoder().encodeToString(
+                (com.sauti.call.CallTransferService.CLIENT_STATE_PREFIX + callId).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var answered = due(new TelnyxWebhookEvent("leg-1", "call.answered", "v3:team-leg", NOW.minusMinutes(3),
+                "{\"call_control_id\":\"v3:team-leg\",\"client_state\":\"" + state + "\"}"));
+
+        service.replayUnfinished();
+
+        verify(transfers, timeout(2000)).handleDialResult(callId, "answered", "v3:team-leg");
+        verify(telnyx, never()).hangup(anyString());
+        verify(events, timeout(2000).atLeast(2)).save(answered);
+    }
+
+    @Test
+    void aBusyTeamMemberIsRecordedAsABusyTransfer() {
+        var callId = java.util.UUID.randomUUID();
+        var state = java.util.Base64.getEncoder().encodeToString(
+                (com.sauti.call.CallTransferService.CLIENT_STATE_PREFIX + callId).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var body = "{\"call_control_id\":\"v3:team-leg\",\"hangup_cause\":\"user_busy\",\"client_state\":\"" + state + "\"}";
+        var hangup = new TelnyxWebhookEvent("leg-2", "call.hangup", "v3:team-leg", NOW, body);
+        when(events.findByProviderEventId("leg-2")).thenReturn(Optional.of(hangup));
+
+        service.process("leg-2", "call.hangup", json(body), NOW);
+
+        verify(transfers).handleDialResult(callId, "busy", "v3:team-leg");
+        verify(pipeline, never()).completeActiveCall(anyString(), anyString());
+        assertThat(hangup.getStatus()).isEqualTo("completed");
     }
 
     private TelnyxWebhookEvent due(TelnyxWebhookEvent event) {

@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CallTransferService {
     private static final Logger LOGGER = LoggerFactory.getLogger(CallTransferService.class);
+    /** Client state on the transfer leg: this prefix and the Sauti call id. */
+    public static final String CLIENT_STATE_PREFIX = "sauti-transfer:";
     private final CallRepository callRepository;
     private final ObjectProvider<TelephonyProvider> telephonyProvider;
     private final ExecutorService executor = Executors.newFixedThreadPool(2, runnable -> {
@@ -58,6 +60,34 @@ public class CallTransferService {
         );
     }
 
+    /** The Sauti call a transfer leg belongs to, from its decoded client state. */
+    public static java.util.Optional<UUID> transferCallId(String clientState) {
+        if (clientState == null || !clientState.startsWith(CLIENT_STATE_PREFIX)) return java.util.Optional.empty();
+        try {
+            return java.util.Optional.of(UUID.fromString(clientState.substring(CLIENT_STATE_PREFIX.length())));
+        } catch (IllegalArgumentException notOurs) {
+            return java.util.Optional.empty();
+        }
+    }
+
+    /**
+     * Dials the requested transfer once the request is committed, so the dialling thread sees it.
+     * The tool result goes back to the voice provider meanwhile.
+     */
+    public void dialAfterCommit(UUID callId) {
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            initiateAsync(callId);
+                        }
+                    });
+        } else {
+            initiateAsync(callId);
+        }
+    }
+
     public CompletableFuture<Boolean> initiateAsync(UUID callId) {
         return CompletableFuture.supplyAsync(() -> initiate(callId), executor);
     }
@@ -74,6 +104,11 @@ public class CallTransferService {
         var call = callRepository.findById(callId)
                 .orElseThrow(() -> new IllegalArgumentException("Transfer call not found"));
         var normalized = normalizeStatus(dialStatus);
+        // The team member's leg ends normally after a connected transfer; that is not a failure.
+        if ("completed".equals(call.getTransferStatus()) && !"completed".equals(normalized)
+                && !"answered".equals(normalized)) {
+            return result(call, true, "completed");
+        }
         if ("completed".equals(normalized) || "answered".equals(normalized)) {
             call.markTransferResult("completed", childCallSid, null);
             callRepository.save(call);
@@ -97,7 +132,8 @@ public class CallTransferService {
             telephonyProvider.getObject().transfer(
                     call.getTwilioCallSid(),
                     call.getTransferTargetNumber(),
-                    call.getAgent().getTwilioPhoneNumber()
+                    call.getAgent().getTwilioPhoneNumber(),
+                    CLIENT_STATE_PREFIX + callId
             );
             markDialing(callId);
             return true;
