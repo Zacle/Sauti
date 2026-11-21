@@ -2,6 +2,61 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-21: FR4 actions during a call, phase 1 (confirmation floor, run-once, action record)
+
+- **How it works:** every tool call, from the Telnyx assistant (`ManagedVoiceToolService`) or from Sauti's
+  own model loop (`ConversationOrchestrator`), goes through `ToolFulfillmentRouter.route`.
+  - `ToolActionPolicy.guard` holds a side-effecting tool with `explicit` confirmation as a server-side
+    `PendingAction`. It runs only after a later conversation-state revision approves the exact same
+    arguments (`consumeConfirmedAction`).
+  - `verified_review` is the calendar's own signed booking review (`SautiCalendarFulfillment.bookSlot`).
+- **Gaps closed:**
+  - **A tool that changes something could be saved with no confirmation.** The API accepted `none` for
+    `data_write` and `external_communication`, and built-in SMS or transfer tools could be marked
+    `read_only`.
+  - **`verified_review` on any tool other than the calendar's meant no check at all,** because only the
+    calendar implements the review.
+  - New `tool.ToolSafetyFloor` sets the weakest policy a tool may run with:
+    - built-in actions have a fixed minimum effect: SMS is communication, a transfer is a transfer, M-Pesa is
+      financial, booking changes are data writes, `end_call` is terminal
+    - any side effect without confirmation is raised to `explicit`
+    - `verified_review` outside `sauti_calendar` is raised to `explicit`
+  - The floor is applied at runtime in `ToolActionPolicy` and `AgentToolLoader`, so older rows are safe too.
+    `AgentToolService` rejects weaker policies when saving, and `V82` corrects stored rows.
+  - Custom webhooks keep the owner's choice of effect, even when they use a built-in name.
+- **Run at most once (`V82`, table `call_tool_actions`):**
+  - `ToolActionLog.begin` claims each side-effecting call before it runs, under
+    `(call_id, invocation_id)` (unique).
+  - A repeated Telnyx delivery (ids starting `telnyx:`) gets the recorded outcome instead of running again:
+    - `already_completed` if it was performed
+    - `outcome_unknown` if it was still marked started, for example after a restart mid-action; the model is
+      told to look up the booking rather than repeat the action
+  - Sauti's own model loop can reuse ids across turns, so each of its calls gets a fresh `local:` key. Its
+    calls are recorded but not deduplicated.
+  - Records join the caller's transaction. A separate transaction could deadlock on the call row.
+- **What gets recorded:**
+  - Each side-effecting attempt is stored as `awaiting_confirmation`, `started`, `performed`,
+    `not_performed` or `failed`, with a short summary such as "Booked SAT-… for 24 Nov 2026, 10:30".
+  - Summaries are built only from the tool name, booking number and time. Arguments, results and provider
+    error text are never stored.
+  - `GET /calls/{id}/actions` (`api.CallActionController`) is scoped to the workspace.
+- **Dashboard:** the call drawer has an "Actions" list (status dot, summary, time) between the recording and
+  the transcript, and the preview fixtures include actions for booking calls.
+- **Tests:**
+  - `ToolSafetyFloorTest`
+  - `ToolActionLogTest`
+  - `CallToolActionsApiTest`: weak policies rejected; a repeated Telnyx delivery runs once; local ids are
+    not deduplicated; the actions endpoint is workspace-scoped
+  - Router and calendar test fixtures now use real policies
+  - Backend: 668 passing. Dashboard: typecheck and lint pass. The drawer was checked in preview.
+- **Not verified live:**
+  - that Telnyx's `x-telnyx-tool-call-id` stays the same on a redelivery (if it is missing, Sauti falls back
+    to a fingerprint of the name and arguments)
+  - how the model handles `outcome_unknown` in practice
+- **Still open for FR4:**
+  - Custom webhook tools can still be declared `read_only` by the owner even when they `POST` changes.
+  - The dashboard has no screen to view or edit a tool's effect and confirmation.
+
 ### 2026-11-21: FR3 inbound voice, phase 2 (stuck calls, event replay, listening language, answer timeouts, pickup metric)
 
 - **Calls stuck as "active":** `call.StaleCallSweeper` runs every 5 minutes (after a 1-minute start delay;
@@ -298,6 +353,29 @@ This document lets a new coding agent continue safely from the previous state. U
   a workspace business profile with typed fields; draft/published versions;
   a single template catalog; splitting the `Agent` aggregate and `AgentCreator.tsx`.
   The dashboard was not changed. Not verified against a live Telnyx assistant.
+
+### 2026-11-21: Integration delivery queue stuck on rollback-only transaction
+
+- Symptom: reliability emails for `google_sheets` (deliveries retrying) and
+  `queue:integration_delivery` (oldest item 18 minutes). 21 Google Sheets
+  deliveries sat at `pending` with `attempts=0` and the scheduler logged hundreds of
+  `UnexpectedRollbackException`.
+- Cause: `PostCallIntegrationService.deliverDue` ran every delivery in one
+  `@Transactional`. A runtime failure inside a transactional collaborator
+  (credentials, OAuth refresh) marks the shared transaction rollback-only even though
+  `deliver()` caught it, so the commit rolled back the retry bookkeeping. Deliveries
+  never backed off and were retried every few seconds, with the real error hidden.
+- Fix: `deliverDue` now loads due ids, runs each delivery in its own transaction via
+  `TransactionTemplate`, and records `retry(...)` in a fresh transaction on failure
+  (back-off, attempt count, `last_error`, `failed` after 5). Test:
+  `PostCallDeliveryIsolationTest`. Full backend suite passes.
+- Known follow-up: the underlying Google Sheets failure is not yet known (the
+  connection was last updated 2026-08-11, so its refresh token may be revoked or
+  expired). After deploy, read `integration_deliveries.last_error`; if it is an OAuth
+  failure the workspace must reconnect Google Sheets. Gemini also returned HTTP 402
+  (prepaid credits depleted), which stops post-call analysis until topped up.
+- Also: `prepareDeliveries` uses the same single-transaction pattern but only calls
+  repositories, so it was left unchanged.
 
 ### 2026-11-16: Repository cleanup and Contabo server provisioning
 
