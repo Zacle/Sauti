@@ -227,7 +227,8 @@ public class IntegrationService {
                     .filter(tool -> toolNames.contains(tool.getToolName()))
                     .forEach(tool -> tool.configureForDraft(request.enabled(), null));
         }
-        events.publishEvent(new com.sauti.agent.AgentConfigurationChanged(tenantId, agentId));
+        events.publishEvent(new com.sauti.agent.AgentConfigurationChanged(tenantId, agentId,
+                (request.enabled() ? "Turned on " : "Turned off ") + entry.name()));
         return bindingResponse(entry, saved);
     }
 

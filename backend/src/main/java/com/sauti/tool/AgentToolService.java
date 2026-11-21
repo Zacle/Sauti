@@ -81,7 +81,7 @@ public class AgentToolService {
         );
         apply(tool, request, true);
         var saved = agentToolRepository.save(tool);
-        events.publishEvent(new AgentConfigurationChanged(tenantId, agentId));
+        events.publishEvent(new AgentConfigurationChanged(tenantId, agentId, "Added tool " + saved.getToolName()));
         return saved;
     }
 
@@ -90,7 +90,8 @@ public class AgentToolService {
         validate(request);
         var tool = get(tenantId, toolId);
         apply(tool, request, false);
-        events.publishEvent(new AgentConfigurationChanged(tenantId, tool.getAgent().getId()));
+        events.publishEvent(new AgentConfigurationChanged(tenantId, tool.getAgent().getId(),
+                "Changed tool " + tool.getToolName()));
         return tool;
     }
 
@@ -98,7 +99,8 @@ public class AgentToolService {
     public AgentTool deactivate(UUID tenantId, UUID toolId) {
         var tool = get(tenantId, toolId);
         tool.deactivate();
-        events.publishEvent(new AgentConfigurationChanged(tenantId, tool.getAgent().getId()));
+        events.publishEvent(new AgentConfigurationChanged(tenantId, tool.getAgent().getId(),
+                "Turned off tool " + tool.getToolName()));
         return tool;
     }
 

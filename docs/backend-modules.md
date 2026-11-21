@@ -8,7 +8,7 @@ Sauti is intentionally a Spring Boot modular monolith. It deploys as one applica
 | `com.sauti.auth` | Accounts, password and Google sign-in, verification, password recovery, cookie sessions with refresh-token families, and request security (workspace routing and route permissions). Layered: `domain`, `application` (use cases + ports), `infrastructure`. |
 | `com.sauti.tenant` | Workspaces: profile and settings, memberships, roles and permissions, invitations. New code is layered like `auth`; `Tenant` and the settings services at the root predate it. |
 | `com.sauti.business` | Workspace business profile: name, contact details, typed services (price, duration), FAQs and policies, shared by all agents. Layered like `auth`; agents read it through the `agent.BusinessFacts` port. |
-| `com.sauti.agent` | Agent identity, prompt, voice, languages, schedules, templates, and call behavior. |
+| `com.sauti.agent` | Agent identity, prompt, voice, languages, schedules, templates, and call behavior. Owns drafts and versions; other modules add their part of a version (tools, integrations, documents) through the `agent.AgentConfigurationPart` port. |
 | `com.sauti.call` | Call lifecycle, browser/phone media runtimes, transcripts, recordings, interruption handling, and voice-runtime metrics. |
 | `com.sauti.voice` | Provider-facing voice catalog and preview behavior. |
 | `com.sauti.nlp` | Language detection and speech-processing helpers. |

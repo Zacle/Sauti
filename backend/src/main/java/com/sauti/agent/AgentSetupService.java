@@ -56,11 +56,20 @@ public class AgentSetupService {
         return agent;
     }
 
-    /** Publishes an earlier version again; it becomes the newest version, so nothing is lost. */
+    /**
+     * Publishes an earlier version again, with its tools and integrations; it becomes the newest
+     * version, so nothing is lost. Anything that could not be put back (an integration whose
+     * connection was removed, documents) is named in the new version's note.
+     */
     @Transactional
     public Agent restore(UUID tenantId, UUID agentId, int version, String actor) {
-        return publish(tenantId, agentId, versions.snapshot(tenantId, agentId, version), actor,
-                "Restored version " + version);
+        var snapshot = versions.snapshot(tenantId, agentId, version);
+        var agent = agents.update(tenantId, agentId, snapshot.agent());
+        applyVariables(tenantId, agent, snapshot);
+        var notes = versions.restoreParts(tenantId, agentId, version);
+        var note = "Restored version " + version + (notes.isEmpty() ? "" : ". " + String.join(" ", notes));
+        versions.recordPublished(tenantId, agent, snapshot, actor, note);
+        return agent;
     }
 
     private void applyVariables(UUID tenantId, Agent agent, AgentSetupRequest request) {

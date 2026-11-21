@@ -2,6 +2,61 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-21: FR2 agent configuration, phase 3c (every edit versioned, Agent value objects, editor form)
+
+- **Every direct edit is a version (V80 adds `agent_versions.kind` and `parts_json`):**
+  - `AgentConfigurationChanged` has a third field, `change` (a few words, e.g. "Changed tool book_slot").
+    Only direct edits set it:
+    - a single detail PATCH ("Changed <label>"), a bulk detail PUT, a detail POST ("Added <label>")
+    - the timezone
+    - tool create, update and turn-off
+    - document upload and delete
+    - integration on/off, and the Google Calendar connection
+    Publishes and changes the system makes itself leave it null.
+  - `AgentEditHistory` is a synchronous `@EventListener`, so it runs inside the edit's own transaction. It
+    calls `AgentVersionService.recordEdit`, which snapshots the live agent, every detail, and each part
+    (`currentSettings(Agent)` rebuilds the `AgentRequest`).
+    - Edits by the same person within 2 minutes (`EDIT_WINDOW`) fold into the latest edit version, with
+      their notes joined. Publishes are never folded into.
+    - A pending draft survives an edit.
+    - The actor comes from the security context, or is "API key" for API keys.
+  - The port `agent.AgentConfigurationPart` lets other modules add their part to each version:
+    - `tool.AgentToolsVersionPart`: no credentials are stored. On restore, each tool keeps its current
+      credential, tools added since are turned off, and a tool whose calendar or credential is gone stays off.
+    - `integration.AgentIntegrationsVersionPart`: bindings only. An integration whose connection was removed
+      stays off.
+    - `knowledge.AgentDocumentsVersionPart`: names only. Restoring never deletes a document or brings one
+      back, and the restore note says so.
+  - `AgentSetupService.restore` applies the settings and details, then the parts, then records the version.
+    Anything it couldn't put back goes into the version note.
+    - Versions saved before V80 have no parts, so restoring one leaves tools, integrations and documents as
+      they are.
+  - The legacy `POST /agents` and `PUT /agents/{id}` now go through `AgentSetupService`, so they are
+    versioned too. `VersionView` gains `kind` and `parts`.
+- **More `Agent` value objects (same columns, no migration):**
+  - `CallBehaviour`: turn-taking, silence, voicemail, call screening and maximum call length.
+  - `CallRecording`.
+  - `SpeechRecognition`.
+  - `BookingWorkflow`, including its validation.
+  - `Ranges` holds the shared clamp, split and join helpers. The public getters on `Agent` are unchanged and
+    delegate to these objects.
+- **Editor form model:** `features/agents/domain/agent-form.ts` holds the 47 agent settings as one `AgentForm`.
+  - `agentFormReducer` handles three actions: `set`, `patch` and `load`.
+  - `formFromSettings` and `settingsFromForm` map to and from the API.
+  - `agentFormSetters` returns React-style setters (`setName` and so on), so the section components don't
+    change.
+  - `AgentCreator` uses `useReducer`, and change tracking compares `[form, variableValues]`.
+  - `studio-model.ts` re-exports the booking defaults and `AfterHoursBehavior` from `agent-form.ts`.
+- **Dashboard History section:** each entry shows "Changed" or "Published", and the restore dialog says what
+  comes back (`restoreScope`).
+- **Tests:**
+  - `AgentEditVersionsApiTest`: edits are recorded and folded, an edit version can be restored, and a
+    turned-off tool comes back.
+  - `agent-form.test.ts`: round trip, conversions, the reducer and the setters.
+  - Backend: 636 passing. Dashboard: typecheck, lint and `test:lib` (32) pass.
+  - The editor, publish and the History section were checked in preview mode.
+- **Not verified:** restoring integrations against real provider connections.
+
 ### 2026-11-21: FR2 agent configuration, phase 3b (durations, one catalog, versions, splitting)
 
 - **Service durations in bookings:**
@@ -31,8 +86,7 @@ This document lets a new coding agent continue safely from the previous state. U
     records version 1, "Created".
   - `GET /agents/{id}/versions` lists them, and `POST /agents/{id}/versions/{n}/restore` publishes an old
     snapshot as a new version, "Restored version n".
-  - Edits made outside the setup flow (single variable PATCH, tools, documents, integrations) still apply
-    immediately and are not versioned.
+  - Edits made outside the setup flow were not versioned yet; phase 3c versions them.
 - **Dashboard for drafts and versions:**
   - "Save draft" and "Publish" buttons.
   - A notice row for an unpublished draft, with Open and Discard (`.agent-studio.has-notice` adds the grid row).
@@ -52,11 +106,8 @@ This document lets a new coding agent continue safely from the previous state. U
   versions, restore, the template picker and every editor section were checked in preview mode.
 - **Note:** `npm run build` writes to the same `.next` as `npm run dev`; restart dev with a clean `.next` after
   a build.
-- **Not done:**
-  - The rest of `Agent` (call behaviour, speech, booking workflow) could move into value objects the
-    same way.
-  - The `AgentCreator` component itself still holds about 60 `useState` calls; a reducer or form model
-    would be the next step.
+- **Not done in this phase:** the remaining `Agent` value objects and the editor form model; both landed in
+  phase 3c.
 
 ### 2026-11-21: FR2 agent configuration, phase 3a (workspace business profile)
 

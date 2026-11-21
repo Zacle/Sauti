@@ -166,7 +166,8 @@ public class AgentService {
     public Agent updateTimezone(UUID tenantId, UUID agentId, String timezone) {
         var agent = get(tenantId, agentId);
         agent.updateTimezone(validateTimezone(timezone));
-        events.publishEvent(new AgentConfigurationChanged(tenantId, agent.getId()));
+        events.publishEvent(new AgentConfigurationChanged(tenantId, agent.getId(),
+                "Changed timezone to " + agent.getTimezone()));
         return agent;
     }
 

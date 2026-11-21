@@ -82,52 +82,18 @@ public class Agent extends Auditable {
     @Embedded
     private WhatsAppChannel whatsapp = WhatsAppChannel.off();
 
-    @Column(nullable = false)
-    private int maxCallDurationSeconds = 300;
-
-    @Column(nullable = false)
-    private boolean saveTranscript = true;
-
-    @Column(nullable = false)
-    private boolean recordCalls = false;
-
-    @Column(nullable = false)
-    private double bargeInSensitivity = 0.70;
-    @Column(nullable = false)
-    private int bargeInGraceMs = 300;
-    @Column(nullable = false)
-    private int endCallOnSilenceSeconds = 60;
-    @Column(nullable = false)
-    private int reminderAfterSilenceSeconds = 30;
-    @Column(nullable = false)
-    private int maxReminders = 1;
-    @Column(nullable = false)
-    private boolean detectVoicemail = true;
-    @Column(nullable = false)
-    private boolean handleCallScreening = true;
+    @Embedded
+    private CallBehaviour callBehaviour = CallBehaviour.defaults();
+    @Embedded
+    private CallRecording recording = CallRecording.defaults();
     @Embedded
     private KeypadInput keypad = KeypadInput.defaults();
-    @Column(nullable = false)
-    private int sttEndpointingMs = 300;
-    private String sttVocabularyDomain;
-    private String sttBoostedKeywords;
+    @Embedded
+    private SpeechRecognition speech = SpeechRecognition.defaults();
+    @Embedded
+    private BookingWorkflow booking = BookingWorkflow.defaults();
     private String safetyGuardrails;
     private String postCallExtractionFields;
-
-    @Column(nullable = false)
-    private boolean bookingEnabled = false;
-
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String bookingRequiredFields = "caller_name,caller_phone,service_type,appointment_at";
-
-    @Column(nullable = false)
-    private int defaultBookingDurationMinutes = 60;
-
-    @Column(nullable = false)
-    private String bookingNotificationChannels = "dashboard,email";
-
-    @Column(length = 320)
-    private String bookingNotificationRecipient;
 
     @Column(nullable = false)
     private String timezone = "UTC";
@@ -176,15 +142,12 @@ public class Agent extends Auditable {
         this.escalationPhrases = String.join(",", escalationPhrases == null || escalationPhrases.isEmpty()
                 ? List.of("speak to a human", "talk to a human", "representative", "agent")
                 : escalationPhrases);
-        this.bookingEnabled = bookingEnabled;
+        booking.enable(bookingEnabled);
         this.timezone = timezone == null || timezone.isBlank() ? "UTC" : timezone;
         this.knowledgeBase = knowledgeBase;
         this.operatingHours = operatingHours;
-        this.maxCallDurationSeconds = maxCallDurationSeconds == null || maxCallDurationSeconds < 60
-                ? 300
-                : maxCallDurationSeconds;
-        this.saveTranscript = saveTranscript == null || saveTranscript;
-        this.recordCalls = recordCalls != null && recordCalls;
+        callBehaviour.limitDuration(maxCallDurationSeconds);
+        recording.configure(saveTranscript, recordCalls);
     }
 
     private String synchronizeAgentName(String text, String previousName, String currentName) {
@@ -338,52 +301,20 @@ public class Agent extends Auditable {
         return Arrays.stream(escalationPhrases.split(",")).map(String::trim).filter(s -> !s.isBlank()).toList();
     }
 
-    public boolean isBookingEnabled() {
-        return bookingEnabled;
-    }
+    public boolean isBookingEnabled() { return booking.isEnabled(); }
+    public int getDefaultBookingDurationMinutes() { return booking.getDefaultDurationMinutes(); }
+    public List<String> getBookingRequiredFields() { return booking.getRequiredFields(); }
+    public List<String> getBookingNotificationChannels() { return booking.getNotificationChannels(); }
+    public String getBookingNotificationRecipient() { return booking.getNotificationRecipient(); }
 
-    public int getDefaultBookingDurationMinutes() { return defaultBookingDurationMinutes; }
-    public List<String> getBookingRequiredFields() { return split(bookingRequiredFields); }
-    public List<String> getBookingNotificationChannels() { return split(bookingNotificationChannels); }
-    public String getBookingNotificationRecipient() { return bookingNotificationRecipient; }
-
+    /** Applies after {@link #update}, so the core booking fields follow the current on/off switch. */
     public void configureBookingWorkflow(
             Integer durationMinutes,
             List<String> requiredFields,
             List<String> notificationChannels,
             String notificationRecipient
     ) {
-        this.defaultBookingDurationMinutes = durationMinutes == null ? 60 : durationMinutes;
-        if (this.defaultBookingDurationMinutes < 5 || this.defaultBookingDurationMinutes > 480) {
-            throw new IllegalArgumentException("Default booking duration must be between 5 and 480 minutes");
-        }
-        var configuredFields = requiredFields == null ? List.<String>of() : requiredFields.stream()
-                .map(String::trim)
-                .filter(value -> !value.isBlank())
-                .peek(value -> {
-                    if (!value.matches("^[a-z][a-z0-9_]{0,63}$")) {
-                        throw new IllegalArgumentException("Booking field keys must use lowercase snake_case");
-                    }
-                })
-                .distinct()
-                .toList();
-        if (configuredFields.size() > 25) throw new IllegalArgumentException("An agent may require at most 25 booking fields");
-        var fields = new java.util.ArrayList<String>();
-        if (bookingEnabled) fields.addAll(List.of("caller_name", "caller_phone", "service_type", "appointment_at"));
-        fields.addAll(configuredFields);
-        this.bookingRequiredFields = String.join(",", fields.stream().distinct().toList());
-        var channels = notificationChannels == null ? List.<String>of() : notificationChannels.stream()
-                .map(value -> value.trim().toLowerCase(java.util.Locale.ROOT))
-                .filter(value -> !value.isBlank())
-                .filter(value -> List.of("dashboard", "email").contains(value))
-                .distinct()
-                .toList();
-        this.bookingNotificationChannels = String.join(",", channels.isEmpty()
-                ? List.of("dashboard")
-                : channels);
-        this.bookingNotificationRecipient = notificationRecipient == null || notificationRecipient.isBlank()
-                ? null
-                : notificationRecipient.trim();
+        booking.configure(durationMinutes, requiredFields, notificationChannels, notificationRecipient);
     }
 
     public void configureBookingWorkflow(
@@ -419,17 +350,9 @@ public class Agent extends Auditable {
                 : afterHoursMessage.trim();
     }
 
-    public int getMaxCallDurationSeconds() {
-        return maxCallDurationSeconds;
-    }
-
-    public boolean isSaveTranscript() {
-        return saveTranscript;
-    }
-
-    public boolean isRecordCalls() {
-        return recordCalls;
-    }
+    public int getMaxCallDurationSeconds() { return callBehaviour.getMaxCallDurationSeconds(); }
+    public boolean isSaveTranscript() { return recording.isSaveTranscript(); }
+    public boolean isRecordCalls() { return recording.isRecordCalls(); }
 
     public void configureLlmTier(String tier) {
         this.llmTier = "advanced".equalsIgnoreCase(tier) ? "advanced" : "standard";
@@ -465,6 +388,10 @@ public class Agent extends Auditable {
     public WebVoiceChannel getWebVoice() { return webVoice; }
     public WhatsAppChannel getWhatsapp() { return whatsapp; }
     public KeypadInput getKeypad() { return keypad; }
+    public CallBehaviour getCallBehaviour() { return callBehaviour; }
+    public CallRecording getRecording() { return recording; }
+    public SpeechRecognition getSpeech() { return speech; }
+    public BookingWorkflow getBooking() { return booking; }
     public boolean isWebVoiceEnabled() { return webVoice.isEnabled(); }
     public String getWebVoicePublicId() { return webVoice.getPublicId(); }
     public List<String> getWebVoiceAllowedOrigins() { return webVoice.getAllowedOrigins(); }
@@ -495,45 +422,29 @@ public class Agent extends Auditable {
             String sttVocabularyDomain, String sttBoostedKeywords, List<String> safetyGuardrails,
             List<String> postCallExtractionFields
     ) {
-        this.bargeInSensitivity = clamp(bargeInSensitivity == null ? 0.70 : bargeInSensitivity, 0, 1);
-        this.bargeInGraceMs = range(bargeInGraceMs, 0, 3000, 300);
-        this.endCallOnSilenceSeconds = range(endCallOnSilenceSeconds, 60, 3600, 60);
-        this.reminderAfterSilenceSeconds = range(reminderAfterSilenceSeconds, 30, 600, 30);
-        this.maxReminders = range(maxReminders, 0, 10, 1);
-        this.detectVoicemail = detectVoicemail == null || detectVoicemail;
-        this.handleCallScreening = handleCallScreening == null || handleCallScreening;
+        callBehaviour.configure(bargeInSensitivity, bargeInGraceMs, endCallOnSilenceSeconds,
+                reminderAfterSilenceSeconds, maxReminders, detectVoicemail, handleCallScreening);
         keypad.enable(dtmfEnabled);
-        this.sttEndpointingMs = range(sttEndpointingMs, 100, 3000, 300);
-        this.sttVocabularyDomain = sttVocabularyDomain;
-        this.sttBoostedKeywords = sttBoostedKeywords;
-        this.safetyGuardrails = join(safetyGuardrails);
-        this.postCallExtractionFields = join(postCallExtractionFields);
-    }
-
-    private int range(Integer value, int minimum, int maximum, int fallback) {
-        return value == null ? fallback : Math.max(minimum, Math.min(maximum, value));
-    }
-
-    private double clamp(double value, double minimum, double maximum) {
-        return Math.max(minimum, Math.min(maximum, value));
+        speech.configure(sttEndpointingMs, sttVocabularyDomain, sttBoostedKeywords);
+        this.safetyGuardrails = Ranges.join(safetyGuardrails);
+        this.postCallExtractionFields = Ranges.join(postCallExtractionFields);
     }
 
     private String join(List<String> values) {
-        return values == null || values.isEmpty() ? null : String.join(",", values);
+        return Ranges.join(values);
     }
 
     private List<String> split(String value) {
-        return value == null || value.isBlank() ? List.of()
-                : Arrays.stream(value.split(",")).map(String::trim).filter(item -> !item.isBlank()).toList();
+        return Ranges.split(value);
     }
 
-    public double getBargeInSensitivity() { return bargeInSensitivity; }
-    public int getBargeInGraceMs() { return bargeInGraceMs; }
-    public int getEndCallOnSilenceSeconds() { return endCallOnSilenceSeconds; }
-    public int getReminderAfterSilenceSeconds() { return reminderAfterSilenceSeconds; }
-    public int getMaxReminders() { return maxReminders; }
-    public boolean isDetectVoicemail() { return detectVoicemail; }
-    public boolean isHandleCallScreening() { return handleCallScreening; }
+    public double getBargeInSensitivity() { return callBehaviour.getBargeInSensitivity(); }
+    public int getBargeInGraceMs() { return callBehaviour.getBargeInGraceMs(); }
+    public int getEndCallOnSilenceSeconds() { return callBehaviour.getEndCallOnSilenceSeconds(); }
+    public int getReminderAfterSilenceSeconds() { return callBehaviour.getReminderAfterSilenceSeconds(); }
+    public int getMaxReminders() { return callBehaviour.getMaxReminders(); }
+    public boolean isDetectVoicemail() { return callBehaviour.isDetectVoicemail(); }
+    public boolean isHandleCallScreening() { return callBehaviour.isHandleCallScreening(); }
     public boolean isDtmfEnabled() { return keypad.isEnabled(); }
     public String getDtmfTerminationKey() { return keypad.getTerminationKey(); }
     public int getDtmfInputTimeoutSeconds() { return keypad.getInputTimeoutSeconds(); }
@@ -548,9 +459,9 @@ public class Agent extends Auditable {
     ) {
         keypad.configure(terminationKey, inputTimeoutSeconds, maxDigits, digitMappings);
     }
-    public int getSttEndpointingMs() { return sttEndpointingMs; }
-    public String getSttVocabularyDomain() { return sttVocabularyDomain; }
-    public String getSttBoostedKeywords() { return sttBoostedKeywords; }
+    public int getSttEndpointingMs() { return speech.getEndpointingMs(); }
+    public String getSttVocabularyDomain() { return speech.getVocabularyDomain(); }
+    public String getSttBoostedKeywords() { return speech.getBoostedKeywords(); }
     public List<String> getSafetyGuardrails() { return split(safetyGuardrails); }
     public List<String> getPostCallExtractionFields() { return split(postCallExtractionFields); }
 

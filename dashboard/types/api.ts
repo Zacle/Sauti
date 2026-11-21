@@ -607,10 +607,14 @@ export type AgentDraftView = { setup: AgentSetup; savedBy: string | null; savedA
 /** One publish in an agent's history; `current` is the version live now. */
 export type AgentVersion = {
   version: number;
+  /** publish: saved with Publish or a restore. edit: recorded after a direct change (a detail, a tool, a document, an integration). */
+  kind: "publish" | "edit";
   note: string | null;
   publishedBy: string | null;
   publishedAt: string;
   current: boolean;
+  /** What restoring also puts back besides settings and details: "tools", "integrations", "documents". */
+  parts: string[];
 };
 
 export type InstructionsPreviewWarning = {

@@ -12,10 +12,21 @@ import { Note, StudioGroup, StudioSection } from "./studio-kit";
 
 const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-/** Every published version of an agent, newest first, with a way to publish an older one again. */
+/** What restoring a version puts back, in words. Documents are files, so they are never put back. */
+export function restoreScope(version: AgentVersion): string {
+  const tools = version.parts.includes("tools");
+  const integrations = version.parts.includes("integrations");
+  const extra = tools && integrations ? ", tools and integrations" : tools ? " and tools" : integrations ? " and integrations" : "";
+  const kept = tools || integrations
+    ? "Documents stay as they are now."
+    : "Tools, integrations and documents stay as they are now; this version was saved before they were kept.";
+  return `Its settings, business details${extra} come back. ${kept}`;
+}
+
+/** Every version of an agent, newest first, with a way to make an older one live again. */
 export function VersionHistory({ agentId, refreshKey, hasUnsavedChanges, onRestored }: {
   agentId: string;
-  /** Changes after each publish, so the list reloads. */
+  /** Changes after each publish or direct edit, so the list reloads. */
   refreshKey: number;
   hasUnsavedChanges: boolean;
   onRestored: () => void;
@@ -50,14 +61,14 @@ export function VersionHistory({ agentId, refreshKey, hasUnsavedChanges, onResto
   }
 
   return (
-    <StudioSection eyebrow="Versions" title="Published history" description="Each time you publish, the settings and business details callers get are kept here. Restoring publishes an old version again; nothing is deleted.">
+    <StudioSection eyebrow="Versions" title="History" description="Every publish is kept here, and so is every change you make directly: a business detail, a tool, a document or an integration. Changes made a minute or two apart share one version. Restoring makes an older version live again; nothing is deleted.">
       <StudioGroup title="Versions">
         {failure && <Alert>{failure}</Alert>}
         {versions === null && !failure ? (
           <div className="h-40 animate-pulse rounded-[var(--radius-control)] bg-tint/[0.04]" aria-label="Loading versions" />
         ) : versions && versions.length === 0 ? (
           <Note tone="neutral" icon={<History />} title="No versions yet">
-            The next time you publish, this agent’s settings are kept here.
+            The next time you publish or change this agent, its settings are kept here.
           </Note>
         ) : (
           <ol className="m-0 grid list-none gap-0 divide-y divide-line rounded-[var(--radius-card)] border border-line p-0">
@@ -69,7 +80,7 @@ export function VersionHistory({ agentId, refreshKey, hasUnsavedChanges, onResto
                     {version.current && <span className="rounded-[4px] bg-success/12 px-1.5 py-[3px] text-[0.68rem] font-medium leading-none text-success">Live</span>}
                   </p>
                   <p className="m-0 mt-0.5 text-[0.78rem] text-fg-muted">
-                    {when.format(new Date(version.publishedAt))}
+                    {version.kind === "edit" ? "Changed" : "Published"} {when.format(new Date(version.publishedAt))}
                     {version.publishedBy ? ` · ${version.publishedBy}` : ""}
                     {version.note ? ` · ${version.note}` : ""}
                   </p>
@@ -89,7 +100,7 @@ export function VersionHistory({ agentId, refreshKey, hasUnsavedChanges, onResto
         {confirming && (
           <DialogContent
             title={`Restore version ${confirming.version}?`}
-            description="Callers get this version from their next call. Your current settings stay in the history, so you can switch back."
+            description={`Callers get this version from their next call. ${restoreScope(confirming)} Your current settings stay in the history, so you can switch back.`}
           >
             {hasUnsavedChanges && (
               <div className="mb-4">

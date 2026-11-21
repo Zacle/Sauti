@@ -156,7 +156,8 @@ public class GoogleCalendarIntegrationService {
                 .forEach(tool -> tool.connectCalendar("google", credential.getId()));
         agent.updateCalendarProvider("Google Calendar");
         variableService.updateIfPresent(agent.getId(), "calendar_provider", "Google Calendar");
-        events.publishEvent(new com.sauti.agent.AgentConfigurationChanged(context.tenantId(), agent.getId()));
+        events.publishEvent(new com.sauti.agent.AgentConfigurationChanged(context.tenantId(), agent.getId(),
+                "Connected Google Calendar"));
         return agent.getId();
     }
 
