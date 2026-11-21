@@ -24,18 +24,23 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import jakarta.mail.MessagingException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
 @Service
 public class PostCallIntegrationService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(PostCallIntegrationService.class);
     private static final List<String> POST_CALL_PROVIDERS = List.of(
             "custom_webhook", "email", "slack", "google_sheets", "hubspot", "salesforce");
     private static final DateTimeFormatter EMAIL_TIME = DateTimeFormatter.ofPattern(
@@ -61,6 +66,7 @@ public class PostCallIntegrationService {
     private final WebhookDeliveryService tenantWebhooks;
     private final CommunicationUsageMeteringService usageMetering;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+    private final TransactionTemplate transactions;
     private final String emailFrom;
     private final String graphApiBaseUrl;
     private final String dashboardBaseUrl;
@@ -83,6 +89,7 @@ public class PostCallIntegrationService {
                                       WebhookDestinationValidator destinationValidator,
                                       WebhookDeliveryService tenantWebhooks,
                                       CommunicationUsageMeteringService usageMetering,
+                                      PlatformTransactionManager transactionManager,
                                       @Value("${sauti.email.from}") String emailFrom,
                                       @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBaseUrl,
                                       @Value("${sauti.dashboard.base-url}") String dashboardBaseUrl) {
@@ -104,6 +111,7 @@ public class PostCallIntegrationService {
         this.destinationValidator = destinationValidator;
         this.tenantWebhooks = tenantWebhooks;
         this.usageMetering = usageMetering;
+        this.transactions = new TransactionTemplate(transactionManager);
         this.emailFrom = emailFrom;
         this.graphApiBaseUrl = graphApiBaseUrl.replaceFirst("/+$", "");
         this.dashboardBaseUrl = dashboardBaseUrl.replaceFirst("/+$", "");
@@ -152,11 +160,42 @@ public class PostCallIntegrationService {
         });
     }
 
+    /**
+     * Each delivery runs in its own transaction. A failure inside a transactional collaborator
+     * (credentials, OAuth refresh, calendar lookups) marks the surrounding transaction
+     * rollback-only, so when all deliveries shared one transaction the whole batch rolled back
+     * on commit and the retry bookkeeping was never saved. The delivery then stayed due and was
+     * re-attempted every few seconds forever, which raised the stale-queue alert. The failure is
+     * now recorded in a fresh transaction so back-off and the failed state persist.
+     */
     @Scheduled(fixedDelayString = "${sauti.integrations.delivery-delay-ms:5000}")
-    @Transactional
     public void deliverDue() {
-        deliveries.findTop20ByStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
-                List.of("pending", "retrying"), OffsetDateTime.now()).forEach(this::deliver);
+        var dueIds = transactions.execute(status -> deliveries
+                .findTop20ByStatusInAndNextAttemptAtLessThanEqualOrderByCreatedAt(
+                        List.of("pending", "retrying"), OffsetDateTime.now())
+                .stream().map(IntegrationDelivery::getId).toList());
+        if (dueIds == null) return;
+        dueIds.forEach(this::deliverIsolated);
+    }
+
+    private void deliverIsolated(UUID deliveryId) {
+        Integer responseCode = null;
+        String failure = null;
+        try {
+            transactions.executeWithoutResult(status ->
+                    deliveries.findById(deliveryId).ifPresent(this::deliver));
+        } catch (ProviderException exception) {
+            responseCode = exception.statusCode;
+            failure = exception.getMessage();
+        } catch (Exception exception) {
+            failure = safeMessage(exception);
+        }
+        if (failure == null) return;
+        LOGGER.warn("Integration delivery {} failed: {}", deliveryId, failure);
+        var statusCode = responseCode;
+        var message = failure;
+        transactions.executeWithoutResult(status ->
+                deliveries.findById(deliveryId).ifPresent(delivery -> delivery.retry(statusCode, message)));
     }
 
     private void deliver(IntegrationDelivery delivery) {
@@ -186,10 +225,10 @@ public class PostCallIntegrationService {
                         "post-call-delivery:" + delivery.getId(), "template");
             }
             delivery.delivered(responseCode);
-        } catch (ProviderException exception) {
-            delivery.retry(exception.statusCode, exception.getMessage());
+        } catch (RuntimeException exception) {
+            throw exception;
         } catch (Exception exception) {
-            delivery.retry(null, safeMessage(exception));
+            throw new IllegalStateException(safeMessage(exception), exception);
         }
     }
 
