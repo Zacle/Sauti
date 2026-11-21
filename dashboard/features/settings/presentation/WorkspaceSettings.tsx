@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/primitives";
 import { useEffect, useState, type ReactNode } from "react";
 import { Select as UiSelect } from "@/components/ui/select";
 import { AppearanceSettings } from "@/components/ui/theme-controls";
-import { BadgeCheck, Bell, History, LogOut, Users, Building2, Check, ChevronRight, Clock3, Code2, CreditCard, FileText, Globe2, Headphones, KeyRound, Link2, LoaderCircle, LockKeyhole, Mail, Palette, Plug, Save, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Store, BadgeCheck, Bell, History, LogOut, Users, Building2, Check, ChevronRight, Clock3, Code2, CreditCard, FileText, Globe2, Headphones, KeyRound, Link2, LoaderCircle, LockKeyhole, Mail, Palette, Plug, Save, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { listAgents } from "@/lib/api/agents";
 import { getIntegrationConnections } from "@/lib/api/integrations";
@@ -17,13 +17,14 @@ import { renameActiveWorkspace } from "@/lib/session";
 import { MembersSection } from "./MembersSection";
 import { ActivitySection } from "./ActivitySection";
 import { ApiKeysPanel } from "./ApiKeysPanel";
+import { BusinessProfileSection } from "./BusinessProfileSection";
 import { DeleteAccountPanel, RecentAccountActivity, WorkspaceExportPanel } from "./AccountDataPanels";
 import { canManageMembers, type Role } from "@/features/workspaces/domain/members";
 import styles from "./WorkspaceSettings.module.css";
 
-type Section = "general" | "members" | "activity" | "appearance" | "calls" | "notifications" | "privacy" | "security" | "developer";
+type Section = "general" | "business" | "members" | "activity" | "appearance" | "calls" | "notifications" | "privacy" | "security" | "developer";
 const sections: Array<{ id: Section; label: string; icon: typeof Building2 }> = [
-  { id: "general", label: "General", icon: Building2 }, { id: "members", label: "Members", icon: Users }, { id: "activity", label: "Activity", icon: History }, { id: "appearance", label: "Appearance", icon: Palette }, { id: "calls", label: "Calls & AI", icon: Headphones },
+  { id: "general", label: "General", icon: Building2 }, { id: "business", label: "Business", icon: Store }, { id: "members", label: "Members", icon: Users }, { id: "activity", label: "Activity", icon: History }, { id: "appearance", label: "Appearance", icon: Palette }, { id: "calls", label: "Calls & AI", icon: Headphones },
   { id: "notifications", label: "Notifications", icon: Bell }, { id: "privacy", label: "Data & privacy", icon: ShieldCheck },
   { id: "security", label: "Security", icon: LockKeyhole }, { id: "developer", label: "Developer", icon: Code2 },
 ];
@@ -112,6 +113,7 @@ export function WorkspaceSettings() {
     <main aria-labelledby={`settings-tab-${active}`} className={styles.content} id={`settings-panel-${active}`} role="tabpanel">
       {error && <div className={styles.error} role="alert">{error}</div>}{message && <div className={styles.success} role="status"><Check size={16}/>{message}</div>}
       {active === "general" && <GeneralSection bookingDuration={bookingDuration} businessName={businessName} dirty={profileDirty} role={session?.role ?? undefined} saving={saving === "profile"} tenant={tenant} timezone={workspaceTimezone} setBookingDuration={setBookingDuration} setBusinessName={setBusinessName} setTimezone={setWorkspaceTimezone} save={saveProfile}/>}
+      {active === "business" && <BusinessProfileSection/>}
       {active === "members" && <MembersSection/>}
       {active === "activity" && <ActivitySection/>}
       {active === "appearance" && <section className={styles.panel}><div className={styles.panelHeader}><div><h2>Appearance</h2><p>Choose how the console looks to you. Changes apply instantly.</p></div></div><div className="p-5"><AppearanceSettings/></div></section>}

@@ -54,6 +54,13 @@ public class AgentVariable extends Auditable {
         this.required = required;
     }
 
+    /** Replaces the definition (label, help text, whether activation needs it) but keeps the value. */
+    public void redefine(String displayLabel, String description, boolean required) {
+        this.displayLabel = displayLabel;
+        this.description = description;
+        this.required = required;
+    }
+
     public void updateValue(String value) {
         this.value = value == null ? "" : value.trim();
     }

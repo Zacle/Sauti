@@ -559,6 +559,74 @@ export type AgentVariableDefinition = {
   description: string;
   example?: string;
   required: boolean;
+  /** A value the AI brief found in the owner's own words, offered for them to confirm. */
+  value?: string;
+};
+
+/** A service on the workspace business profile; price and duration are optional. */
+export type BusinessService = {
+  name: string;
+  priceAmount: number | null;
+  currency: string | null;
+  durationMinutes: number | null;
+  description: string | null;
+};
+
+export type BusinessFaq = { question: string; answer: string };
+
+/** Business facts entered once per workspace; every agent uses them unless it sets its own value. */
+export type BusinessProfile = {
+  workspaceName: string;
+  displayName: string | null;
+  description: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  cancellationPolicy: string | null;
+  services: BusinessService[];
+  faqs: BusinessFaq[];
+  /** The values agents receive, keyed like agent variables (business_address, services...). */
+  facts: Record<string, string>;
+  updatedAt: string | null;
+};
+
+export type BusinessProfileRequest = Omit<BusinessProfile, "workspaceName" | "updatedAt" | "facts">;
+
+/** The whole agent configuration, saved in one request. */
+export type AgentSetup = {
+  agent: AgentDraft;
+  templateId?: string | null;
+  variables?: CreateAgentVariable[];
+  values?: Record<string, string>;
+};
+
+/** Unpublished edits kept on the server; live calls never use them until they are published. */
+export type AgentDraftView = { setup: AgentSetup; savedBy: string | null; savedAt: string };
+
+/** One publish in an agent's history; `current` is the version live now. */
+export type AgentVersion = {
+  version: number;
+  note: string | null;
+  publishedBy: string | null;
+  publishedAt: string;
+  current: boolean;
+};
+
+export type InstructionsPreviewWarning = {
+  kind: "missing_required" | "empty_optional" | "unknown_placeholder";
+  key: string;
+  label: string;
+  message: string;
+};
+
+/** Exactly what the live voice assistant is given for a saved agent. */
+export type InstructionsPreview = {
+  language: string;
+  greeting: string;
+  instructions: string;
+  tools: string[];
+  warnings: InstructionsPreviewWarning[];
 };
 
 export type AgentVariable = {
@@ -568,6 +636,8 @@ export type AgentVariable = {
   value: string;
   required: boolean;
   filled: boolean;
+  /** The workspace business-profile value used while this agent has none of its own. */
+  inheritedValue?: string | null;
 };
 
 export type KnowledgeDocument = {

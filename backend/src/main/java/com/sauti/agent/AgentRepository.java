@@ -25,13 +25,15 @@ public interface AgentRepository extends JpaRepository<Agent, UUID> {
 
     Optional<Agent> findByTwilioPhoneNumber(String twilioPhoneNumber);
 
+    @Query("select a from Agent a where a.webVoice.publicId = ?1")
     Optional<Agent> findByWebVoicePublicId(String webVoicePublicId);
 
+    @Query("select a from Agent a where a.whatsapp.phoneNumberId = ?1")
     Optional<Agent> findByWhatsappPhoneNumberId(String whatsappPhoneNumberId);
 
     List<Agent> findAllByTwilioPhoneNumberIsNotNull();
 
     /** Agents in closed workspaces that still hold a phone number, so it can be released. */
-    @org.springframework.data.jpa.repository.Query("select agent from Agent agent where agent.tenant.status = 'closed' and agent.twilioPhoneNumber is not null")
+    @Query("select agent from Agent agent where agent.tenant.status = 'closed' and agent.twilioPhoneNumber is not null")
     List<Agent> findAllHoldingNumbersInClosedWorkspaces();
 }

@@ -16,16 +16,23 @@ public final class AgentVariableDtos {
             String description,
             String value,
             boolean required,
-            boolean filled
+            boolean filled,
+            String inheritedValue
     ) {
         static AgentVariableResponse from(AgentVariable variable) {
+            return from(variable, null);
+        }
+
+        /** @param inheritedValue the workspace business-profile value used when this agent's value is empty */
+        static AgentVariableResponse from(AgentVariable variable, String inheritedValue) {
             return new AgentVariableResponse(
                     variable.getKey(),
                     variable.getDisplayLabel(),
                     variable.getDescription(),
                     variable.getValue(),
                     variable.isRequired(),
-                    variable.isFilled()
+                    variable.isFilled(),
+                    inheritedValue
             );
         }
     }

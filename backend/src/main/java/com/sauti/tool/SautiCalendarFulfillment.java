@@ -41,6 +41,7 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
     private final BookingIdentityService bookingIdentityService;
     private final CallSessionStore callSessionStore;
     private final CallIntakeNoteService intakeNotes;
+    private final ServiceDurations serviceDurations;
     private static final Pattern SPOKEN_DIGIT_SEQUENCE = Pattern.compile(
             "(?<!\\d)(\\+?\\d(?:[\\s().-]*\\d){3,14})(?!\\d)"
     );
@@ -55,7 +56,6 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
                 new BookingIdentityService(bookingService));
     }
 
-    @Autowired
     public SautiCalendarFulfillment(
             CalendarProviderFactory calendarProviderFactory,
             BookingService bookingService,
@@ -63,15 +63,30 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             CallIntakeNoteService intakeNotes,
             BookingIdentityService bookingIdentityService
     ) {
+        this(calendarProviderFactory, bookingService, callSessionStore, intakeNotes, bookingIdentityService,
+                ServiceDurations.NONE);
+    }
+
+    @Autowired
+    public SautiCalendarFulfillment(
+            CalendarProviderFactory calendarProviderFactory,
+            BookingService bookingService,
+            CallSessionStore callSessionStore,
+            CallIntakeNoteService intakeNotes,
+            BookingIdentityService bookingIdentityService,
+            ServiceDurations serviceDurations
+    ) {
         this.calendarProviderFactory = calendarProviderFactory;
         this.bookingService = bookingService;
         this.callSessionStore = callSessionStore;
         this.intakeNotes = intakeNotes;
         this.bookingIdentityService = bookingIdentityService;
+        this.serviceDurations = serviceDurations;
     }
 
     @Override
-    public LlmToolResult execute(Call call, AgentTool toolConfig, LlmToolCall toolCall) {
+    public LlmToolResult execute(Call call, AgentTool toolConfig, LlmToolCall original) {
+        var toolCall = withServiceDuration(call, original);
         try {
             return switch (toolCall.name()) {
                 case "get_business_hours" -> LlmToolResult.success(toolCall, businessHours(call));
@@ -112,6 +127,27 @@ public class SautiCalendarFulfillment implements ToolFulfillment {
             );
             return LlmToolResult.error(toolCall, exception.getMessage());
         }
+    }
+
+    /**
+     * Uses the booked service's own length (from the business profile) when the duration is missing
+     * or is just the agent's default. A length the caller asked for explicitly is kept.
+     */
+    LlmToolCall withServiceDuration(Call call, LlmToolCall toolCall) {
+        if (!java.util.Set.of("check_availability", "book_slot", "reschedule_booking").contains(toolCall.name())) {
+            return toolCall;
+        }
+        var arguments = toolCall.arguments() == null ? Map.<String, Object>of() : toolCall.arguments();
+        var service = stringArg(arguments, "service_type", "");
+        if (service.isBlank() || call.getTenant() == null) return toolCall;
+        var defaultMinutes = call.getAgent().getDefaultBookingDurationMinutes();
+        var given = intArg(arguments, "duration_minutes", defaultMinutes);
+        if (given != defaultMinutes) return toolCall;
+        var minutes = serviceDurations.minutesFor(call.getTenant().getId(), service);
+        if (minutes.isEmpty() || minutes.getAsInt() == given) return toolCall;
+        var adjusted = new java.util.LinkedHashMap<String, Object>(arguments);
+        adjusted.put("duration_minutes", minutes.getAsInt());
+        return new LlmToolCall(toolCall.id(), toolCall.name(), adjusted);
     }
 
     private Map<String, Object> businessHours(Call call) {

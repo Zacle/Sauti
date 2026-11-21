@@ -54,6 +54,7 @@ export function PersonalisationDrawer({
   agentSaved,
   variables,
   values,
+  inherited = {},
   countryName,
   defaultPhoneRegion,
   phoneCountries,
@@ -70,6 +71,8 @@ export function PersonalisationDrawer({
   agentSaved: boolean;
   variables: AgentVariableDefinition[];
   values: Record<string, string>;
+  /** Workspace business-profile values used while a detail is left empty. */
+  inherited?: Record<string, string>;
   countryName: string;
   defaultPhoneRegion: string;
   phoneCountries: CountryCallingCode[];
@@ -92,7 +95,7 @@ export function PersonalisationDrawer({
     const value = values[variable.key] ?? "";
     const error = detailError(variable.key, value);
     if (error) return "invalid" as const;
-    if (value.trim()) return "done" as const;
+    if (value.trim() || inherited[variable.key]?.trim()) return "done" as const;
     return variable.required ? "missing" as const : "optional" as const;
   };
 
@@ -213,6 +216,7 @@ export function PersonalisationDrawer({
                       key={variable.key}
                       variable={variable}
                       value={values[variable.key] ?? ""}
+                      inheritedValue={inherited[variable.key]}
                       values={values}
                       state={status(variable)}
                       countryName={countryName}
@@ -307,6 +311,7 @@ function DetailShell({
 function DetailField({
   variable,
   value,
+  inheritedValue,
   values,
   state,
   countryName,
@@ -316,6 +321,7 @@ function DetailField({
 }: {
   variable: AgentVariableDefinition;
   value: string;
+  inheritedValue?: string;
   values: Record<string, string>;
   state: FieldState;
   countryName: string;
@@ -380,7 +386,16 @@ function DetailField({
   }
 
   return (
-    <DetailShell id={`detail-${variable.key}`} label={variable.label} state={state} error={error} hint={variable.description} token={variable.key}>
+    <DetailShell
+      id={`detail-${variable.key}`}
+      label={variable.label}
+      state={state}
+      error={error}
+      hint={!value.trim() && inheritedValue?.trim()
+        ? <>From your <a href="/settings?tab=business" className="text-fg-soft underline underline-offset-2">business profile</a>: {inheritedValue.length > 120 ? `${inheritedValue.slice(0, 120)}…` : inheritedValue}. Fill this in only to use something else for this agent.</>
+        : variable.description}
+      token={variable.key}
+    >
       {control}
     </DetailShell>
   );

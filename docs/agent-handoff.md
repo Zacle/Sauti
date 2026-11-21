@@ -2,6 +2,158 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-21: FR2 agent configuration, phase 3b (durations, one catalog, versions, splitting)
+
+- **Service durations in bookings:**
+  - Port `tool/ServiceDurations`, implemented by `business/infrastructure/BusinessProfileAdapters.ProfileServiceDurations`.
+  - `BusinessProfile.durationFor` matches the service the caller named, most specific first: exact name, then
+    a name containing the request, then a name inside the request. It returns nothing when ambiguous or no
+    duration is set.
+  - `SautiCalendarFulfillment.withServiceDuration` uses that duration for `check_availability`, `book_slot` and
+    `reschedule_booking` when the duration is missing or equals the agent default. An explicitly
+    requested length is kept.
+- **Profile in new-agent setup:**
+  - `GET /business-profile` now returns `facts` (keyed like variables), and the editor uses them before the
+    agent is saved.
+  - With no saved profile, the backend uses the workspace name as `business_name`, consistently in both places.
+- **One template catalog:**
+  - The four templates hardcoded in `AgentCreator.tsx` are gone. Templates come only from the backend
+    (`SystemAgentTemplateSeeder` plus workspace templates).
+  - The picker shows loading skeletons, and on failure an error with "Try again" (describing the agent or
+    starting blank still works). `BLANK_TEMPLATE` (in `studio-model.ts`) is the neutral start.
+  - Preview fixtures serve `/agent-templates` in the API's shape.
+- **Drafts and versions (V79: `agent_drafts`, `agent_versions`):**
+  - `AgentVersionService` covers drafts, history and snapshots; `AgentSetupService.publish/restore` apply them.
+  - Live calls only use the published agent. `PUT /agents/{id}/draft` stores an `AgentSetupRequest` as JSON
+    without applying it, and `GET`/`DELETE` read or discard it.
+  - `PUT /agents/{id}/setup` (optional `?note=`) publishes: it records the next version, a snapshot of the
+    applied settings plus every business detail with its value, and clears the draft. `POST /agents/setup`
+    records version 1, "Created".
+  - `GET /agents/{id}/versions` lists them, and `POST /agents/{id}/versions/{n}/restore` publishes an old
+    snapshot as a new version, "Restored version n".
+  - Edits made outside the setup flow (single variable PATCH, tools, documents, integrations) still apply
+    immediately and are not versioned.
+- **Dashboard for drafts and versions:**
+  - "Save draft" and "Publish" buttons.
+  - A notice row for an unpublished draft, with Open and Discard (`.agent-studio.has-notice` adds the grid row).
+  - A "Versions" section (`VersionHistory.tsx`) with Restore and a confirmation dialog.
+  - `applyAgentSettings` is the one place that fills the form, from the agent or from a draft.
+- **Splitting:**
+  - `AgentCreator.tsx` went from 3,143 to about 1,090 lines. Sections moved unchanged into `studio-model.ts`,
+    `TemplateSelection`, `MainSettings`, `PhoneNumberPicker`, `PromptSettings`, `SpeechSettings`,
+    `CallSettings`, `RoutingSettings`, `KnowledgeSettings` and `IntegrationsSettings` (same folder, no import
+    cycles).
+  - On the backend, `Agent` now embeds the value objects `WebVoiceChannel`, `WhatsAppChannel` and
+    `KeypadInput`. They keep the same columns, so there is no migration. `Agent`'s public methods are
+    unchanged and delegate to them. `AgentRepository.findByWebVoicePublicId` and
+    `findByWhatsappPhoneNumberId` now use explicit JPQL.
+- **Tests:** `ServiceDurationBookingTest`, `AgentVersionsApiTest`, and `BusinessProfileTest` (duration matching).
+  Backend: 634 passing. Dashboard: typecheck, lint, `test:lib` (28) and `next build` pass. Draft, publish,
+  versions, restore, the template picker and every editor section were checked in preview mode.
+- **Note:** `npm run build` writes to the same `.next` as `npm run dev`; restart dev with a clean `.next` after
+  a build.
+- **Not done:**
+  - The rest of `Agent` (call behaviour, speech, booking workflow) could move into value objects the
+    same way.
+  - The `AgentCreator` component itself still holds about 60 `useState` calls; a reducer or form model
+    would be the next step.
+
+### 2026-11-21: FR2 agent configuration, phase 3a (workspace business profile)
+
+- New layered module `com.sauti.business` (in `LayeredModuleArchitectureTest`):
+  - `domain/BusinessProfile` with embeddables `ServiceOffering` (name, optional
+    price amount + ISO currency, duration 5–480 min, description) and `FaqEntry`.
+  - The `application/BusinessProfileService` use case, with ports `WorkspaceLookup`
+    and `PhoneNumberFormat`; the phone number is stored in E.164.
+  - Adapters in `infrastructure/BusinessProfileAdapters`, which also export the
+    profile in workspace data exports.
+  - Migration `V78__business_profiles.sql`: `business_profiles`,
+    `business_profile_services`, `business_profile_faqs`.
+- API: `GET/PUT /api/v1/business-profile`. Members can read it; changes need CONFIGURE.
+- Inheritance: the agent module defines the port `agent.BusinessFacts`. The profile
+  supplies facts keyed like variables: `business_name` (falls back to the
+  workspace name), `business_description`, `business_address`, `business_phone`,
+  `business_email`, `business_website`, `services` and `services_and_prices`
+  (one service per line), `faq` and `cancellation_policy`. An agent's own *filled*
+  variable always wins. The profile is used by `resolvePrompt`,
+  `conversationContext`, `businessName`, `missingRequired` (activation) and
+  `placeholderWarnings`. `GET /agents/{id}/variables` returns `inheritedValue`.
+- Saving the profile publishes `BusinessProfileChanged`, and
+  `ManagedVoiceAgentReconciliationService` re-syncs every agent in the workspace.
+- Dashboard: Settings has a new "Business" tab (`features/settings/presentation/BusinessProfileSection.tsx`).
+  Form parsing lives in `features/settings/domain/business-profile.ts`, with tests in
+  `test:lib`. The agent "business details" drawer marks profile-covered details as done
+  and shows where the value comes from. Inherited values are shown only for saved
+  agents, not during new-agent setup.
+- Tests: `BusinessProfileTest`, `BusinessProfileApiTest`. Backend: 628 passing. Dashboard:
+  typecheck, lint and `test:lib` (28) pass. The Business tab, its validation and its save
+  were checked in preview mode.
+- Still open in phase 3: typed services feeding the booking tools (service-specific
+  duration); draft/published agent versions with rollback; a single template catalog;
+  splitting the `Agent` aggregate and `AgentCreator.tsx`.
+
+### 2026-11-21: FR2 agent configuration, phase 2 (one save, better AI brief, call preview)
+
+- Bug found and fixed: for AI-brief agents and the dashboard's built-in
+  (non-stored) templates, the business details the owner typed were never sent.
+  The create path only saved values for stored templates and `customVariables`.
+- New `POST /agents/setup` and `PUT /agents/{id}/setup` (`agent/AgentSetupService`,
+  `api/AgentSetupController`, DTOs in `agent/AgentSetupDtos`) save the agent, an
+  optional stored template's variable definitions, variable definitions with
+  values, and values for existing variables, all in one transaction.
+  `AgentVariableService.updateKnown` skips unknown and automatic keys.
+  The dashboard create and edit saves now use these. `createAgentFromTemplate` and
+  the per-variable calls are no longer used by `AgentCreator.submit` (the
+  personalisation drawer save still uses the old variable calls).
+- AI brief: each generated variable carries `value`, copied from the brief.
+  `AgentDraftGenerationService.groundedIn` keeps a value only if every number
+  and at least 80% of its words appear in the brief, so guesses are discarded.
+  The silent 20-variable cap is gone: every placeholder keeps its variable, and
+  drafts with more than 60 are refused with a clear message. The dashboard
+  prefills these values and its brief limit is now 2,000, matching the backend.
+- `GET /agents/{id}/instructions-preview?language=` (`call/AgentInstructionsPreviewService`)
+  returns the greeting, the exact managed-voice instructions, the tools, and
+  warnings (`missing_required`, `empty_optional`, `unknown_placeholder`) from
+  `AgentVariableService.placeholderWarnings`. The Prompt section has a new "On calls"
+  tab showing it for saved agents. Preview fixtures added.
+- Tests: `AgentSetupApiTest`, `AgentSetupAtomicityTest` (non-transactional on
+  purpose), `AgentDraftValueGroundingTest`. Backend suite: 621 passing. Dashboard:
+  typecheck, lint and `test:lib` pass. The "On calls" tab was checked in preview mode.
+  The real create flow against a live backend and Gemini was not run.
+
+### 2026-11-20: FR2 agent configuration, phase 1 (live-call correctness)
+
+- `agent/PromptTemplate` is now the only placeholder engine. At call time a
+  sentence whose placeholders are all empty is left out ("Our website is ." no
+  longer reaches callers). A sentence with some filled values keeps them, and
+  malformed `{{...}}` is consumed. Saving an agent rejects malformed
+  placeholders with 400.
+- Saving an agent (create or update) calls `AgentVariableService.ensureDefinitionsFor`:
+  every placeholder that isn't automatic gets a **required** variable, labelled
+  from its key. Manual agents can no longer go live with a blank `{{business_name}}`.
+  `POST /agents/{id}/variables` now upserts, so the dashboard's create-then-define
+  flow refines automatic variables instead of failing. `seedDefinitions` keeps a
+  template's wording on unfilled variables.
+- `AgentConfigurationChanged` is now published by every edit that changes the
+  live assistant: variable create/update, timezone, tool create/update/deactivate,
+  knowledge document upload/delete, integration binding, and Google Calendar
+  connect. The reconciliation listener uses `fallbackExecution = true` because
+  document upload has no transaction. The 60 s full scan still exists as a backstop.
+- Uploaded documents now reach live voice calls through the platform tool
+  `search_knowledge` (`tool/KnowledgeSearchTool`, port `tool/KnowledgeSearch`,
+  implemented by `knowledge/KnowledgeRetrievalService`). `AgentToolLoader` offers
+  it only when the agent has document chunks. `ToolFulfillmentRouter` routes it,
+  and the managed instructions tell the model to search before saying it
+  doesn't know.
+- Tests: `PromptTemplateTest`, `AgentPlaceholderApiTest`, `KnowledgeSearchToolTest`.
+  The full backend suite passes (614 tests).
+- Not changed yet (next phases): one transactional create endpoint for
+  manual/template/brief; the AI brief extracting values (and no silent
+  20-variable cap, brief limit 1000 vs 2000); a final-instructions preview;
+  a workspace business profile with typed fields; draft/published versions;
+  a single template catalog; splitting the `Agent` aggregate and `AgentCreator.tsx`.
+  The dashboard was not changed. Not verified against a live Telnyx assistant.
+
 ### 2026-11-16: Repository cleanup and Contabo server provisioning
 
 - Removed tracked clutter: `design-qa/` screenshots, `design-qa.md`,

@@ -7,6 +7,7 @@ Sauti is intentionally a Spring Boot modular monolith. It deploys as one applica
 | `com.sauti.api` | HTTP/WebSocket adapters, request validation, CORS, and OpenAPI. Controllers delegate to feature services and never import repositories. |
 | `com.sauti.auth` | Accounts, password and Google sign-in, verification, password recovery, cookie sessions with refresh-token families, and request security (workspace routing and route permissions). Layered: `domain`, `application` (use cases + ports), `infrastructure`. |
 | `com.sauti.tenant` | Workspaces: profile and settings, memberships, roles and permissions, invitations. New code is layered like `auth`; `Tenant` and the settings services at the root predate it. |
+| `com.sauti.business` | Workspace business profile: name, contact details, typed services (price, duration), FAQs and policies, shared by all agents. Layered like `auth`; agents read it through the `agent.BusinessFacts` port. |
 | `com.sauti.agent` | Agent identity, prompt, voice, languages, schedules, templates, and call behavior. |
 | `com.sauti.call` | Call lifecycle, browser/phone media runtimes, transcripts, recordings, interruption handling, and voice-runtime metrics. |
 | `com.sauti.voice` | Provider-facing voice catalog and preview behavior. |
@@ -48,4 +49,4 @@ ESLint, type checking, and the production build all run in CI. Feature-specific 
 
 - Every workspace feature is called as `/api/v1/workspaces/{workspaceId}/...`. `WorkspacePathFilter` hands it to the existing feature route and `WorkspaceAccessFilter` checks membership, workspace status and the route permission from `WorkspaceRoutePolicy` before the controller runs. `AuthenticatedUser.tenantId()` is the workspace from the URL.
 - Account and platform routes (`/auth`, `/me`, `/workspaces`, `/invitations`, `/public`, `/admin`, `/operator`, `/voices`) never take a workspace.
-- `LayeredModuleArchitectureTest` enforces the layering of `auth` and `tenant`. Add a module to it when it is restructured.
+- `LayeredModuleArchitectureTest` enforces the layering of `auth`, `tenant`, `audit` and `business`. Add a module to it when it is restructured.

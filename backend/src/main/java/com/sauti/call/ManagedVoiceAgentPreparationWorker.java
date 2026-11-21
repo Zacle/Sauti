@@ -32,6 +32,13 @@ public class ManagedVoiceAgentPreparationWorker {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<AgentConfigurationChanged> agentsIn(java.util.UUID tenantId) {
+        return agents.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
+                .map(agent -> new AgentConfigurationChanged(tenantId, agent.getId()))
+                .toList();
+    }
+
     @Transactional
     public void prepare(AgentConfigurationChanged changed) {
         agents.findByIdAndTenantId(changed.agentId(), changed.tenantId())

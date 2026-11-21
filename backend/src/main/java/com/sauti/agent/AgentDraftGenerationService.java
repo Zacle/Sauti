@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class AgentDraftGenerationService {
     private static final int GEMINI_THINKING_BUDGET = 0;
+    private static final int MAX_VARIABLES = 60;
     private static final Pattern VARIABLE_KEY = Pattern.compile("^[a-z][a-z0-9_]{0,99}$");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{([a-z][a-z0-9_]*)}}");
     private static final Pattern MARKDOWN_HEADING = Pattern.compile("(?m)^##\\s+\\S+");
@@ -93,10 +94,15 @@ public class AgentDraftGenerationService {
                   "supportedLanguages": ["one or more valid BCP 47 language codes"],
                   "escalationPhrases": ["specific caller phrases"],
                   "variables": [
-                    {"key":"business_name","label":"Business name","description":"Official business name","required":true},
-                    {"key":"faq","label":"Frequently asked questions","description":"Optional approved answers","required":false}
+                    {"key":"business_name","label":"Business name","description":"Official business name","required":true,"value":"Bright Smile Dental"},
+                    {"key":"faq","label":"Frequently asked questions","description":"Optional approved answers","required":false,"value":""}
                   ]
                 }
+
+                VARIABLE VALUES:
+                - When the brief states a business fact (name, address, hours, phone, services and prices, policies), copy it
+                  into that variable's "value" using the brief's own words.
+                - When the brief does not state it, use "". Never guess, invent, translate, or fill in an example value.
 
                 SYSTEM PROMPT QUALITY REQUIREMENTS:
                 - Start with a direct role statement such as: "You are {{agent_name}}, the virtual ... for {{business_name}}."
@@ -142,7 +148,7 @@ public class AgentDraftGenerationService {
         if (!isDetailedPrompt(generated.systemPrompt())) {
             throw new IllegalStateException("Gemini did not generate a sufficiently detailed agent prompt");
         }
-        return validateGenerated(generated);
+        return validateGenerated(generated, brief);
     }
 
     private GeneratedAgentDraftResponse requestGeminiDraft(String system, String userMessage) {
@@ -194,7 +200,7 @@ public class AgentDraftGenerationService {
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("Agent draft AI webhook failed with status " + response.statusCode());
             }
-            return validateGenerated(objectMapper.readValue(response.body(), GeneratedAgentDraftResponse.class));
+            return validateGenerated(objectMapper.readValue(response.body(), GeneratedAgentDraftResponse.class), brief);
         } catch (IOException exception) {
             throw new IllegalStateException("Agent draft AI webhook request failed", exception);
         } catch (InterruptedException exception) {
@@ -285,7 +291,7 @@ public class AgentDraftGenerationService {
         );
     }
 
-    private GeneratedAgentDraftResponse validateGenerated(GeneratedAgentDraftResponse generated) {
+    GeneratedAgentDraftResponse validateGenerated(GeneratedAgentDraftResponse generated, String brief) {
         if (generated == null || blank(generated.name()).isBlank() || blank(generated.systemPrompt()).isBlank()
                 || blank(generated.greetingMessage()).isBlank()) {
             throw new IllegalStateException("AI generated an incomplete agent draft");
@@ -309,7 +315,8 @@ public class AgentDraftGenerationService {
                                 variable.key(),
                                 blank(variable.label()).isBlank() ? humanize(variable.key()) : variable.label().trim(),
                                 blank(variable.description()),
-                                variable.required()
+                                variable.required(),
+                                groundedIn(brief, variable.value())
                         ),
                         (first, ignored) -> first,
                         LinkedHashMap::new
@@ -332,7 +339,7 @@ public class AgentDraftGenerationService {
         variableMap.compute(requiredKey, (key, definition) -> definition == null
                 ? new GeneratedVariable(key, humanize(key), "Required business context", true)
                 : new GeneratedVariable(
-                        definition.key(), definition.label(), definition.description(), true
+                        definition.key(), definition.label(), definition.description(), true, definition.value()
                 ));
 
         String optionalKey = referencedKeys.stream()
@@ -355,15 +362,19 @@ public class AgentDraftGenerationService {
                         false
                 )
                 : new GeneratedVariable(
-                        definition.key(), definition.label(), definition.description(), false
+                        definition.key(), definition.label(), definition.description(), false, definition.value()
                 ));
 
         var orderedKeys = new LinkedHashSet<String>();
         orderedKeys.add(requiredKey);
         orderedKeys.add(optionalKey);
         orderedKeys.addAll(referencedKeys);
+        // Every placeholder the prompt uses gets its variable; none are dropped to fit a cap.
+        if (orderedKeys.size() > MAX_VARIABLES) {
+            throw new IllegalStateException("The generated agent uses more than " + MAX_VARIABLES
+                    + " business details; shorten the brief and try again");
+        }
         var variables = orderedKeys.stream()
-                .limit(20)
                 .map(key -> variableMap.getOrDefault(
                         key,
                         new GeneratedVariable(
@@ -392,6 +403,31 @@ public class AgentDraftGenerationService {
                 phrases,
                 variables
         );
+    }
+
+    /**
+     * Keeps a suggested value only when the brief itself says it: nearly all of its words and every
+     * number must appear in the brief. A model that fills in a plausible-sounding guess is ignored.
+     */
+    static String groundedIn(String brief, String value) {
+        var candidate = value == null ? "" : value.trim();
+        if (candidate.isEmpty() || brief == null || candidate.length() > 4000) return "";
+        var briefTerms = terms(brief);
+        var valueTerms = terms(candidate);
+        if (valueTerms.isEmpty()) return "";
+        long found = valueTerms.stream().filter(briefTerms::contains).count();
+        boolean everyNumber = valueTerms.stream()
+                .filter(term -> term.chars().anyMatch(Character::isDigit))
+                .allMatch(briefTerms::contains);
+        return everyNumber && found >= Math.ceil(valueTerms.size() * 0.8) ? candidate : "";
+    }
+
+    private static java.util.Set<String> terms(String text) {
+        var result = new LinkedHashSet<String>();
+        for (var term : text.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+")) {
+            if (term.length() >= 3 || (!term.isEmpty() && term.chars().anyMatch(Character::isDigit))) result.add(term);
+        }
+        return result;
     }
 
     private String openingDirection(boolean booking) {

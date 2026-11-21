@@ -50,6 +50,7 @@ public class GoogleCalendarIntegrationService {
     private final CredentialEncryption encryption;
     private final IntegrationService integrationService;
     private final GoogleCalendarApiClient apiClient;
+    private final org.springframework.context.ApplicationEventPublisher events;
     private final String clientId;
     private final String clientSecret;
     private final String redirectUri;
@@ -65,6 +66,7 @@ public class GoogleCalendarIntegrationService {
             CredentialEncryption encryption,
             IntegrationService integrationService,
             GoogleCalendarApiClient apiClient,
+            org.springframework.context.ApplicationEventPublisher events,
             @Value("${sauti.calendar.google.client-id:}") String clientId,
             @Value("${sauti.calendar.google.client-secret:}") String clientSecret,
             @Value("${sauti.calendar.google.redirect-uri:}") String redirectUri,
@@ -79,6 +81,7 @@ public class GoogleCalendarIntegrationService {
         this.encryption = encryption;
         this.integrationService = integrationService;
         this.apiClient = apiClient;
+        this.events = events;
         this.clientId = blank(clientId);
         this.clientSecret = blank(clientSecret);
         this.redirectUri = blank(redirectUri);
@@ -153,6 +156,7 @@ public class GoogleCalendarIntegrationService {
                 .forEach(tool -> tool.connectCalendar("google", credential.getId()));
         agent.updateCalendarProvider("Google Calendar");
         variableService.updateIfPresent(agent.getId(), "calendar_provider", "Google Calendar");
+        events.publishEvent(new com.sauti.agent.AgentConfigurationChanged(context.tenantId(), agent.getId()));
         return agent.getId();
     }
 

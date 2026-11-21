@@ -74,6 +74,12 @@ public class AgentTemplateService {
         return template;
     }
 
+    /** Gives an agent the variable definitions (labels, help text, required) a stored template declares. */
+    @Transactional
+    public void applyVariableDefinitions(UUID tenantId, UUID templateId, Agent agent) {
+        agentVariableService.seedDefinitions(agent, parseConfiguration(get(tenantId, templateId).getConfigurationJson()));
+    }
+
     @Transactional
     public void delete(UUID tenantId, UUID templateId) {
         templateRepository.delete(ownedTemplate(tenantId, templateId));
