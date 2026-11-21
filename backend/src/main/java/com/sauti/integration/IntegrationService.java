@@ -39,6 +39,7 @@ public class IntegrationService {
     private final CalendarCredentialRepository calendarCredentials;
     private final AgentVariableService agentVariables;
     private final WebhookDestinationValidator webhookValidator;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     public IntegrationService(ObjectMapper objectMapper, CredentialEncryption encryption,
                               IntegrationCatalog catalog, IntegrationConnectionRepository connections,
@@ -47,6 +48,20 @@ public class IntegrationService {
                               CalendarCredentialRepository calendarCredentials,
                               AgentVariableService agentVariables,
                               WebhookDestinationValidator webhookValidator) {
+        this(objectMapper, encryption, catalog, connections, bindings, deliveries, agents, agentTools,
+                calendarCredentials, agentVariables, webhookValidator, event -> { });
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public IntegrationService(ObjectMapper objectMapper, CredentialEncryption encryption,
+                              IntegrationCatalog catalog, IntegrationConnectionRepository connections,
+                              AgentIntegrationRepository bindings, IntegrationDeliveryRepository deliveries,
+                              AgentRepository agents, AgentToolRepository agentTools,
+                              CalendarCredentialRepository calendarCredentials,
+                              AgentVariableService agentVariables,
+                              WebhookDestinationValidator webhookValidator,
+                              org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
         this.objectMapper = objectMapper;
         this.encryption = encryption;
         this.catalog = catalog;
@@ -212,6 +227,7 @@ public class IntegrationService {
                     .filter(tool -> toolNames.contains(tool.getToolName()))
                     .forEach(tool -> tool.configureForDraft(request.enabled(), null));
         }
+        events.publishEvent(new com.sauti.agent.AgentConfigurationChanged(tenantId, agentId));
         return bindingResponse(entry, saved);
     }
 

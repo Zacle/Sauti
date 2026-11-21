@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import com.sauti.agent.AgentConfigurationChanged;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,17 +25,30 @@ public class AgentToolService {
     private final AgentToolRepository agentToolRepository;
     private final CredentialEncryption credentialEncryption;
     private final WebhookDestinationValidator webhookDestinationValidator;
+    private final ApplicationEventPublisher events;
 
+    @Autowired
     public AgentToolService(
             AgentRepository agentRepository,
             AgentToolRepository agentToolRepository,
             CredentialEncryption credentialEncryption,
-            WebhookDestinationValidator webhookDestinationValidator
+            WebhookDestinationValidator webhookDestinationValidator,
+            ApplicationEventPublisher events
     ) {
         this.agentRepository = agentRepository;
         this.agentToolRepository = agentToolRepository;
         this.credentialEncryption = credentialEncryption;
         this.webhookDestinationValidator = webhookDestinationValidator;
+        this.events = events;
+    }
+
+    AgentToolService(
+            AgentRepository agentRepository,
+            AgentToolRepository agentToolRepository,
+            CredentialEncryption credentialEncryption,
+            WebhookDestinationValidator webhookDestinationValidator
+    ) {
+        this(agentRepository, agentToolRepository, credentialEncryption, webhookDestinationValidator, event -> { });
     }
 
     @Transactional(readOnly = true)
@@ -64,7 +80,9 @@ public class AgentToolService {
                 request.displayOrder()
         );
         apply(tool, request, true);
-        return agentToolRepository.save(tool);
+        var saved = agentToolRepository.save(tool);
+        events.publishEvent(new AgentConfigurationChanged(tenantId, agentId));
+        return saved;
     }
 
     @Transactional
@@ -72,6 +90,7 @@ public class AgentToolService {
         validate(request);
         var tool = get(tenantId, toolId);
         apply(tool, request, false);
+        events.publishEvent(new AgentConfigurationChanged(tenantId, tool.getAgent().getId()));
         return tool;
     }
 
@@ -79,6 +98,7 @@ public class AgentToolService {
     public AgentTool deactivate(UUID tenantId, UUID toolId) {
         var tool = get(tenantId, toolId);
         tool.deactivate();
+        events.publishEvent(new AgentConfigurationChanged(tenantId, tool.getAgent().getId()));
         return tool;
     }
 

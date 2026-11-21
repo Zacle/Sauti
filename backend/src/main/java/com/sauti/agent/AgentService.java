@@ -75,6 +75,7 @@ public class AgentService {
 
     @Transactional
     public Agent create(UUID tenantId, AgentRequest request) {
+        AgentVariableService.requireWellFormedPlaceholders(request.systemPrompt(), request.greetingMessage());
         validateLanguages(request.defaultLanguage(), request.supportedLanguages());
         validateTelnyxVoice(request.ttsVoiceId());
         validateAvailability(request);
@@ -115,12 +116,14 @@ public class AgentService {
         agent.configureLlmTier(request.llmTier());
         var saved = agentRepository.save(agent);
         defaultToolSeeder.seedDefaults(saved);
+        agentVariableService.ensureDefinitionsFor(saved, saved.getSystemPrompt(), saved.getGreetingMessage());
         events.publishEvent(new AgentConfigurationChanged(tenantId, saved.getId()));
         return saved;
     }
 
     @Transactional
     public Agent update(UUID tenantId, UUID agentId, AgentRequest request) {
+        AgentVariableService.requireWellFormedPlaceholders(request.systemPrompt(), request.greetingMessage());
         validateLanguages(request.defaultLanguage(), request.supportedLanguages());
         validateTelnyxVoice(request.ttsVoiceId());
         validateAvailability(request);
@@ -154,6 +157,7 @@ public class AgentService {
         );
         agent.configureLlmTier(request.llmTier());
         defaultToolSeeder.synchronizeCapabilities(agent);
+        agentVariableService.ensureDefinitionsFor(agent, agent.getSystemPrompt(), agent.getGreetingMessage());
         events.publishEvent(new AgentConfigurationChanged(tenantId, agent.getId()));
         return agent;
     }
@@ -162,6 +166,7 @@ public class AgentService {
     public Agent updateTimezone(UUID tenantId, UUID agentId, String timezone) {
         var agent = get(tenantId, agentId);
         agent.updateTimezone(validateTimezone(timezone));
+        events.publishEvent(new AgentConfigurationChanged(tenantId, agent.getId()));
         return agent;
     }
 

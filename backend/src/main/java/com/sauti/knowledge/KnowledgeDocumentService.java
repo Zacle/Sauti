@@ -11,6 +11,8 @@ import javax.sql.DataSource;
 import org.apache.tika.Tika;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
+import com.sauti.agent.AgentConfigurationChanged;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,6 +27,7 @@ public class KnowledgeDocumentService {
     private final GeminiEmbeddingService embeddingService;
     private final JdbcTemplate jdbcTemplate;
     private final DocumentObjectStorage objectStorage;
+    private final ApplicationEventPublisher events;
     private final Tika tika = new Tika();
     private final int maxDocumentCharacters;
     private final boolean postgres;
@@ -37,6 +40,7 @@ public class KnowledgeDocumentService {
             JdbcTemplate jdbcTemplate,
             DocumentObjectStorage objectStorage,
             DataSource dataSource,
+            ApplicationEventPublisher events,
             @Value("${sauti.rag.max-document-characters:100000}") int maxDocumentCharacters
     ) {
         this.documentRepository = documentRepository;
@@ -45,6 +49,7 @@ public class KnowledgeDocumentService {
         this.embeddingService = embeddingService;
         this.jdbcTemplate = jdbcTemplate;
         this.objectStorage = objectStorage;
+        this.events = events;
         this.maxDocumentCharacters = maxDocumentCharacters;
         this.postgres = isPostgres(dataSource);
         this.tika.setMaxStringLength(maxDocumentCharacters + 1);
@@ -113,6 +118,7 @@ public class KnowledgeDocumentService {
                         OffsetDateTime.now()
                 );
             }
+            events.publishEvent(new AgentConfigurationChanged(tenantId, agentId));
             return document;
         } catch (Exception exception) {
             documentRepository.deleteById(document.getId());
@@ -128,6 +134,7 @@ public class KnowledgeDocumentService {
                 .orElseThrow(() -> new EntityNotFoundException("Knowledge document not found"));
         objectStorage.delete(document.getStorageBucket(), document.getStorageObjectName());
         documentRepository.delete(document);
+        events.publishEvent(new AgentConfigurationChanged(tenantId, agentId));
     }
 
     private byte[] read(MultipartFile file) {

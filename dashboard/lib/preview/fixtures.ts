@@ -399,6 +399,79 @@ const routes: Record<string, unknown> = {
   },
 };
 
+const previewDrafts = new Map<string, unknown>();
+const previewVersionLists = new Map<string, Array<{ version: number; note: string | null; publishedBy: string; publishedAt: string; current: boolean }>>();
+
+function previewVersions(agentId: string) {
+  if (!previewVersionLists.has(agentId)) {
+    previewVersionLists.set(agentId, [
+      { version: 3, note: "Added whitening prices", publishedBy: "owner@brightsmile.example", publishedAt: iso(now - 2 * 86_400_000), current: true },
+      { version: 2, note: null, publishedBy: "admin@brightsmile.example", publishedAt: iso(now - 9 * 86_400_000), current: false },
+      { version: 1, note: "Created", publishedBy: "owner@brightsmile.example", publishedAt: iso(now - 30 * 86_400_000), current: false },
+    ]);
+  }
+  return previewVersionLists.get(agentId)!;
+}
+
+function publishPreviewVersion(agentId: string, note: string | null) {
+  const list = previewVersions(agentId);
+  list.forEach((item) => { item.current = false; });
+  list.unshift({ version: list.length + 1, note, publishedBy: "owner@brightsmile.example", publishedAt: new Date().toISOString(), current: true });
+  previewDrafts.delete(agentId);
+}
+
+/** Sample of the backend template catalog, in the same shape the API returns. */
+const agentTemplates = [
+  ["tpl-dental", "Dental front desk", "Healthcare", "Appointments", "smile", true,
+    "Books check-ups and cleanings, answers questions about services and prices.",
+    ["business_name", "Business name", true], ["services", "Services and prices", true]],
+  ["tpl-salon", "Salon booking", "Beauty", "Appointments", "scissors", true,
+    "Takes bookings, quotes prices from your menu and confirms by SMS.",
+    ["business_name", "Business name", true], ["services", "Services and prices", true]],
+  ["tpl-support", "Customer support", "Support", "Support", "helpdesk", false,
+    "Answers common questions and hands over to a person when needed.",
+    ["business_name", "Business name", true], ["faq", "Frequently asked questions", false]],
+  ["tpl-leads", "Lead qualification", "Sales", "Sales", "building", false,
+    "Qualifies new enquiries and books a call with your team.",
+    ["business_name", "Business name", true], ["lead_fields", "Lead questions", false]],
+].map(([id, name, category, group, icon, bookingEnabled, description, ...variables]) => ({
+  id, tenantId: null, scope: "system", editable: false, name, description, category,
+  greetingMessage: "Open naturally in the caller's language. Introduce yourself as {{agent_name}} once.",
+  systemPrompt: `You are {{agent_name}}, the ${String(name).toLowerCase()} assistant for {{business_name}}.`,
+  defaultLanguage: "en", supportedLanguages: ["en", "sw"],
+  configurationJson: JSON.stringify({
+    group, icon, bookingEnabled,
+    variables: (variables as Array<[string, string, boolean]>).map(([key, label, required]) => ({ key, label, description: "", required })),
+  }),
+  version: 1, published: true, createdAt: iso(now - 30 * 86_400_000), updatedAt: iso(now - 30 * 86_400_000),
+}));
+
+const businessProfile = {
+  workspaceName: "Bright Smile Dental",
+  displayName: "Bright Smile Dental",
+  description: "Family dental clinic in Kilimani offering check-ups, cleaning and whitening.",
+  address: "Ngong Road, Kilimani, Nairobi",
+  phone: "+254712345678",
+  email: "hello@brightsmile.example",
+  website: "brightsmile.example",
+  cancellationPolicy: "Please give at least 24 hours’ notice to cancel or move an appointment.",
+  services: [
+    { name: "Check-up and cleaning", priceAmount: 3500, currency: "KES", durationMinutes: 45, description: null },
+    { name: "Whitening", priceAmount: 12000, currency: "KES", durationMinutes: 60, description: null },
+    { name: "Consultation", priceAmount: null, currency: null, durationMinutes: 15, description: "Free for new patients" },
+  ],
+  faqs: [{ question: "Is there parking?", answer: "Yes, free parking behind the building." }],
+  facts: {
+    business_name: "Bright Smile Dental",
+    business_address: "Ngong Road, Kilimani, Nairobi",
+    business_phone: "+254712345678",
+    business_website: "brightsmile.example",
+    services: "Check-up and cleaning — KES 3,500 — 45 min\nWhitening — KES 12,000 — 60 min",
+    cancellation_policy: "Please give at least 24 hours’ notice to cancel or move an appointment.",
+  },
+  updatedAt: iso(now - 86_400_000),
+};
+
 function withoutQuery(path: string) {
   return path.split("?")[0];
 }
@@ -464,6 +537,68 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
       ["+254 41 222 1093", "local", "Mombasa", "Mombasa County", "8"],
       ["+254 800 720 115", "toll_free", "", "", "22"],
     ].map(([phoneNumber, type, locality, region, monthlyCost]) => ({ phoneNumber, type, locality, region, upfrontCost: "0", monthlyCost, currency: "USD" }));
+  }
+
+  if (clean === "/agent-templates" && verb === "GET") return structuredClone(agentTemplates);
+
+  // Drafts and versions behave like the API: a draft never changes the agent; publishing adds a version.
+  const draftRoute = clean.match(/^\/agents\/([^/]+)\/draft$/);
+  if (draftRoute) {
+    if (verb === "GET") return previewDrafts.get(draftRoute[1]) ?? undefined;
+    if (verb === "DELETE") { previewDrafts.delete(draftRoute[1]); return undefined; }
+    const setup = typeof body === "string" ? JSON.parse(body) : {};
+    const saved = { setup, savedBy: "owner@brightsmile.example", savedAt: new Date().toISOString() };
+    previewDrafts.set(draftRoute[1], saved);
+    return structuredClone(saved);
+  }
+  const versionsRoute = clean.match(/^\/agents\/([^/]+)\/versions$/);
+  if (versionsRoute && verb === "GET") return structuredClone(previewVersions(versionsRoute[1]));
+  const restoreRoute = clean.match(/^\/agents\/([^/]+)\/versions\/(\d+)\/restore$/);
+  if (restoreRoute && verb === "POST") {
+    publishPreviewVersion(restoreRoute[1], `Restored version ${restoreRoute[2]}`);
+    return structuredClone(agents.find((item) => item.id === restoreRoute[1]) ?? agents[0]);
+  }
+
+  if (clean === "/business-profile") {
+    if (verb === "PUT" && typeof body === "string") {
+      Object.assign(businessProfile, JSON.parse(body), { updatedAt: new Date().toISOString() });
+    }
+    return structuredClone(businessProfile);
+  }
+
+  if (/^\/agents\/[^/]+\/instructions-preview$/.test(clean) && verb === "GET") {
+    return {
+      language: "en",
+      greeting: "Hello, this is Amani from Bright Smile Dental. How can I help?",
+      instructions: [
+        "You are Amani, the front desk for Bright Smile Dental.",
+        "",
+        "## Business Information",
+        "- Address: Ngong Road, Kilimani, Nairobi",
+        "- Services: Check-up and cleaning – KES 3,500, Whitening – KES 12,000",
+        "",
+        "LIVE CALL CONTEXT",
+        "- Supported caller languages: en, sw.",
+        "- Published operating hours: Mon 08:00-18:00; Wed 08:00-18:00; Fri 08:00-18:00",
+        "- Available tools: check_availability, book_slot, update_conversation_state, search_knowledge.",
+      ].join("\n"),
+      tools: ["check_availability", "book_slot", "update_conversation_state", "search_knowledge"],
+      warnings: [
+        { kind: "missing_required", key: "business_phone", label: "Business phone", message: "Business phone is required before this agent can go live." },
+        { kind: "empty_optional", key: "business_website", label: "Business website", message: "Business website is empty, so the sentence using it is left out." },
+      ],
+    };
+  }
+
+  // Saving a whole agent: like the real API, the stored agent with the submitted settings applied.
+  const setup = clean.match(/^\/agents\/(?:([^/]+)\/)?setup$/);
+  if (setup && (verb === "POST" || verb === "PUT")) {
+    const request = typeof body === "string" ? (JSON.parse(body) as { agent?: Record<string, unknown> }) : {};
+    const found = setup[1] ? agents.find((item) => item.id === setup[1]) : agents[0];
+    if (!found) throw new ApiError("We couldn’t find that. It may have been moved or deleted.", 404);
+    if (setup[1]) publishPreviewVersion(setup[1], null);
+    if (setup[1]) Object.assign(found, request.agent ?? {});
+    return structuredClone(setup[1] ? found : { ...found, ...request.agent });
   }
 
   const agent = clean.match(/^\/agents\/([^/]+)$/);

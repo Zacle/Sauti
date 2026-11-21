@@ -3,6 +3,7 @@ package com.sauti.agent;
 import com.sauti.shared.Auditable;
 import com.sauti.tenant.Tenant;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
@@ -76,17 +77,10 @@ public class Agent extends Auditable {
     private String calendarProvider;
     private String routingPolicy;
     private String voiceProfile;
-    @Column(nullable = false)
-    private boolean webVoiceEnabled;
-    @Column(nullable = false, unique = true, length = 36)
-    private String webVoicePublicId;
-    private String webVoiceAllowedOrigins;
-    @Column(nullable = false)
-    private boolean webVoiceRequireConsent = true;
-    @Column(nullable = false)
-    private boolean whatsappEnabled;
-    @Column(unique = true, length = 100)
-    private String whatsappPhoneNumberId;
+    @Embedded
+    private WebVoiceChannel webVoice = WebVoiceChannel.newChannel();
+    @Embedded
+    private WhatsAppChannel whatsapp = WhatsAppChannel.off();
 
     @Column(nullable = false)
     private int maxCallDurationSeconds = 300;
@@ -111,15 +105,8 @@ public class Agent extends Auditable {
     private boolean detectVoicemail = true;
     @Column(nullable = false)
     private boolean handleCallScreening = true;
-    @Column(nullable = false)
-    private boolean dtmfEnabled;
-    @Column(nullable = false)
-    private String dtmfTerminationKey = "#";
-    @Column(nullable = false)
-    private int dtmfInputTimeoutSeconds = 5;
-    @Column(nullable = false)
-    private int dtmfMaxDigits = 8;
-    private String dtmfDigitMappings;
+    @Embedded
+    private KeypadInput keypad = KeypadInput.defaults();
     @Column(nullable = false)
     private int sttEndpointingMs = 300;
     private String sttVocabularyDomain;
@@ -153,7 +140,6 @@ public class Agent extends Auditable {
 
     public Agent(Tenant tenant, String name, String greetingMessage, String systemPrompt) {
         this.id = UUID.randomUUID();
-        this.webVoicePublicId = UUID.randomUUID().toString();
         this.tenant = tenant;
         this.name = name;
         this.greetingMessage = greetingMessage;
@@ -476,31 +462,22 @@ public class Agent extends Auditable {
     public String getCalendarProvider() { return calendarProvider; }
     public String getRoutingPolicy() { return routingPolicy; }
     public String getVoiceProfile() { return voiceProfile; }
-    public boolean isWebVoiceEnabled() { return webVoiceEnabled; }
-    public String getWebVoicePublicId() { return webVoicePublicId; }
-    public List<String> getWebVoiceAllowedOrigins() { return split(webVoiceAllowedOrigins); }
-    public boolean isWebVoiceRequireConsent() { return webVoiceRequireConsent; }
-    public boolean isWhatsappEnabled() { return whatsappEnabled; }
-    public String getWhatsappPhoneNumberId() { return whatsappPhoneNumberId; }
+    public WebVoiceChannel getWebVoice() { return webVoice; }
+    public WhatsAppChannel getWhatsapp() { return whatsapp; }
+    public KeypadInput getKeypad() { return keypad; }
+    public boolean isWebVoiceEnabled() { return webVoice.isEnabled(); }
+    public String getWebVoicePublicId() { return webVoice.getPublicId(); }
+    public List<String> getWebVoiceAllowedOrigins() { return webVoice.getAllowedOrigins(); }
+    public boolean isWebVoiceRequireConsent() { return webVoice.isRequireConsent(); }
+    public boolean isWhatsappEnabled() { return whatsapp.isEnabled(); }
+    public String getWhatsappPhoneNumberId() { return whatsapp.getPhoneNumberId(); }
 
     public void configureWebVoice(Boolean enabled, List<String> allowedOrigins, Boolean requireConsent) {
-        this.webVoiceEnabled = enabled != null && enabled;
-        this.webVoiceAllowedOrigins = join(allowedOrigins == null ? List.of() : allowedOrigins.stream()
-                .map(String::trim)
-                .filter(origin -> !origin.isBlank())
-                .distinct()
-                .toList());
-        this.webVoiceRequireConsent = requireConsent == null || requireConsent;
-        if (webVoicePublicId == null || webVoicePublicId.isBlank()) {
-            webVoicePublicId = UUID.randomUUID().toString();
-        }
+        webVoice.configure(enabled, allowedOrigins, requireConsent);
     }
 
     public void configureWhatsApp(Boolean enabled, String phoneNumberId) {
-        this.whatsappEnabled = enabled != null && enabled;
-        this.whatsappPhoneNumberId = phoneNumberId == null || phoneNumberId.isBlank()
-                ? null
-                : phoneNumberId.trim();
+        whatsapp.configure(enabled, phoneNumberId);
     }
 
     public void updateCalendarProvider(String calendarProvider) {
@@ -525,7 +502,7 @@ public class Agent extends Auditable {
         this.maxReminders = range(maxReminders, 0, 10, 1);
         this.detectVoicemail = detectVoicemail == null || detectVoicemail;
         this.handleCallScreening = handleCallScreening == null || handleCallScreening;
-        this.dtmfEnabled = dtmfEnabled != null && dtmfEnabled;
+        keypad.enable(dtmfEnabled);
         this.sttEndpointingMs = range(sttEndpointingMs, 100, 3000, 300);
         this.sttVocabularyDomain = sttVocabularyDomain;
         this.sttBoostedKeywords = sttBoostedKeywords;
@@ -557,22 +534,11 @@ public class Agent extends Auditable {
     public int getMaxReminders() { return maxReminders; }
     public boolean isDetectVoicemail() { return detectVoicemail; }
     public boolean isHandleCallScreening() { return handleCallScreening; }
-    public boolean isDtmfEnabled() { return dtmfEnabled; }
-    public String getDtmfTerminationKey() { return dtmfTerminationKey; }
-    public int getDtmfInputTimeoutSeconds() { return dtmfInputTimeoutSeconds; }
-    public int getDtmfMaxDigits() { return dtmfMaxDigits; }
-    public Map<String, String> getDtmfDigitMappings() {
-        var mappings = new LinkedHashMap<String, String>();
-        if (dtmfDigitMappings == null || dtmfDigitMappings.isBlank()) return mappings;
-        dtmfDigitMappings.lines().forEach(line -> {
-            var separator = line.indexOf('=');
-            if (separator <= 0) return;
-            var digits = line.substring(0, separator).trim();
-            var meaning = line.substring(separator + 1).trim();
-            if (!digits.isBlank() && !meaning.isBlank()) mappings.put(digits, meaning);
-        });
-        return mappings;
-    }
+    public boolean isDtmfEnabled() { return keypad.isEnabled(); }
+    public String getDtmfTerminationKey() { return keypad.getTerminationKey(); }
+    public int getDtmfInputTimeoutSeconds() { return keypad.getInputTimeoutSeconds(); }
+    public int getDtmfMaxDigits() { return keypad.getMaxDigits(); }
+    public Map<String, String> getDtmfDigitMappings() { return keypad.getDigitMappings(); }
 
     public void configureDtmf(
             String terminationKey,
@@ -580,22 +546,7 @@ public class Agent extends Auditable {
             Integer maxDigits,
             Map<String, String> digitMappings
     ) {
-        this.dtmfTerminationKey = "#".equals(terminationKey) || "*".equals(terminationKey)
-                ? terminationKey
-                : "#";
-        this.dtmfInputTimeoutSeconds = range(inputTimeoutSeconds, 1, 30, 5);
-        this.dtmfMaxDigits = range(maxDigits, 1, 32, 8);
-        if (digitMappings == null || digitMappings.isEmpty()) {
-            this.dtmfDigitMappings = null;
-            return;
-        }
-        this.dtmfDigitMappings = digitMappings.entrySet().stream()
-                .filter(entry -> entry.getKey() != null && entry.getValue() != null)
-                .map(entry -> Map.entry(entry.getKey().trim(), entry.getValue().trim()))
-                .filter(entry -> entry.getKey().matches("[0-9*#]{1,32}") && !entry.getValue().isBlank())
-                .map(entry -> entry.getKey() + "=" + entry.getValue().replace("\r", " ").replace("\n", " "))
-                .reduce((left, right) -> left + "\n" + right)
-                .orElse(null);
+        keypad.configure(terminationKey, inputTimeoutSeconds, maxDigits, digitMappings);
     }
     public int getSttEndpointingMs() { return sttEndpointingMs; }
     public String getSttVocabularyDomain() { return sttVocabularyDomain; }

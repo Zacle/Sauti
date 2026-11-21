@@ -13,6 +13,34 @@ public class ToolFulfillmentRouter {
     private final Map<String, ToolFulfillment> fulfillments;
     private final ConversationStateTool conversationStateTool;
     private final ToolActionPolicy actionPolicy;
+    private final KnowledgeSearchTool knowledgeSearchTool;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ToolFulfillmentRouter(
+            AgentToolRepository agentToolRepository,
+            SautiCalendarFulfillment calendarFulfillment,
+            WebhookToolFulfillment webhookFulfillment,
+            SautiSmsFulfillment smsFulfillment,
+            TelnyxTransferFulfillment transferFulfillment,
+            DuringCallIntegrationFulfillment integrationFulfillment,
+            NoopFulfillment noopFulfillment,
+            ConversationStateTool conversationStateTool,
+            ToolActionPolicy actionPolicy,
+            KnowledgeSearchTool knowledgeSearchTool
+    ) {
+        this.agentToolRepository = agentToolRepository;
+        this.conversationStateTool = conversationStateTool;
+        this.actionPolicy = actionPolicy;
+        this.knowledgeSearchTool = knowledgeSearchTool;
+        this.fulfillments = Map.of(
+                "sauti_calendar", calendarFulfillment,
+                "webhook", webhookFulfillment,
+                "sauti_sms", smsFulfillment,
+                "call_transfer", transferFulfillment,
+                "sauti_integration", integrationFulfillment,
+                "noop", noopFulfillment
+        );
+    }
 
     public ToolFulfillmentRouter(
             AgentToolRepository agentToolRepository,
@@ -25,22 +53,17 @@ public class ToolFulfillmentRouter {
             ConversationStateTool conversationStateTool,
             ToolActionPolicy actionPolicy
     ) {
-        this.agentToolRepository = agentToolRepository;
-        this.conversationStateTool = conversationStateTool;
-        this.actionPolicy = actionPolicy;
-        this.fulfillments = Map.of(
-                "sauti_calendar", calendarFulfillment,
-                "webhook", webhookFulfillment,
-                "sauti_sms", smsFulfillment,
-                "call_transfer", transferFulfillment,
-                "sauti_integration", integrationFulfillment,
-                "noop", noopFulfillment
-        );
+        this(agentToolRepository, calendarFulfillment, webhookFulfillment, smsFulfillment, transferFulfillment,
+                integrationFulfillment, noopFulfillment, conversationStateTool, actionPolicy,
+                new KnowledgeSearchTool(KnowledgeSearch.NONE));
     }
 
     public LlmToolResult route(Call call, LlmToolCall toolCall) {
         if (ConversationStateTool.NAME.equals(toolCall.name())) {
             return conversationStateTool.execute(call, toolCall);
+        }
+        if (KnowledgeSearchTool.NAME.equals(toolCall.name())) {
+            return knowledgeSearchTool.execute(call, toolCall);
         }
         var toolConfig = agentToolRepository
                 .findByAgent_IdAndToolNameAndIsActiveTrue(call.getAgent().getId(), toolCall.name())

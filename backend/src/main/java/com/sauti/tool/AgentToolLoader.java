@@ -15,10 +15,18 @@ public class AgentToolLoader {
     );
     private final AgentToolRepository agentToolRepository;
     private final ToolActionPolicy actionPolicy;
+    private final KnowledgeSearch knowledge;
 
-    public AgentToolLoader(AgentToolRepository agentToolRepository, ToolActionPolicy actionPolicy) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public AgentToolLoader(AgentToolRepository agentToolRepository, ToolActionPolicy actionPolicy,
+                           KnowledgeSearch knowledge) {
         this.agentToolRepository = agentToolRepository;
         this.actionPolicy = actionPolicy;
+        this.knowledge = knowledge;
+    }
+
+    public AgentToolLoader(AgentToolRepository agentToolRepository, ToolActionPolicy actionPolicy) {
+        this(agentToolRepository, actionPolicy, KnowledgeSearch.NONE);
     }
 
     @Transactional(readOnly = true)
@@ -29,9 +37,12 @@ public class AgentToolLoader {
                 // database row with the reserved name so Realtime never receives
                 // duplicate function definitions.
                 .filter(tool -> !ConversationStateTool.NAME.equals(tool.getToolName()))
+                .filter(tool -> !KnowledgeSearchTool.NAME.equals(tool.getToolName()))
                 .map(this::definition)
                 .toList());
         tools.add(ConversationStateTool.definition());
+        // Uploaded documents are searched on demand; the live assistant cannot hold them in its prompt.
+        if (knowledge.hasDocuments(agentId)) tools.add(KnowledgeSearchTool.definition());
         return List.copyOf(tools);
     }
 

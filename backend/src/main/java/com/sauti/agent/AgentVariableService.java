@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,33 +43,63 @@ public class AgentVariableService {
             "qualification_fields", "quote_intake_fields", "ticket_fields"
     );
     private static final Pattern CATALOG_SEPARATOR = Pattern.compile("\\r?\\n|;|,(?!\\d{3}(?!\\d))");
-    private static final Pattern PLACEHOLDER =Pattern.compile("\\{\\{([a-zA-Z0-9_]+)}}");
     private static final Pattern VARIABLE_KEY = Pattern.compile("[a-z][a-z0-9_]{0,99}");
     private static final Set<String> SYSTEM_MANAGED_VARIABLES = Set.of(
             "agent_name", "timezone", "business_timezone", "calendar_system",
             "calendar_provider", "routing_policy", "required_booking_fields",
             "notification_channels"
     );
+    /** Filled from the agent's own settings at call time, so a prompt may use them without a variable. */
+    private static final Set<String> AGENT_SETTING_PLACEHOLDERS = Set.of("business_hours", "after_hours_behavior");
 
     private final AgentVariableRepository variableRepository;
     private final AgentRepository agentRepository;
     private final InternationalPhoneNumberService phoneNumbers;
+    private final ApplicationEventPublisher events;
+    private final BusinessFacts businessFacts;
 
+    @Autowired
     public AgentVariableService(AgentVariableRepository variableRepository, AgentRepository agentRepository,
-                                InternationalPhoneNumberService phoneNumbers) {
+                                InternationalPhoneNumberService phoneNumbers, ApplicationEventPublisher events,
+                                BusinessFacts businessFacts) {
         this.variableRepository = variableRepository;
         this.agentRepository = agentRepository;
         this.phoneNumbers = phoneNumbers;
+        this.events = events;
+        this.businessFacts = businessFacts;
+    }
+
+    AgentVariableService(AgentVariableRepository variableRepository, AgentRepository agentRepository,
+                         InternationalPhoneNumberService phoneNumbers, BusinessFacts businessFacts) {
+        this(variableRepository, agentRepository, phoneNumbers, event -> { }, businessFacts);
+    }
+
+    AgentVariableService(AgentVariableRepository variableRepository, AgentRepository agentRepository,
+                         InternationalPhoneNumberService phoneNumbers) {
+        this(variableRepository, agentRepository, phoneNumbers, event -> { }, BusinessFacts.NONE);
     }
 
     @Transactional(readOnly = true)
     public List<AgentVariableResponse> list(UUID tenantId, UUID agentId) {
-        requireOwnedAgent(tenantId, agentId);
+        var agent = requireOwnedAgent(tenantId, agentId);
+        var workspace = workspaceFacts(agent);
         return variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agentId)
                 .stream()
                 .filter(variable -> !SYSTEM_MANAGED_VARIABLES.contains(variable.getKey()))
-                .map(AgentVariableResponse::from)
+                .map(variable -> AgentVariableResponse.from(variable, workspace.get(variable.getKey())))
                 .toList();
+    }
+
+    /** Workspace business-profile facts for this agent's workspace; empty when unavailable. */
+    private Map<String, String> workspaceFacts(Agent agent) {
+        if (agent.getTenant() == null || agent.getTenant().getId() == null) return Map.of();
+        var facts = businessFacts.factsFor(agent.getTenant().getId());
+        return facts == null ? Map.of() : facts;
+    }
+
+    /** Filled by the agent itself, or by the workspace profile when the agent leaves it empty. */
+    private static boolean covered(AgentVariable variable, Map<String, String> workspace) {
+        return variable.isFilled() || workspace.containsKey(variable.getKey());
     }
 
     @Transactional
@@ -90,7 +122,65 @@ public class AgentVariableService {
             variable.updateValue(normalizedValue);
             syncStructuredSetting(agent, value.key(), normalizedValue);
         }
+        changed(agent);
         return variables.stream().map(AgentVariableResponse::from).toList();
+    }
+
+    /** Sets values for variables the agent has; keys it doesn't have, or that are automatic, are skipped. */
+    @Transactional
+    public void updateKnown(UUID tenantId, UUID agentId, Map<String, String> values) {
+        if (values.isEmpty()) return;
+        var agent = requireOwnedAgent(tenantId, agentId);
+        var byKey = new LinkedHashMap<String, AgentVariable>();
+        variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agentId)
+                .forEach(variable -> byKey.put(variable.getKey(), variable));
+        values.forEach((key, value) -> {
+            var variable = byKey.get(key);
+            if (variable == null || SYSTEM_MANAGED_VARIABLES.contains(key)) return;
+            var normalizedValue = normalizeValue(agent, key, value);
+            variable.updateValue(normalizedValue);
+            syncStructuredSetting(agent, key, normalizedValue);
+        });
+        changed(agent);
+    }
+
+    /**
+     * Placeholders that will say less than intended on a call: a required value still missing, an
+     * optional one left empty (its sentence is dropped), or a placeholder with no variable at all.
+     */
+    @Transactional(readOnly = true)
+    public List<AgentSetupDtos.PreviewWarning> placeholderWarnings(Agent agent) {
+        var byKey = new LinkedHashMap<String, AgentVariable>();
+        variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId())
+                .forEach(variable -> byKey.put(variable.getKey(), variable));
+        var workspace = workspaceFacts(agent);
+        var warnings = new java.util.ArrayList<AgentSetupDtos.PreviewWarning>();
+        var used = PromptTemplate.placeholders(agent.getSystemPrompt(), agent.getGreetingMessage());
+        for (var key : used) {
+            if (SYSTEM_MANAGED_VARIABLES.contains(key) || AGENT_SETTING_PLACEHOLDERS.contains(key)) continue;
+            if (workspace.containsKey(key) && (byKey.get(key) == null || !byKey.get(key).isFilled())) continue;
+            var variable = byKey.get(key);
+            if (variable == null) {
+                warnings.add(new AgentSetupDtos.PreviewWarning("unknown_placeholder", key, humanize(key),
+                        "{{" + key + "}} has no business detail behind it, so the sentence using it is left out."));
+            } else if (!variable.isFilled() && variable.isRequired()) {
+                warnings.add(missingRequired(variable));
+            } else if (!variable.isFilled()) {
+                warnings.add(new AgentSetupDtos.PreviewWarning("empty_optional", key, variable.getDisplayLabel(),
+                        variable.getDisplayLabel() + " is empty, so the sentence using it is left out."));
+            }
+        }
+        byKey.values().stream()
+                .filter(variable -> !used.contains(variable.getKey()))
+                .filter(variable -> !SYSTEM_MANAGED_VARIABLES.contains(variable.getKey()))
+                .filter(variable -> variable.isRequired() && !covered(variable, workspace))
+                .forEach(variable -> warnings.add(missingRequired(variable)));
+        return List.copyOf(warnings);
+    }
+
+    private static AgentSetupDtos.PreviewWarning missingRequired(AgentVariable variable) {
+        return new AgentSetupDtos.PreviewWarning("missing_required", variable.getKey(), variable.getDisplayLabel(),
+                variable.getDisplayLabel() + " is required before this agent can go live.");
     }
 
     @Transactional
@@ -102,6 +192,7 @@ public class AgentVariableService {
         var normalizedValue = normalizeValue(agent, key, value);
         variable.updateValue(normalizedValue);
         syncStructuredSetting(agent, key, normalizedValue);
+        changed(agent);
         return AgentVariableResponse.from(variable);
     }
 
@@ -111,9 +202,15 @@ public class AgentVariableService {
             var normalizedValue = normalizeValue(variable.getAgent(), key, value);
             variable.updateValue(normalizedValue);
             syncStructuredSetting(variable.getAgent(), key, normalizedValue);
+            changed(variable.getAgent());
         });
     }
 
+    /**
+     * Defines a variable, or redefines one that already exists. Saving an agent already creates a
+     * variable for each placeholder in its prompt, so a client that then sends the full definition
+     * (label, help text, required) refines it instead of failing.
+     */
     @Transactional
     public AgentVariableResponse create(
             UUID tenantId,
@@ -134,20 +231,23 @@ public class AgentVariableService {
         if (SYSTEM_MANAGED_VARIABLES.contains(normalizedKey)) {
             throw new IllegalArgumentException(normalizedKey + " is an automatic variable and cannot be redefined");
         }
-        if (variableRepository.findByAgentIdAndKey(agentId, normalizedKey).isPresent()) {
-            throw new IllegalArgumentException("Agent variable already exists: " + normalizedKey);
+        var cleanDescription = description == null || description.isBlank() ? null : description.trim();
+        var cleanLabel = label == null || label.isBlank() ? humanize(normalizedKey) : label.trim();
+        var variable = variableRepository.findByAgentIdAndKey(agentId, normalizedKey)
+                .map(existing -> {
+                    existing.redefine(cleanLabel, cleanDescription, required);
+                    return existing;
+                })
+                .orElseGet(() -> new AgentVariable(agent, normalizedKey, cleanLabel, cleanDescription, required));
+        if (value != null && !value.isBlank()) {
+            variable.updateValue(normalizeValue(agent, normalizedKey, value));
         }
-        var variable = new AgentVariable(
-                agent,
-                normalizedKey,
-                label.trim(),
-                description == null || description.isBlank() ? null : description.trim(),
-                required
-        );
-        variable.updateValue(normalizeValue(agent, normalizedKey, value));
-        return AgentVariableResponse.from(variableRepository.save(variable));
+        var saved = variableRepository.save(variable);
+        changed(agent);
+        return AgentVariableResponse.from(saved);
     }
 
+    /** Applies a template's variable definitions; a template's wording replaces an automatic definition. */
     @Transactional
     public void seedDefinitions(Agent agent, JsonNode configuration) {
         var definitions = configuration.path("variables");
@@ -159,28 +259,68 @@ public class AgentVariableService {
             if (key.isBlank() || SYSTEM_MANAGED_VARIABLES.contains(key)) {
                 continue;
             }
-            if (variableRepository.findByAgentIdAndKey(agent.getId(), key).isPresent()) {
-                continue;
-            }
             var label = definition.path("label").asText(key).trim();
             var description = definition.path("description").asText("").trim();
-            variableRepository.save(new AgentVariable(
-                    agent,
-                    key,
-                    label.isBlank() ? key : label,
-                    description.isBlank() ? null : description,
-                    definition.path("required").asBoolean(false)
-            ));
+            var cleanLabel = label.isBlank() ? key : label;
+            var cleanDescription = description.isBlank() ? null : description;
+            var required = definition.path("required").asBoolean(false);
+            var existing = variableRepository.findByAgentIdAndKey(agent.getId(), key);
+            if (existing.isPresent()) {
+                if (!existing.get().isFilled()) existing.get().redefine(cleanLabel, cleanDescription, required);
+                continue;
+            }
+            variableRepository.save(new AgentVariable(agent, key, cleanLabel, cleanDescription, required));
         }
+        changed(agent);
+    }
+
+    /**
+     * Makes sure every placeholder the agent's prompt or greeting uses has a variable to fill it.
+     * A new one is required, so the agent cannot go live while the prompt would say nothing there.
+     * Returns the keys that were added.
+     */
+    @Transactional
+    public List<String> ensureDefinitionsFor(Agent agent, String... texts) {
+        var added = new java.util.ArrayList<String>();
+        for (var key : PromptTemplate.placeholders(texts)) {
+            if (SYSTEM_MANAGED_VARIABLES.contains(key) || AGENT_SETTING_PLACEHOLDERS.contains(key)) continue;
+            if (variableRepository.findByAgentIdAndKey(agent.getId(), key).isPresent()) continue;
+            variableRepository.save(new AgentVariable(agent, key, humanize(key), null, true));
+            added.add(key);
+        }
+        if (!added.isEmpty()) changed(agent);
+        return added;
+    }
+
+    /** Rejects a prompt or greeting containing brace expressions that would never be filled. */
+    public static void requireWellFormedPlaceholders(String... texts) {
+        var malformed = PromptTemplate.malformed(texts);
+        if (!malformed.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Placeholders use lowercase letters, numbers and underscores, like {{business_name}}. Fix: "
+                            + String.join(", ", malformed)
+            );
+        }
+    }
+
+    private static String humanize(String key) {
+        var words = key.replace('_', ' ').trim();
+        return words.isEmpty() ? key : Character.toUpperCase(words.charAt(0)) + words.substring(1);
+    }
+
+    private void changed(Agent agent) {
+        if (agent.getId() == null || agent.getTenant() == null || agent.getTenant().getId() == null) return;
+        events.publishEvent(new AgentConfigurationChanged(agent.getTenant().getId(), agent.getId()));
     }
 
     @Transactional(readOnly = true)
     public List<String> missingRequired(UUID agentId) {
+        var workspace = agentRepository.findById(agentId).map(this::workspaceFacts).orElse(Map.of());
         return variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agentId)
                 .stream()
                 .filter(variable -> !SYSTEM_MANAGED_VARIABLES.contains(variable.getKey()))
                 .filter(AgentVariable::isRequired)
-                .filter(variable -> !variable.isFilled())
+                .filter(variable -> !covered(variable, workspace))
                 .map(AgentVariable::getDisplayLabel)
                 .toList();
     }
@@ -193,7 +333,10 @@ public class AgentVariableService {
         Map<String, String> values = new LinkedHashMap<>();
         values.put("agent_name", agent.getName());
         values.put("timezone", agent.getTimezone());
-        variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId())
+        // Workspace profile first, so an agent's own filled value replaces it.
+        values.putAll(workspaceFacts(agent));
+        variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()).stream()
+                .filter(AgentVariable::isFilled)
                 .forEach(variable -> values.put(variable.getKey(), variable.getValue()));
         values.put("business_timezone", agent.getTimezone());
         values.put("calendar_system", agent.getCalendarProvider() == null || agent.getCalendarProvider().isBlank()
@@ -210,16 +353,7 @@ public class AgentVariableService {
         values.put("notification_channels", String.join(", ", agent.getBookingNotificationChannels()));
         values.put("business_hours", OperatingHoursSchedule.describe(OperatingHoursSchedule.effective(agent)));
         values.put("after_hours_behavior", describeAfterHoursBehavior(agent.getAfterHoursBehavior()));
-
-        var matcher = PLACEHOLDER.matcher(prompt);
-        var result = new StringBuffer();
-        while (matcher.find()) {
-            matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(
-                    values.getOrDefault(matcher.group(1), "")
-            ));
-        }
-        matcher.appendTail(result);
-        return result.toString();
+        return PromptTemplate.render(prompt, values::get);
     }
 
     @Transactional(readOnly = true)
@@ -229,6 +363,7 @@ public class AgentVariableService {
                 .map(AgentVariable::getValue)
                 .map(String::trim)
                 .filter(value -> !value.isBlank())
+                .or(() -> java.util.Optional.ofNullable(workspaceFacts(agent).get("business_name")))
                 .orElseGet(() -> AgentBusinessIdentity.fromPrompt(agent));
     }
 
@@ -239,17 +374,32 @@ public class AgentVariableService {
      */
     @Transactional(readOnly = true)
     public String conversationContext(Agent agent) {
-        var facts = variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()).stream()
+        var variables = variableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId()).stream()
                 .filter(variable -> !SYSTEM_MANAGED_VARIABLES.contains(variable.getKey()))
-                .filter(AgentVariable::isFilled)
                 .toList();
+        var facts = new java.util.ArrayList<Fact>();
+        var ownKeys = new java.util.HashSet<String>();
+        for (var variable : variables) {
+            if (!variable.isFilled()) continue;
+            ownKeys.add(variable.getKey());
+            facts.add(new Fact(variable.getKey(), variable.getDisplayLabel(), conversationValue(agent, variable), false));
+        }
+        // Workspace business-profile facts fill in whatever this agent did not set itself.
+        var labels = new java.util.HashMap<String, String>();
+        variables.forEach(variable -> labels.put(variable.getKey(), variable.getDisplayLabel()));
+        workspaceFacts(agent).forEach((key, value) -> {
+            if (ownKeys.contains(key) || SYSTEM_MANAGED_VARIABLES.contains(key)) return;
+            // One catalogue is enough; both keys exist only so either placeholder resolves.
+            if ("services_and_prices".equals(key) && !labels.containsKey(key)) return;
+            facts.add(new Fact(key, labels.getOrDefault(key, humanize(key)), value, true));
+        });
         var customerFacing = facts.stream()
-                .filter(variable -> !INTERNAL_OPERATION_KEYS.contains(variable.getKey()))
-                .map(variable -> conversationFact(agent, variable))
+                .filter(fact -> !INTERNAL_OPERATION_KEYS.contains(fact.key()))
+                .map(this::conversationFact)
                 .collect(java.util.stream.Collectors.joining("\n"));
         var internal = facts.stream()
-                .filter(variable -> INTERNAL_OPERATION_KEYS.contains(variable.getKey()))
-                .map(variable -> conversationFact(agent, variable))
+                .filter(fact -> INTERNAL_OPERATION_KEYS.contains(fact.key()))
+                .map(this::conversationFact)
                 .collect(java.util.stream.Collectors.joining("\n"));
         var sections = new java.util.ArrayList<String>();
         if (!customerFacing.isBlank()) {
@@ -263,13 +413,19 @@ public class AgentVariableService {
         return String.join("\n\n", sections);
     }
 
-    private String conversationFact(Agent agent, AgentVariable variable) {
-        var value = conversationValue(agent, variable);
-        var heading = "- " + variable.getKey() + " (" + variable.getDisplayLabel() + ")";
-        if (!SERVICE_CATALOG_KEYS.contains(variable.getKey())) {
+    /** @param oneEntryPerLine profile catalogues are already one service per line, commas included */
+    private record Fact(String key, String label, String value, boolean oneEntryPerLine) {
+    }
+
+    private String conversationFact(Fact fact) {
+        var value = fact.value();
+        var heading = "- " + fact.key() + " (" + fact.label() + ")";
+        if (!SERVICE_CATALOG_KEYS.contains(fact.key())) {
             return heading + ": " + value;
         }
-        var entries = catalogEntries(value);
+        var entries = fact.oneEntryPerLine()
+                ? java.util.Arrays.stream(value.split("\\r?\\n")).map(String::trim).filter(line -> !line.isEmpty()).toList()
+                : catalogEntries(value);
         if (entries.isEmpty()) return heading + ": " + value;
         return heading + " — exact approved catalog; keep each service and its price together:\n"
                 + entries.stream().map(entry -> "  * " + entry)

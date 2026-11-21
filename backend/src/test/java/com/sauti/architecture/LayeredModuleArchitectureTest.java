@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
  * add a module here when it is restructured.
  */
 class LayeredModuleArchitectureTest {
-    private static final String[] LAYERED_MODULES = {"auth", "tenant", "audit"};
+    private static final String[] LAYERED_MODULES = {"auth", "tenant", "audit", "business"};
     private static JavaClasses classes;
 
     @BeforeAll

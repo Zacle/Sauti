@@ -50,7 +50,7 @@ class AgentVariableServiceTest {
         );
 
         assertThat(resolved)
-                .isEqualTo("Amina answers for Nairobi Family Health in Africa/Nairobi. Insurance: .")
+                .isEqualTo("Amina answers for Nairobi Family Health in Africa/Nairobi.")
                 .doesNotContain("{{");
     }
 

@@ -32,9 +32,21 @@ public class ManagedVoiceAgentReconciliationService {
         this.provisioning = provisioning;
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    /** fallbackExecution: some edits (document uploads) run outside a transaction and must still re-sync. */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void agentChanged(AgentConfigurationChanged changed) {
         enqueue(changed);
+    }
+
+    /** Workspace facts feed every agent's instructions, so each agent in the workspace is refreshed. */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    public void businessProfileChanged(com.sauti.business.application.BusinessProfileChanged changed) {
+        try {
+            worker.agentsIn(changed.workspaceId()).forEach(this::enqueue);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("Could not queue agents after a business profile change exception={}",
+                    exception.getClass().getSimpleName());
+        }
     }
 
     @EventListener(ApplicationReadyEvent.class)

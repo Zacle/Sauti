@@ -350,6 +350,11 @@
   background:var(--color-surface-2);
 }
 
+/* A notice row (for example an unpublished draft) sits between the header and the studio. */
+.agent-studio.has-notice {
+  grid-template-rows: 76px auto minmax(0, 1fr);
+}
+
 .console-main:has(.agent-studio) {
   height: 100vh;
   overflow: hidden;

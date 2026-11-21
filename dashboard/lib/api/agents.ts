@@ -1,4 +1,4 @@
-import type { Agent, AgentDraft, AgentReadiness, AgentStats, AgentTemplate, AgentVariable, AvailablePhoneNumber, CreateAgentVariable, GeneratedAgentDraft, KnowledgeDocument } from "@/types/api";
+import type { Agent, AgentDraft, AgentDraftView, AgentReadiness, AgentSetup, AgentVersion, InstructionsPreview, AgentStats, AgentTemplate, AgentVariable, AvailablePhoneNumber, CreateAgentVariable, GeneratedAgentDraft, KnowledgeDocument } from "@/types/api";
 import { apiRequest } from "./client";
 
 export function createAgent(draft: AgentDraft) {
@@ -70,6 +70,52 @@ export function createAgentFromTemplate(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/** Creates an agent with all its business details in one step; nothing is saved if any part fails. */
+export function setupAgent(setup: AgentSetup) {
+  return apiRequest<Agent>("/agents/setup", {
+    method: "POST",
+    body: JSON.stringify(setup),
+  });
+}
+
+export function updateAgentSetup(agentId: string, setup: AgentSetup) {
+  return apiRequest<Agent>(`/agents/${agentId}/setup`, {
+    method: "PUT",
+    body: JSON.stringify(setup),
+  });
+}
+
+/** The unpublished draft, or null when there is none. */
+export async function getAgentDraft(agentId: string) {
+  const draft = await apiRequest<AgentDraftView | null | "">(`/agents/${agentId}/draft`);
+  return draft && typeof draft === "object" && "setup" in draft ? draft : null;
+}
+
+export function saveAgentDraft(agentId: string, setup: AgentSetup) {
+  return apiRequest<AgentDraftView>(`/agents/${agentId}/draft`, {
+    method: "PUT",
+    body: JSON.stringify(setup),
+  });
+}
+
+export function discardAgentDraft(agentId: string) {
+  return apiRequest<void>(`/agents/${agentId}/draft`, { method: "DELETE" });
+}
+
+export function listAgentVersions(agentId: string) {
+  return apiRequest<AgentVersion[]>(`/agents/${agentId}/versions`);
+}
+
+/** Publishes an earlier version again; it becomes the newest version. */
+export function restoreAgentVersion(agentId: string, version: number) {
+  return apiRequest<Agent>(`/agents/${agentId}/versions/${version}/restore`, { method: "POST" });
+}
+
+export function getInstructionsPreview(agentId: string, language?: string) {
+  const query = language ? `?language=${encodeURIComponent(language)}` : "";
+  return apiRequest<InstructionsPreview>(`/agents/${agentId}/instructions-preview${query}`);
 }
 
 export function generateAgentFromBrief(brief: string) {
