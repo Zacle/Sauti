@@ -117,14 +117,14 @@ const agents = [
   },
 ].map((agent) => ({ ...agentDefaults, ...agent }));
 
-const outcomes = ["booking", "faq_answered", "completed", "booking", "transferred", "no_answer", "faq_answered", "voicemail", "booking", "completed"];
+const outcomes = ["booking", "faq_answered", "completed", "booking", "transferred", "no_answer", "faq_answered", "voicemail", "booking", "unanswered"];
 const intents = ["book_cleaning", "opening_hours", "reschedule", "book_checkup", "billing_question", null, "pricing", null, "book_whitening", "directions"];
 const callers = ["+254 712 004 118", "+254 733 218 904", "+254 701 552 310", "+33 6 12 44 81 09", "+254 722 908 441", "+255 754 118 220", "+254 790 334 017"];
 
 const calls = Array.from({ length: 48 }, (_, i) => {
   const started = now - i * 0.37 * DAY - (i % 6) * 2_700_000;
   const outcome = outcomes[i % outcomes.length];
-  const duration = outcome === "no_answer" ? 0 : 38 + ((i * 41) % 240);
+  const duration = outcome === "no_answer" || outcome === "unanswered" ? 0 : 38 + ((i * 41) % 240);
   const agentId = i % 4 === 3 ? "agent-after-hours" : "agent-front-desk";
   return {
     id: `call-${1000 + i}`,
@@ -139,7 +139,7 @@ const calls = Array.from({ length: 48 }, (_, i) => {
     outcome,
     transcript: null,
     recordingUrl: null,
-    failureReason: null,
+    failureReason: outcome === "unanswered" ? "agent_unavailable" : null,
     callSummary: outcome === "booking"
       ? "Caller asked for a cleaning this week and accepted the first morning slot. Confirmation SMS sent."
       : outcome === "transferred"

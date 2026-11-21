@@ -25,8 +25,15 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(name = "sauti.telephony.provider", havingValue = "telnyx")
-public class TelnyxTelephonyProvider implements TelephonyProvider {
+public class TelnyxTelephonyProvider implements TelephonyProvider, com.sauti.call.CallLiveness {
     private static final Logger LOGGER = LoggerFactory.getLogger(TelnyxTelephonyProvider.class);
+    /**
+     * Commands on a live call (answer, start the assistant, speak, reject, hang up) normally finish in
+     * well under a second. A short limit means an outage turns the caller away in seconds instead of
+     * leaving them ringing; number ordering and other account work keep the longer limit.
+     */
+    static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(6);
+    private static final Duration ACCOUNT_TIMEOUT = Duration.ofSeconds(20);
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
@@ -217,13 +224,25 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
                 Map.of("messaging_profile_id", messagingProfileId));
     }
 
+    /** Client state on a "closed" announcement, so its end can hang up the call. */
+    public static final String CLOSED_ANNOUNCEMENT = "sauti-closed";
+
     public void answerInboundCall(Call call, String callControlId, String greeting) {
+        answerInboundCall(call, callControlId, greeting, BUSINESS_OPEN);
+    }
+
+    /**
+     * Answers with the agent's assistant. {@code businessHours} tells the assistant whether the call
+     * is within opening hours and, if not, how to behave: {@link #BUSINESS_OPEN},
+     * {@code after_hours_answer} or {@code after_hours_take_message}.
+     */
+    public void answerInboundCall(Call call, String callControlId, String greeting, String businessHours) {
         requireConfigured();
         // Resolve and, when necessary, synchronize the managed assistant while
         // the inbound leg is still ringing. Doing this after answer creates
         // several seconds of dead air for the caller on a cold configuration.
         var startedAt = System.nanoTime();
-        var preparedAssistant = prepareAiAssistant(call, greeting);
+        var preparedAssistant = prepareAiAssistant(call, greeting, businessHours);
         var preparedAt = System.nanoTime();
         var body = new LinkedHashMap<String, Object>();
         body.put("command_id", UUID.randomUUID().toString());
@@ -246,14 +265,80 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
     }
 
     public void startAiAssistant(Call call, String callControlId, String greeting) {
-        startAiAssistant(call, callControlId, prepareAiAssistant(call, greeting));
+        startAiAssistant(call, callControlId, prepareAiAssistant(call, greeting, BUSINESS_OPEN));
     }
 
-    private PreparedAiAssistant prepareAiAssistant(Call call, String greeting) {
+    /**
+     * Answers, speaks the closed message in the agent's voice, and lets the call-control webhook hang
+     * up when it finishes ({@link #CLOSED_ANNOUNCEMENT}). No assistant is started, so nothing else
+     * is said and no AI minutes are used.
+     */
+    public void answerWithClosedMessage(Call call, String callControlId, String message) {
+        requireConfigured();
+        send("POST", apiBaseUrl + "/calls/" + encodePath(callControlId) + "/actions/answer",
+                Map.of("command_id", UUID.randomUUID().toString()));
+        var language = call.getAgent().getDefaultLanguage();
+        var body = new LinkedHashMap<String, Object>();
+        body.put("payload", message);
+        body.put("voice", TelnyxVoiceCompatibility.select(blank(call.getAgent().getTtsVoiceId()), language, defaultVoiceId));
+        body.put("client_state", java.util.Base64.getEncoder().encodeToString(
+                CLOSED_ANNOUNCEMENT.getBytes(StandardCharsets.UTF_8)));
+        body.put("command_id", UUID.randomUUID().toString());
+        send("POST", apiBaseUrl + "/calls/" + encodePath(callControlId) + "/actions/speak", body);
+    }
+
+    /**
+     * Whether Telnyx still has this call connected. A call Telnyx no longer knows (404, 422) has
+     * ended; any other failure means it could not be asked.
+     */
+    @Override
+    public java.util.Optional<Boolean> isAlive(String callControlId) {
+        if (apiKey.isBlank() || callControlId == null || !callControlId.startsWith("v3:")) return java.util.Optional.empty();
+        try {
+            var request = HttpRequest.newBuilder(URI.create(apiBaseUrl + "/calls/" + encodePath(callControlId)))
+                    .timeout(COMMAND_TIMEOUT)
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 404 || response.statusCode() == 422) return java.util.Optional.of(false);
+            if (response.statusCode() < 200 || response.statusCode() >= 300) return java.util.Optional.empty();
+            return java.util.Optional.of(objectMapper.readTree(response.body()).path("data").path("is_alive").asBoolean(false));
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return java.util.Optional.empty();
+        } catch (Exception failure) {
+            return java.util.Optional.empty();
+        }
+    }
+
+    /**
+     * An agent that speaks one language listens for that language: auto-detection mishears short
+     * accented turns. An agent with several languages listens for any of them, so callers can use
+     * whichever they prefer.
+     */
+    static String transcriptionLanguage(Agent agent, String language) {
+        var supported = agent.getSupportedLanguages();
+        if (supported != null && supported.size() > 1) return "auto";
+        return language == null || language.isBlank() ? "en" : language;
+    }
+
+    /** Turns away a call that is still ringing, so the caller is not left listening to ringing. */
+    public void reject(String callControlId) {
+        requireConfigured();
+        send("POST", apiBaseUrl + "/calls/" + encodePath(callControlId) + "/actions/reject",
+                Map.of("cause", "CALL_REJECTED", "command_id", UUID.randomUUID().toString()));
+    }
+
+    public static final String BUSINESS_OPEN = "open";
+
+    private PreparedAiAssistant prepareAiAssistant(Call call, String greeting, String businessHours) {
         var managed = provisioningService.existing(call);
         return new PreparedAiAssistant(
                 managed.externalAgentId(),
-                greeting == null ? "" : greeting.trim()
+                greeting == null ? "" : greeting.trim(),
+                businessHours == null || businessHours.isBlank() ? BUSINESS_OPEN : businessHours
         );
     }
 
@@ -264,7 +349,10 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
     ) {
         var assistant = new LinkedHashMap<String, Object>();
         assistant.put("id", prepared.externalAgentId());
-        assistant.put("dynamic_variables", Map.of("sauti_call_sid", call.getTwilioCallSid()));
+        assistant.put("dynamic_variables", Map.of(
+                "sauti_call_sid", call.getTwilioCallSid(),
+                "sauti_business_hours", prepared.businessHours()
+        ));
         var body = new LinkedHashMap<String, Object>();
         body.put("assistant", Map.copyOf(assistant));
         body.put("greeting", prepared.greeting());
@@ -282,7 +370,7 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
         );
         body.put("transcription", Map.of(
                 "model", "deepgram/nova-3",
-                "language", "auto"
+                "language", transcriptionLanguage(call.getAgent(), language)
         ));
         body.put("send_message_history_updates", true);
         body.put("client_state", java.util.Base64.getEncoder().encodeToString(
@@ -378,7 +466,7 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
     private JsonNode send(String method, String url, Object body) {
         try {
             var builder = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(20))
+                    .timeout(url.contains("/calls/") ? COMMAND_TIMEOUT : ACCOUNT_TIMEOUT)
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Accept", "application/json");
             if ("POST".equals(method)) {
@@ -440,6 +528,6 @@ public class TelnyxTelephonyProvider implements TelephonyProvider {
     public record NumberOrder(String id, String status, String phoneNumber, boolean requirementsMet) {
     }
 
-    private record PreparedAiAssistant(String externalAgentId, String greeting) {
+    private record PreparedAiAssistant(String externalAgentId, String greeting, String businessHours) {
     }
 }

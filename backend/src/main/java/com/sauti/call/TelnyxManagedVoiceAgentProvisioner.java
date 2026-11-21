@@ -46,7 +46,7 @@ public class TelnyxManagedVoiceAgentProvisioner {
     }
 
     public String configurationVersion() {
-        return "46";
+        return "47";
     }
 
     public ManagedVoiceAgentReference synchronize(
@@ -231,6 +231,11 @@ public class TelnyxManagedVoiceAgentProvisioner {
                   after each caller turn, even when tools are chained. Never ask a question or imply success.
                 - After every tool result, continue automatically in the same turn; never wait for more caller speech.
                 - Keep each spoken answer continuous and concise.
+                - Business hours right now: `{{sauti_business_hours}}`. `open` means assist normally.
+                  `after_hours_answer` means the call arrived outside opening hours; still assist normally.
+                  `after_hours_take_message` means the business is closed: do not offer a live transfer or
+                  confirm a booking. Collect the caller's name, callback number and a short message, repeat
+                  them back once for confirmation, thank the caller, and end the call.
                 - On Telnyx, do not call the portable end_call webhook. Use Sauti's explicit conversation channel
                   `{{sauti_conversation_channel}}` to select exactly one terminal action. First speak one complete,
                   natural farewell of no more than six words. Wait until its final word has completely finished
@@ -245,7 +250,10 @@ public class TelnyxManagedVoiceAgentProvisioner {
         // Telnyx currently reports AI Agent SDK WebRTC sessions as phone_call.
         // Keep phone calls as the safe default and let the browser override this
         // variable through X-Sauti-Conversation-Channel at conversation start.
-        body.put("dynamic_variables", Map.of("sauti_conversation_channel", "phone_call"));
+        body.put("dynamic_variables", Map.of(
+                "sauti_conversation_channel", "phone_call",
+                "sauti_business_hours", "open"
+        ));
         body.put("voice_settings", Map.of(
                 "voice",
                 TelnyxVoiceCompatibility.select(

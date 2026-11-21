@@ -157,9 +157,11 @@ public class CallPipelineService {
                     return callRepository.save(created);
                 });
         callSessionStore.createIfAbsent(twilioCallSid, CallSession.fromCall(call, ""));
-        if ((!call.isAfterHours() || "answer".equals(agent.getAfterHoursBehavior()))
-                && openingGreeting(call).isBlank()) {
-            var opening = instantGreeting(agent, agent.getDefaultLanguage());
+        if (openingGreeting(call).isBlank()) {
+            // After hours the caller first hears the after-hours message, unless the agent answers normally.
+            var opening = call.isAfterHours() && !"answer".equals(agent.getAfterHoursBehavior())
+                    ? afterHoursOpening(agent, agent.getDefaultLanguage())
+                    : instantGreeting(agent, agent.getDefaultLanguage());
             if (!opening.isBlank()) {
                 call.appendAgentMessage(agent.getDefaultLanguage(), opening);
                 var turnIndex = callTurnRepository.countByCall_Id(call.getId()) + 1;
@@ -171,6 +173,28 @@ public class CallPipelineService {
         }
         dashboardEventPublisher.callStarted(call);
         return call;
+    }
+
+    /** The active agent that answers calls to this number, if any. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Agent> inboundAgent(String number) {
+        return agentRepository.findByTwilioPhoneNumber(number).filter(Agent::isActive);
+    }
+
+    /**
+     * Records a call to an agent's number that was turned away before anyone spoke: the workspace is
+     * blocked, or the agent could not be started. It shows in the call list but is never billed.
+     */
+    @Transactional
+    public Call recordUnansweredInboundCall(Agent agent, String callControlId, String callerNumber, String reason) {
+        var call = callRepository.findByTwilioCallSid(callControlId)
+                .orElseGet(() -> new Call(agent.getTenant(), agent, callControlId, callerNumber, "inbound"));
+        call.markUnanswered(reason);
+        realtimeCallerTranscripts.remove(call.getId());
+        var saved = callRepository.save(call);
+        callSessionStore.delete(callControlId);
+        dashboardEventPublisher.callEnded(saved);
+        return saved;
     }
 
     @Transactional
@@ -455,6 +479,8 @@ public class CallPipelineService {
         callRepository.findByTwilioCallSid(twilioCallSid)
                 .ifPresent(call -> {
                     realtimeCallerTranscripts.remove(call.getId());
+                    // Turned away before anyone spoke: nothing to meter, analyse or send to integrations.
+                    if ("unanswered".equals(call.getOutcome())) return;
                     if (call.isActive()) {
                         call.complete(outcome);
                     }
@@ -467,6 +493,19 @@ public class CallPipelineService {
                     callRepository.save(call);
                     dashboardEventPublisher.callEnded(call);
                 });
+    }
+
+    /**
+     * Ends a call whose hang-up never arrived. It is billed up to {@code endedAt}, not up to now, and
+     * then goes through the usual end-of-call work (analysis, integrations).
+     */
+    @Transactional
+    public void closeStaleCall(java.util.UUID callId, OffsetDateTime endedAt) {
+        callRepository.findById(callId).filter(Call::isActive).ifPresent(call -> {
+            call.complete("completed", endedAt);
+            callRepository.save(call);
+            completeActiveCall(call.getTwilioCallSid(), "completed");
+        });
     }
 
     @Transactional
@@ -752,6 +791,44 @@ public class CallPipelineService {
             case "ar" -> "مرحبًا، معك " + agent.getName() + " من " + business + ". كيف يمكنني مساعدتك؟";
             default -> "Hello, this is " + agent.getName() + " from " + business + ". How can I help?";
         };
+    }
+
+    /**
+     * What a caller hears first outside opening hours when the agent does not answer normally: the
+     * owner's own after-hours message, or a short default in the agent's language.
+     */
+    public String afterHoursOpening(Agent agent, String language) {
+        var configured = agent.getAfterHoursMessage() == null ? "" : agent.getAfterHoursMessage().trim();
+        if (!configured.isBlank()) return renderPlaceholders(agent, configured);
+        var business = agentBusinessName(agent);
+        var takesMessages = "take_message".equals(agent.getAfterHoursBehavior());
+        var resolvedLanguage = language == null || language.isBlank() ? agent.getDefaultLanguage() : language;
+        return switch (resolvedLanguage) {
+            case "fr" -> (business.isBlank() ? "Merci de votre appel. " : "Merci d'avoir appelé " + business + ". ")
+                    + (takesMessages
+                    ? "Nous sommes fermés pour le moment, mais je peux prendre un message pour l'équipe. Quel est votre nom ?"
+                    : "Nous sommes fermés pour le moment. Merci de rappeler pendant nos heures d'ouverture. Au revoir.");
+            case "sw" -> (business.isBlank() ? "Asante kwa kupiga simu. " : "Asante kwa kupiga simu " + business + ". ")
+                    + (takesMessages
+                    ? "Tumefunga kwa sasa, lakini naweza kuchukua ujumbe kwa timu. Jina lako ni nani?"
+                    : "Tumefunga kwa sasa. Tafadhali piga tena wakati wa saa za kazi. Kwaheri.");
+            case "ar" -> (business.isBlank() ? "شكرًا لاتصالك. " : "شكرًا لاتصالك بـ" + business + ". ")
+                    + (takesMessages
+                    ? "نحن مغلقون الآن، لكن يمكنني أخذ رسالة للفريق. ما اسمك؟"
+                    : "نحن مغلقون الآن. يرجى الاتصال مجددًا خلال ساعات العمل. مع السلامة.");
+            default -> (business.isBlank() ? "Thank you for calling. " : "Thank you for calling " + business + ". ")
+                    + (takesMessages
+                    ? "We're closed right now, but I can take a message for the team. May I have your name?"
+                    : "We're closed right now. Please call again during our opening hours. Goodbye.");
+        };
+    }
+
+    private String renderPlaceholders(Agent agent, String text) {
+        var result = text.replace("{{agent_name}}", agent.getName()).replace("{{timezone}}", agent.getTimezone());
+        for (var variable : agentVariableRepository.findAllByAgentIdOrderByRequiredDescDisplayLabelAsc(agent.getId())) {
+            if (variable.isFilled()) result = result.replace("{{" + variable.getKey() + "}}", variable.getValue());
+        }
+        return result.replaceAll("\\{\\{[a-z0-9_]+}}", "").replaceAll("\\s{2,}", " ").trim();
     }
 
     private String agentBusinessName(Agent agent) {
