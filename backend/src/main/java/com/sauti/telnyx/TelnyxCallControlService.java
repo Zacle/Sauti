@@ -31,6 +31,7 @@ public class TelnyxCallControlService {
     private final PilotProvisioningPolicyService provisioningPolicies;
     private final BillingAccessPolicy billingAccess;
     private final io.micrometer.core.instrument.MeterRegistry meters;
+    private final com.sauti.call.CallTransferService transfers;
     /**
      * Events for one call run in order on one lane; different calls run on different lanes, so a slow
      * answer for one caller never holds up the ringing of another.
@@ -56,9 +57,11 @@ public class TelnyxCallControlService {
             ProviderCostReconciliationService costReconciliation,
             PilotProvisioningPolicyService provisioningPolicies,
             BillingAccessPolicy billingAccess,
-            io.micrometer.core.instrument.MeterRegistry meters
+            io.micrometer.core.instrument.MeterRegistry meters,
+            com.sauti.call.CallTransferService transfers
     ) {
         this.meters = meters;
+        this.transfers = transfers;
         this.objectMapper = objectMapper;
         this.eventRepository = eventRepository;
         this.callPipelineService = callPipelineService;
@@ -134,7 +137,8 @@ public class TelnyxCallControlService {
             return;
         }
         var payload = objectMapper.readTree(event.getPayloadJson());
-        if (TIME_SENSITIVE.contains(event.getEventType())
+        if (transferCallId(payload).isEmpty()
+                && TIME_SENSITIVE.contains(event.getEventType())
                 && event.happenedAt() != null && event.happenedAt().plus(CALLER_WAITS).isBefore(now)) {
             expire(event, payload);
             return;
@@ -180,6 +184,13 @@ public class TelnyxCallControlService {
         event.markProcessing();
         eventRepository.save(event);
         try {
+            var transferOf = transferCallId(payload);
+            if (transferOf.isPresent()) {
+                handleTransferLeg(eventType, payload, transferOf.get());
+                event.markCompleted();
+                eventRepository.save(event);
+                return;
+            }
             switch (eventType) {
                 case "call.initiated" -> handleInitiated(payload);
                 case "call.answered" -> handleAnswered(payload);
@@ -271,6 +282,38 @@ public class TelnyxCallControlService {
             // Still ringing: reject. Already answered (the assistant failed to start): hang up.
             if (!safely(() -> telephonyProvider.reject(callControlId))) safely(() -> telephonyProvider.hangup(callControlId));
             return "failed";
+        }
+    }
+
+    /** The Sauti call whose transfer leg this event belongs to, if it is one. */
+    private java.util.Optional<java.util.UUID> transferCallId(JsonNode payload) {
+        var state = payload.path("client_state").asText("");
+        if (state.isBlank()) return java.util.Optional.empty();
+        try {
+            return com.sauti.call.CallTransferService.transferCallId(
+                    new String(java.util.Base64.getDecoder().decode(state), java.nio.charset.StandardCharsets.UTF_8));
+        } catch (IllegalArgumentException notOurs) {
+            return java.util.Optional.empty();
+        }
+    }
+
+    /**
+     * The team member's leg of a transfer: answering or bridging means the caller is connected; a
+     * hang-up before that means the transfer failed, and why. The caller's own leg is untouched.
+     */
+    private void handleTransferLeg(String eventType, JsonNode payload, java.util.UUID callId) {
+        var legId = payload.path("call_control_id").asText("");
+        switch (eventType) {
+            case "call.answered", "call.bridged" -> transfers.handleDialResult(callId, "answered", legId);
+            case "call.hangup" -> transfers.handleDialResult(callId, switch (payload.path("hangup_cause").asText("")) {
+                case "user_busy" -> "busy";
+                case "timeout", "no_answer" -> "no_answer";
+                case "originator_cancel" -> "canceled";
+                default -> "failed";
+            }, legId);
+            default -> {
+                // Other events on the transfer leg change nothing in Sauti.
+            }
         }
     }
 

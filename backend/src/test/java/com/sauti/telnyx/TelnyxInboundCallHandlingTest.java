@@ -55,7 +55,8 @@ class TelnyxInboundCallHandlingTest {
         billing = mock(BillingAccessPolicy.class);
         policies = mock(PilotProvisioningPolicyService.class);
         service = new TelnyxCallControlService(json, events, pipeline, telnyx, queries,
-                mock(ProviderCostReconciliationService.class), policies, billing, meters);
+                mock(ProviderCostReconciliationService.class), policies, billing, meters,
+                mock(com.sauti.call.CallTransferService.class));
         event = new TelnyxWebhookEvent("event-1", "call.initiated", CONTROL, null);
         when(events.findByProviderEventId(anyString())).thenReturn(Optional.of(event));
 

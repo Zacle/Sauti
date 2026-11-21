@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import {
 getInstructionsPreview
 } from "@/lib/api/agents";
-import type { AgentVariableDefinition, InstructionsPreview } from "@/types/api";
+import type { AgentVariableDefinition, InstructionsPreview, ToolRule } from "@/types/api";
 import {
 CircleAlert,
 Eye,
@@ -135,9 +135,56 @@ export function FinalInstructions({ agentId, language, unsaved, savedVersion }: 
       <pre className="m-0 max-h-[min(64vh,600px)] overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-line bg-tint/[0.03] p-3.5 font-mono text-[0.8rem] leading-6 text-fg">
         {preview.instructions}
       </pre>
-      <p className="m-0 text-[0.76rem] text-fg-muted">
-        Tools available: {preview.tools.length ? preview.tools.join(", ") : "none"}
-      </p>
+      <ToolRules rules={preview.toolRules ?? preview.tools.map((name) => ({ name, effect: "read_only", confirmation: "none" }))} />
+    </div>
+  );
+}
+
+const EFFECT_LABEL: Record<ToolRule["effect"], string> = {
+  read_only: "Looks things up",
+  data_write: "Changes records",
+  external_communication: "Sends a message",
+  financial: "Requests a payment",
+  transfer: "Transfers the call",
+  terminal: "Ends the call",
+};
+
+const CONFIRMATION_LABEL: Record<ToolRule["confirmation"], { label: string; dot: string }> = {
+  none: { label: "No confirmation needed", dot: "bg-line-strong" },
+  explicit: { label: "Asks the caller first", dot: "bg-success" },
+  verified_review: { label: "Reads the details back first", dot: "bg-success" },
+};
+
+/**
+ * Every tool the agent can use on a call, what it does and whether the caller approves it first.
+ * Anything that changes something always asks; Sauti enforces that whatever is configured.
+ */
+function ToolRules({ rules }: { rules: ToolRule[] }) {
+  const ordered = [...rules].sort((a, b) => Number(a.effect === "read_only") - Number(b.effect === "read_only"));
+  return (
+    <div className="grid gap-1.5">
+      <span className="text-[0.74rem] font-medium text-fg-muted">What the agent can do</span>
+      {ordered.length === 0 ? (
+        <p className="m-0 text-[0.8rem] text-fg-muted">No tools are on for this agent.</p>
+      ) : (
+        <ul className="m-0 grid list-none divide-y divide-line rounded-[var(--radius-control)] border border-line p-0">
+          {ordered.map((rule) => {
+            const confirmation = CONFIRMATION_LABEL[rule.confirmation];
+            return (
+              <li key={rule.name} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 py-2 text-[0.82rem]">
+                <span className="min-w-0">
+                  <span className="font-mono text-[0.78rem] text-ink">{rule.name}</span>
+                  <span className="text-fg-muted"> · {EFFECT_LABEL[rule.effect]}</span>
+                </span>
+                <span className="inline-flex items-center gap-2 whitespace-nowrap text-[0.76rem] text-fg-muted">
+                  <span className={`size-1.5 rounded-full ${confirmation.dot}`} aria-hidden="true" />
+                  {confirmation.label}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

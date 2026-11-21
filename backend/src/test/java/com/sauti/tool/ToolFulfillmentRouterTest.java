@@ -118,7 +118,7 @@ class ToolFulfillmentRouterTest {
     void marksOnlyACleanSchemaConstrainedVerifiedReviewTransition() {
         var policy = new ToolActionPolicy();
         var tool = new AgentTool(
-                mock(Agent.class), "book_slot", "Booking", Map.of(), "noop", true, 1
+                mock(Agent.class), "book_slot", "Booking", Map.of(), "sauti_calendar", true, 1
         );
         tool.configureActionPolicy(
                 ToolActionEffect.DATA_WRITE,

@@ -631,6 +631,15 @@ export type InstructionsPreview = {
   instructions: string;
   tools: string[];
   warnings: InstructionsPreviewWarning[];
+  /** What each tool may do on a call and whether the caller is asked first. */
+  toolRules: ToolRule[];
+};
+
+export type ToolRule = {
+  name: string;
+  effect: "read_only" | "data_write" | "external_communication" | "financial" | "transfer" | "terminal";
+  /** none: runs straight away; explicit: the caller approves on a later turn; verified_review: the booking is read back for approval. */
+  confirmation: "none" | "explicit" | "verified_review";
 };
 
 export type AgentVariable = {
@@ -692,6 +701,16 @@ export type Call = {
   transferRequestedAt?: string | null;
   transferCompletedAt?: string | null;
   afterHours?: boolean;
+};
+
+/** Something the agent did, or tried to do, during a call. */
+export type CallToolAction = {
+  toolName: string;
+  effect: "data_write" | "external_communication" | "financial" | "transfer" | "terminal";
+  /** started on a finished call means the server stopped while it ran, so the outcome is unknown. */
+  status: "awaiting_confirmation" | "started" | "performed" | "not_performed" | "failed";
+  summary: string | null;
+  at: string;
 };
 
 export type CallTurn = {

@@ -1,6 +1,7 @@
 import type {
   BrowserVoiceRuntimeSession,
   Call,
+  CallToolAction,
   CallTurn,
   StartTestCallResponse,
 } from "@/types/api";
@@ -64,6 +65,10 @@ export function recordTestStartupLatency(callId: string, latencyMs: number) {
 
 export function getCall(callId: string) {
   return apiRequest<Call>(`/calls/${callId}`);
+}
+
+export function listCallActions(callId: string) {
+  return apiRequest<CallToolAction[]>(`/calls/${callId}/actions`);
 }
 
 export function listCallTurns(callId: string) {

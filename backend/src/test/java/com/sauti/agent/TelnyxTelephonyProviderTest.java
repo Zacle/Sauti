@@ -205,4 +205,35 @@ class TelnyxTelephonyProviderTest {
         assertThat(TelnyxTelephonyProvider.transcriptionLanguage(single, "sw")).isEqualTo("sw");
         assertThat(TelnyxTelephonyProvider.transcriptionLanguage(several, "en")).isEqualTo("auto");
     }
+
+    @Test
+    void tagsATransferLegWithTheCallItBelongsTo() throws Exception {
+        var requests = new ArrayList<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            synchronized (requests) {
+                requests.add(exchange.getRequestURI().getRawPath() + " "
+                        + new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            }
+            var response = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var provider = new TelnyxTelephonyProvider(new ObjectMapper(), "test-key", "connection-1",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "", "", "Telnyx.NaturalHD.astra",
+                    mock(ManagedVoiceAgentProvisioningService.class));
+
+            provider.transfer("v3:caller", "+254711000000", "+254700000001", "sauti-transfer:abc");
+
+            assertThat(requests.get(0)).startsWith("/calls/v3%3Acaller/actions/transfer")
+                    .contains("\"to\":\"+254711000000\"")
+                    .contains("\"client_state\":\"" + java.util.Base64.getEncoder().encodeToString(
+                            "sauti-transfer:abc".getBytes(StandardCharsets.UTF_8)) + "\"");
+        } finally {
+            server.stop(0);
+        }
+    }
 }

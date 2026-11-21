@@ -413,10 +413,20 @@ public class TelnyxTelephonyProvider implements TelephonyProvider, com.sauti.cal
 
     @Override
     public void transfer(String callControlId, String to, String from) {
+        transfer(callControlId, to, from, null);
+    }
+
+    /** Transfers the caller; Telnyx repeats {@code clientState} on the new leg's events. */
+    @Override
+    public void transfer(String callControlId, String to, String from, String clientState) {
         requireConfigured();
         var body = new LinkedHashMap<String, Object>();
         body.put("to", to);
         if (from != null && !from.isBlank()) body.put("from", from);
+        if (clientState != null && !clientState.isBlank()) {
+            body.put("client_state", java.util.Base64.getEncoder().encodeToString(
+                    clientState.getBytes(StandardCharsets.UTF_8)));
+        }
         body.put("command_id", UUID.randomUUID().toString());
         send(
                 "POST",

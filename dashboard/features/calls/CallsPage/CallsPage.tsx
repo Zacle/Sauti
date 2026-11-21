@@ -14,6 +14,7 @@ import {
   Clock3,
   FileText,
   Headphones,
+  ListChecks,
   LoaderCircle,
   Pause,
   PhoneCall,
@@ -25,8 +26,8 @@ import {
 } from "lucide-react";
 import { listAgents } from "@/lib/api/agents";
 import { listBookings } from "@/lib/api/bookings";
-import { getCall, getCallRecording, listCalls, listCallTurns } from "@/lib/api/calls";
-import type { Agent, Booking, Call, CallTurn } from "@/types/api";
+import { getCall, getCallRecording, listCallActions, listCalls, listCallTurns } from "@/lib/api/calls";
+import type { Agent, Booking, Call, CallToolAction, CallTurn } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Alert, Input } from "@/components/ui/field";
 import { Card, EmptyState, Skeleton, Table, TableBody, TableHead, Tabs, TabsList, TabsTrigger } from "@/components/ui/primitives";
@@ -45,6 +46,7 @@ export function CallsPage() {
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [turns, setTurns] = useState<Record<string, CallTurn[]>>({});
+  const [actions, setActions] = useState<Record<string, CallToolAction[] | null>>({});
   const [filter, setFilter] = useState<CallFilter>("all");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -164,6 +166,12 @@ export function CallsPage() {
 
   async function openDetails(callId: string) {
     setSelectedId(callId);
+    if (actions[callId] === undefined) {
+      setActions((current) => ({ ...current, [callId]: null }));
+      listCallActions(callId)
+        .then((items) => setActions((current) => ({ ...current, [callId]: items })))
+        .catch(() => setActions((current) => ({ ...current, [callId]: [] })));
+    }
     if (!turns[callId]) {
       try {
         setTurns((current) => ({ ...current, [callId]: [] }));
@@ -335,6 +343,11 @@ export function CallsPage() {
             </section>
 
             <section>
+              <p className="m-0 mb-3 flex items-center gap-2 text-xs font-medium text-fg-muted"><ListChecks className="size-3.5" /> Actions</p>
+              <ActionList actions={actions[selectedCall.id]} callActive={selectedCall.outcome === "active"} />
+            </section>
+
+            <section>
               <p className="m-0 mb-3 flex items-center gap-2 text-xs font-medium text-fg-muted"><FileText className="size-3.5" /> Transcript</p>
               <Transcript turns={turns[selectedCall.id]} />
             </section>
@@ -372,7 +385,9 @@ function DateCell({ value }: { value: string }) {
 
 function RoutedEvent({ booking, call }: { booking: Booking | null; call: Call }) {
   if (booking) return <span className="inline-flex items-center gap-1.5 text-ink"><CalendarCheck2 className="size-3.5 text-signal" /> {booking.serviceType}</span>;
-  if (call.transferStatus) return <span className="text-fg">Transferred</span>;
+  if (call.transferStatus === "completed") return <span className="text-fg">Transferred</span>;
+  if (call.transferStatus === "requested" || call.transferStatus === "dialing") return <span className="text-fg">Transfer started</span>;
+  if (call.transferStatus) return <span className="text-fg-muted" title={call.transferFailureReason ?? undefined}>Transfer failed</span>;
   return <span className="text-fg-muted">—</span>;
 }
 
@@ -406,6 +421,39 @@ function DetailLine({ icon: Icon, label, value }: { icon: typeof CalendarCheck2;
       <dt className="flex items-center gap-1.5 text-xs text-fg-muted"><Icon className="size-3.5" /> {label}</dt>
       <dd className="m-0 mt-1 text-sm text-ink">{value}</dd>
     </div>
+  );
+}
+
+const ACTION_STATUS: Record<CallToolAction["status"], { label: string; dot: string }> = {
+  performed: { label: "Done", dot: "bg-success" },
+  awaiting_confirmation: { label: "Waited for confirmation", dot: "bg-info" },
+  not_performed: { label: "Not done", dot: "bg-warning" },
+  failed: { label: "Failed", dot: "bg-danger" },
+  started: { label: "Outcome unknown", dot: "bg-warning" },
+};
+
+/** Bookings, messages and transfers in the order they happened, each with what came of it. */
+function ActionList({ actions, callActive }: { actions: CallToolAction[] | null | undefined; callActive: boolean }) {
+  if (!actions) return <p className="m-0 flex items-center gap-2 text-sm text-fg-soft"><LoaderCircle className="size-4 animate-spin" /> Loading actions…</p>;
+  if (actions.length === 0) return <p className="m-0 text-sm text-fg-muted">The agent didn’t book, send or change anything on this call.</p>;
+  const time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return (
+    <ol className="m-0 grid list-none gap-0 divide-y divide-line rounded-[var(--radius-card)] border border-line p-0">
+      {actions.map((action, index) => {
+        const status = action.status === "started" && callActive
+          ? { label: "In progress", dot: "bg-signal animate-pulse" }
+          : ACTION_STATUS[action.status];
+        return (
+          <li key={`${action.at}-${index}`} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3.5 py-2.5 text-sm">
+            <span className="min-w-0 text-ink">{action.summary ?? humanize(action.toolName)}</span>
+            <span className="inline-flex items-center gap-2 whitespace-nowrap text-xs text-fg-muted">
+              <span className={`size-1.5 rounded-full ${status.dot}`} aria-hidden="true" />
+              {status.label} · <span className="tabular-nums">{time.format(new Date(action.at))}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 

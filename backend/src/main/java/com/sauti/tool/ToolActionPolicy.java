@@ -42,7 +42,7 @@ public class ToolActionPolicy {
 
     @SuppressWarnings("unchecked")
     public LlmToolDefinition decorate(AgentTool tool, LlmToolDefinition definition) {
-        var effect = tool.actionEffect();
+        var effect = ToolSafetyFloor.effect(tool);
         if (!effect.isSideEffecting()) return definition;
 
         var schema = new LinkedHashMap<String, Object>(definition.inputSchema());
@@ -57,11 +57,11 @@ public class ToolActionPolicy {
         ));
         if (!required.contains("question_handling")) required.add("question_handling");
 
-        if (tool.confirmationPolicy() == ToolConfirmationPolicy.EXPLICIT) {
+        if (ToolSafetyFloor.confirmation(tool) == ToolConfirmationPolicy.EXPLICIT) {
             properties.put("confirmation_state", Map.of(
                     "type", "string",
                     "enum", List.of("confirmed", "not_confirmed"),
-                    "description", tool.actionEffect() == ToolActionEffect.TERMINAL
+                    "description", ToolSafetyFloor.effect(tool) == ToolActionEffect.TERMINAL
                             ? "Whether the caller clearly indicated they are finished after the agent's respectful farewell."
                             : "Semantic claim that the caller explicitly and unconditionally confirmed this exact action and its material parameters. The server independently verifies this against a retained proposal and a later conversation-state revision; this field alone never authorizes the action."
             ));
@@ -73,14 +73,14 @@ public class ToolActionPolicy {
                 definition.name(),
                 java.util.Objects.requireNonNullElse(definition.description(), "")
                         + " Effect: " + effect.value() + ". " + SAFETY
-                        + confirmationInstruction(tool.confirmationPolicy(), effect),
+                        + confirmationInstruction(ToolSafetyFloor.confirmation(tool), effect),
                 Map.copyOf(schema),
                 definition.callerWaitExpected()
         );
     }
 
     public Optional<LlmToolResult> guard(Call businessCall, AgentTool tool, LlmToolCall call) {
-        var effect = tool.actionEffect();
+        var effect = ToolSafetyFloor.effect(tool);
         if (!effect.isSideEffecting()) return Optional.empty();
         var readiness = argument(call, "question_handling");
         if (!"ready_for_action".equals(readiness)) {
@@ -89,7 +89,7 @@ public class ToolActionPolicy {
             return Optional.of(deferred(call, tool, reason,
                     "No external action was performed. Resolve the caller's complete latest request first, then wait for a fresh action decision. Do not claim success."));
         }
-        if (tool.confirmationPolicy() == ToolConfirmationPolicy.EXPLICIT) {
+        if (ToolSafetyFloor.confirmation(tool) == ToolConfirmationPolicy.EXPLICIT) {
             if (effect == ToolActionEffect.TERMINAL) {
                 if (!"confirmed".equals(argument(call, "confirmation_state"))) {
                     return Optional.of(deferred(call, tool, "explicit_confirmation_required",
@@ -119,10 +119,10 @@ public class ToolActionPolicy {
     }
 
     public LlmToolResult factualOutcome(AgentTool tool, LlmToolResult result) {
-        if (!tool.actionEffect().isSideEffecting()) return result;
+        if (!ToolSafetyFloor.effect(tool).isSideEffecting()) return result;
         var facts = new LinkedHashMap<String, Object>(result.result());
         facts.putIfAbsent("actionPerformed", actionPerformed(result));
-        facts.putIfAbsent("effect", tool.actionEffect().value());
+        facts.putIfAbsent("effect", ToolSafetyFloor.effect(tool).value());
         facts.putIfAbsent("action", tool.getToolName());
         return new LlmToolResult(
                 result.toolCallId(), result.name(), result.success(), Map.copyOf(facts), result.error()
@@ -161,7 +161,7 @@ public class ToolActionPolicy {
     public LlmToolCall businessCall(AgentTool tool, LlmToolCall call) {
         var sanitized = businessCall(call);
         var reviewAction = argument(call, "review_action");
-        var verifiedTransition = tool.confirmationPolicy() == ToolConfirmationPolicy.VERIFIED_REVIEW
+        var verifiedTransition = ToolSafetyFloor.confirmation(tool) == ToolConfirmationPolicy.VERIFIED_REVIEW
                 && "ready_for_action".equals(argument(call, "question_handling"))
                 && java.util.Set.of("correct_review", "approve_review").contains(reviewAction);
         if (!verifiedTransition) return sanitized;
@@ -203,7 +203,7 @@ public class ToolActionPolicy {
         return LlmToolResult.success(call, Map.of(
                 "status", "action_deferred",
                 "actionPerformed", false,
-                "effect", tool.actionEffect().value(),
+                "effect", ToolSafetyFloor.effect(tool).value(),
                 "reason", reason,
                 "nextAction", "reply",
                 "instruction", instruction

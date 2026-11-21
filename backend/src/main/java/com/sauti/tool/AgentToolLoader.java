@@ -46,10 +46,24 @@ public class AgentToolLoader {
         return List.copyOf(tools);
     }
 
+    /** How each active tool is allowed to act, after the safety floor: name to effect and confirmation. */
+    public record ActionRule(String effect, String confirmation) {
+    }
+
+    public Map<String, ActionRule> actionRules(UUID agentId) {
+        var rules = new java.util.LinkedHashMap<String, ActionRule>();
+        agentToolRepository.findByAgent_IdAndIsActiveTrueOrderByDisplayOrderAsc(agentId).forEach(tool -> {
+            var effect = ToolSafetyFloor.effect(tool);
+            rules.put(tool.getToolName(), new ActionRule(effect.value(),
+                    ToolSafetyFloor.confirmation(tool.getFulfillmentType(), effect, tool.confirmationPolicy()).value()));
+        });
+        return rules;
+    }
+
     @SuppressWarnings("unchecked")
     private LlmToolDefinition definition(AgentTool tool) {
         var definition = LlmToolDefinition.from(tool);
-        if (tool.actionEffect() == ToolActionEffect.TERMINAL) {
+        if (ToolSafetyFloor.effect(tool) == ToolActionEffect.TERMINAL) {
             var schema = new LinkedHashMap<String, Object>(definition.inputSchema());
             var properties = new LinkedHashMap<String, Object>(
                     (Map<String, Object>) schema.getOrDefault("properties", Map.of())

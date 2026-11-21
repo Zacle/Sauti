@@ -20,9 +20,12 @@ public class AgentInstructionsPreviewService {
     private final ManagedVoiceAgentBlueprintFactory blueprints;
     private final CallPipelineService callPipeline;
     private final AgentVariableService variables;
+    private final com.sauti.tool.AgentToolLoader tools;
 
     public AgentInstructionsPreviewService(AgentRepository agents, ManagedVoiceAgentBlueprintFactory blueprints,
-                                           CallPipelineService callPipeline, AgentVariableService variables) {
+                                           CallPipelineService callPipeline, AgentVariableService variables,
+                                           com.sauti.tool.AgentToolLoader tools) {
+        this.tools = tools;
         this.agents = agents;
         this.blueprints = blueprints;
         this.callPipeline = callPipeline;
@@ -41,12 +44,23 @@ public class AgentInstructionsPreviewService {
         }
         var greeting = callPipeline.managedVoiceGreeting(agent, requested);
         var blueprint = blueprints.create(agent, greeting, requested);
+        var rules = tools.actionRules(agent.getId());
+        // Platform tools (conversation state, document search) only read, so the caller is never asked.
+        var toolRules = blueprint.tools().stream().map(LlmToolDefinition::name)
+                .map(name -> {
+                    var rule = rules.get(name);
+                    return rule == null
+                            ? new com.sauti.agent.AgentSetupDtos.ToolRule(name, "read_only", "none")
+                            : new com.sauti.agent.AgentSetupDtos.ToolRule(name, rule.effect(), rule.confirmation());
+                })
+                .toList();
         return new InstructionsPreview(
                 requested,
                 blueprint.greeting(),
                 blueprint.instructions(),
                 blueprint.tools().stream().map(LlmToolDefinition::name).toList(),
-                variables.placeholderWarnings(agent)
+                variables.placeholderWarnings(agent),
+                toolRules
         );
     }
 }

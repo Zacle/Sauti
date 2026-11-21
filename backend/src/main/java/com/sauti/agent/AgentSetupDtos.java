@@ -64,8 +64,18 @@ public final class AgentSetupDtos {
             String greeting,
             String instructions,
             List<String> tools,
-            List<PreviewWarning> warnings
+            List<PreviewWarning> warnings,
+            List<ToolRule> toolRules
     ) {
+    }
+
+    /**
+     * What a tool may do on a call and whether the caller is asked first.
+     *
+     * @param effect       read_only, data_write, external_communication, financial, transfer or terminal
+     * @param confirmation none, explicit (asked on a later turn) or verified_review (booking read-back)
+     */
+    public record ToolRule(String name, String effect, String confirmation) {
     }
 
     /** @param kind missing_required, empty_optional or unknown_placeholder */

@@ -891,6 +891,8 @@ class SautiCalendarFulfillmentTest {
                 )
         ));
         when(fixture.tool.confirmationPolicy()).thenReturn(ToolConfirmationPolicy.VERIFIED_REVIEW);
+        when(fixture.tool.actionEffect()).thenReturn(ToolActionEffect.DATA_WRITE);
+        when(fixture.tool.getFulfillmentType()).thenReturn("sauti_calendar");
         var booking = mock(com.sauti.calendar.Booking.class);
         when(booking.getId()).thenReturn(java.util.UUID.randomUUID());
         when(booking.getBookingReference()).thenReturn("SAT-DIRECTOK");

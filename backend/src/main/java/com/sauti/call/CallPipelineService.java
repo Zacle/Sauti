@@ -482,7 +482,9 @@ public class CallPipelineService {
                     // Turned away before anyone spoke: nothing to meter, analyse or send to integrations.
                     if ("unanswered".equals(call.getOutcome())) return;
                     if (call.isActive()) {
-                        call.complete(outcome);
+                        // A caller handed to the team member ended up transferred, not just "completed".
+                        call.complete("completed".equals(outcome) && "completed".equals(call.getTransferStatus())
+                                ? "transferred" : outcome);
                     }
                     var recordingCallControlId = providerCallControlId == null || providerCallControlId.isBlank()
                             ? (twilioCallSid.startsWith("v3:") ? twilioCallSid : "")

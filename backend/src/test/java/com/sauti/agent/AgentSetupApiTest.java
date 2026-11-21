@@ -88,6 +88,13 @@ class AgentSetupApiTest {
                 .doesNotContain("{{");
         assertThat(preview.path("warnings").findValuesAsText("kind"))
                 .contains("empty_optional", "missing_required");
+        // Every tool is listed with what it may do; anything that changes something asks the caller first.
+        assertThat(preview.path("toolRules").findValuesAsText("name")).contains("update_conversation_state");
+        preview.path("toolRules").forEach(rule -> {
+            if (!"read_only".equals(rule.path("effect").asText())) {
+                assertThat(rule.path("confirmation").asText()).isNotEqualTo("none");
+            }
+        });
     }
 
     private UUID create(TestAccounts.Member owner, String variables) throws Exception {

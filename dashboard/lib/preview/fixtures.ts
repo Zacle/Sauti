@@ -486,6 +486,18 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
   const exact = routes[`${verb} ${clean}`];
   if (exact !== undefined) return structuredClone(exact);
 
+  const actionsFor = clean.match(/^\/calls\/([^/]+)\/actions$/);
+  if (actionsFor && verb === "GET") {
+    const sample = calls.find((item) => item.id === actionsFor[1]);
+    if (!sample || sample.outcome !== "booking") return [];
+    const at = (offset: number) => iso(new Date(sample.startedAt).getTime() + offset * 1000);
+    return [
+      { toolName: "book_slot", effect: "data_write", status: "awaiting_confirmation", summary: "Read the details back for the caller to confirm", at: at(48) },
+      { toolName: "book_slot", effect: "data_write", status: "performed", summary: "Booked SAT-7Q2K9M4XW1PZ for 24 Nov 2026, 10:30", at: at(61) },
+      { toolName: "send_confirmation_sms", effect: "external_communication", status: "performed", summary: "Sent an SMS", at: at(70) },
+    ];
+  }
+
   const call = clean.match(/^\/calls\/([^/]+)(\/turns)?$/);
   if (call && verb === "GET") return call[2] ? turns : calls.find((item) => item.id === call[1]) ?? null;
 
@@ -586,6 +598,14 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
         "- Available tools: check_availability, book_slot, update_conversation_state, search_knowledge.",
       ].join("\n"),
       tools: ["check_availability", "book_slot", "update_conversation_state", "search_knowledge"],
+      toolRules: [
+        { name: "check_availability", effect: "read_only", confirmation: "none" },
+        { name: "book_slot", effect: "data_write", confirmation: "verified_review" },
+        { name: "transfer_to_human", effect: "transfer", confirmation: "explicit" },
+        { name: "send_confirmation_sms", effect: "external_communication", confirmation: "explicit" },
+        { name: "update_conversation_state", effect: "read_only", confirmation: "none" },
+        { name: "search_knowledge", effect: "read_only", confirmation: "none" },
+      ],
       warnings: [
         { kind: "missing_required", key: "business_phone", label: "Business phone", message: "Business phone is required before this agent can go live." },
         { kind: "empty_optional", key: "business_website", label: "Business website", message: "Business website is empty, so the sentence using it is left out." },
