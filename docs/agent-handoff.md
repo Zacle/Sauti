@@ -2,6 +2,100 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-21: FR3 inbound voice, phase 2 (stuck calls, event replay, listening language, answer timeouts, pickup metric)
+
+- **Calls stuck as "active":** `call.StaleCallSweeper` runs every 5 minutes (after a 1-minute start delay;
+  `sauti.calls.stale-sweep-delay-ms`). It checks voice calls (not WhatsApp) that are still active more than
+  5 minutes past their agent's maximum length.
+  - Phone calls (`inbound`, `outbound`) are closed only when the port `call.CallLiveness` says the call has
+    ended. `TelnyxTelephonyProvider.isAlive` implements it with `GET /calls/{id}`: `is_alive`, and 404 or 422
+    count as ended. If the provider can't be asked, the call is closed an hour past its maximum.
+  - Browser and test calls are closed once the grace period has passed.
+  - `CallPipelineService.closeStaleCall` uses the new `Call.complete(outcome, endedAt)`, so the call is billed
+    only up to its maximum length, then runs the usual end-of-call work.
+  - `CallRepository.findActiveVoiceCallsStartedBefore` fetches at most 100 per run, oldest first.
+- **Listening language:** phone calls used to start transcription with `auto`, which mishears short accented
+  turns. Now an agent with one language listens for that language, and an agent with several keeps `auto`
+  so callers can use any of them (`TelnyxTelephonyProvider.transcriptionLanguage`).
+- **Answer timeouts:** live-call commands to Telnyx (any `/calls/` URL) now time out after 6 seconds
+  (`COMMAND_TIMEOUT`) instead of 20, so an outage turns callers away quickly. Account work keeps 20 seconds.
+- **Pickup metric:** `sauti.voice.inbound.pickup` is a Micrometer timer with p50 and p95, tagged only with
+  `result`: `answered`, `closed`, `no_agent`, `blocked` or `failed`. It measures the time from the ring
+  reaching Sauti to the caller being answered or turned away, and is the number to watch against the
+  700 ms target. `TelnyxCallControlService` now takes a `MeterRegistry`.
+- **Tests:**
+  - `StaleCallSweeperTest`: 6 cases, including billing up to the given end.
+  - `TelnyxInboundCallHandlingTest` now asserts the metric.
+  - `TelnyxTelephonyProviderTest` covers the listening language.
+  - Backend: 652 passing.
+- **Not verified live:** the `GET /calls/{id}` response shape (`data.is_alive`), and whether the 6-second
+  limit is enough under real Telnyx latency.
+- **Unhandled Telnyx events are now replayed (migration `V81`):**
+  - `telnyx_webhook_events` gains three columns:
+    - `payload_json`: kept only until the event is finished, then cleared, because it holds phone numbers.
+    - `attempts`.
+    - `next_attempt_at`: when to look at the event again; null once it is finished.
+  - Timing:
+    - A received event must start within 30 s.
+    - A processing event must finish within 2 min.
+    - Otherwise the server is assumed to have stopped.
+  - `TelnyxCallControlService.replayUnfinished` runs every 15 s (`sauti.telnyx.event-replay-delay-ms`) and
+    puts due events back on their call's lane.
+  - Rings and outbound answers (`call.initiated`, `call.answered`) are only replayed within 20 s
+    (`CALLER_WAITS`). After that, a missed ring is recorded as an unanswered call with reason `not_handled`
+    and rejected just in case, and a missed outbound answer is hung up. The event is marked `expired`.
+  - Other events (hang-up, recording saved, conversation ended, speak ended, streaming failed) are retried
+    after failures at 30 s, 1, 2 and 4 min, up to 5 attempts, then given up.
+  - A ring whose handling throws is rejected straight away rather than retried.
+  - `process` skips events that are already completed or expired, so a replay can never handle one twice.
+  - The dashboard explains `not_handled` in the call drawer.
+  - Tests: `TelnyxEventReplayTest` (5 cases).
+  - Backend: 657 passing.
+
+### 2026-11-21: FR3 inbound voice, phase 1 (no caller left ringing, after-hours on phone calls)
+
+- **How inbound calls work:** Telnyx sends `call.initiated` to `/webhooks/telnyx/call-control`.
+  `TelnyxCallControlService` stores the event once (idempotent by event id) and processes it off the
+  request thread. `TelnyxTelephonyProvider.answerInboundCall` looks up the agent's prepared assistant
+  (per agent and language, kept in sync by `ManagedVoiceAgentReconciliationService`), answers, then sends
+  `ai_assistant_start`. Telnyx runs STT, the model, TTS and barge-in; Sauti serves the tools.
+- **Bugs fixed:**
+  - **After hours was ignored on phone calls.** The assistant is prepared outside any real call, so the
+    "take a message" and "closed" behaviours only worked on WhatsApp. Now:
+    - each call passes the dynamic variable `sauti_business_hours` (`open`, `after_hours_answer` or
+      `after_hours_take_message`), and the assistant's instructions say what to do for each value
+    - "closed" answers, speaks the after-hours message (`/actions/speak`, client state `sauti-closed`) and
+      hangs up on `call.speak.ended`, without starting the assistant
+    - the opening line after hours is the owner's after-hours message, or a short default in en, fr, sw or ar
+      (`CallPipelineService.afterHoursOpening`)
+    - the provisioner's `configurationVersion` went from 46 to 47, so every assistant re-syncs with the new
+      instructions
+  - **Callers could be left ringing.** Before, a number with no active agent, or an agent whose assistant
+    wasn't ready, threw an error and never answered. Now every case ends at once:
+    - no active agent: the call is rejected (`/actions/reject`)
+    - a blocked workspace (billing or calling policy) is checked before the call starts; the call is
+      rejected and recorded
+    - if answering fails, the call is recorded as `agent_unavailable`, and Sauti rejects it, or hangs up if it
+      was already answered
+  - **Unanswered calls were billed.** Recorded calls use the new `Call.markUnanswered(reason)`: outcome
+    `unanswered`, 0 seconds, no minutes, no metering, analysis or integrations.
+  - **One queue for every call.** All call-control events ran on one thread, so a slow answer delayed every
+    other caller. Events now run on 8 lanes picked by `call_control_id`: one call's events stay in order,
+    and different calls run in parallel.
+- **Dashboard:** "Not answered" and "Closed" outcome labels. The call drawer explains why a call was not
+  answered.
+- **Tests:**
+  - `TelnyxInboundCallHandlingTest` (8 cases).
+  - A new `TelnyxTelephonyProviderTest` case checks the business-hours variable, the closed message and
+    rejection.
+  - `ManagedVoiceAgentProvisionersTest` covers the new instructions and default variable.
+  - Backend: 645 passing.
+- **Not verified on a live Telnyx call:**
+  - that `speak` accepts the agent's Telnyx voice id
+  - that `{{sauti_business_hours}}` is substituted in the instructions the way `sauti_conversation_channel` is
+  - reject timing
+- **Left for phase 2:** the stuck-call sweep, the phone transcription language and the answer-path timeout (all done in phase 2).
+
 ### 2026-11-21: FR2 agent configuration, phase 3c (every edit versioned, Agent value objects, editor form)
 
 - **Every direct edit is a version (V80 adds `agent_versions.kind` and `parts_json`):**

@@ -135,9 +135,11 @@ class ManagedVoiceAgentProvisionersTest {
                         "Never invoke a terminal tool in parallel"
                 )
                 .contains("Use no more than one progress sentence")
-                .contains("Never ask a question or imply success");
+                .contains("Never ask a question or imply success")
+                .contains("{{sauti_business_hours}}")
+                .contains("after_hours_take_message");
         assertThat(body.getValue().get("dynamic_variables"))
-                .isEqualTo(Map.of("sauti_conversation_channel", "phone_call"));
+                .isEqualTo(Map.of("sauti_conversation_channel", "phone_call", "sauti_business_hours", "open"));
         assertThat(body.getValue()).containsEntry("model", "moonshotai/Kimi-K2.6");
         @SuppressWarnings("unchecked")
         var telephony = (Map<String, Object>) body.getValue().get("telephony_settings");

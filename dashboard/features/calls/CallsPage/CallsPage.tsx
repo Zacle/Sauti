@@ -308,6 +308,7 @@ export function CallsPage() {
       >
         {selectedCall ? (
           <div className="grid gap-6">
+            {selectedCall.outcome === "unanswered" ? <Alert>{unansweredReason(selectedCall.failureReason)}</Alert> : null}
             <dl className="m-0 grid grid-cols-2 gap-px overflow-hidden rounded-[var(--radius-card)] border border-line bg-line">
               <DetailLine icon={CalendarCheck2} label="Booked event" value={selectedBooking ? `${selectedBooking.serviceType} · ${formatDate(selectedBooking.appointmentAt)}` : "No booking"} />
               <DetailLine icon={PhoneIncoming} label="Direction" value={selectedCall.direction === "test" ? "Browser test" : humanize(selectedCall.direction)} />
@@ -375,9 +376,26 @@ function RoutedEvent({ booking, call }: { booking: Booking | null; call: Call })
   return <span className="text-fg-muted">—</span>;
 }
 
+/** Why a call to the agent was turned away before anyone spoke. */
+function unansweredReason(reason: string | null) {
+  switch (reason) {
+    case "billing_blocked":
+      return "Not answered: calls are paused until the workspace’s billing is sorted out.";
+    case "calling_not_allowed":
+      return "Not answered: live calling isn’t enabled for this workspace yet.";
+    case "not_handled":
+      return "Not answered: Sauti was restarting while this call rang.";
+    case "agent_unavailable":
+      return "Not answered: the agent couldn’t start. Try a test call from the agent’s page.";
+    default:
+      return "Not answered: the caller was turned away before the agent spoke.";
+  }
+}
+
 function StatusBadge({ outcome }: { outcome: string }) {
   const successful = ["completed", "booking", "faq_answered", "transferred"].includes(outcome);
-  const label = outcome === "active" ? "Live now" : successful ? "Answered" : humanize(outcome);
+  const label = outcome === "active" ? "Live now" : successful ? "Answered"
+    : outcome === "unanswered" ? "Not answered" : outcome === "closed" ? "Closed" : humanize(outcome);
   const dot = outcome === "active" ? "bg-signal animate-pulse" : successful ? "bg-success" : "bg-warning";
   return <span className="inline-flex items-center gap-2 whitespace-nowrap text-fg"><span className={`size-1.5 rounded-full ${dot}`} aria-hidden="true" />{label}</span>;
 }

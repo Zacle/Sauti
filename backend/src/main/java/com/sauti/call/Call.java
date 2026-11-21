@@ -189,11 +189,19 @@ public class Call extends Auditable {
     }
 
     public void complete(String outcome) {
-        if (endedAt != null) {
+        complete(outcome, OffsetDateTime.now());
+    }
+
+    /**
+     * Ends the call at a known time rather than now, so a call closed late (its hang-up event was
+     * lost) is not billed for the time nobody noticed.
+     */
+    public void complete(String outcome, OffsetDateTime endedAt) {
+        if (this.endedAt != null) {
             return;
         }
         this.outcome = outcome;
-        this.endedAt = OffsetDateTime.now();
+        this.endedAt = endedAt.isBefore(startedAt) ? startedAt : endedAt;
         this.durationSeconds = (int) Duration.between(startedAt, endedAt).toSeconds();
         this.tenant.addMinutesUsed(Math.max(1, (int) Math.ceil(durationSeconds / 60.0)));
     }
@@ -220,6 +228,18 @@ public class Call extends Auditable {
         }
         int newBilledMinutes = billedMinutes(outcome, durationSeconds, endedAt != null);
         this.tenant.adjustMinutesUsed(newBilledMinutes - previousBilledMinutes);
+    }
+
+    /**
+     * The call was turned away before anyone spoke (workspace blocked, agent could not start). No
+     * minutes are used, unlike {@link #complete}.
+     */
+    public void markUnanswered(String reason) {
+        if (endedAt != null) return;
+        this.outcome = "unanswered";
+        this.failureReason = reason;
+        this.endedAt = OffsetDateTime.now();
+        this.durationSeconds = 0;
     }
 
     public void fail(String outcome, String reason) {

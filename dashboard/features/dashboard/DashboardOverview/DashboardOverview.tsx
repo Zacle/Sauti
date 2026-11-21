@@ -36,6 +36,10 @@ export function outcomeMeta(outcome: string | null | undefined) {
       return { label: "No answer", dot: "bg-danger" };
     case "failed":
       return { label: "Failed", dot: "bg-danger" };
+    case "unanswered":
+      return { label: "Not answered", dot: "bg-danger" };
+    case "closed":
+      return { label: "Closed", dot: "bg-warning" };
     default:
       return { label: outcome ? outcome.replaceAll("_", " ") : "In progress", dot: "bg-line-strong" };
   }

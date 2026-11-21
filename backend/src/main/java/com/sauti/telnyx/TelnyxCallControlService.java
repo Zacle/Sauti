@@ -30,11 +30,22 @@ public class TelnyxCallControlService {
     private final ProviderCostReconciliationService costReconciliation;
     private final PilotProvisioningPolicyService provisioningPolicies;
     private final BillingAccessPolicy billingAccess;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
-        var thread = new Thread(runnable, "telnyx-call-control");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final io.micrometer.core.instrument.MeterRegistry meters;
+    /**
+     * Events for one call run in order on one lane; different calls run on different lanes, so a slow
+     * answer for one caller never holds up the ringing of another.
+     */
+    static final int LANES = 8;
+    private final ExecutorService[] lanes = new ExecutorService[LANES];
+    /**
+     * A ring or an answer is only worth acting on while the caller is still there. Past this age a
+     * replayed call.initiated is recorded as a missed call instead of being answered late.
+     */
+    static final java.time.Duration CALLER_WAITS = java.time.Duration.ofSeconds(20);
+    /** Failed handling of other events is retried this many times in all, with growing waits. */
+    static final int MAX_ATTEMPTS = 5;
+    private static final java.util.Set<String> TIME_SENSITIVE = java.util.Set.of("call.initiated", "call.answered");
+    private java.time.Clock clock = java.time.Clock.systemUTC();
 
     public TelnyxCallControlService(
             ObjectMapper objectMapper,
@@ -44,8 +55,10 @@ public class TelnyxCallControlService {
             CallQueryService callQueryService,
             ProviderCostReconciliationService costReconciliation,
             PilotProvisioningPolicyService provisioningPolicies,
-            BillingAccessPolicy billingAccess
+            BillingAccessPolicy billingAccess,
+            io.micrometer.core.instrument.MeterRegistry meters
     ) {
+        this.meters = meters;
         this.objectMapper = objectMapper;
         this.eventRepository = eventRepository;
         this.callPipelineService = callPipelineService;
@@ -54,6 +67,23 @@ public class TelnyxCallControlService {
         this.costReconciliation = costReconciliation;
         this.provisioningPolicies = provisioningPolicies;
         this.billingAccess = billingAccess;
+        for (int index = 0; index < LANES; index++) {
+            var name = "telnyx-call-control-" + index;
+            lanes[index] = Executors.newSingleThreadExecutor(runnable -> {
+                var thread = new Thread(runnable, name);
+                thread.setDaemon(true);
+                return thread;
+            });
+        }
+    }
+
+    /** For tests: the time used to judge how old an event is. */
+    void useClock(java.time.Clock clock) {
+        this.clock = clock;
+    }
+
+    static int lane(String callControlId) {
+        return Math.floorMod(callControlId == null ? 0 : callControlId.hashCode(), LANES);
     }
 
     public void accept(String rawPayload) {
@@ -67,10 +97,10 @@ public class TelnyxCallControlService {
                 throw new IllegalArgumentException("Telnyx webhook is missing its event identity");
             }
             var occurredAt = parseTime(data.path("occurred_at").asText(""));
-            if (!claim(eventId, eventType, callControlId, occurredAt)) {
+            if (!claim(eventId, eventType, callControlId, occurredAt, payload.toString())) {
                 return;
             }
-            executor.execute(() -> process(eventId, eventType, payload, occurredAt));
+            lanes[lane(callControlId)].execute(() -> process(eventId, eventType, payload, occurredAt));
         } catch (IllegalArgumentException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -78,8 +108,75 @@ public class TelnyxCallControlService {
         }
     }
 
-    private void process(String eventId, String eventType, JsonNode payload, OffsetDateTime occurredAt) {
+    /**
+     * Picks up events the server never finished: received but not started (it stopped before the
+     * lane ran them), processing that never ended (it stopped mid-way), and failures due a retry.
+     * Events whose caller has gone are closed out instead; see {@link #expire}.
+     */
+    @org.springframework.scheduling.annotation.Scheduled(
+            initialDelayString = "${sauti.telnyx.event-replay-initial-delay-ms:10000}",
+            fixedDelayString = "${sauti.telnyx.event-replay-delay-ms:15000}")
+    public void replayUnfinished() {
+        var now = OffsetDateTime.now(clock);
+        for (var event : eventRepository.findTop100ByNextAttemptAtBeforeOrderByNextAttemptAtAsc(now)) {
+            try {
+                replay(event, now);
+            } catch (Exception failure) {
+                LOGGER.warn("Could not replay Telnyx event type={}", event.getEventType(), failure);
+            }
+        }
+    }
+
+    private void replay(TelnyxWebhookEvent event, OffsetDateTime now) throws Exception {
+        if (event.getPayloadJson() == null) {
+            event.markFailed("Nothing stored to replay");
+            eventRepository.save(event);
+            return;
+        }
+        var payload = objectMapper.readTree(event.getPayloadJson());
+        if (TIME_SENSITIVE.contains(event.getEventType())
+                && event.happenedAt() != null && event.happenedAt().plus(CALLER_WAITS).isBefore(now)) {
+            expire(event, payload);
+            return;
+        }
+        if (event.getAttempts() >= MAX_ATTEMPTS) {
+            event.markFailed("Gave up after " + event.getAttempts() + " attempts");
+            eventRepository.save(event);
+            return;
+        }
+        event.claimForReplay(now);
+        eventRepository.save(event);
+        LOGGER.info("Replaying an unfinished Telnyx event type={} attempt={}", event.getEventType(), event.getAttempts() + 1);
+        lanes[lane(event.getCallControlId())].execute(() -> process(
+                event.getProviderEventId(), event.getEventType(), payload, event.getOccurredAt()));
+    }
+
+    /**
+     * Too late to answer: a missed ring is recorded as an unanswered call (so the owner sees it) and
+     * turned away in case it is somehow still ringing; a missed outbound answer is hung up rather
+     * than left silent.
+     */
+    private void expire(TelnyxWebhookEvent event, JsonNode payload) {
+        var callControlId = payload.path("call_control_id").asText("");
+        if ("call.initiated".equals(event.getEventType())) {
+            var direction = payload.path("direction").asText("incoming").toLowerCase(java.util.Locale.ROOT);
+            if (direction.contains("incoming") || direction.contains("inbound")) {
+                callPipelineService.inboundAgent(payload.path("to").asText("")).ifPresent(agent ->
+                        callPipelineService.recordUnansweredInboundCall(
+                                agent, callControlId, payload.path("from").asText(""), "not_handled"));
+                safely(() -> telephonyProvider.reject(callControlId));
+            }
+        } else if (!callControlId.isBlank()) {
+            safely(() -> telephonyProvider.hangup(callControlId));
+        }
+        LOGGER.info("Expired a Telnyx event the server did not handle in time type={}", event.getEventType());
+        event.markExpired("Not handled while the caller was waiting");
+        eventRepository.save(event);
+    }
+
+    void process(String eventId, String eventType, JsonNode payload, OffsetDateTime occurredAt) {
         var event = eventRepository.findByProviderEventId(eventId).orElseThrow();
+        if ("completed".equals(event.getStatus()) || "expired".equals(event.getStatus())) return;
         event.markProcessing();
         eventRepository.save(event);
         try {
@@ -89,6 +186,7 @@ public class TelnyxCallControlService {
                 case "call.hangup" -> handleHangup(payload, occurredAt);
                 case "call.recording.saved" -> handleRecording(payload);
                 case "call.conversation.ended" -> handleConversationEnded(payload);
+                case "call.speak.ended" -> handleSpeakEnded(payload);
                 case "streaming.failed" -> handleStreamingFailed(payload);
                 default -> {
                     // Persist and acknowledge lifecycle events that require no Sauti state change.
@@ -97,27 +195,134 @@ public class TelnyxCallControlService {
             event.markCompleted();
         } catch (Exception exception) {
             LOGGER.warn("Telnyx event processing failed eventId={} type={}", eventId, eventType, exception);
-            event.markFailed(exception.getMessage());
+            if (TIME_SENSITIVE.contains(eventType)) {
+                // A retry would come after the caller has given up; do not leave them ringing meanwhile.
+                if ("call.initiated".equals(eventType)) {
+                    var callControlId = payload.path("call_control_id").asText("");
+                    if (!callControlId.isBlank()) safely(() -> telephonyProvider.reject(callControlId));
+                }
+                event.markFailed(exception.getMessage());
+            } else {
+                event.markFailed(exception.getMessage(), event.getAttempts() >= MAX_ATTEMPTS ? null : retryAt(event.getAttempts()));
+            }
         }
         eventRepository.save(event);
     }
 
+    /** 30 s, 1 min, 2 min, 4 min after the 1st to 4th failure. */
+    private OffsetDateTime retryAt(int attempts) {
+        return OffsetDateTime.now(clock).plusSeconds(30L << Math.max(0, Math.min(attempts - 1, 4)));
+    }
+
+    /**
+     * A call is ringing on one of our numbers. Every path ends with the caller hearing something or
+     * being turned away at once, never left ringing: no active agent, a blocked workspace, or an
+     * agent that cannot start are rejected (and recorded when there is an agent); a closed business
+     * plays its message and hangs up; otherwise the agent's assistant answers.
+     */
     private void handleInitiated(JsonNode payload) {
+        var started = System.nanoTime();
+        var result = pickUp(payload);
+        if (result != null) {
+            // How long Sauti took from the ring reaching it to the caller being answered or turned away.
+            io.micrometer.core.instrument.Timer.builder("sauti.voice.inbound.pickup")
+                    .description("Time from an inbound call reaching Sauti to it being answered or turned away")
+                    .tag("result", result)
+                    .publishPercentiles(0.5, 0.95)
+                    .register(meters)
+                    .record(System.nanoTime() - started, java.util.concurrent.TimeUnit.NANOSECONDS);
+        }
+    }
+
+    /** @return answered, closed, no_agent, blocked or failed; null for calls that are not inbound */
+    private String pickUp(JsonNode payload) {
         var callControlId = required(payload, "call_control_id");
         var to = required(payload, "to");
         var from = payload.path("from").asText("");
-        var direction = payload.path("direction").asText("incoming");
-        var normalizedDirection = direction.toLowerCase(java.util.Locale.ROOT);
+        var normalizedDirection = payload.path("direction").asText("incoming").toLowerCase(java.util.Locale.ROOT);
         if (!normalizedDirection.contains("incoming") && !normalizedDirection.contains("inbound")) {
-            return;
+            return null;
+        }
+        var agent = callPipelineService.inboundAgent(to).orElse(null);
+        if (agent == null) {
+            LOGGER.info("Rejected a call to a number with no active agent");
+            safely(() -> telephonyProvider.reject(callControlId));
+            return "no_agent";
+        }
+        var blocked = blockReason(agent.getTenant().getId());
+        if (blocked != null) {
+            callPipelineService.recordUnansweredInboundCall(agent, callControlId, from, blocked);
+            safely(() -> telephonyProvider.reject(callControlId));
+            return "blocked";
         }
         var call = callPipelineService.startInboundCall(to, callControlId, from);
-        try { billingAccess.requirePaidCommunication(call.getTenant().getId()); }
-        catch (RuntimeException blocked) { telephonyProvider.hangup(callControlId); throw blocked; }
-        try { provisioningPolicies.authorize(call.getTenant().getId(), "live_calling"); }
-        catch (IllegalStateException blocked) { telephonyProvider.hangup(callControlId); throw blocked; }
         var greeting = callQueryService.firstAgentResponse(call.getTenant().getId(), call.getId());
-        telephonyProvider.answerInboundCall(call, callControlId, greeting);
+        var businessHours = businessHours(call);
+        try {
+            if ("closed".equals(businessHours)) {
+                telephonyProvider.answerWithClosedMessage(call, callControlId, greeting);
+                return "closed";
+            }
+            telephonyProvider.answerInboundCall(call, callControlId, greeting, businessHours);
+            return "answered";
+        } catch (RuntimeException failure) {
+            LOGGER.warn("Could not answer an inbound call callId={}", call.getId(), failure);
+            callPipelineService.recordUnansweredInboundCall(agent, callControlId, from, "agent_unavailable");
+            // Still ringing: reject. Already answered (the assistant failed to start): hang up.
+            if (!safely(() -> telephonyProvider.reject(callControlId))) safely(() -> telephonyProvider.hangup(callControlId));
+            return "failed";
+        }
+    }
+
+    /** Why the workspace may not take calls right now, or null when it may. */
+    private String blockReason(java.util.UUID tenantId) {
+        try {
+            billingAccess.requirePaidCommunication(tenantId);
+        } catch (RuntimeException blocked) {
+            return "billing_blocked";
+        }
+        try {
+            provisioningPolicies.authorize(tenantId, "live_calling");
+        } catch (IllegalStateException blocked) {
+            return "calling_not_allowed";
+        }
+        return null;
+    }
+
+    /** "open", "closed", or how the assistant should behave after hours. */
+    static String businessHours(com.sauti.call.Call call) {
+        if (!call.isAfterHours()) return TelnyxTelephonyProvider.BUSINESS_OPEN;
+        var behaviour = call.getAgent().getAfterHoursBehavior();
+        if ("closed".equals(behaviour)) return "closed";
+        if ("take_message".equals(behaviour)) return "after_hours_take_message";
+        return "after_hours_answer";
+    }
+
+    private void handleSpeakEnded(JsonNode payload) {
+        var state = payload.path("client_state").asText("");
+        if (state.isBlank()) return;
+        String decoded;
+        try {
+            decoded = new String(java.util.Base64.getDecoder().decode(state), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException notOurs) {
+            return;
+        }
+        if (TelnyxTelephonyProvider.CLOSED_ANNOUNCEMENT.equals(decoded)) {
+            var callControlId = required(payload, "call_control_id");
+            callPipelineService.completeActiveCall(callControlId, "closed");
+            telephonyProvider.hangup(callControlId);
+        }
+    }
+
+    /** Runs a provider command whose failure must not stop the caller being dealt with. */
+    private boolean safely(Runnable command) {
+        try {
+            command.run();
+            return true;
+        } catch (RuntimeException failure) {
+            LOGGER.debug("Telnyx call command failed", failure);
+            return false;
+        }
     }
 
     private void handleHangup(JsonNode payload, OffsetDateTime occurredAt) {
@@ -170,10 +375,10 @@ public class TelnyxCallControlService {
         };
     }
 
-    private boolean claim(String id, String type, String callControlId, OffsetDateTime occurredAt) {
+    private boolean claim(String id, String type, String callControlId, OffsetDateTime occurredAt, String payload) {
         if (eventRepository.existsByProviderEventId(id)) return false;
         try {
-            eventRepository.save(new TelnyxWebhookEvent(id, type, callControlId, occurredAt));
+            eventRepository.save(new TelnyxWebhookEvent(id, type, callControlId, occurredAt, payload));
             return true;
         } catch (DataIntegrityViolationException duplicate) {
             return false;
@@ -196,6 +401,6 @@ public class TelnyxCallControlService {
 
     @PreDestroy
     void stop() {
-        executor.shutdown();
+        for (var lane : lanes) lane.shutdown();
     }
 }

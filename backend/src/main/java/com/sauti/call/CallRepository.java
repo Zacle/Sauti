@@ -154,6 +154,19 @@ public interface CallRepository extends JpaRepository<Call, UUID> {
             OffsetDateTime to
     );
 
+    /** Voice calls still marked active that started before the cutoff, oldest first. */
+    @Query("""
+            select c from Call c join fetch c.agent
+            where c.outcome = 'active'
+              and c.direction <> 'whatsapp'
+              and c.startedAt < :cutoff
+            order by c.startedAt asc
+            """)
+    List<Call> findActiveVoiceCallsStartedBefore(
+            @Param("cutoff") OffsetDateTime cutoff,
+            org.springframework.data.domain.Pageable page
+    );
+
     @Query("""
             select count(c) from Call c
             where c.startedAt >= :from

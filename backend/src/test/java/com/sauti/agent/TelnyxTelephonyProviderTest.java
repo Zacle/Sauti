@@ -142,9 +142,67 @@ class TelnyxTelephonyProviderTest {
                     .contains("\"voice\":\"Telnyx.NaturalHD.amarante\"")
                     .contains("\"transcription\":{")
                     .contains("\"model\":\"deepgram/nova-3\"")
-                    .contains("\"language\":\"auto\"");
+                    .contains("\"language\":\"fr\"");
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void tellsTheAssistantAboutBusinessHoursAndSpeaksTheClosedMessageWithoutIt() throws Exception {
+        var requests = new ArrayList<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            var body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            synchronized (requests) {
+                requests.add(exchange.getRequestURI().getRawPath() + " " + body);
+            }
+            var response = "{}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var provisioning = mock(ManagedVoiceAgentProvisioningService.class);
+            var call = mock(Call.class);
+            var agent = mock(Agent.class);
+            when(call.getAgent()).thenReturn(agent);
+            when(call.getTwilioCallSid()).thenReturn("v3:test-call");
+            when(agent.getDefaultLanguage()).thenReturn("en");
+            when(agent.getSupportedLanguages()).thenReturn(List.of("en"));
+            when(provisioning.existing(call)).thenReturn(new ManagedVoiceAgentReference("assistant-1", "", "{}"));
+            var provider = new TelnyxTelephonyProvider(new ObjectMapper(), "test-key", "connection-1",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "", "", "Telnyx.NaturalHD.astra",
+                    provisioning);
+
+            provider.answerInboundCall(call, "v3:open", "We are closed, but I can take a message.",
+                    "after_hours_take_message");
+            provider.answerWithClosedMessage(call, "v3:closed", "We are closed. Goodbye.");
+            provider.reject("v3:nobody");
+
+            assertThat(requests.get(1)).startsWith("/calls/v3%3Aopen/actions/ai_assistant_start")
+                    .contains("\"sauti_business_hours\":\"after_hours_take_message\"");
+            assertThat(requests.get(2)).startsWith("/calls/v3%3Aclosed/actions/answer");
+            assertThat(requests.get(3)).startsWith("/calls/v3%3Aclosed/actions/speak")
+                    .contains("\"payload\":\"We are closed. Goodbye.\"")
+                    .contains("\"client_state\":\"c2F1dGktY2xvc2Vk\"");
+            assertThat(requests.get(4)).startsWith("/calls/v3%3Anobody/actions/reject")
+                    .contains("\"cause\":\"CALL_REJECTED\"");
+            assertThat(requests).noneMatch(request -> request.startsWith("/calls/v3%3Aclosed/actions/ai_assistant_start"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void listensForTheAgentLanguageUnlessItSpeaksSeveral() {
+        var single = mock(Agent.class);
+        when(single.getSupportedLanguages()).thenReturn(List.of("sw"));
+        var several = mock(Agent.class);
+        when(several.getSupportedLanguages()).thenReturn(List.of("en", "sw"));
+
+        assertThat(TelnyxTelephonyProvider.transcriptionLanguage(single, "sw")).isEqualTo("sw");
+        assertThat(TelnyxTelephonyProvider.transcriptionLanguage(several, "en")).isEqualTo("auto");
     }
 }
