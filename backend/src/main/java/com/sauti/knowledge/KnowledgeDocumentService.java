@@ -118,7 +118,8 @@ public class KnowledgeDocumentService {
                         OffsetDateTime.now()
                 );
             }
-            events.publishEvent(new AgentConfigurationChanged(tenantId, agentId));
+            events.publishEvent(new AgentConfigurationChanged(tenantId, agentId,
+                    "Added document " + document.getFileName()));
             return document;
         } catch (Exception exception) {
             documentRepository.deleteById(document.getId());
@@ -134,7 +135,8 @@ public class KnowledgeDocumentService {
                 .orElseThrow(() -> new EntityNotFoundException("Knowledge document not found"));
         objectStorage.delete(document.getStorageBucket(), document.getStorageObjectName());
         documentRepository.delete(document);
-        events.publishEvent(new AgentConfigurationChanged(tenantId, agentId));
+        events.publishEvent(new AgentConfigurationChanged(tenantId, agentId,
+                "Removed document " + document.getFileName()));
     }
 
     private byte[] read(MultipartFile file) {

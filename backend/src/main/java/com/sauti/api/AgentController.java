@@ -4,6 +4,8 @@ import com.sauti.agent.AgentDtos.AgentRequest;
 import com.sauti.agent.AgentDtos.AgentResponse;
 import com.sauti.agent.AgentDtos.AgentTimezoneRequest;
 import com.sauti.agent.AgentService;
+import com.sauti.agent.AgentSetupDtos.AgentSetupRequest;
+import com.sauti.agent.AgentSetupService;
 import com.sauti.agent.AgentStatsService;
 import com.sauti.agent.AgentReadinessService;
 import com.sauti.agent.AgentReadinessDtos.AgentReadinessResponse;
@@ -52,6 +54,7 @@ public class AgentController {
     private final AgentVariableService agentVariableService;
     private final AgentReadinessService agentReadinessService;
     private final KnowledgeDocumentService knowledgeDocumentService;
+    private final AgentSetupService setup;
 
     public AgentController(
             AgentService agentService,
@@ -60,8 +63,10 @@ public class AgentController {
             AgentDraftGenerationService draftGenerationService,
             AgentVariableService agentVariableService,
             AgentReadinessService agentReadinessService,
-            KnowledgeDocumentService knowledgeDocumentService
+            KnowledgeDocumentService knowledgeDocumentService,
+            AgentSetupService setup
     ) {
+        this.setup = setup;
         this.agentService = agentService;
         this.agentTemplateService = agentTemplateService;
         this.agentStatsService = agentStatsService;
@@ -95,7 +100,8 @@ public class AgentController {
 
     @PostMapping
     AgentResponse create(@AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody AgentRequest request) {
-        return AgentResponse.from(agentService.create(user.tenantId(), request));
+        return AgentResponse.from(setup.create(user.tenantId(), new AgentSetupRequest(request, null, null, null),
+                actor(user)));
     }
 
     @PostMapping("/from-template/{templateId}")
@@ -122,7 +128,8 @@ public class AgentController {
 
     @PutMapping("/{id}")
     AgentResponse update(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id, @Valid @RequestBody AgentRequest request) {
-        return AgentResponse.from(agentService.update(user.tenantId(), id, request));
+        return AgentResponse.from(setup.publish(user.tenantId(), id, new AgentSetupRequest(request, null, null, null),
+                actor(user), null));
     }
 
     @PatchMapping("/{id}/timezone")
@@ -234,7 +241,8 @@ public class AgentController {
                 request.label(),
                 request.description(),
                 request.value(),
-                request.required()
+                request.required(),
+                "Added"
         );
     }
 
@@ -255,6 +263,10 @@ public class AgentController {
             @Valid @RequestBody PatchAgentVariableRequest request
     ) {
         return agentVariableService.updateOne(user.tenantId(), id, key, request.value());
+    }
+
+    private static String actor(AuthenticatedUser user) {
+        return user.apiKeyId() != null ? "API key" : user.email();
     }
 }
 

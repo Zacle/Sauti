@@ -1,6 +1,8 @@
 
 import type { AgentVariableDefinition, AgentTemplate as StoredAgentTemplate } from "@/types/api";
 import type { LucideIcon } from "lucide-react";
+import { DEFAULT_BOOKING_FIELDS, DEFAULT_BOOKING_NOTIFICATIONS } from "@/features/agents/domain/agent-form";
+export { DEFAULT_BOOKING_FIELDS, DEFAULT_BOOKING_NOTIFICATIONS, type AfterHoursBehavior } from "@/features/agents/domain/agent-form";
 import {
 BookOpen,
 Bot,
@@ -62,7 +64,6 @@ export const SYSTEM_MANAGED_TEMPLATE_VARIABLES = new Set([
   "notification_channels",
 ]);
 
-export type AfterHoursBehavior = "answer" | "take_message" | "closed";
 export type WeekDayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
 export type DayHours = { enabled: boolean; start: string; end: string };
 export type WeeklyHours = Record<WeekDayKey, DayHours>;
@@ -77,8 +78,6 @@ export const OPERATING_WEEK_DAYS: Array<{ key: WeekDayKey; label: string }> = [
   { key: "sunday", label: "Sunday" },
 ];
 
-export const DEFAULT_BOOKING_FIELDS = ["caller_name", "caller_phone", "service_type", "appointment_at"];
-export const DEFAULT_BOOKING_NOTIFICATIONS = ["dashboard", "email"];
 export const CORE_BOOKING_FIELDS = new Set(DEFAULT_BOOKING_FIELDS);
 export const BOOKING_FIELD_CATALOG = [
   "caller_email", "reason_for_visit", "date_of_birth", "patient_date_of_birth", "preferred_staff",
@@ -212,5 +211,5 @@ export const studioSections = [
   { id: "integrations", label: "Integrations", description: "Connected business tools", icon: Plug },
   { id: "knowledge", label: "Knowledge", description: "Documents and approved answers", icon: BookOpen },
   { id: "postcall", label: "Post-call", description: "Outcomes and extraction", icon: Check },
-  { id: "history", label: "Versions", description: "Published history and restore", icon: HistoryIcon },
+  { id: "history", label: "Versions", description: "Changes and restore", icon: HistoryIcon },
 ] as const;

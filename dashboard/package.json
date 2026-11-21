@@ -8,7 +8,7 @@
     "start": "next start -p 8088",
     "lint": "eslint . --max-warnings=0",
     "test:voice": "node --experimental-strip-types --test features/voice-runtime/browserVoiceRuntime.test.ts features/voice-runtime/managedRuntimeConfig.test.ts features/voice-runtime/telnyxAudioPolicy.test.ts features/voice-runtime/telnyxEndConversation.test.ts features/voice-runtime/telnyxReadiness.test.ts features/voice-runtime/telnyxTranscript.test.ts features/voice-runtime/terminalIntent.test.ts features/voice-runtime/voiceDiagnostics.test.ts",
-    "test:lib": "node --experimental-strip-types --test lib/console-routes.test.ts lib/api/errors.test.ts lib/api/response.test.ts lib/api/workspace-path.test.ts features/agents/domain/business-details.test.ts features/workspaces/domain/members.test.ts features/settings/domain/business-profile.test.ts",
+    "test:lib": "node --experimental-strip-types --test lib/console-routes.test.ts lib/api/errors.test.ts lib/api/response.test.ts lib/api/workspace-path.test.ts features/agents/domain/business-details.test.ts features/agents/domain/agent-form.test.ts features/workspaces/domain/members.test.ts features/settings/domain/business-profile.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

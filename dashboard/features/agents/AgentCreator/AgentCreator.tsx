@@ -29,6 +29,7 @@ import { listCountryCallingCodes, type CountryCallingCode } from "@/lib/api/phon
 import { loadWorkspaceCallDefaults, loadWorkspaceProfile } from "@/lib/api/tenant";
 import { COUNTRIES } from "@/lib/countries";
 import { cn } from "@/lib/utils";
+import { agentFormReducer, agentFormSetters, initialAgentForm, settingsFromForm } from "@/features/agents/domain/agent-form";
 import type { Agent, AgentDraft, AgentDraftView, AgentReadiness, AgentSetup, AgentVariableDefinition, CreateAgentVariable } from "@/types/api";
 import {
 ArrowLeft,
@@ -45,7 +46,7 @@ Trash2,
 WandSparkles
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { toast } from "sonner";
 import "./AgentCreator.css";
 import "./AgentStudio.css";
@@ -63,7 +64,7 @@ import { PhoneNumberPicker } from "./PhoneNumberPicker";
 import { BehaviorSettings } from "./PromptSettings";
 import { RoutingSettings } from "./RoutingSettings";
 import { SpeechSettings } from "./SpeechSettings";
-import { AfterHoursBehavior, BLANK_TEMPLATE, DEFAULT_BOOKING_FIELDS, DEFAULT_BOOKING_NOTIFICATIONS, Template, mapStoredTemplate, studioSections } from "./studio-model";
+import { BLANK_TEMPLATE, DEFAULT_BOOKING_FIELDS, DEFAULT_BOOKING_NOTIFICATIONS, Template, mapStoredTemplate, studioSections } from "./studio-model";
 import { TemplateSelection } from "./TemplateSelection";
 
 export function AgentCreator({
@@ -87,53 +88,33 @@ export function AgentCreator({
   const [selectedTemplate, setSelectedTemplate] = useState<Template>(BLANK_TEMPLATE);
   const [activeSection, setActiveSection] = useState<(typeof studioSections)[number]["id"]>("main");
   const [channelFocusRequest, setChannelFocusRequest] = useState(0);
-  const [name, setName] = useState("Amina");
-  const [description, setDescription] = useState(BLANK_TEMPLATE.description);
-  const [language, setLanguage] = useState(BLANK_TEMPLATE.defaultLanguage);
-  const [supportedLanguages, setSupportedLanguages] = useState(BLANK_TEMPLATE.supportedLanguages);
-  const [voice, setVoice] = useState("");
-  const [timezone, setTimezone] = useState("Africa/Nairobi");
-  const [greeting, setGreeting] = useState(BLANK_TEMPLATE.greeting);
-  const [prompt, setPrompt] = useState(BLANK_TEMPLATE.prompt);
-  const [bookingEnabled, setBookingEnabled] = useState(false);
-  const [defaultBookingDurationMinutes, setDefaultBookingDurationMinutes] = useState(60);
+  // Every agent setting lives in one form object; the setters keep the controls unchanged.
+  const [form, dispatchForm] = useReducer(agentFormReducer, initialAgentForm);
+  const formSetters = useMemo(() => agentFormSetters(dispatchForm), []);
+  const {
+    name, description, language, supportedLanguages, voice, timezone, greeting, prompt, bookingEnabled,
+    defaultBookingDurationMinutes, maxDuration, saveTranscript, recordCalls, transferEnabled, transferNumber,
+    escalationPhrases, operatingHours, afterHoursBehavior, afterHoursMessage, knowledgeBase,
+    bargeInSensitivity, bargeInGraceMs, endCallOnSilenceSeconds, reminderAfterSilenceSeconds, maxReminders,
+    detectVoicemail, handleCallScreening, dtmfEnabled, dtmfTerminationKey, dtmfInputTimeoutSeconds,
+    dtmfMaxDigits, dtmfDigitMappings, webVoiceEnabled, webVoiceAllowedOrigins, webVoiceRequireConsent,
+    whatsappEnabled, whatsappPhoneNumberId, sttEndpointingMs, sttVocabularyDomain, sttBoostedKeywords,
+    safetyGuardrails, postCallExtractionFields, bookingRequiredFields, bookingNotificationChannels,
+    bookingNotificationRecipient,
+  } = form;
+  const {
+    setName, setDescription, setLanguage, setSupportedLanguages, setVoice, setTimezone, setGreeting, setPrompt,
+    setBookingEnabled, setDefaultBookingDurationMinutes, setMaxDuration, setSaveTranscript, setRecordCalls,
+    setTransferEnabled, setTransferNumber, setEscalationPhrases, setOperatingHours, setAfterHoursBehavior,
+    setAfterHoursMessage, setKnowledgeBase, setBargeInSensitivity, setBargeInGraceMs,
+    setEndCallOnSilenceSeconds, setReminderAfterSilenceSeconds, setMaxReminders, setDetectVoicemail,
+    setHandleCallScreening, setDtmfEnabled, setDtmfTerminationKey, setDtmfInputTimeoutSeconds,
+    setDtmfMaxDigits, setDtmfDigitMappings, setWebVoiceEnabled, setWebVoiceAllowedOrigins,
+    setWebVoiceRequireConsent, setWhatsappEnabled, setWhatsappPhoneNumberId, setSttEndpointingMs,
+    setSttVocabularyDomain, setSttBoostedKeywords, setSafetyGuardrails, setPostCallExtractionFields,
+    setBookingRequiredFields, setBookingNotificationChannels, setBookingNotificationRecipient,
+  } = formSetters;
   const [workspaceBookingDurationMinutes, setWorkspaceBookingDurationMinutes] = useState(60);
-  const [maxDuration, setMaxDuration] = useState("5");
-  const [saveTranscript, setSaveTranscript] = useState(true);
-  const [recordCalls, setRecordCalls] = useState(false);
-  const [transferEnabled, setTransferEnabled] = useState(false);
-  const [transferNumber, setTransferNumber] = useState("");
-  const [escalationPhrases, setEscalationPhrases] = useState(BLANK_TEMPLATE.escalationPhrases.join(", "));
-  const [operatingHours, setOperatingHours] = useState("always");
-  const [afterHoursBehavior, setAfterHoursBehavior] = useState<AfterHoursBehavior>("answer");
-  const [afterHoursMessage, setAfterHoursMessage] = useState("");
-  const [knowledgeBase, setKnowledgeBase] = useState("");
-  const [llmTier, setLlmTier] = useState<"standard" | "advanced">("standard");
-  const [bargeInSensitivity, setBargeInSensitivity] = useState(0.7);
-  const [bargeInGraceMs, setBargeInGraceMs] = useState(300);
-  const [endCallOnSilenceSeconds, setEndCallOnSilenceSeconds] = useState(60);
-  const [reminderAfterSilenceSeconds, setReminderAfterSilenceSeconds] = useState(30);
-  const [maxReminders, setMaxReminders] = useState(1);
-  const [detectVoicemail, setDetectVoicemail] = useState(true);
-  const [handleCallScreening, setHandleCallScreening] = useState(true);
-  const [dtmfEnabled, setDtmfEnabled] = useState(false);
-  const [dtmfTerminationKey, setDtmfTerminationKey] = useState<"#" | "*">("#");
-  const [dtmfInputTimeoutSeconds, setDtmfInputTimeoutSeconds] = useState(5);
-  const [dtmfMaxDigits, setDtmfMaxDigits] = useState(8);
-  const [dtmfDigitMappings, setDtmfDigitMappings] = useState<Record<string, string>>({});
-  const [webVoiceEnabled, setWebVoiceEnabled] = useState(false);
-  const [webVoiceAllowedOrigins, setWebVoiceAllowedOrigins] = useState("");
-  const [webVoiceRequireConsent, setWebVoiceRequireConsent] = useState(true);
-  const [whatsappEnabled, setWhatsappEnabled] = useState(false);
-  const [whatsappPhoneNumberId, setWhatsappPhoneNumberId] = useState("");
-  const [sttEndpointingMs, setSttEndpointingMs] = useState(300);
-  const [sttVocabularyDomain, setSttVocabularyDomain] = useState("general");
-  const [sttBoostedKeywords, setSttBoostedKeywords] = useState("");
-  const [safetyGuardrails, setSafetyGuardrails] = useState<string[]>([]);
-  const [postCallExtractionFields, setPostCallExtractionFields] = useState(["summary", "successful", "sentiment", "intent"]);
-  const [bookingRequiredFields, setBookingRequiredFields] = useState<string[]>(DEFAULT_BOOKING_FIELDS);
-  const [bookingNotificationChannels, setBookingNotificationChannels] = useState<string[]>(DEFAULT_BOOKING_NOTIFICATIONS);
-  const [bookingNotificationRecipient, setBookingNotificationRecipient] = useState("");
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
   const [phoneCountries, setPhoneCountries] = useState<CountryCallingCode[]>([]);
   const [customVariables, setCustomVariables] = useState<AgentVariableDefinition[]>([]);
@@ -168,12 +149,14 @@ export function AgentCreator({
   useEffect(() => {
     if (editing) return;
     Promise.all([loadWorkspaceProfile(), loadWorkspaceCallDefaults()]).then(([profile, defaults]) => {
-      setTimezone(profile.timezone);
-      setDefaultBookingDurationMinutes(profile.defaultBookingDurationMinutes);
+      dispatchForm({ type: "patch", values: {
+        timezone: profile.timezone,
+        defaultBookingDurationMinutes: profile.defaultBookingDurationMinutes,
+        saveTranscript: defaults.saveTranscript,
+        recordCalls: defaults.recordCalls,
+        bargeInSensitivity: defaults.bargeInSensitivity,
+      } });
       setWorkspaceBookingDurationMinutes(profile.defaultBookingDurationMinutes);
-      setSaveTranscript(defaults.saveTranscript);
-      setRecordCalls(defaults.recordCalls);
-      setBargeInSensitivity(defaults.bargeInSensitivity);
     }).catch(() => {
       // Keep safe local defaults when workspace preferences are unavailable.
     });
@@ -194,54 +177,10 @@ export function AgentCreator({
   }, [editing, templatesAttempt]);
 
   /** Fills the editor from saved settings: the published agent, or a draft laid over it. */
-  const applyAgentSettings = useCallback((agent: Agent | AgentDraft) => {
-    setName(agent.name);
-    setDescription(agent.description);
-    setLanguage(agent.defaultLanguage);
-    setSupportedLanguages(agent.supportedLanguages);
-    setVoice(agent.ttsVoiceId ?? "");
-    setTimezone(agent.timezone);
-    setGreeting(agent.greetingMessage);
-    setPrompt(agent.systemPrompt);
-    setBookingEnabled(agent.bookingEnabled);
-    setDefaultBookingDurationMinutes(agent.defaultBookingDurationMinutes);
-    setMaxDuration(String(Math.max(1, Math.round(agent.maxCallDurationSeconds / 60))));
-    setSaveTranscript(agent.saveTranscript);
-    setRecordCalls(agent.recordCalls);
-    setTransferEnabled(Boolean(agent.humanTransferNumber));
-    setTransferNumber(agent.humanTransferNumber ?? "");
-    setEscalationPhrases(agent.escalationPhrases.join(", "));
-    setOperatingHours(agent.operatingHours ?? "always");
-    setAfterHoursBehavior(agent.afterHoursBehavior ?? "answer");
-    setAfterHoursMessage(agent.afterHoursMessage ?? "");
-    setKnowledgeBase(agent.knowledgeBase ?? "");
-    setLlmTier(agent.llmTier);
-    setBargeInSensitivity(agent.bargeInSensitivity);
-    setBargeInGraceMs(agent.bargeInGraceMs);
-    setEndCallOnSilenceSeconds(agent.endCallOnSilenceSeconds);
-    setReminderAfterSilenceSeconds(agent.reminderAfterSilenceSeconds);
-    setMaxReminders(agent.maxReminders);
-    setDetectVoicemail(agent.detectVoicemail);
-    setHandleCallScreening(agent.handleCallScreening);
-    setDtmfEnabled(agent.dtmfEnabled);
-    setDtmfTerminationKey(agent.dtmfTerminationKey);
-    setDtmfInputTimeoutSeconds(agent.dtmfInputTimeoutSeconds);
-    setDtmfMaxDigits(agent.dtmfMaxDigits);
-    setDtmfDigitMappings(agent.dtmfDigitMappings);
-    setWebVoiceEnabled(agent.webVoiceEnabled);
-    setWebVoiceAllowedOrigins(agent.webVoiceAllowedOrigins.join("\n"));
-    setWebVoiceRequireConsent(agent.webVoiceRequireConsent);
-    setWhatsappEnabled(agent.whatsappEnabled);
-    setWhatsappPhoneNumberId(agent.whatsappPhoneNumberId ?? "");
-    setSttEndpointingMs(agent.sttEndpointingMs);
-    setSttVocabularyDomain(agent.sttVocabularyDomain ?? "general");
-    setSttBoostedKeywords(agent.sttBoostedKeywords ?? "");
-    setSafetyGuardrails(agent.safetyGuardrails);
-    setPostCallExtractionFields(agent.postCallExtractionFields);
-    setBookingRequiredFields(agent.bookingRequiredFields);
-    setBookingNotificationChannels(agent.bookingNotificationChannels);
-    setBookingNotificationRecipient(agent.bookingNotificationRecipient ?? "");
-  }, []);
+  const applyAgentSettings = useCallback(
+    (agent: Agent | AgentDraft) => dispatchForm({ type: "load", settings: agent }),
+    [],
+  );
 
   useEffect(() => {
     if (!agentId) return;
@@ -319,17 +258,19 @@ export function AgentCreator({
 
   function selectTemplate(template: Template) {
     setSelectedTemplate(template);
-    setDescription(template.description);
-    setGreeting(template.greeting);
-    setPrompt(template.prompt);
-    setBookingEnabled(template.bookingEnabled);
-    setLanguage(template.defaultLanguage);
-    setSupportedLanguages(Array.from(new Set([template.defaultLanguage, ...template.supportedLanguages])));
-    setEscalationPhrases(template.escalationPhrases.join(", "));
-    setDefaultBookingDurationMinutes(workspaceBookingDurationMinutes);
-    setBookingRequiredFields(template.bookingRequiredFields);
-    setBookingNotificationChannels(template.bookingNotificationChannels);
-    setBookingNotificationRecipient("");
+    dispatchForm({ type: "patch", values: {
+      description: template.description,
+      greeting: template.greeting,
+      prompt: template.prompt,
+      bookingEnabled: template.bookingEnabled,
+      language: template.defaultLanguage,
+      supportedLanguages: Array.from(new Set([template.defaultLanguage, ...template.supportedLanguages])),
+      escalationPhrases: template.escalationPhrases.join(", "),
+      defaultBookingDurationMinutes: workspaceBookingDurationMinutes,
+      bookingRequiredFields: template.bookingRequiredFields,
+      bookingNotificationChannels: template.bookingNotificationChannels,
+      bookingNotificationRecipient: "",
+    } });
     setCustomVariables([]);
     setVariableValues(Object.fromEntries(template.variables.map((variable) => [variable.key, ""])));
     setStage("studio");
@@ -377,53 +318,7 @@ export function AgentCreator({
 
   /** Every agent setting as the API expects it. */
   function agentSettings(): AgentDraft {
-    return {
-      name,
-      description,
-      greetingMessage: greeting,
-      systemPrompt: prompt,
-      defaultLanguage: language,
-      supportedLanguages: Array.from(new Set([language, ...supportedLanguages])),
-      ttsVoiceId: voice,
-      humanTransferNumber: transferEnabled && transferNumber.trim() ? transferNumber.trim() : null,
-      escalationPhrases: escalationPhrases.split(",").map((phrase) => phrase.trim()).filter(Boolean),
-      bookingEnabled,
-      defaultBookingDurationMinutes,
-      timezone,
-      knowledgeBase,
-      operatingHours,
-      afterHoursBehavior,
-      afterHoursMessage: afterHoursMessage.trim() || null,
-      maxCallDurationSeconds: Math.max(60, Number(maxDuration || 5) * 60),
-      saveTranscript,
-      recordCalls,
-      llmTier,
-      bargeInSensitivity,
-      bargeInGraceMs,
-      endCallOnSilenceSeconds,
-      reminderAfterSilenceSeconds,
-      maxReminders,
-      detectVoicemail,
-      handleCallScreening,
-      dtmfEnabled,
-      dtmfTerminationKey,
-      dtmfInputTimeoutSeconds,
-      dtmfMaxDigits,
-      dtmfDigitMappings,
-      webVoiceEnabled,
-      webVoiceAllowedOrigins: webVoiceAllowedOrigins.split(/\r?\n|,/).map((origin) => origin.trim()).filter(Boolean),
-      webVoiceRequireConsent,
-      whatsappEnabled,
-      whatsappPhoneNumberId: whatsappEnabled && whatsappPhoneNumberId.trim() ? whatsappPhoneNumberId.trim() : null,
-      sttEndpointingMs,
-      sttVocabularyDomain: sttVocabularyDomain === "general" ? null : sttVocabularyDomain,
-      sttBoostedKeywords: sttBoostedKeywords.trim() || null,
-      safetyGuardrails,
-      postCallExtractionFields,
-      bookingRequiredFields,
-      bookingNotificationChannels,
-      bookingNotificationRecipient: bookingNotificationRecipient.trim() || null,
-    };
+    return settingsFromForm(form);
   }
 
   function definitionsOf(variables: AgentVariableDefinition[]): CreateAgentVariable[] {
@@ -613,16 +508,7 @@ export function AgentCreator({
    * snapshot taken after loading or saving, so switches, sliders, pickers and
    * text fields all count as changes, not just native form input.
    */
-  const snapshot = JSON.stringify([
-    name, description, greeting, prompt, language, supportedLanguages, voice, transferEnabled, transferNumber,
-    escalationPhrases, bookingEnabled, defaultBookingDurationMinutes, timezone, knowledgeBase, operatingHours,
-    afterHoursBehavior, afterHoursMessage, maxDuration, saveTranscript, recordCalls, llmTier, bargeInSensitivity,
-    bargeInGraceMs, endCallOnSilenceSeconds, reminderAfterSilenceSeconds, maxReminders, detectVoicemail,
-    handleCallScreening, dtmfEnabled, dtmfTerminationKey, dtmfInputTimeoutSeconds, dtmfMaxDigits, dtmfDigitMappings,
-    webVoiceEnabled, webVoiceAllowedOrigins, webVoiceRequireConsent, whatsappEnabled, whatsappPhoneNumberId,
-    sttEndpointingMs, sttVocabularyDomain, sttBoostedKeywords, safetyGuardrails, postCallExtractionFields,
-    bookingRequiredFields, bookingNotificationChannels, bookingNotificationRecipient, variableValues,
-  ]);
+  const snapshot = JSON.stringify([form, variableValues]);
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
   const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);

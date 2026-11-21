@@ -81,7 +81,7 @@ class AgentPlaceholderApiTest {
                 .andExpect(status().isOk());
 
         assertThat(events.stream(AgentConfigurationChanged.class))
-                .contains(new AgentConfigurationChanged(owner.workspaceId(), agentId));
+                .contains(new AgentConfigurationChanged(owner.workspaceId(), agentId, "Changed Business name"));
     }
 
     private UUID create(TestAccounts.Member owner, String greeting, String prompt) throws Exception {

@@ -48,9 +48,14 @@ public final class AgentSetupDtos {
     public record DraftView(AgentSetupRequest setup, String savedBy, java.time.OffsetDateTime savedAt) {
     }
 
-    /** One publish in an agent's history; current marks the one live now. */
-    public record VersionView(int version, String note, String publishedBy, java.time.OffsetDateTime publishedAt,
-                              boolean current) {
+    /**
+     * One entry in an agent's history; current marks the one live now.
+     *
+     * @param kind  publish (saved through setup or a restore) or edit (recorded after a direct edit)
+     * @param parts what restoring it puts back besides settings and details, such as "tools"
+     */
+    public record VersionView(int version, String kind, String note, String publishedBy,
+                              java.time.OffsetDateTime publishedAt, boolean current, List<String> parts) {
     }
 
     /** What the live assistant will be told, with anything that would make it say less than intended. */

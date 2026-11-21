@@ -6,9 +6,11 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
-/** Storage for published agent versions. */
+/** Storage for agent versions. */
 public interface AgentVersionRepository extends JpaRepository<AgentVersion, UUID> {
     List<AgentVersion> findTop50ByAgentIdOrderByVersionDesc(UUID agentId);
+
+    Optional<AgentVersion> findFirstByAgentIdOrderByVersionDesc(UUID agentId);
 
     Optional<AgentVersion> findByAgentIdAndVersion(UUID agentId, int version);
 

@@ -122,7 +122,7 @@ public class AgentVariableService {
             variable.updateValue(normalizedValue);
             syncStructuredSetting(agent, value.key(), normalizedValue);
         }
-        changed(agent);
+        changed(agent, "Changed business details");
         return variables.stream().map(AgentVariableResponse::from).toList();
     }
 
@@ -192,7 +192,7 @@ public class AgentVariableService {
         var normalizedValue = normalizeValue(agent, key, value);
         variable.updateValue(normalizedValue);
         syncStructuredSetting(agent, key, normalizedValue);
-        changed(agent);
+        changed(agent, "Changed " + variable.getDisplayLabel());
         return AgentVariableResponse.from(variable);
     }
 
@@ -221,6 +221,21 @@ public class AgentVariableService {
             String value,
             boolean required
     ) {
+        return create(tenantId, agentId, key, label, description, value, required, null);
+    }
+
+    /** As {@link #create}, recording the edit in the agent version history under {@code change}. */
+    @Transactional
+    public AgentVariableResponse create(
+            UUID tenantId,
+            UUID agentId,
+            String key,
+            String label,
+            String description,
+            String value,
+            boolean required,
+            String change
+    ) {
         var agent = requireOwnedAgent(tenantId, agentId);
         var normalizedKey = key == null ? "" : key.trim().toLowerCase(java.util.Locale.ROOT);
         if (!VARIABLE_KEY.matcher(normalizedKey).matches()) {
@@ -243,7 +258,7 @@ public class AgentVariableService {
             variable.updateValue(normalizeValue(agent, normalizedKey, value));
         }
         var saved = variableRepository.save(variable);
-        changed(agent);
+        changed(agent, change == null ? null : change + " " + saved.getDisplayLabel());
         return AgentVariableResponse.from(saved);
     }
 
@@ -309,8 +324,12 @@ public class AgentVariableService {
     }
 
     private void changed(Agent agent) {
+        changed(agent, null);
+    }
+
+    private void changed(Agent agent, String change) {
         if (agent.getId() == null || agent.getTenant() == null || agent.getTenant().getId() == null) return;
-        events.publishEvent(new AgentConfigurationChanged(agent.getTenant().getId(), agent.getId()));
+        events.publishEvent(new AgentConfigurationChanged(agent.getTenant().getId(), agent.getId(), change));
     }
 
     @Transactional(readOnly = true)

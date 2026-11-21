@@ -5,6 +5,7 @@
  */
 
 import { ApiError } from "@/lib/api/client";
+import type { AgentVersion } from "@/types/api";
 
 const DAY = 86_400_000;
 const now = Date.now();
@@ -400,14 +401,16 @@ const routes: Record<string, unknown> = {
 };
 
 const previewDrafts = new Map<string, unknown>();
-const previewVersionLists = new Map<string, Array<{ version: number; note: string | null; publishedBy: string; publishedAt: string; current: boolean }>>();
+const previewVersionLists = new Map<string, AgentVersion[]>();
+const versionParts = ["integrations", "tools", "documents"];
 
 function previewVersions(agentId: string) {
   if (!previewVersionLists.has(agentId)) {
     previewVersionLists.set(agentId, [
-      { version: 3, note: "Added whitening prices", publishedBy: "owner@brightsmile.example", publishedAt: iso(now - 2 * 86_400_000), current: true },
-      { version: 2, note: null, publishedBy: "admin@brightsmile.example", publishedAt: iso(now - 9 * 86_400_000), current: false },
-      { version: 1, note: "Created", publishedBy: "owner@brightsmile.example", publishedAt: iso(now - 30 * 86_400_000), current: false },
+      { version: 4, kind: "edit", note: "Changed Opening hours; Turned off tool send_sms", publishedBy: "owner@brightsmile.example", publishedAt: iso(now - 3_600_000), current: true, parts: versionParts },
+      { version: 3, kind: "publish", note: "Added whitening prices", publishedBy: "owner@brightsmile.example", publishedAt: iso(now - 2 * 86_400_000), current: false, parts: versionParts },
+      { version: 2, kind: "edit", note: "Added document price-list.pdf", publishedBy: "admin@brightsmile.example", publishedAt: iso(now - 9 * 86_400_000), current: false, parts: versionParts },
+      { version: 1, kind: "publish", note: "Created", publishedBy: "owner@brightsmile.example", publishedAt: iso(now - 30 * 86_400_000), current: false, parts: [] },
     ]);
   }
   return previewVersionLists.get(agentId)!;
@@ -416,7 +419,7 @@ function previewVersions(agentId: string) {
 function publishPreviewVersion(agentId: string, note: string | null) {
   const list = previewVersions(agentId);
   list.forEach((item) => { item.current = false; });
-  list.unshift({ version: list.length + 1, note, publishedBy: "owner@brightsmile.example", publishedAt: new Date().toISOString(), current: true });
+  list.unshift({ version: list.length + 1, kind: "publish", note, publishedBy: "owner@brightsmile.example", publishedAt: new Date().toISOString(), current: true, parts: versionParts });
   previewDrafts.delete(agentId);
 }
 
