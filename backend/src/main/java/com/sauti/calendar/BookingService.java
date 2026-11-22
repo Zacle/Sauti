@@ -68,6 +68,26 @@ public class BookingService {
         return bookingRepository.findAllByTenantIdOrderByAppointmentAtDesc(tenantId);
     }
 
+    /** The booking made on each of these calls; when a call made several, the latest. */
+    @Transactional(readOnly = true)
+    public java.util.Map<UUID, Booking> forCalls(UUID tenantId, java.util.Collection<UUID> callIds) {
+        var byCall = new java.util.HashMap<UUID, Booking>();
+        if (callIds.isEmpty()) return byCall;
+        bookingRepository.findAllForCalls(tenantId, callIds).forEach(booking -> byCall.put(booking.getCall().getId(), booking));
+        return byCall;
+    }
+
+    /** At most 500 calls whose booking matches the search (a {@code like} pattern, lower case, escaped with {@code !}). */
+    @Transactional(readOnly = true)
+    public List<UUID> callsWithBookingsMatching(UUID tenantId, String pattern) {
+        return bookingRepository.findCallIdsMatching(tenantId, pattern, org.springframework.data.domain.PageRequest.of(0, 500));
+    }
+
+    @Transactional(readOnly = true)
+    public long countFromCallsStartedBetween(UUID tenantId, java.time.OffsetDateTime from, java.time.OffsetDateTime to) {
+        return bookingRepository.countFromCallsStartedBetween(tenantId, from, to);
+    }
+
     @Transactional(readOnly = true)
     public List<Booking> findOnAppointmentDate(UUID tenantId, LocalDate date, ZoneId timezone) {
         Objects.requireNonNull(tenantId, "Tenant is required");

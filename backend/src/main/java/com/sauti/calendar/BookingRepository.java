@@ -5,9 +5,32 @@ import java.util.Optional;
 import java.util.UUID;
 import java.time.OffsetDateTime;
 import java.util.Collection;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
+    @Query("select b from Booking b where b.tenant.id = :tenantId and b.call.id in :callIds order by b.bookedAt")
+    List<Booking> findAllForCalls(@Param("tenantId") UUID tenantId, @Param("callIds") Collection<UUID> callIds);
+
+    /** Calls whose booking matches a search: the caller's name, the service or the booking number. */
+    @Query("""
+            select distinct b.call.id from Booking b
+            where b.tenant.id = :tenantId and b.call is not null
+              and (lower(b.callerName) like :pattern escape '!'
+                or lower(b.serviceType) like :pattern escape '!'
+                or lower(b.bookingReference) like :pattern escape '!')
+            """)
+    List<UUID> findCallIdsMatching(@Param("tenantId") UUID tenantId, @Param("pattern") String pattern, Pageable page);
+
+    @Query("""
+            select count(b) from Booking b
+            where b.tenant.id = :tenantId and b.call.id is not null and b.status <> 'cancelled'
+              and b.call.startedAt >= :from and b.call.startedAt < :to
+            """)
+    long countFromCallsStartedBetween(@Param("tenantId") UUID tenantId, @Param("from") OffsetDateTime from,
+                                      @Param("to") OffsetDateTime to);
     long countByTenantId(UUID tenantId);
 
     boolean existsByAgent_Id(UUID agentId);

@@ -1,6 +1,7 @@
 "use client";
 
 import { Select } from "@/components/ui/select";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
@@ -69,6 +70,14 @@ export function BookingsPage() {
       .then(([bookingItems, agentItems]) => {
         setBookings(bookingItems);
         setAgents(agentItems);
+        // A link from a call shows its booking, whatever its date or status: /bookings?booking=<id>.
+        const linked = bookingItems.find((item) => item.id === new URLSearchParams(window.location.search).get("booking"));
+        if (linked) {
+          setFilter("all");
+          setRangeStart("");
+          setRangeEnd("");
+          setQuery(linked.bookingReference);
+        }
       })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to load bookings."))
       .finally(() => setLoading(false));
@@ -324,6 +333,14 @@ function BookingRow({ booking, cancelling, saving, onCancel, onDelete, onEdit }:
         {status.label}
       </p>
       <div className="flex items-center justify-end gap-0.5 max-md:-ml-3 max-md:col-start-2 max-md:justify-start">
+        {booking.callId ? (
+          <Link
+            href={`/calls?call=${booking.callId}`}
+            className="inline-flex h-7 items-center rounded-[6px] px-2 text-xs font-medium text-fg-soft no-underline transition-colors hover:bg-tint/[0.05] hover:text-ink"
+          >
+            Call
+          </Link>
+        ) : null}
         {!cancelled ? (
           <Button variant="ghost" size="xs" disabled={saving || cancelling} onClick={onEdit} className="text-fg-soft hover:bg-tint/[0.05]">
             Reschedule

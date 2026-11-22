@@ -2,6 +2,161 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-22: FR5 conversation records, phase 3 (analysis on either model, search index, match excerpts)
+
+- **Summaries needed a Google key.** Without one, no call got a summary, intent or sentiment.
+  - Production sets both `GOOGLE_AI_API_KEY` and `OPENAI_API_KEY`.
+  - `PostCallAnalysisService.models` now builds every model a key is configured for:
+    - Gemini (`sauti.llm.default-model`) first, because it is cheaper
+    - then OpenAI (`sauti.llm.advanced-model`, which must start with `gpt-`)
+  - `analyze` tries them in order and fails only when all of them fail; the worker then retries as before.
+  - Options are set on each model rather than per prompt:
+    - Gemini: 500 output tokens, no thinking
+    - OpenAI: `maxCompletionTokens` 800
+  - Analysis is skipped only when neither key is set.
+- **Search index (`db/migration/V84__call_search_index.java`, a Java migration):**
+  - On Postgres only, it creates `pg_trgm` and GIN trigram indexes on `lower(transcript)` and
+    `lower(call_summary)`, which serve the search's `lower(…) like '%…%'`.
+  - If the database refuses the extension, the work is rolled back to a savepoint, a warning is logged, and
+    the deploy continues without the index.
+  - On H2 it does nothing.
+  - **Not verified on Postgres:** Docker was not running locally, and CI uses H2, so the first real run is the
+    next deploy.
+  - The indexes are built without `CONCURRENTLY`, which briefly blocks writes to `calls`. Fine at pilot size.
+- **Where a search matched:**
+  - Search results carry `matchedText`: the transcript line containing the text, with who said it (for
+    example "Caller: Are you open on Sunday?"), else the summary. Long lines are cut to about 140 characters
+    around the match (`CallSearch.excerpt`).
+  - The calls table shows it under the call title, in two lines at most, with the term highlighted. The
+    excerpt does not widen the column.
+- **Tests:**
+  - `PostCallAnalysisServiceTest`: falls back to the second model; uses the first answer; fails when all fail;
+    which keys build which models; an unknown sentiment becomes neutral and an intent becomes snake_case
+  - `CallSearchTest`: excerpt from the transcript or summary; long lines cut around the match; wildcard
+    escaping
+  - `CallSearchApiTest` checks `matchedText`
+- **Results:** backend 693 passing; dashboard typecheck and lint pass.
+- **Checked in preview:** a search on a summary word shows highlighted excerpts, and the table keeps every
+  column visible in a narrow pane.
+
+### 2026-11-22: FR5 conversation records, phase 2 (server search and paging, calls and bookings linked)
+
+- **The calls page loaded every call and every booking at once.** It filtered them in the browser, and
+  search could not see what was said.
+- **New `GET /calls/search`** (`api.CallController.search`):
+  - Parameters: `q`, `from`, `to` (ISO date-times), `type` (all, phone, test), `status` (all, answered,
+    missed, active), `agentId`, `page` (from 0), `size` (at most 100).
+  - Returns one page, newest first, plus totals over every match: `total`, `answered`,
+    `averageDurationSeconds`, and `bookings` (bookings not cancelled, from calls in those dates).
+  - `q` matches the transcript, summary, caller number, intent (with "book cleaning" also finding
+    `book_cleaning`), the agent's name, and the booking made on the call (caller name, service, booking
+    number).
+  - `%`, `_` and `!` in the search text are matched literally.
+  - `call.CallSearch` builds the query as a JPA `Specification`, so `CallRepository` now extends
+    `JpaSpecificationExecutor`.
+  - Booking matches come from `BookingService.callsWithBookingsMatching`, at most 500 calls. The call
+    package does not import the calendar package, which already depends on it.
+- **Bookings on calls:**
+  - `CallResponse.booking` (`CallBookingSummary`: id, booking number, service, time, status, caller name) is
+    filled in by search and by `GET /calls/{id}`.
+  - The plain `GET /calls` list is unchanged and no longer used by the dashboard.
+- **Dashboard:**
+  - The calls page asks the server for each page. Search waits 300 ms after typing stops, and earlier
+    requests are cancelled.
+  - The stat strip shows totals for the current filters.
+  - Page buttons show the first and last pages and the pages around the current one.
+  - The default range is the last 14 days up to today. It used to end at the newest call.
+- **Links between calls and bookings:**
+  - The call drawer has "Open booking BSD-…", which goes to `/bookings?booking=<id>`. The bookings page then
+    shows that booking whatever its date or status.
+  - Each booking made on a call has a "Call" link to `/calls?call=<id>`, which opens that call's drawer.
+- **Fix:** `Call.complete(outcome, endedAt)` limited the end time to no earlier than the start, but worked out
+  the duration from the time it was given, so the duration could be negative. It now uses the limited time.
+- **Tests:** `CallSearchApiTest`:
+  - text matches in the transcript, summary, booking name and intent
+  - literal wildcards
+  - type, status and date filters, and totals
+  - paging
+  - the booking on a single call
+  - workspace isolation
+- **Results:** backend 687 passing; dashboard typecheck and lint pass.
+- **Checked in preview:** search by a booking's name, opening the call, following "Open booking", and the
+  booking's "Call" link back to the call drawer. No console errors.
+- **Still open for FR5:**
+  - Text search is a `like '%…%'` scan. If workspaces grow large, add a `pg_trgm` index on `calls.transcript`
+    and `calls.call_summary`.
+  - Analysis needs a Google key; it does not follow `SAUTI_LLM_PROVIDER`.
+  - The bookings page still loads every booking.
+
+### 2026-11-22: FR5 conversation records, phase 1 (phone transcripts, durable analysis)
+
+Branch `records/conversation-records`. FR5: every call stores its transcript, recording, outcome, summary,
+intent and sentiment, and the owner can list, search and review calls and bookings.
+
+- **Phone calls had no transcript.**
+  - On a live phone call, Telnyx's managed assistant hears the caller and speaks for the agent. Nothing sent
+    those lines to Sauti. Browser tests post each line from the page (`/calls/{id}/realtime/transcript`), but a
+    phone call only ever stored the opening greeting.
+  - So phone calls showed a greeting-only transcript, and their summary, intent and sentiment came from the
+    greeting alone.
+  - Now, after a phone call ends, Sauti reads the conversation from Telnyx:
+    - `GET /ai/conversations?metadata->call_control_id=eq.<id>`, then `/ai/conversations/{id}/messages`, 100
+      per page, up to 10 pages (`TelnyxTelephonyProvider.conversation`, behind the `call.ProviderConversations`
+      port).
+    - Only spoken caller and agent lines are kept; tool calls and tool results are dropped. Lines are sorted by
+      `sent_at`.
+    - It then rebuilds the call's turns and transcript. Caller lines before an agent reply are joined into one
+      turn. Limits: 400 turns, 4,000 characters per line.
+  - Skipped when the agent does not save transcripts, or when the call was already redacted.
+- **Analysis was lost on a restart and ran twice per phone call.**
+  - It ran on an in-memory thread pool, with no retry.
+  - Both `call.hangup` and `call.conversation.ended` call `completeActiveCall`, so it ran twice.
+  - Now `PostCallAnalysisService.schedule` creates one `CallRecordJob` per call (`V83`, table
+    `call_record_jobs`, keyed by call id), so later "ended" events do not start the work again.
+  - `CallRecordWorker` runs every 5 s:
+    - stage `transcript`: first try 5 s after the call, then retries at 10, 20, 40, 80 and 160 s (6 tries,
+      about 5 minutes); then `unavailable`
+    - stage `analysis`: 3 tries, 30 s and 2 min apart; then `failed`
+    - Provider and model requests run outside database transactions, under a 2-minute lease.
+  - The row is kept as `done`, with `transcript_status` (imported, empty, unavailable) and `analysis_status`
+    (completed, failed, skipped).
+  - A transcript with no caller speech is no longer summarised.
+  - `CallAnalysisPersistenceService` was removed; the worker applies the analysis itself.
+- **Integrations wait for the record:**
+  - `PostCallIntegrationService.analysisCompleted` is called once the job is done, whatever its outcome.
+  - The fallback wait for `pending_analysis` jobs went from 30 s to `RECORD_WAIT_LIMIT` (12 min), longer than
+    the job's retries (about 8 minutes).
+  - Metering and integration enqueueing still happen at once.
+- **API:**
+  - `CallResponse` gains `recordStatus` (`transcript`, `analysis`, or null when complete).
+  - `GET /calls` no longer carries each call's transcript; the drawer loads turns.
+  - `conversationJson` (the internal model session snapshot) is no longer sent to the browser.
+- **Dashboard:**
+  - While a call's record is being completed, the drawer shows "Getting the full conversation from the
+    call…" and "Writing the summary…". It polls the call and reloads the turns when the transcript arrives.
+  - Search also matches the summary.
+  - Preview call `call-1001` shows the in-progress state.
+- **Tests:**
+  - `CallRecordsTest`:
+    - transcript fetched after one retry, turns rebuilt, summary applied, a repeated end event starts the work
+      once
+    - a conversation that never arrives still releases integrations
+    - a failing summary is retried and then given up
+  - `TelnyxTelephonyProviderTest`: messages read across pages in spoken order without tool traffic; an empty
+    lookup is retried later.
+  - Backend: 685 passing. Dashboard: typecheck and lint pass. The drawer's in-progress state was checked in
+    preview.
+- **Not verified live:**
+  - That Telnyx stores `call_control_id` in the conversation metadata for call-control calls. The filter is
+    documented; storing it is not. If the lookup never finds it, each phone call ends `unavailable` after about
+    5 minutes and keeps its greeting-only transcript, as before.
+  - How soon after hang-up the conversation is complete.
+- **Left for phase 2:**
+  - server-side paging and search, including transcript text
+  - bookings linked from a call and back
+  - an analysis provider that follows `SAUTI_LLM_PROVIDER`; today it is Gemini only, and analysis is skipped
+    without a Google key
+
 ### 2026-11-21: FR4 actions during a call, phase 2 (transfers connect, webhook limits, tool rules shown)
 
 - **Transfers now connect.** Before this, `transfer_to_human` on a live phone call only set

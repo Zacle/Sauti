@@ -685,8 +685,8 @@ export type Call = {
   endedAt: string | null;
   durationSeconds: number | null;
   outcome: string;
-  transcript: string | null;
-  conversationJson?: string | null;
+  /** Only on a single call; lists leave it out and the drawer loads the turns. */
+  transcript?: string | null;
   recordingUrl: string | null;
   recordingSid?: string | null;
   failureReason: string | null;
@@ -701,6 +701,43 @@ export type Call = {
   transferRequestedAt?: string | null;
   transferCompletedAt?: string | null;
   afterHours?: boolean;
+  /** Set while the call's record is being completed after it ended: its transcript, then its summary. */
+  recordStatus?: "transcript" | "analysis" | null;
+  /** The booking made on this call, when there is one (call search and single call only). */
+  booking?: CallBookingSummary | null;
+  /** In a search result: where the text was found, such as "Caller: Are you open on Sunday?". */
+  matchedText?: string | null;
+};
+
+export type CallBookingSummary = {
+  id: string;
+  bookingReference: string;
+  serviceType: string;
+  appointmentAt: string;
+  status: string;
+  callerName: string;
+};
+
+/** One page of calls, newest first, with totals over every call that matches. */
+export type CallSearchResponse = {
+  items: Call[];
+  total: number;
+  page: number;
+  size: number;
+  answered: number;
+  averageDurationSeconds: number;
+  bookings: number;
+};
+
+export type CallSearchParams = {
+  q?: string;
+  from?: string;
+  to?: string;
+  type?: "all" | "phone" | "test";
+  status?: string;
+  agentId?: string;
+  page?: number;
+  size?: number;
 };
 
 /** Something the agent did, or tried to do, during a call. */

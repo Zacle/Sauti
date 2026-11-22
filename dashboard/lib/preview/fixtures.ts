@@ -149,6 +149,8 @@ const calls = Array.from({ length: 48 }, (_, i) => {
     intent: intents[i % intents.length],
     transferStatus: outcome === "transferred" ? "completed" : null,
     afterHours: agentId === "agent-after-hours",
+    // The newest phone call is still having its conversation fetched from the provider.
+    recordStatus: i === 1 ? "transcript" : null,
   };
 });
 
@@ -475,6 +477,58 @@ const businessProfile = {
   updatedAt: iso(now - 86_400_000),
 };
 
+const ANSWERED = new Set(["completed", "booking", "booked", "faq_answered", "transferred"]);
+
+function bookingSummary(callId: string) {
+  const booking = bookings.find((item) => item.callId === callId);
+  return booking
+    ? { id: booking.id, bookingReference: booking.bookingReference, serviceType: booking.serviceType, appointmentAt: booking.appointmentAt, status: booking.status, callerName: booking.callerName }
+    : null;
+}
+
+/** The server's call search, over the sample calls. */
+function searchSampleCalls(params: URLSearchParams) {
+  const text = (params.get("q") ?? "").trim().toLowerCase();
+  const from = params.get("from") ? new Date(params.get("from") as string).getTime() : -Infinity;
+  const to = params.get("to") ? new Date(params.get("to") as string).getTime() : Infinity;
+  const type = params.get("type") ?? "all";
+  const status = params.get("status") ?? "all";
+  const agentId = params.get("agentId");
+  const page = Number(params.get("page") ?? 0);
+  const size = Number(params.get("size") ?? 25);
+  const matches = calls.filter((call) => {
+    const started = new Date(call.startedAt).getTime();
+    if (started < from || started >= to) return false;
+    if (type === "phone" && call.direction === "test") return false;
+    if (type === "test" && call.direction !== "test") return false;
+    if (status === "answered" && !ANSWERED.has(call.outcome)) return false;
+    if (status === "missed" && (ANSWERED.has(call.outcome) || call.outcome === "active")) return false;
+    if (status === "active" && call.outcome !== "active") return false;
+    if (agentId && call.agentId !== agentId) return false;
+    if (!text) return true;
+    const booking = bookingSummary(call.id);
+    return [call.callerNumber, call.intent ?? "", call.callSummary ?? "", booking?.callerName ?? "", booking?.serviceType ?? ""]
+      .some((value) => value.toLowerCase().includes(text) || value.toLowerCase().includes(text.replaceAll(" ", "_")));
+  });
+  const durations = matches.map((call) => call.durationSeconds);
+  return {
+    items: matches.slice(page * size, page * size + size).map((call) => ({
+      ...call,
+      booking: bookingSummary(call.id),
+      matchedText: text && call.callSummary?.toLowerCase().includes(text) ? call.callSummary : null,
+    })),
+    total: matches.length,
+    page,
+    size,
+    answered: matches.filter((call) => ANSWERED.has(call.outcome)).length,
+    averageDurationSeconds: durations.length ? Math.round(durations.reduce((sum, value) => sum + value, 0) / durations.length) : 0,
+    bookings: matches.filter((call) => {
+      const booking = bookingSummary(call.id);
+      return booking !== null && booking.status !== "cancelled";
+    }).length,
+  };
+}
+
 function withoutQuery(path: string) {
   return path.split("?")[0];
 }
@@ -485,6 +539,8 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
   const verb = method.toUpperCase();
   const exact = routes[`${verb} ${clean}`];
   if (exact !== undefined) return structuredClone(exact);
+
+  if (clean === "/calls/search" && verb === "GET") return searchSampleCalls(new URLSearchParams(path.split("?")[1] ?? ""));
 
   const actionsFor = clean.match(/^\/calls\/([^/]+)\/actions$/);
   if (actionsFor && verb === "GET") {
@@ -499,7 +555,11 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
   }
 
   const call = clean.match(/^\/calls\/([^/]+)(\/turns)?$/);
-  if (call && verb === "GET") return call[2] ? turns : calls.find((item) => item.id === call[1]) ?? null;
+  if (call && verb === "GET") {
+    if (call[2]) return turns;
+    const found = calls.find((item) => item.id === call[1]);
+    return found ? { ...found, booking: bookingSummary(found.id) } : null;
+  }
 
   const readiness = clean.match(/^\/agents\/([^/]+)\/readiness$/);
   if (readiness && verb === "GET") return (routes["GET /agents/readiness"] as Array<{ agentId: string }>).find((item) => item.agentId === readiness[1]) ?? null;
