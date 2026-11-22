@@ -236,4 +236,87 @@ class TelnyxTelephonyProviderTest {
             server.stop(0);
         }
     }
+
+    @Test
+    void readsAPhoneCallsConversationInSpokenOrderWithoutToolTraffic() throws Exception {
+        var queries = new ArrayList<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            var path = exchange.getRequestURI().getRawPath();
+            var query = exchange.getRequestURI().getRawQuery();
+            synchronized (queries) {
+                queries.add(path + "?" + query);
+            }
+            String body;
+            if (path.equals("/ai/conversations")) {
+                body = "{\"data\":[{\"id\":\"conv-1\",\"metadata\":{\"call_control_id\":\"v3:caller\"}}]}";
+            } else if (query.contains("page%5Bnumber%5D=1")) {
+                // Newest first, as a provider may return them; a tool call carries no spoken text.
+                body = """
+                        {"data":[
+                          {"role":"assistant","text":"Booked for Monday.","sent_at":"2026-11-22T09:00:09Z"},
+                          {"role":"assistant","text":null,"tool_calls":[{"id":"t1","type":"function"}],"sent_at":"2026-11-22T09:00:08Z"},
+                          {"role":"tool","text":"{\\"ok\\":true}","sent_at":"2026-11-22T09:00:08Z"}
+                        ],"meta":{"total_pages":2,"total_results":5,"page_number":1,"page_size":100}}
+                        """;
+            } else {
+                body = """
+                        {"data":[
+                          {"role":"user","text":"Monday please.","sent_at":"2026-11-22T09:00:05Z"},
+                          {"role":"assistant","text":"Hello, which day?","sent_at":"2026-11-22T09:00:01Z"}
+                        ],"meta":{"total_pages":2,"total_results":5,"page_number":2,"page_size":100}}
+                        """;
+            }
+            var response = body.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var provider = new TelnyxTelephonyProvider(new ObjectMapper(), "test-key", "connection-1",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "", "", "Telnyx.NaturalHD.astra",
+                    mock(ManagedVoiceAgentProvisioningService.class));
+
+            var lookup = provider.conversation("v3:caller");
+
+            assertThat(lookup.status()).isEqualTo(com.sauti.call.ProviderConversations.Status.FOUND);
+            assertThat(lookup.messages()).extracting(com.sauti.call.ProviderConversations.Message::role,
+                            com.sauti.call.ProviderConversations.Message::text)
+                    .containsExactly(
+                            org.assertj.core.groups.Tuple.tuple("agent", "Hello, which day?"),
+                            org.assertj.core.groups.Tuple.tuple("caller", "Monday please."),
+                            org.assertj.core.groups.Tuple.tuple("agent", "Booked for Monday."));
+            assertThat(queries.get(0)).isEqualTo(
+                    "/ai/conversations?metadata-%3Ecall_control_id=eq.v3%3Acaller&order=created_at.asc&limit=5");
+            assertThat(queries).hasSize(3);
+            // Not a Telnyx call: nothing to ask.
+            assertThat(provider.conversation("web-test-1").status())
+                    .isEqualTo(com.sauti.call.ProviderConversations.Status.UNAVAILABLE);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void aConversationNotCreatedYetIsAskedForAgainLater() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            var response = "{\"data\":[]}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            var provider = new TelnyxTelephonyProvider(new ObjectMapper(), "test-key", "connection-1",
+                    "http://127.0.0.1:" + server.getAddress().getPort(), "", "", "Telnyx.NaturalHD.astra",
+                    mock(ManagedVoiceAgentProvisioningService.class));
+
+            assertThat(provider.conversation("v3:caller").status())
+                    .isEqualTo(com.sauti.call.ProviderConversations.Status.NOT_READY);
+        } finally {
+            server.stop(0);
+        }
+    }
 }

@@ -1,6 +1,8 @@
 import type {
   BrowserVoiceRuntimeSession,
   Call,
+  CallSearchParams,
+  CallSearchResponse,
   CallToolAction,
   CallTurn,
   StartTestCallResponse,
@@ -9,6 +11,15 @@ import { apiBlobRequest, apiRequest } from "./client";
 
 export function listCalls() {
   return apiRequest<Call[]>("/calls");
+}
+
+/** One page of calls matching the filters; text search covers transcripts, summaries and bookings. */
+export function searchCalls(params: CallSearchParams, init?: RequestInit) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== "" && value !== "all") query.set(key, String(value));
+  });
+  return apiRequest<CallSearchResponse>(`/calls/search?${query.toString()}`, init);
 }
 
 export function startTestCall(agentId: string, ttsVoiceId?: string, language?: string) {

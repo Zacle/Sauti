@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,7 +26,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(name = "sauti.telephony.provider", havingValue = "telnyx")
-public class TelnyxTelephonyProvider implements TelephonyProvider, com.sauti.call.CallLiveness {
+public class TelnyxTelephonyProvider implements TelephonyProvider, com.sauti.call.CallLiveness,
+        com.sauti.call.ProviderConversations {
     private static final Logger LOGGER = LoggerFactory.getLogger(TelnyxTelephonyProvider.class);
     /**
      * Commands on a live call (answer, start the assistant, speak, reject, hang up) normally finish in
@@ -311,6 +313,85 @@ public class TelnyxTelephonyProvider implements TelephonyProvider, com.sauti.cal
         } catch (Exception failure) {
             return java.util.Optional.empty();
         }
+    }
+
+    /** At most this many pages of 100 messages are read for one call. */
+    static final int CONVERSATION_PAGES = 10;
+
+    /**
+     * The managed assistant's conversation for a phone call: found by the call control id Telnyx
+     * stores in the conversation's metadata, then its messages, page by page. Only spoken lines are
+     * kept (caller and agent text); tool calls and tool results are left out.
+     */
+    @Override
+    public com.sauti.call.ProviderConversations.Lookup conversation(String callControlId) {
+        if (apiKey.isBlank() || callControlId == null || !callControlId.startsWith("v3:")) {
+            return com.sauti.call.ProviderConversations.Lookup.unavailable();
+        }
+        try {
+            var list = getJson("/ai/conversations?" + encode("metadata->call_control_id") + "="
+                    + encode("eq." + callControlId) + "&order=created_at.asc&limit=5");
+            if (list == null) return com.sauti.call.ProviderConversations.Lookup.notReady();
+            var conversations = list.path("data");
+            if (!conversations.isArray() || conversations.isEmpty()) {
+                return com.sauti.call.ProviderConversations.Lookup.notReady();
+            }
+            var messages = new ArrayList<com.sauti.call.ProviderConversations.Message>();
+            for (var conversation : conversations) {
+                var id = conversation.path("id").asText("");
+                if (id.isBlank()) continue;
+                for (var page = 1; page <= CONVERSATION_PAGES; page++) {
+                    var body = getJson("/ai/conversations/" + encodePath(id) + "/messages?page%5Bsize%5D=100&page%5Bnumber%5D=" + page);
+                    if (body == null) return com.sauti.call.ProviderConversations.Lookup.notReady();
+                    for (var message : body.path("data")) {
+                        var spoken = spokenLine(message);
+                        if (spoken != null) messages.add(spoken);
+                    }
+                    if (page >= body.path("meta").path("total_pages").asInt(1)) break;
+                }
+            }
+            messages.sort(java.util.Comparator.comparing(
+                    com.sauti.call.ProviderConversations.Message::sentAt,
+                    java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
+            return com.sauti.call.ProviderConversations.Lookup.found(messages);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return com.sauti.call.ProviderConversations.Lookup.notReady();
+        } catch (Exception failure) {
+            LOGGER.warn("Could not read the Telnyx conversation: {}", failure.getClass().getSimpleName());
+            return com.sauti.call.ProviderConversations.Lookup.notReady();
+        }
+    }
+
+    static com.sauti.call.ProviderConversations.Message spokenLine(JsonNode message) {
+        var role = switch (message.path("role").asText("")) {
+            case "user" -> "caller";
+            case "assistant" -> "agent";
+            default -> null;
+        };
+        var text = message.path("text").isTextual() ? message.path("text").asText().trim() : "";
+        if (role == null || text.isBlank()) return null;
+        var sent = message.path("sent_at").asText(message.path("created_at").asText(""));
+        OffsetDateTime sentAt;
+        try {
+            sentAt = sent.isBlank() ? null : OffsetDateTime.parse(sent);
+        } catch (Exception unparseable) {
+            sentAt = null;
+        }
+        return new com.sauti.call.ProviderConversations.Message(role, text, sentAt);
+    }
+
+    /** The JSON body of a successful GET, or null when Telnyx did not answer with success. */
+    private JsonNode getJson(String path) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(apiBaseUrl + path))
+                .timeout(ACCOUNT_TIMEOUT)
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+        var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) return null;
+        return objectMapper.readTree(response.body());
     }
 
     /**

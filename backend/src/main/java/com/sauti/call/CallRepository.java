@@ -9,7 +9,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface CallRepository extends JpaRepository<Call, UUID> {
+public interface CallRepository extends JpaRepository<Call, UUID>,
+        org.springframework.data.jpa.repository.JpaSpecificationExecutor<Call> {
     boolean existsByAgent_Id(UUID agentId);
 
     boolean existsByTenantIdAndDirectionAndEndedAtIsNotNull(UUID tenantId, String direction);

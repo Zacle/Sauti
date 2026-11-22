@@ -19,7 +19,6 @@ public final class CallDtos {
             Integer durationSeconds,
             String outcome,
             String transcript,
-            String conversationJson,
             String recordingUrl,
             String recordingSid,
             String failureReason,
@@ -35,9 +34,32 @@ public final class CallDtos {
             OffsetDateTime transferCompletedAt,
             OffsetDateTime privacyRedactedAt,
             OffsetDateTime recordingPurgedAt,
-            boolean afterHours
+            boolean afterHours,
+            String recordStatus,
+            CallBookingSummary booking,
+            /** In a search result: where the search text was found, such as the transcript line. */
+            String matchedText
     ) {
         public static CallResponse from(Call call) {
+            return from(call, null, true);
+        }
+
+        public static CallResponse from(Call call, String recordStage, boolean withTranscript) {
+            return from(call, recordStage, withTranscript, null);
+        }
+
+        /**
+         * @param recordStage the unfinished stage of the call's record work ({@code transcript} or
+         *                    {@code analysis}), or null when the record is complete
+         * @param withTranscript false for lists, which link to the transcript instead of carrying it
+         */
+        public static CallResponse from(Call call, String recordStage, boolean withTranscript,
+                                        CallBookingSummary booking) {
+            return from(call, recordStage, withTranscript, booking, null);
+        }
+
+        public static CallResponse from(Call call, String recordStage, boolean withTranscript,
+                                        CallBookingSummary booking, String matchedText) {
             return new CallResponse(
                     call.getId(),
                     call.getAgent().getId(),
@@ -49,8 +71,7 @@ public final class CallDtos {
                     call.getEndedAt(),
                     call.getDurationSeconds(),
                     call.getOutcome(),
-                    call.getTranscript(),
-                    call.getConversationJson(),
+                    withTranscript ? call.getTranscript() : null,
                     call.getRecordingUrl(),
                     call.getRecordingSid(),
                     call.getFailureReason(),
@@ -66,9 +87,29 @@ public final class CallDtos {
                     call.getTransferCompletedAt(),
                     call.getPrivacyRedactedAt(),
                     call.getRecordingPurgedAt(),
-                    call.isAfterHours()
+                    call.isAfterHours(),
+                    recordStage,
+                    booking,
+                    matchedText
             );
         }
+    }
+
+    /** The booking made on a call, enough to show it in the call list and link to it. */
+    public record CallBookingSummary(UUID id, String bookingReference, String serviceType,
+                                     OffsetDateTime appointmentAt, String status, String callerName) {
+    }
+
+    /** One page of calls, newest first, and totals over every call that matches. */
+    public record CallSearchResponse(
+            java.util.List<CallResponse> items,
+            long total,
+            int page,
+            int size,
+            long answered,
+            long averageDurationSeconds,
+            long bookings
+    ) {
     }
 
     public record SimulatedTurnRequest(String transcript) {

@@ -11,6 +11,8 @@ import org.springframework.data.repository.query.Param;
 public interface CallTurnRepository extends JpaRepository<CallTurn, UUID> {
     int countByCall_Id(UUID callId);
 
+    void deleteByCall_Id(UUID callId);
+
     List<CallTurn> findByCall_IdOrderByTurnIndexAsc(UUID callId);
 
     List<CallTurn> findByCall_IdAndTenant_Id(UUID callId, UUID tenantId);

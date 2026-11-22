@@ -41,6 +41,8 @@ import org.thymeleaf.context.Context;
 @Service
 public class PostCallIntegrationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(PostCallIntegrationService.class);
+    /** The longest an integration waits for a call's transcript and summary before going without them. */
+    static final java.time.Duration RECORD_WAIT_LIMIT = java.time.Duration.ofMinutes(12);
     private static final List<String> POST_CALL_PROVIDERS = List.of(
             "custom_webhook", "email", "slack", "google_sheets", "hubspot", "salesforce");
     private static final DateTimeFormatter EMAIL_TIME = DateTimeFormatter.ofPattern(
@@ -142,9 +144,10 @@ public class PostCallIntegrationService {
                 List.of("pending_analysis", "ready"), OffsetDateTime.now()).forEach(job -> {
             try {
                 var call = calls.findById(job.getCallId()).orElseThrow();
-                // A pending job is released after analysis or after a short grace period when analysis is disabled.
+                // Released once the call record is complete (transcript and summary); this limit only
+                // matters if that work never reports back, and outlasts its retries (about 8 minutes).
                 if ("pending_analysis".equals(job.getStatus())
-                        && job.getNextAttemptAt().plusSeconds(30).isAfter(OffsetDateTime.now())) return;
+                        && job.getNextAttemptAt().plus(RECORD_WAIT_LIMIT).isAfter(OffsetDateTime.now())) return;
                 bindings.findAllByTenantIdAndAgentIdAndEnabledTrue(job.getTenantId(), call.getAgent().getId())
                         .stream().filter(binding -> POST_CALL_PROVIDERS.contains(binding.getProvider()))
                         .filter(binding -> binding.getConnectionId() != null || "email".equals(binding.getProvider()))

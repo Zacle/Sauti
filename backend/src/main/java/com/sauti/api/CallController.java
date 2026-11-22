@@ -22,6 +22,14 @@ import com.sauti.reliability.VoiceStartupMeasurementService;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptRequest;
 import com.sauti.call.RealtimeDtos.RealtimeTranscriptResponse;
 import com.sauti.billing.BillingAccessPolicy;
+import com.sauti.calendar.Booking;
+import com.sauti.calendar.BookingService;
+import com.sauti.call.CallDtos.CallBookingSummary;
+import com.sauti.call.CallDtos.CallSearchResponse;
+import com.sauti.call.CallSearch;
+import java.time.OffsetDateTime;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.RequestParam;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
@@ -46,6 +54,7 @@ public class CallController {
     private final BrowserVoiceRuntimePreparationService runtimePreparation;
     private final VoiceStartupMeasurementService startupMeasurements;
     private final BillingAccessPolicy billingAccess;
+    private final BookingService bookingService;
 
     public CallController(
             CallQueryService callQueryService,
@@ -55,8 +64,10 @@ public class CallController {
             TelnyxAiBrowserVoiceRuntimeService telnyxRuntime,
             BrowserVoiceRuntimePreparationService runtimePreparation,
             VoiceStartupMeasurementService startupMeasurements,
-            BillingAccessPolicy billingAccess
+            BillingAccessPolicy billingAccess,
+            BookingService bookingService
     ) {
+        this.bookingService = bookingService;
         this.callQueryService = callQueryService;
         this.callPipelineService = callPipelineService;
         this.callRecordingService = callRecordingService;
@@ -69,12 +80,60 @@ public class CallController {
 
     @GetMapping
     List<CallResponse> list(@AuthenticationPrincipal AuthenticatedUser user) {
-        return callQueryService.list(user.tenantId()).stream().map(CallResponse::from).toList();
+        var unfinished = callQueryService.unfinishedRecords(user.tenantId());
+        return callQueryService.list(user.tenantId()).stream()
+                .map(call -> CallResponse.from(call, unfinished.get(call.getId()), false))
+                .toList();
+    }
+
+    /**
+     * One page of the workspace's calls, newest first. {@code q} matches the transcript, summary,
+     * caller number, intent, agent name, and the booking made on the call.
+     */
+    @GetMapping("/search")
+    CallSearchResponse search(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(defaultValue = "") String q,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
+            @RequestParam(defaultValue = "all") String type,
+            @RequestParam(defaultValue = "all") String status,
+            @RequestParam(required = false) UUID agentId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "25") int size
+    ) {
+        var tenantId = user.tenantId();
+        var draft = new CallSearch(q, from, to, type, status, agentId, java.util.List.of());
+        var viaBookings = draft.pattern() == null ? java.util.List.<UUID>of()
+                : bookingService.callsWithBookingsMatching(tenantId, draft.pattern());
+        var search = new CallSearch(q, from, to, type, status, agentId, viaBookings);
+        var found = callQueryService.search(tenantId, search, page, size);
+        var ids = found.items().stream().map(com.sauti.call.Call::getId).toList();
+        var unfinished = callQueryService.unfinishedRecords(tenantId, ids);
+        var bookings = bookingService.forCalls(tenantId, ids);
+        var items = found.items().stream()
+                .map(call -> CallResponse.from(call, unfinished.get(call.getId()), false,
+                        summary(bookings.get(call.getId())), search.excerpt(call.getTranscript(), call.getCallSummary())))
+                .toList();
+        var bookingCount = bookingService.countFromCallsStartedBetween(tenantId,
+                from == null ? OffsetDateTime.parse("2000-01-01T00:00:00Z") : from,
+                to == null ? OffsetDateTime.now().plusYears(1) : to);
+        return new CallSearchResponse(items, found.total(), Math.max(0, page),
+                Math.min(com.sauti.call.CallQueryService.MAX_PAGE_SIZE, Math.max(1, size)),
+                found.answered(), found.averageDurationSeconds(), bookingCount);
     }
 
     @GetMapping("/{id}")
     CallResponse get(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id) {
-        return CallResponse.from(callQueryService.get(user.tenantId(), id));
+        var call = callQueryService.get(user.tenantId(), id);
+        var booking = bookingService.forCalls(user.tenantId(), java.util.List.of(id)).get(id);
+        return CallResponse.from(call, callQueryService.unfinishedRecord(user.tenantId(), id), true, summary(booking));
+    }
+
+    private static CallBookingSummary summary(Booking booking) {
+        if (booking == null) return null;
+        return new CallBookingSummary(booking.getId(), booking.getBookingReference(), booking.getServiceType(),
+                booking.getAppointmentAt(), booking.getStatus(), booking.getCallerName());
     }
 
     @PostMapping("/test")

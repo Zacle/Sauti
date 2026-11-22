@@ -93,6 +93,11 @@ public class Call extends Auditable {
                 + "Agent: " + agentResponse + "\n";
     }
 
+    /** Replaces the transcript with the full conversation, read from the provider after the call. */
+    public void replaceTranscript(String transcript) {
+        this.transcript = transcript == null ? "" : transcript;
+    }
+
     public void attachRecording(String recordingUrl, String recordingSid) {
         this.recordingUrl = recordingUrl;
         this.recordingSid = recordingSid;
@@ -202,7 +207,7 @@ public class Call extends Auditable {
         }
         this.outcome = outcome;
         this.endedAt = endedAt.isBefore(startedAt) ? startedAt : endedAt;
-        this.durationSeconds = (int) Duration.between(startedAt, endedAt).toSeconds();
+        this.durationSeconds = (int) Duration.between(startedAt, this.endedAt).toSeconds();
         this.tenant.addMinutesUsed(Math.max(1, (int) Math.ceil(durationSeconds / 60.0)));
     }
 
