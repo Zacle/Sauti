@@ -27,7 +27,7 @@ class WhatsAppChannelServiceTest {
                 mock(CallPipelineService.class), mock(WhatsAppMessageSender.class), inbox,
                 mock(BrowserSpeechToTextService.class), mock(VoiceCatalogService.class),
                 mock(OggOpusAudioConverter.class), mock(IntegrationService.class),
-                mock(PilotProvisioningPolicyService.class));
+                mock(PilotProvisioningPolicyService.class), allowing());
         try {
             service.accept("""
                     {"entry":[{"changes":[{"value":{"statuses":[{
@@ -89,7 +89,7 @@ class WhatsAppChannelServiceTest {
         var service = new WhatsAppChannelService(
                 new ObjectMapper(), repository, pipeline, sender, inbox,
                 speech,
-                voices, converter, integrations, mock(PilotProvisioningPolicyService.class));
+                voices, converter, integrations, mock(PilotProvisioningPolicyService.class), allowing());
         try {
             service.accept("""
                     {"entry":[{"changes":[{"value":{
@@ -105,5 +105,12 @@ class WhatsAppChannelServiceTest {
         } finally {
             service.stop();
         }
+    }
+
+    private static com.sauti.billing.BillingAccessPolicy allowing() {
+        var policy = mock(com.sauti.billing.BillingAccessPolicy.class);
+        org.mockito.Mockito.when(policy.automatedMessages(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new com.sauti.billing.BillingAccessPolicy.AccessDecision(true, "active", null, null));
+        return policy;
     }
 }

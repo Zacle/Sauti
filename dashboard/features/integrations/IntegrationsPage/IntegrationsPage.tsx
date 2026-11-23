@@ -461,7 +461,8 @@ function IntegrationCard({
 }) {
   const { entry, binding, connection, ready, builtIn, on } = row;
   const delivery = binding?.lastDelivery;
-  const deliveryFailed = delivery && delivery.status !== "delivered";
+  const deliverySkipped = delivery?.status === "skipped";
+  const deliveryFailed = delivery && delivery.status !== "delivered" && !deliverySkipped;
   const timing = [entry.duringCall ? "During calls" : null, entry.postCall ? "After calls" : null].filter(Boolean).join(" · ");
   const switchId = `use-${entry.provider}`;
 
@@ -499,9 +500,9 @@ function IntegrationCard({
             {connection?.externalAccountId ? <p className="m-0 truncate">Connected as <span className="text-fg-soft">{connection.externalAccountId}</span></p> : null}
             {delivery ? (
               <p className={cn("m-0 flex min-w-0 items-center gap-1.5", deliveryFailed && "text-danger")}>
-                <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", deliveryFailed ? "bg-danger" : "bg-success")} />
+                <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", deliveryFailed ? "bg-danger" : deliverySkipped ? "bg-warning" : "bg-success")} />
                 <span className="truncate">
-                  {deliveryFailed ? `Last run failed${delivery.lastError ? `: ${delivery.lastError}` : ""}` : `Last ran ${formatRelative(delivery.deliveredAt ?? delivery.createdAt)}`}
+                  {deliverySkipped ? `Last run skipped${delivery.lastError ? `: ${delivery.lastError}` : ""}` : deliveryFailed ? `Last run failed${delivery.lastError ? `: ${delivery.lastError}` : ""}` : `Last ran ${formatRelative(delivery.deliveredAt ?? delivery.createdAt)}`}
                 </span>
               </p>
             ) : null}

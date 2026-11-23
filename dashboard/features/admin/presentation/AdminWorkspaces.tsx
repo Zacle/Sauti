@@ -2,8 +2,8 @@
 
 import { Select } from "@/components/ui/select";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Bot, CalendarCheck, CheckCircle2, CircleAlert, ClipboardCheck, LoaderCircle, MinusCircle, PhoneCall, Save, Search, ShieldCheck, Users, X } from "lucide-react";
-import { configureAdminPilotPolicy, getAdminPilotReadiness, getAdminWorkspace, getAdminWorkspaces, updateAdminPilotReadiness } from "@/lib/api/admin";
+import { Bot, CalendarCheck, CheckCircle2, Clock3, CircleAlert, ClipboardCheck, LoaderCircle, MinusCircle, PhoneCall, Save, Search, ShieldCheck, Users, X } from "lucide-react";
+import { configureAdminPilotPolicy, setAdminExtraAllowance, getAdminPilotReadiness, getAdminWorkspace, getAdminWorkspaces, updateAdminPilotReadiness } from "@/lib/api/admin";
 import type { AdminPilotReadiness, AdminWorkspace } from "@/types/api";
 import styles from "./AdminDirectory.module.css";
 
@@ -79,6 +79,22 @@ function WorkspaceDetail({ workspace, readiness, onClose, onSaved, onReadinessSa
   const [launchApproved, setLaunchApproved] = useState(readiness.launchApproved);
   const [readinessSaving, setReadinessSaving] = useState(false);
   const [readinessError, setReadinessError] = useState("");
+  const [extraMinutes, setExtraMinutes] = useState(String(workspace.extraMinutes ?? 0));
+  const [extraMessages, setExtraMessages] = useState(String(workspace.extraMessages ?? 0));
+  const [extraReason, setExtraReason] = useState("");
+  const [extraSaving, setExtraSaving] = useState(false);
+  const [extraError, setExtraError] = useState("");
+
+  const extraValid = [extraMinutes, extraMessages].every((value) => Number.isInteger(Number(value)) && Number(value) >= 0);
+
+  async function saveExtraAllowance() {
+    setExtraSaving(true); setExtraError("");
+    try {
+      onSaved(await setAdminExtraAllowance(workspace.id, { minutes: Number(extraMinutes), messages: Number(extraMessages) }, extraReason));
+      setExtraReason("");
+    } catch (caught) { setExtraError(caught instanceof Error ? caught.message : "Unable to save the extra allowance."); }
+    finally { setExtraSaving(false); }
+  }
 
   async function savePolicy() {
     setSaving(true); setPolicyError("");
@@ -105,7 +121,18 @@ function WorkspaceDetail({ workspace, readiness, onClose, onSaved, onReadinessSa
       <span className={styles.detailKicker}>WORKSPACE DETAIL</span><h2>{workspace.businessName}</h2><p>{workspace.email} · {workspace.countryCode}</p>
       <div className={styles.detailBadges}><span>{workspace.status}</span><span>{workspace.plan} plan</span></div>
       <section className={styles.detailStats}>{stats.map(([label, value, Icon]) => <article key={label}><Icon size={17}/><small>{label}</small><strong>{value}</strong></article>)}</section>
-      <dl className={styles.detailList}><div><dt>Minutes this cycle</dt><dd>{workspace.minutesUsed} / {workspace.minutesLimit}</dd></div><div><dt>Created</dt><dd>{new Date(workspace.createdAt).toLocaleString()}</dd></div><div><dt>Workspace ID</dt><dd>{workspace.id}</dd></div></dl>
+      <dl className={styles.detailList}><div><dt>{workspace.trial ? "Trial minutes (one-off)" : "Minutes this cycle"}</dt><dd>{workspace.minutesUsed} / {workspace.minutesLimit}{workspace.extraMinutes ? ` (incl. ${workspace.extraMinutes} extra)` : ""}</dd></div><div><dt>{workspace.trial ? "Trial messages (one-off)" : "Messages this cycle"}</dt><dd>{workspace.messagesUsed} / {workspace.messagesLimit}{workspace.extraMessages ? ` (incl. ${workspace.extraMessages} extra)` : ""}</dd></div><div><dt>Created</dt><dd>{new Date(workspace.createdAt).toLocaleString()}</dd></div><div><dt>Workspace ID</dt><dd>{workspace.id}</dd></div></dl>
+      <section className={styles.policyEditor}>
+        <h3><Clock3 size={17}/>Extra allowance</h3>
+        <p>{workspace.trial ? "Added to the one-off trial allowance." : "Added to every monthly cycle of the plan."} New AI calls pause when the minutes are used; AI and automatic messages pause when the messages are used.</p>
+        {extraError && <div className={styles.error} role="alert">{extraError}</div>}
+        <div className={styles.policyGrid}>
+          <label>Extra minutes<input aria-label="Extra minutes" min="0" max="100000" step="1" type="number" value={extraMinutes} onChange={(event) => setExtraMinutes(event.target.value)}/></label>
+          <label>Extra messages<input aria-label="Extra messages" min="0" max="1000000" step="1" type="number" value={extraMessages} onChange={(event) => setExtraMessages(event.target.value)}/></label>
+          <label>Reason (kept in the audit log)<input aria-label="Reason for the extra allowance" maxLength={200} value={extraReason} onChange={(event) => setExtraReason(event.target.value)} placeholder="Pilot extension"/></label>
+        </div>
+        <button disabled={extraSaving || !extraReason.trim() || !extraValid} onClick={() => void saveExtraAllowance()} type="button">{extraSaving ? <LoaderCircle className={styles.spin} size={16}/> : <Save size={16}/>}Save extra allowance</button>
+      </section>
       <section className={styles.policyEditor}><h3><ShieldCheck size={17}/>Pilot provider approvals</h3><p>Paid provider operations stay blocked until this policy explicitly approves them.</p>{policyError && <div className={styles.error} role="alert">{policyError}</div>}<div className={styles.policyGrid}><label>Status<Select ariaLabel="Approval status" value={status} onValueChange={setStatus} options={[{ value: "pending", label: "Pending" }, { value: "approved", label: "Approved" }, { value: "suspended", label: "Suspended" }]} /></label><label>Monthly budget<div className={styles.moneyInput}><input aria-label="Pilot budget currency" maxLength={3} value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())}/><input aria-label="Monthly pilot budget" min="0" step="0.01" type="number" value={budget} onChange={(event) => setBudget(event.target.value)}/></div></label></div><div className={styles.capabilities}>{[["Phone numbers", phoneNumbers, setPhoneNumbers], ["Live calling", liveCalling, setLiveCalling], ["SMS", sms, setSms], ["WhatsApp", whatsapp, setWhatsapp]].map(([label, checked, setter]) => <label key={String(label)}><input checked={Boolean(checked)} onChange={(event) => (setter as (value: boolean) => void)(event.target.checked)} type="checkbox"/>{String(label)}</label>)}</div><label className={styles.policyNotes}>Internal approval notes<textarea value={notes} onChange={(event) => setNotes(event.target.value)}/></label><button disabled={saving || !currency.match(/^[A-Z]{3}$/) || !Number.isFinite(Number(budget)) || Number(budget) < 0} onClick={() => void savePolicy()} type="button">{saving ? <LoaderCircle className={styles.spin} size={16}/> : <Save size={16}/>}Save approval policy</button>{policy?.approvedBy && <small>Last approved by {policy.approvedBy}{policy.approvedAt ? ` · ${new Date(policy.approvedAt).toLocaleString()}` : ""}</small>}</section>
       <section className={styles.readinessEditor}>
         <div className={styles.readinessHeading}><div><h3><ClipboardCheck size={17}/>Pilot readiness</h3><p>{readiness.blockingChecks ? `${readiness.blockingChecks} required checks remain` : "All required checks are complete"}</p></div><span className={readiness.readyForLaunch ? styles.readyBadge : styles.reviewBadge}>{readiness.readyForLaunch ? "Launch ready" : "In review"}</span></div>

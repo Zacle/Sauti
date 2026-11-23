@@ -11,6 +11,10 @@ public final class BillingDtos {
     private BillingDtos() {
     }
 
+    /**
+     * The workspace's minutes for its current cycle. {@code monthlyMinutesLimit} is the whole allowance
+     * (plan plus extra minutes); for a trial it is a one-off total and {@code cycleEndsAt} is null.
+     */
     public record BillingUsageResponse(
             String plan,
             String status,
@@ -18,21 +22,47 @@ public final class BillingDtos {
             int minutesUsedThisCycle,
             int remainingMinutes,
             int usagePercent,
-            boolean limitReached
+            boolean limitReached,
+            boolean trial,
+            int planMinutes,
+            int extraMinutes,
+            OffsetDateTime cycleStartsAt,
+            OffsetDateTime cycleEndsAt,
+            boolean accessBlocked,
+            String blockedReason,
+            int messagesIncluded,
+            int messagesUsed,
+            int messagesRemaining,
+            int planMessages,
+            int extraMessages,
+            boolean messagesBlocked,
+            String messagesBlockedReason
     ) {
-        public static BillingUsageResponse from(Tenant tenant) {
-            int remaining = Math.max(0, tenant.getMonthlyMinutesLimit() - tenant.getMinutesUsedThisCycle());
-            int percent = tenant.getMonthlyMinutesLimit() == 0
-                    ? 100
-                    : (int) Math.round((tenant.getMinutesUsedThisCycle() * 100.0) / tenant.getMonthlyMinutesLimit());
+        public static BillingUsageResponse from(Tenant tenant, WorkspaceUsageService.Usage usage,
+                                                BillingAccessPolicy.AccessDecision access,
+                                                BillingAccessPolicy.AccessDecision messages) {
             return new BillingUsageResponse(
                     tenant.getPlan(),
                     tenant.getStatus(),
-                    tenant.getMonthlyMinutesLimit(),
-                    tenant.getMinutesUsedThisCycle(),
-                    remaining,
-                    percent,
-                    tenant.getMinutesUsedThisCycle() >= tenant.getMonthlyMinutesLimit()
+                    usage.includedMinutes(),
+                    usage.usedMinutes(),
+                    usage.remainingMinutes(),
+                    usage.percentUsed(),
+                    usage.exhausted(),
+                    usage.trial(),
+                    usage.planMinutes(),
+                    usage.extraMinutes(),
+                    usage.cycleStartsAt(),
+                    usage.cycleEndsAt(),
+                    !access.allowed(),
+                    access.blockedReason(),
+                    usage.includedMessages(),
+                    usage.usedMessages(),
+                    usage.remainingMessages(),
+                    usage.planMessages(),
+                    usage.extraMessages(),
+                    !messages.allowed(),
+                    messages.blockedReason()
             );
         }
     }

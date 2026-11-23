@@ -44,7 +44,8 @@ class PostCallDeliveryIsolationTest {
                 mock(GoogleSheetsApiClient.class), mock(GoogleSheetsCustomerSyncService.class),
                 new ObjectMapper(), mock(JavaMailSender.class), mock(TemplateEngine.class),
                 mock(WebhookDestinationValidator.class), mock(WebhookDeliveryService.class),
-                mock(CommunicationUsageMeteringService.class), transactionManager,
+                mock(CommunicationUsageMeteringService.class), mock(com.sauti.billing.BillingAccessPolicy.class),
+                transactionManager,
                 "noreply@example.com", "https://graph.example.com", "https://app.example.com");
 
         service.deliverDue();

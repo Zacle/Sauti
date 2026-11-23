@@ -39,6 +39,24 @@ interface CommunicationLedgerRepository extends JpaRepository<CommunicationLedge
                                      @Param("category") String category,
                                      @Param("externalReference") String externalReference);
 
+    /** Outbound SMS and WhatsApp messages recorded in [from, to), net of any credits. */
+    @Query("""
+            select coalesce(sum(case when entry.direction = 'credit' then -entry.quantity else entry.quantity end), 0)
+            from CommunicationLedgerEntry entry
+            where entry.tenantId = :tenantId
+              and entry.category in ('sms_message', 'whatsapp_message')
+              and entry.createdAt >= :from and entry.createdAt < :to
+            """)
+    java.math.BigDecimal messagesBetween(@Param("tenantId") UUID tenantId,
+                                         @Param("from") OffsetDateTime from,
+                                         @Param("to") OffsetDateTime to);
+
+    @Query("""
+            select distinct entry.tenantId from CommunicationLedgerEntry entry
+            where entry.category in ('sms_message', 'whatsapp_message') and entry.createdAt >= :since
+            """)
+    List<UUID> tenantIdsWithMessagesSince(@Param("since") OffsetDateTime since);
+
     @Query("""
             select coalesce(sum(case when entry.direction = 'credit' then -entry.amount else entry.amount end), 0)
             from CommunicationLedgerEntry entry

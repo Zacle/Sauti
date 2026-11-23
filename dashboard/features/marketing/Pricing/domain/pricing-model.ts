@@ -6,9 +6,10 @@ export type PricingPlan = {
   name: string;
   monthlyPrice: number;
   includedMinutes: number;
+  /** Outbound SMS and WhatsApp messages each cycle, shared across both. */
+  includedMessages: number;
   maxAgents: number;
   concurrentCalls: number;
-  overageRate: number;
   description: string;
   features: Record<string, string | boolean>;
 };
@@ -22,9 +23,9 @@ export const pricingPlans: PricingPlan[] = [
     name: "Launch",
     monthlyPrice: 49,
     includedMinutes: 100,
+    includedMessages: 250,
     maxAgents: 1,
     concurrentCalls: 1,
-    overageRate: 0.2,
     description: "For one front-desk workflow and occasional live demand.",
     features: {
       "Booking + FAQ tools": true,
@@ -39,9 +40,9 @@ export const pricingPlans: PricingPlan[] = [
     name: "Growth",
     monthlyPrice: 149,
     includedMinutes: 750,
+    includedMessages: 1_000,
     maxAgents: 3,
     concurrentCalls: 2,
-    overageRate: 0.17,
     description: "For growing teams with steady call volume.",
     features: {
       "Booking + FAQ tools": true,
@@ -56,9 +57,9 @@ export const pricingPlans: PricingPlan[] = [
     name: "Scale",
     monthlyPrice: 399,
     includedMinutes: 2_500,
+    includedMessages: 5_000,
     maxAgents: 10,
     concurrentCalls: 5,
-    overageRate: 0.14,
     description: "For multi-location coverage and controlled scale.",
     features: {
       "Booking + FAQ tools": true,
@@ -72,6 +73,7 @@ export const pricingPlans: PricingPlan[] = [
 
 export const comparisonRows = [
   "Included AI minutes",
+  "Included messages",
   "Live agents (max)",
   "Concurrent calls",
   "Booking + FAQ tools",
@@ -79,7 +81,7 @@ export const comparisonRows = [
   "CRM / calendar connections",
   "API & signed webhooks",
   "Support",
-  "Overage rate",
+  "When the allowance runs out",
 ] as const;
 
 export function estimateMonthlyMinutes(callsPerWeek: number, averageCallMinutes: number) {

@@ -322,7 +322,7 @@ const routes: Record<string, unknown> = {
     { provider: "google_calendar", attempted: 164, delivered: 161, failed: 1, retrying: 2 },
     { provider: "webhook", attempted: 352, delivered: 350, failed: 2, retrying: 0 },
   ],
-  "GET /billing/usage": { plan: "growth", status: "active", monthlyMinutesLimit: 750, minutesUsedThisCycle: 512, remainingMinutes: 238, usagePercent: 68, limitReached: false },
+  "GET /billing/usage": { plan: "growth", status: "active", monthlyMinutesLimit: 750, minutesUsedThisCycle: 512, remainingMinutes: 238, usagePercent: 68, limitReached: false, trial: false, planMinutes: 750, extraMinutes: 0, cycleStartsAt: iso(now - 18 * DAY), cycleEndsAt: iso(now + 12 * DAY), accessBlocked: false, blockedReason: null, messagesIncluded: 1000, messagesUsed: 312, messagesRemaining: 688, planMessages: 1000, extraMessages: 0, messagesBlocked: false, messagesBlockedReason: null },
   "GET /billing/account": {
     id: "billing-preview",
     status: "active",
@@ -332,7 +332,7 @@ const routes: Record<string, unknown> = {
     lowBalanceThreshold: 10,
     communicationBalances: { USD: 42.6 },
     paidResourcesAllowed: true,
-    subscription: { provider: "lemon_squeezy", providerReference: "sub_preview", plan: "growth", interval: "monthly", status: "active", renewsAt: iso(now + 12 * DAY), manageUrl: null },
+    subscription: { provider: "whop", providerReference: "sub_preview", plan: "growth", interval: "monthly", status: "active", renewsAt: iso(now + 12 * DAY), manageUrl: null },
     pendingPlanChange: null,
     addOns: [{ addOn: "number", quantity: 1, status: "active", manageUrl: null }],
     costTotals: [
@@ -386,15 +386,16 @@ const routes: Record<string, unknown> = {
       provider: "telnyx", id, name, description, category: "conversational", previewUrl: null, languages, traits, owned: false,
     })),
   },
-  "GET /billing/checkout/status": { provider: "lemon_squeezy", environment: "sandbox", configured: true, addOnsConfigured: true },
+  "GET /billing/checkout/status": { provider: "whop", environment: "sandbox", configured: true, addOnsConfigured: true },
   "GET /tenant/workspace-profile": { businessName: "Bright Smile Dental", ownerEmail: "owner@brightsmile.example", countryCode: "KE", timezone: "Africa/Nairobi", defaultBookingDurationMinutes: 30 },
   "GET /tenant/call-defaults": { saveTranscript: true, recordCalls: false, bargeInSensitivity: 0.6 },
   "GET /tenant/notification-preferences": { consoleBookingNotificationsEnabled: true, emailBookingNotificationsEnabled: true },
   "GET /tenant/privacy-retention": { conversationRetentionDays: 90, recordingRetentionDays: 30, recordingEnabledForAnyAgent: false, policyVersion: "2026-09" },
   "GET /tenant/webhook": { webhookUrl: null, secretConfigured: false },
   "GET /notifications": {
-    unreadCount: 2,
+    unreadCount: 3,
     notifications: [
+      { id: "n0", type: "billing.minutes_warning", title: "80% of your call minutes used", message: "600 of 750 minutes used. New AI calls pause when they run out; minutes renew on 5 Dec 2026.", href: "/billing", resourceType: "billing", resourceId: "alert-1", payload: { thresholdPercent: 80 }, createdAt: iso(now - 15 * 60_000), readAt: null },
       { id: "n1", type: "booking.confirmed", title: "New booking", message: "Amani Kariuki booked a dental cleaning for Thursday 9:00.", href: "/bookings", resourceType: "booking", resourceId: "booking-6", payload: {}, createdAt: iso(now - 40 * 60_000), readAt: null },
       { id: "n2", type: "booking.follow_up_required", title: "Calendar sync failed", message: "BSD-2050 couldn't be written to Google Calendar.", href: "/bookings", resourceType: "booking", resourceId: "booking-10", payload: {}, createdAt: iso(now - 3 * 3_600_000), readAt: null },
       { id: "n3", type: "booking.confirmed", title: "New booking", message: "Claire Dubois booked a whitening consultation.", href: "/bookings", resourceType: "booking", resourceId: "booking-7", payload: {}, createdAt: iso(now - DAY), readAt: iso(now - 20 * 3_600_000) },

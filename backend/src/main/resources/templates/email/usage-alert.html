@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="supported-color-schemes" content="light">
+    <title th:text="${heading}">Call minutes</title>
+</head>
+<body style="margin:0;padding:0;background:#f7f6f3;color:#23221f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">
+<div th:replace="~{email/parts :: preheader(${preheader})}"></div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f7f6f3;">
+    <tr>
+        <td align="center" style="padding:40px 16px;">
+            <table role="presentation" width="560" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;">
+                <tr><td><div th:replace="~{email/parts :: wordmark}"></div></td></tr>
+                <tr>
+                    <td style="background:#ffffff;border:1px solid #e7e5df;border-radius:10px;padding:32px 32px 28px;">
+                        <div style="margin:0 0 14px;">
+                            <th:block th:if="${exhausted}"><span th:replace="~{email/parts :: status('danger', 'Calls paused')}"></span></th:block>
+                            <th:block th:unless="${exhausted}"><span th:replace="~{email/parts :: status('warning', 'Usage')}"></span></th:block>
+                        </div>
+                        <h1 th:replace="~{email/parts :: heading(${heading})}"></h1>
+                        <p th:replace="~{email/parts :: paragraph(${body})}"></p>
+
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                               style="margin:22px 0 0;background:#f2f1ed;border:1px solid #e7e5df;border-radius:8px;">
+                            <tr>
+                                <td style="padding:18px 20px;">
+                                    <div style="font-size:13px;color:#8f8b82;" th:text="${usedLabel}">Minutes used</div>
+                                    <div style="margin-top:6px;font-size:24px;line-height:1.2;font-weight:600;letter-spacing:-0.3px;color:#141412;">
+                                        <span th:text="${used}">600</span>
+                                        <span style="font-size:15px;font-weight:400;color:#5f5c55;">of <span th:text="${included}">750</span></span>
+                                    </div>
+                                    <div style="margin-top:12px;height:6px;border-radius:3px;background:#e7e5df;overflow:hidden;">
+                                        <div th:style="'height:6px;border-radius:3px;width:' + ${percent} + '%;background:' + (${exhausted} ? '#b8432f' : '#a86a14')"
+                                             style="height:6px;width:80%;background:#a86a14;"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:22px 0 0;border-collapse:collapse;">
+                            <tr th:replace="~{email/parts :: row('Workspace', ${workspace})}"></tr>
+                            <tr th:replace="~{email/parts :: row(${renewsLabel}, ${renews})}"></tr>
+                        </table>
+
+                        <table th:replace="~{email/parts :: button(${billingUrl}, ${buttonLabel})}"></table>
+                        <table th:replace="~{email/parts :: note('Sauti never charges for extra minutes or messages. Calls that never connected do not use minutes, and messages your team sends from the inbox are never held.')}"></table>
+                    </td>
+                </tr>
+                <tr><td><div th:replace="~{email/parts :: footer('Questions about your plan? Reply to this email.')}"></div></td></tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

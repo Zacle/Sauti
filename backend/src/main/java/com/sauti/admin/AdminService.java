@@ -59,6 +59,7 @@ public class AdminService {
     private final ApplicationEventPublisher events;
     private final PilotReadinessService pilotReadiness;
     private final PublicWebAnalyticsService webAnalytics;
+    private final com.sauti.billing.WorkspaceUsageService usage;
 
     public AdminService(TenantRepository tenants, CallRepository calls, BookingRepository bookings,
                         AgentRepository agents,
@@ -70,7 +71,9 @@ public class AdminService {
                         PilotProvisioningPolicyService provisioningPolicies,
                         ApplicationEventPublisher events,
                         PilotReadinessService pilotReadiness,
-                        PublicWebAnalyticsService webAnalytics) {
+                        PublicWebAnalyticsService webAnalytics,
+                        com.sauti.billing.WorkspaceUsageService usage) {
+        this.usage = usage;
         this.tenants = tenants;
         this.calls = calls;
         this.bookings = bookings;
@@ -162,13 +165,7 @@ public class AdminService {
         var page = page(requestedPage);
         var size = pageSize(requestedPageSize);
         var result = tenants.searchForPlatformAdmin(query(requestedQuery), PageRequest.of(page, size));
-        var items = result.getContent().stream().map(tenant -> new WorkspaceItem(
-                tenant.getId(), tenant.getBusinessName(), tenant.getEmail(), tenant.getCountryCode(),
-                tenant.getPlan(), tenant.getStatus(), tenant.getMinutesUsedThisCycle(), tenant.getMonthlyMinutesLimit(),
-                agents.countByTenantId(tenant.getId()), calls.countByTenantId(tenant.getId()),
-                bookings.countByTenantId(tenant.getId()), calls.countDistinctCustomerNumbersByTenantId(tenant.getId()),
-                pilotPolicy(tenant.getId()), tenant.getCreatedAt()
-        )).toList();
+        var items = result.getContent().stream().map(this::item).toList();
         return new WorkspacePage(items, result.getTotalElements(), page, size);
     }
 
@@ -176,11 +173,50 @@ public class AdminService {
     public WorkspaceItem workspace(UUID tenantId) {
         var tenant = tenants.findById(tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Workspace not found"));
-        return new WorkspaceItem(tenant.getId(), tenant.getBusinessName(), tenant.getEmail(),
-                tenant.getCountryCode(), tenant.getPlan(), tenant.getStatus(), tenant.getMinutesUsedThisCycle(),
-                tenant.getMonthlyMinutesLimit(), agents.countByTenantId(tenantId), calls.countByTenantId(tenantId),
+        return item(tenant);
+    }
+
+    private WorkspaceItem item(com.sauti.tenant.Tenant tenant) {
+        var tenantId = tenant.getId();
+        var current = usage.current(tenant);
+        return new WorkspaceItem(tenantId, tenant.getBusinessName(), tenant.getEmail(),
+                tenant.getCountryCode(), tenant.getPlan(), tenant.getStatus(), current.usedMinutes(),
+                current.includedMinutes(), tenant.getExtraMinutes(), current.usedMessages(),
+                current.includedMessages(), tenant.getExtraMessages(), current.trial(),
+                agents.countByTenantId(tenantId), calls.countByTenantId(tenantId),
                 bookings.countByTenantId(tenantId), calls.countDistinctCustomerNumbersByTenantId(tenantId),
                 pilotPolicy(tenantId), tenant.getCreatedAt());
+    }
+
+    /**
+     * Sets the minutes and messages added to a workspace's allowance: to the one-off trial total, or to
+     * each paid cycle. Replaces any earlier grant; 0 removes it; null leaves that part as it is.
+     */
+    @Transactional
+    public WorkspaceItem setExtraAllowance(UUID tenantId, AdminDtos.ExtraAllowanceRequest request, String actor) {
+        var tenant = tenants.findById(tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Workspace not found"));
+        var reason = request.reason() == null ? "" : request.reason().trim();
+        if (reason.isBlank()) throw new IllegalArgumentException("Say why the extra allowance is granted");
+        if (request.minutes() == null && request.messages() == null) {
+            throw new IllegalArgumentException("Set extra minutes, extra messages, or both");
+        }
+        if (reason.length() > 200) throw new IllegalArgumentException("Keep the reason under 200 characters");
+        var changes = new java.util.ArrayList<String>();
+        if (request.minutes() != null && request.minutes() != tenant.getExtraMinutes()) {
+            changes.add("minutes " + tenant.getExtraMinutes() + " → " + request.minutes());
+            tenant.setExtraMinutes(request.minutes());
+        }
+        if (request.messages() != null && request.messages() != tenant.getExtraMessages()) {
+            changes.add("messages " + tenant.getExtraMessages() + " → " + request.messages());
+            tenant.setExtraMessages(request.messages());
+        }
+        tenants.save(tenant);
+        if (!changes.isEmpty()) {
+            audit.record(actor, "workspace.extra_allowance.updated", "workspace", tenantId.toString(),
+                    "Extra " + String.join(", ", changes) + ": " + reason);
+        }
+        return item(tenant);
     }
 
     @Transactional

@@ -4,7 +4,7 @@ import styles from "./NotificationMenu.module.css";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { Bell, CalendarCheck2, CalendarClock, Check, CheckCheck, LoaderCircle, X } from "lucide-react";
+import { Bell, CalendarCheck2, CalendarClock, Check, CheckCheck, Gauge, LoaderCircle, X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { createDashboardSocketTicket, listNotifications, markAllNotificationsRead, markNotificationRead } from "@/lib/api/notifications";
 import type { WorkspaceNotification } from "@/types/api";
@@ -135,7 +135,7 @@ export function NotificationMenu() {
           <div className={styles.list}>
             {loading ? <div className={styles.state}><LoaderCircle className={styles.spin} size={22} /><span>Loading notifications…</span></div>
               : error ? <div className={styles.state}><span>{error}</span><button onClick={() => void refresh()} type="button">Try again</button></div>
-                : notifications.length === 0 ? <div className={styles.empty}><span><Bell size={22} /></span><strong>No notifications yet</strong><p>New booking confirmations and follow-up requests will appear here.</p></div>
+                : notifications.length === 0 ? <div className={styles.empty}><span><Bell size={22} /></span><strong>No notifications yet</strong><p>New bookings, follow-up requests and usage warnings will appear here.</p></div>
                   : notifications.map((notification) => <NotificationRow key={notification.id} notification={notification} onRead={read} onClose={() => setOpen(false)} />)}
           </div>
         </section>
@@ -146,8 +146,11 @@ export function NotificationMenu() {
 
 function NotificationRow({ notification, onRead, onClose }: { notification: WorkspaceNotification; onRead: (notification: WorkspaceNotification) => Promise<void>; onClose: () => void }) {
   const unread = !notification.readAt;
+  const billing = notification.type.startsWith("billing.");
   const actionRequired = notification.type === "booking.follow_up_required"
-    || notification.type === "booking.calendar_sync_failed";
+    || notification.type === "booking.calendar_sync_failed"
+    || notification.type === "billing.minutes_used_up"
+    || notification.type === "billing.messages_used_up";
   const appointmentAt = typeof notification.payload.appointmentAt === "string" ? notification.payload.appointmentAt : "";
   const reference = typeof notification.payload.bookingReference === "string" ? notification.payload.bookingReference : "";
   return (
@@ -156,7 +159,7 @@ function NotificationRow({ notification, onRead, onClose }: { notification: Work
       href={notification.href}
       onClick={() => { void onRead(notification); onClose(); }}
     >
-      <span className={`${styles.icon} ${actionRequired ? styles.warning : ""}`}>{actionRequired ? <CalendarClock size={18} /> : <CalendarCheck2 size={18} />}</span>
+      <span className={`${styles.icon} ${actionRequired ? styles.warning : ""}`}>{billing ? <Gauge size={18} /> : actionRequired ? <CalendarClock size={18} /> : <CalendarCheck2 size={18} />}</span>
       <span className={styles.copy}>
         <span><strong>{notification.title}</strong>{unread && <i aria-label="Unread" />}</span>
         <small>{notification.message}</small>

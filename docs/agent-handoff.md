@@ -2,6 +2,203 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-23: FR6 usage and billing, phase 3 (message allowances)
+
+Same branch, `billing/usage-and-billing`, on top of phases 1 and 2.
+
+- **Decided with the user:**
+  - Outbound SMS and WhatsApp share one message allowance per cycle (the same cycle as minutes):
+    - trial 50, never renewing
+    - Launch 250, Growth 1,000, Scale 5,000 per cycle
+    - a plan without its own allowance gets the one its minutes match (`WorkspaceUsageService.planMessages`)
+  - Every outbound message counts: AI, tool and integration messages, and staff inbox replies.
+  - At the limit only automated sends stop. Staff can still reply by hand.
+- **Counting:**
+  - Messages are summed from the billing ledger (`sms_message` + `whatsapp_message`, net of credits) for
+    the cycle, via `CommunicationLedgerRepository.messagesBetween`. There is no counter.
+  - `Usage` gains `planMessages`, `extraMessages` and `usedMessages`.
+  - Admins can add messages (`tenants.extra_messages`, added in `V85`).
+- **Enforcement** (`BillingAccessPolicy.automatedMessages` / `automatedMessagesBlockedReason`):
+  - Blocked for `unpaid` or `messages_over_limit`. This is separate from calls: running out of one
+    never stops the other.
+  - Held at the limit:
+    - **SMS tool:** returns `sent:false, reason:messages_paused` with the reason, so the agent can tell
+      the caller.
+    - **During-call WhatsApp confirmation:** returns the same.
+    - **Post-call WhatsApp delivery:** marked `skipped` with the reason. This is a new
+      `IntegrationDelivery.skipped` status, never retried; the integrations page shows "Last run skipped".
+    - **WhatsApp AI replies:** held for staff. The message still reaches the inbox.
+  - `WhatsAppInboxService.sendHuman` is not gated.
+- **Admin grant:**
+  - `PATCH /admin/workspaces/{id}/extra-allowance` replaces `/extra-minutes`, which was never deployed.
+  - It takes `{minutes?, messages?, reason}`; a null amount is left unchanged.
+  - Audit action: `workspace.extra_allowance.updated`.
+  - The workspace item adds `messagesUsed`, `messagesLimit` and `extraMessages`.
+  - The admin panel's "Extra allowance" editor has both fields.
+- **Alerts:**
+  - `billing_usage_alerts` (`V86`, also not deployed) gained `kind` (`minutes`/`messages`), with
+    `included_amount`/`used_amount`, and `kind` is part of the unique key.
+  - The scan also covers workspaces with messages sent in the last 6 hours.
+  - Message alerts:
+    - notifications `billing.messages_warning` / `billing.messages_used_up`
+    - emails that say automatic messages pause, customer messages still arrive and staff can reply
+- **API:** `GET /billing/usage` adds `messagesIncluded`, `messagesUsed`, `messagesRemaining`,
+  `planMessages`, `extraMessages`, `messagesBlocked` and `messagesBlockedReason`.
+- **Dashboard:**
+  - Billing overview:
+    - a message meter under the minutes
+    - "When the allowance runs out" covers both allowances
+    - plan cards list included messages
+  - The sidebar meter adds an "N of M messages" line.
+  - An "Automatic messages are paused" banner appears when the messages are used and the workspace is
+    not unpaid.
+  - `/pricing`:
+    - an "Included messages" comparison row and a line on each plan card
+    - the trial card says "60 minutes of calls and 50 messages"
+  - The help center has a "run out of messages" answer.
+- **Tests:** `MessageAllowanceTest`:
+  - a trial stops automated messages at 50 while calls stay allowed
+  - the usage API fields are returned
+  - 80% and 100% message alerts are sent
+  - an admin message grant reopens sending
+  - plan allowances are correct
+  - the SMS tool reports `messages_paused` without sending
+- **Deploy warning:** besides pilots over 60 minutes (phase 1), trial or pilot workspaces that have sent
+  50 or more messages in total stop automated messages at deploy. Grant extra messages from the admin
+  console for pilots that rely on SMS or WhatsApp confirmations.
+- **Not verified:**
+  - a real SMS or WhatsApp send at the limit
+  - the admin "Extra allowance" panel in a browser
+  - the paused-messages banner (the preview fixture is under the limit)
+
+### 2026-11-23: FR6 usage and billing, phase 2 (80% and 100% alerts, adapters removed)
+
+Same branch, `billing/usage-and-billing`, on top of phase 1.
+
+- **Usage alerts** (`billing.BillingUsageAlertService`, `BillingUsageAlertWorker`, table `billing_usage_alerts`, `V86`):
+  - **When:** at 80% and at 100% of the allowance, the workspace owner (`tenants.email`) gets:
+    - an email (`templates/email/usage-alert.html`), sent with retries like payment confirmations
+    - a console notification (`billing.minutes_warning` / `billing.minutes_used_up`, linking to `/billing`)
+  - **How it's found:**
+    - Every 5 minutes (`sauti.billing.usage-alert-scan-delay-ms`), the worker checks workspaces with a
+      call that ended in the last 6 hours (`CallRepository.tenantIdsWithCallsEndedSince`).
+    - Each workspace is checked in its own transaction. This covers every way a call ends, without hooking
+      each one.
+    - Only active workspaces are checked.
+  - **Once each:**
+    - Alerts are keyed by workspace, cycle start, allowance and threshold (a unique constraint), so a
+      repeated check never alerts twice.
+    - A grant of extra minutes or a plan change is a new allowance, so it can alert again.
+    - If one check finds 100% already reached, the 80% row is stored as `skipped`, so the owner gets only
+      the 100% email.
+  - **Wording:** trial emails say to choose a plan. Paid emails name the day minutes return and say nothing
+    extra is charged.
+  - **Dashboard:**
+    - The notification bell shows billing notifications with a gauge icon; "minutes used up" counts as
+      action required.
+    - The billing page, pricing page and help center say the owner gets an email at 80% and 100%.
+- **Lemon Squeezy and 2Checkout removed:**
+  - Neither went live: Lemon Squeezy was the legacy adapter and 2Checkout was still waiting for account
+    approval. Whop is the only checkout provider.
+  - **Deleted:**
+    - their checkout services, plan catalogs, webhook inboxes, subscription processors and webhook
+      controllers, with their tests
+    - the `/webhooks/lemon-squeezy` and `/webhooks/2checkout/**` security exceptions
+    - their `application.yml` blocks and env vars in `.env.example` and `deploy/.env.production.example`
+    - `docs/2checkout-setup.md`
+  - The shared subscription, add-on, provider-event and payment-notification repositories moved from
+    `LemonSqueezyRepositories.java` to `SubscriptionRepositories.java`.
+  - **Kept for history:** the tables and `tenants.lemon_squeezy_customer_id`. That column still stores the
+    provider customer id, which is now the Whop user id.
+  - `BillingCheckoutService.cancelWith` fails with "not available" for a subscription held by a removed
+    provider. Before deploy, check that production has none:
+    `select provider, count(*) from billing_subscriptions group by provider`.
+- **Tests:** `BillingUsageAlertTest`:
+  - a trial is warned once at 80% and once at 100%
+  - jumping past both thresholds sends one alert
+  - extra minutes start a fresh allowance
+  - the rendered email has the right subject, text and link
+  - the paid limit email names the return date
+  - the worker retries a failed send
+- **Still open for FR6:**
+  - **Message limits:** done in phase 3 (above).
+  - The alert email has not been sent through Resend for real; it was only rendered in tests.
+
+### 2026-11-23: FR6 usage and billing, phase 1 (real cycles, limits enforced, admin minutes)
+
+Branch `billing/usage-and-billing`. FR6: plans with minute/message limits, usage metering, checkout through
+one provider (Whop in production), and access blocked when unpaid or over the limit.
+
+- **What was wrong:**
+  - "Minutes used" (`tenants.minutes_used_this_cycle`) was a running total that never reset.
+  - Nothing enforced a limit. `BillingAccessPolicy` only checked whether an enforced subscription was paid,
+    and trial and pilot workspaces (no Whop account, so "observe") had unlimited calls.
+  - The billing page offered a "when you run out" choice (cap, pause, ask an owner) that was never saved.
+  - The page also promised that calls continue past the limit, and showed an overage charge nothing bills.
+- **Minutes used come from calls** (`billing.WorkspaceUsageService`):
+  - `CallRepository.billedMinutesBetween` sums connected calls that ended in the cycle, each rounded up to
+    whole minutes.
+  - Free: calls that failed, were busy, got no answer, were cancelled, unanswered or rejected, `media_failed`
+    calls, and WhatsApp threads. Browser tests count, since they use real Telnyx minutes.
+  - **Trial:** decided with the user: 60 minutes in total, counted from workspace creation, never renewing.
+  - **Paid plan:** a monthly cycle on the subscription's renewal day and time (annual plans too). It stays on
+    the 31st through short months: 31 Jan → 28 Feb → 31 Mar. With no renewal date, cycles follow calendar
+    months.
+  - Allowance = plan minutes (100 / 750 / 2,500) + `tenants.extra_minutes` (`V85`).
+  - The old counter is deprecated and no longer read. `Call.complete` still writes it, which is harmless.
+- **Access** (`BillingAccessPolicy.decision`, which now returns a `blockedReason`):
+  - `unpaid` (enforced subscription not paid) is checked first, then `over_limit` (minutes used ≥ allowance).
+  - The minute limit applies to every workspace, including observe-mode, trial and pilot ones.
+  - Over the limit: inbound calls are turned away (the FR3 blocked-workspace path), and browser tests,
+    outbound and public web voice are refused, with a message that names the trial or cycle allowance.
+  - Calls in progress are never cut off.
+  - WhatsApp: when the subscription is **unpaid**, messages still reach the inbox but the AI doesn't reply
+    (voice notes aren't transcribed). Running out of call minutes does not stop WhatsApp, since messages are
+    not part of the allowance.
+- **API:**
+  - `GET /billing/usage` keeps its fields (`monthlyMinutesLimit` is now the whole allowance) and adds
+    `trial`, `planMinutes`, `extraMinutes`, `cycleStartsAt`, `cycleEndsAt` (null for a trial),
+    `accessBlocked` and `blockedReason`.
+  - `PATCH /admin/workspaces/{id}/extra-minutes` takes `{minutes, reason}`. It replaces the earlier grant,
+    accepts 0 to 100,000, requires a reason, and records it in the platform audit log.
+  - The admin workspace list and detail show usage-based minutes, `extraMinutes` and `trial`.
+- **Dashboard:**
+  - The sidebar meter and the "AI calling is paused" banner read `/billing/usage`. The banner says whether
+    the trial minutes or the cycle's minutes are used, and when they return.
+  - Billing overview:
+    - the real cycle end, or "Doesn't renew" for a trial
+    - the alerts say new calls pause at the allowance
+    - the projected bill has no overage row
+    - the unsaved limit selector is replaced by a plain "When the minutes run out" card
+  - The admin workspace panel has an "Extra minutes" control (number and reason).
+- **Tests:**
+  - `WorkspaceUsageTest`:
+    - a trial counts connected calls, including old ones, and is blocked at 60
+    - an admin grant reopens it; an owner can't grant minutes
+    - a paid plan counts only the current cycle on its renewal day
+    - cycle dates across short months
+  - `BillingAccessPolicyTest`: over the limit on a paid plan and on a trial; unpaid comes first
+  - Backend: 699 passing. Dashboard: typecheck and lint pass. The billing page was checked in preview; the
+    admin control was not, because the admin app isn't in the preview.
+- **No overage (decided with the user: hard stop):**
+  - New AI calls stop at the allowance. Nothing is ever billed per extra minute.
+  - `PricingPlan.overageRate` is removed. `projectBilling` returns `minutesOver`, which is not a charge;
+    the total is the plan plus add-ons.
+  - Console plans tab:
+    - no per-extra-minute line and no overage row in the estimate
+    - over the allowance, it says new calls would pause and names the plan that covers the minutes
+  - Public `/pricing`:
+    - the comparison row "Overage rate" became "When minutes run out"
+    - the calculator estimate is the plan price; above Scale it says "is our largest plan"
+    - the trial card says 60 minutes
+    - the "usage alerts" claim and the "hard cap or overage" claim are gone
+  - The help center answer for running out of minutes matches.
+  - Checked `/pricing` and the console plans tab in preview.
+- **Deploy warning:** once this is deployed, any trial or pilot workspace that has already used 60 minutes
+  of calls in total is blocked from new AI calls. Grant extra minutes from the admin console right after the
+  deploy, for pilots that should keep calling.
+- **Still open for FR6:** see phase 2 below.
+
 ### 2026-11-22: FR5 conversation records, phase 3 (analysis on either model, search index, match excerpts)
 
 - **Summaries needed a Google key.** Without one, no call got a summary, intent or sentiment.

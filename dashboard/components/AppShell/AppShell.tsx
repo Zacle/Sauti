@@ -25,7 +25,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationMenu } from "@/features/notifications/presentation/NotificationMenu";
-import { loadBillingAccount } from "@/lib/api/billing";
+import { loadBillingUsage } from "@/lib/api/billing";
+import type { BillingUsage } from "@/types/api";
 import { CommandMenu, useCommandMenu } from "@/components/ui/command-menu";
 import { isPreviewMode } from "@/lib/preview/mode";
 import { cn } from "@/lib/utils";
@@ -73,7 +74,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const commandMenu = useCommandMenu();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [paidCallingBlocked, setPaidCallingBlocked] = useState(false);
+  const [billingUsage, setBillingUsage] = useState<BillingUsage | null>(null);
   const [shortcut, setShortcut] = useState("Ctrl K");
   const isAgentStudio = pathname === "/agents/new" || /^\/agents\/[^/]+$/.test(pathname);
   const current = allNav.find((item) => isActive(pathname, item.href));
@@ -93,16 +94,17 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
+  // Minutes and whether AI calls are paused; refreshed on each page so they follow recent calls.
   useEffect(() => {
     if (!session?.tenant) return;
     let active = true;
-    loadBillingAccount()
-      .then((account) => active && setPaidCallingBlocked(account.enforcementMode === "enforce" && !account.paidResourcesAllowed))
+    loadBillingUsage()
+      .then((usage) => { if (active) setBillingUsage(usage); })
       .catch(() => undefined);
     return () => {
       active = false;
     };
-  }, [session?.tenant]);
+  }, [session?.tenant, pathname]);
 
   function toggleCollapsed() {
     setCollapsed((value) => {
@@ -120,9 +122,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.replace("/login");
   }
 
-  const minutesUsed = tenant?.minutesUsedThisCycle ?? 0;
-  const minutesLimit = tenant?.monthlyMinutesLimit ?? 0;
+  const minutesUsed = billingUsage?.minutesUsedThisCycle ?? 0;
+  const minutesLimit = billingUsage?.monthlyMinutesLimit ?? 0;
   const usage = minutesLimit ? Math.min(100, Math.round((minutesUsed / minutesLimit) * 100)) : 0;
+  const paidCallingBlocked = Boolean(billingUsage?.accessBlocked);
+  const outOfMinutes = billingUsage?.blockedReason === "over_limit";
+  const messagesUsed = billingUsage?.messagesUsed ?? 0;
+  const messagesLimit = billingUsage?.messagesIncluded ?? 0;
+  // Unpaid already pauses everything and has its own banner.
+  const outOfMessages = billingUsage?.messagesBlockedReason === "messages_over_limit";
 
   const sidebar = (compact: boolean) => (
     <div className="flex h-full flex-col gap-5 px-3 pb-3 pt-3">
@@ -164,7 +172,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           {!compact && minutesLimit ? (
             <Link href="/billing" className="block rounded-[8px] border border-line bg-surface px-3 py-2.5 no-underline transition-colors hover:border-line-strong">
               <span className="flex items-baseline justify-between text-[0.75rem]">
-                <span className="text-fg-soft">Minutes this cycle</span>
+                <span className="text-fg-soft">{billingUsage?.trial ? "Trial minutes" : "Minutes this cycle"}</span>
                 <span className="tabular-nums text-fg">{usage}%</span>
               </span>
               <span className="mt-2 block h-1 overflow-hidden rounded-full bg-surface-3">
@@ -173,6 +181,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="mt-1.5 block text-[0.72rem] tabular-nums text-fg-muted">
                 {minutesUsed.toLocaleString("en-US")} of {minutesLimit.toLocaleString("en-US")} min
               </span>
+              {messagesLimit ? (
+                <span className={cn("block text-[0.72rem] tabular-nums", outOfMessages ? "text-danger" : "text-fg-muted")}>
+                  {messagesUsed.toLocaleString("en-US")} of {messagesLimit.toLocaleString("en-US")} messages
+                </span>
+              ) : null}
             </Link>
           ) : null}
           <NavGroup items={accountNav} pathname={pathname} compact={compact} />
@@ -268,7 +281,25 @@ export function AppShell({ children }: { children: ReactNode }) {
           {paidCallingBlocked ? (
             <div role="alert" className="flex flex-wrap items-center gap-3 border-b border-warning/25 bg-warning/[0.07] px-4 py-2.5 text-[0.84rem] lg:px-6">
               <span className="font-medium text-ink">AI calling is paused.</span>
-              <span className="text-fg-soft">Agents and history stay available. Reactivate a plan to place new calls.</span>
+              <span className="text-fg-soft">
+                {outOfMinutes
+                  ? billingUsage?.trial
+                    ? `The ${minutesLimit} trial minutes are used. Choose a plan to take new calls.`
+                    : `All ${minutesLimit.toLocaleString("en-US")} minutes for this cycle are used. Upgrade to take new calls before ${formatCycleEnd(billingUsage?.cycleEndsAt)}.`
+                  : "Agents and history stay available. Reactivate a plan to place new calls."}
+              </span>
+              <Link href="/billing" className="ml-auto font-medium text-ink underline underline-offset-4">Review billing</Link>
+            </div>
+          ) : null}
+
+          {!paidCallingBlocked && outOfMessages ? (
+            <div role="status" className="flex flex-wrap items-center gap-3 border-b border-warning/25 bg-warning/[0.07] px-4 py-2.5 text-[0.84rem] lg:px-6">
+              <span className="font-medium text-ink">Automatic messages are paused.</span>
+              <span className="text-fg-soft">
+                {billingUsage?.trial
+                  ? `The ${messagesLimit} trial messages are used. AI replies and texts stop until you choose a plan; your team can still reply from the inbox.`
+                  : `All ${messagesLimit.toLocaleString("en-US")} messages for this cycle are used. AI replies and texts resume on ${formatCycleEnd(billingUsage?.cycleEndsAt)}; your team can still reply from the inbox.`}
+              </span>
               <Link href="/billing" className="ml-auto font-medium text-ink underline underline-offset-4">Review billing</Link>
             </div>
           ) : null}
@@ -310,4 +341,10 @@ function NavGroup({ label, items, pathname, compact }: { label?: string; items: 
       })}
     </div>
   );
+}
+
+/** "1 Dec", the day the next cycle's minutes start. */
+function formatCycleEnd(value: string | null | undefined) {
+  if (!value) return "the next cycle";
+  return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(new Date(value));
 }

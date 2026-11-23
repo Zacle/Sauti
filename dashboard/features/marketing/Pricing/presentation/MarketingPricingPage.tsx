@@ -30,7 +30,6 @@ import {
   billedMonthlyPrice,
   comparisonRows,
   estimateMonthlyMinutes,
-  formatMoney,
   pricingPlans,
   recommendPlan,
   type PricingOutcome,
@@ -67,9 +66,9 @@ const addOns = [
 ] as const;
 
 const protections = [
-  { icon: CalendarDays, title: "14-day trial included", text: "10 browser test minutes. No card required. Go live on a paid plan." },
-  { icon: BellRing, title: "Usage alerts", text: "Get notified at 80% and 100% of included minutes." },
-  { icon: ShieldCheck, title: "Spend control", text: "Set a hard cap or approve transparent overages." },
+  { icon: CalendarDays, title: "Free trial included", text: "60 minutes of calls and 50 messages to try it. No card required. Go live on a paid plan." },
+  { icon: BellRing, title: "Usage alerts", text: "Emailed at 80% and 100% of your minutes and messages, and shown live in your console." },
+  { icon: ShieldCheck, title: "No surprise bills", text: "No overage charges. At your allowance, AI calls or automatic messages pause until the next cycle or an upgrade." },
   { icon: Code2, title: "Built to scale", text: "Signed webhooks, APIs, and clear concurrency limits." },
 ];
 
@@ -81,9 +80,10 @@ const planAccent: Record<PricingPlan["id"], string> = {
 
 function comparisonValue(plan: PricingPlan, row: (typeof comparisonRows)[number]) {
   if (row === "Included AI minutes") return `${plan.includedMinutes.toLocaleString()} minutes`;
+  if (row === "Included messages") return `${plan.includedMessages.toLocaleString()} SMS / WhatsApp`;
   if (row === "Live agents (max)") return `${plan.maxAgents} ${plan.maxAgents === 1 ? "agent" : "agents"}`;
   if (row === "Concurrent calls") return String(plan.concurrentCalls);
-  if (row === "Overage rate") return `${formatMoney(plan.overageRate, 2)} / minute`;
+  if (row === "When the allowance runs out") return "AI pauses, never billed";
   return plan.features[row];
 }
 
@@ -183,9 +183,8 @@ export function MarketingPricingPage() {
   const plan = recommendPlan(monthlyMinutes);
   const monthlyPrice = billedMonthlyPrice(plan, annual);
   const headroom = Math.max(0, plan.includedMinutes - monthlyMinutes);
-  const overageMinutes = Math.max(0, monthlyMinutes - plan.includedMinutes);
-  const estimatedSubscription = monthlyPrice + overageMinutes * plan.overageRate;
-  const effectiveRate = estimatedSubscription / Math.max(monthlyMinutes, 1);
+  const minutesOver = Math.max(0, monthlyMinutes - plan.includedMinutes);
+  const effectiveRate = monthlyPrice / Math.max(Math.min(monthlyMinutes, plan.includedMinutes), 1);
   const usageRatio = Math.min(1, monthlyMinutes / plan.includedMinutes);
 
   return (
@@ -195,7 +194,7 @@ export function MarketingPricingPage() {
         eyebrow="Pricing"
         title="Pay for the calls"
         accent="you can't afford to miss."
-        description="Simple plans with included AI minutes. Every extra cost is shown before it starts, and you can cap spend at any time."
+        description="Simple plans with included AI minutes. No overage charges: calls pause at your allowance. Every extra cost is shown before it starts."
         actions={<BillingToggle id="t1" annual={annual} onChange={setAnnual} />}
         glowSeed={12}
       />
@@ -236,6 +235,7 @@ export function MarketingPricingPage() {
 
                   <ul className="mt-8 grid gap-3 border-t border-line pt-7 text-sm">
                     <PlanLine strong>{item.includedMinutes.toLocaleString()} AI minutes included</PlanLine>
+                    <PlanLine>{item.includedMessages.toLocaleString()} SMS / WhatsApp messages</PlanLine>
                     <PlanLine>Up to {item.maxAgents} live {item.maxAgents === 1 ? "agent" : "agents"}</PlanLine>
                     <PlanLine>{item.concurrentCalls} concurrent {item.concurrentCalls === 1 ? "call" : "calls"}</PlanLine>
                     {Object.entries(item.features).map(([feature, value]) =>
@@ -251,7 +251,6 @@ export function MarketingPricingPage() {
                         </PlanLine>
                       ),
                     )}
-                    <PlanLine>{formatMoney(item.overageRate, 2)} / extra minute</PlanLine>
                   </ul>
                 </SpotlightCard>
               </Reveal>
@@ -315,12 +314,12 @@ export function MarketingPricingPage() {
                 <BillingToggle id="t2" annual={annual} onChange={setAnnual} />
               </div>
               <h3 className="mt-4 text-3xl font-medium tracking-tight text-white">
-                {plan.name} <span className="font-serif font-normal italic text-fg-soft">fits this workload.</span>
+                {plan.name} <span className="font-serif font-normal italic text-fg-soft">{minutesOver > 0 ? "is our largest plan." : "fits this workload."}</span>
               </h3>
 
               <div className="mt-8 grid grid-cols-2 gap-6">
                 <Stat label="Estimated / month">
-                  <NumberFlow locales="en-US" value={estimatedSubscription} format={{ style: "currency", currency: "USD", maximumFractionDigits: 0 }} />
+                  <NumberFlow locales="en-US" value={monthlyPrice} format={{ style: "currency", currency: "USD", maximumFractionDigits: 0 }} />
                 </Stat>
                 <Stat label="AI minutes / month">
                   <NumberFlow locales="en-US" value={monthlyMinutes} />
@@ -336,7 +335,7 @@ export function MarketingPricingPage() {
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/[0.06]">
                   <motion.div
-                    className={cn("h-full rounded-full", overageMinutes > 0 ? "bg-[#fbbf24]" : "bg-signal")}
+                    className={cn("h-full rounded-full", minutesOver > 0 ? "bg-[#fbbf24]" : "bg-signal")}
                     initial={false}
                     animate={{ width: `${Math.max(4, usageRatio * 100)}%` }}
                     transition={{ type: "spring", bounce: 0.1, duration: 0.8 }}
@@ -354,9 +353,9 @@ export function MarketingPricingPage() {
                   </dd>
                 </div>
                 <div className="bg-black/60 p-4">
-                  <dt className="text-xs text-fg-muted">{headroom > 0 ? "Headroom" : "Estimated overage"}</dt>
+                  <dt className="text-xs text-fg-muted">{headroom > 0 ? "Headroom" : "Over the largest plan"}</dt>
                   <dd className="mt-1 text-lg font-medium text-white tabular-nums">
-                    <NumberFlow locales="en-US" value={headroom > 0 ? headroom : overageMinutes} />
+                    <NumberFlow locales="en-US" value={headroom > 0 ? headroom : minutesOver} />
                     <span className="text-xs font-normal text-fg-muted"> min</span>
                   </dd>
                 </div>
@@ -364,7 +363,7 @@ export function MarketingPricingPage() {
 
               <p className="mt-6 flex gap-2 text-xs leading-relaxed text-fg-muted">
                 <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                Includes the plan and AI-minute overage. Regional calling, numbers, messaging and premium voices appear separately before activation.
+                Plans never bill extra minutes. Above Scale, talk to us about a tailored allowance. Regional calling, numbers, messaging and premium voices appear separately before activation.
               </p>
 
               <div className="mt-auto flex flex-wrap gap-3 pt-8">
@@ -439,7 +438,7 @@ export function MarketingPricingPage() {
               <ReceiptText className="size-5 text-signal" aria-hidden="true" />
               <span className="text-sm">
                 <span className="block text-xs text-fg-muted">Your monthly bill</span>
-                <span className="text-fg">Plan + overage + add-ons you activate</span>
+                <span className="text-fg">Plan + add-ons you activate</span>
               </span>
             </div>
           }

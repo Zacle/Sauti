@@ -23,12 +23,17 @@ public class BillingService {
     private final BillingSubscriptionRepository subscriptions;
     private final BillingAddOnSubscriptionRepository addOnSubscriptions;
     private final BillingPlanChangeRequestRepository planChangeRequests;
+    private final WorkspaceUsageService workspaceUsage;
+    private final BillingAccessPolicy accessPolicy;
 
     public BillingService(TenantRepository tenantRepository, BillingLedgerService ledger,
                           ProviderCostReconciliationRepository reconciliationJobs,
                           BillingSubscriptionRepository subscriptions,
                           BillingAddOnSubscriptionRepository addOnSubscriptions,
-                          BillingPlanChangeRequestRepository planChangeRequests) {
+                          BillingPlanChangeRequestRepository planChangeRequests,
+                          WorkspaceUsageService workspaceUsage, BillingAccessPolicy accessPolicy) {
+        this.workspaceUsage = workspaceUsage;
+        this.accessPolicy = accessPolicy;
         this.tenantRepository = tenantRepository;
         this.ledger = ledger;
         this.reconciliationJobs = reconciliationJobs;
@@ -41,7 +46,8 @@ public class BillingService {
     public BillingUsageResponse usage(UUID tenantId) {
         var tenant = tenantRepository.findById(tenantId)
                 .orElseThrow(() -> new EntityNotFoundException("Tenant not found"));
-        return BillingUsageResponse.from(tenant);
+        return BillingUsageResponse.from(tenant, workspaceUsage.current(tenant), accessPolicy.decision(tenantId),
+                accessPolicy.automatedMessages(tenantId));
     }
 
     @Transactional

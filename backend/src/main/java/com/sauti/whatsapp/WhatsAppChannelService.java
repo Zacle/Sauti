@@ -31,6 +31,7 @@ public class WhatsAppChannelService {
     private final OggOpusAudioConverter audioConverter;
     private final IntegrationService integrations;
     private final PilotProvisioningPolicyService provisioningPolicies;
+    private final com.sauti.billing.BillingAccessPolicy billingAccess;
     private final AtomicInteger workerSequence = new AtomicInteger();
     private final ExecutorService executor = new ThreadPoolExecutor(
             4,
@@ -59,8 +60,10 @@ public class WhatsAppChannelService {
             VoiceCatalogService voiceCatalogService,
             OggOpusAudioConverter audioConverter,
             IntegrationService integrations,
-            PilotProvisioningPolicyService provisioningPolicies
+            PilotProvisioningPolicyService provisioningPolicies,
+            com.sauti.billing.BillingAccessPolicy billingAccess
     ) {
+        this.billingAccess = billingAccess;
         this.objectMapper = objectMapper;
         this.messageRepository = messageRepository;
         this.callPipelineService = callPipelineService;
@@ -138,7 +141,7 @@ public class WhatsAppChannelService {
             var call = callPipelineService.startWhatsAppConversation(phoneNumberId, customerNumber);
             provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
             var recorded = inbox.recordInbound(call, messageId, customerName, "text", text, null, null);
-            if ("human".equals(recorded.mode())) {
+            if ("human".equals(recorded.mode()) || !aiMayReply(call)) {
                 inbound.markCompleted();
                 return;
             }
@@ -171,6 +174,12 @@ public class WhatsAppChannelService {
             messageRepository.save(inbound);
             var call = callPipelineService.startWhatsAppConversation(phoneNumberId, customerNumber);
             provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
+            if (!aiMayReply(call)) {
+                // Kept for staff in the inbox; not transcribed, since that is paid work too.
+                inbox.recordInbound(call, messageId, customerName, "audio", "", mediaId, null);
+                inbound.markCompleted();
+                return;
+            }
             var token = workspaceToken(call);
             var media = messageSender.downloadMedia(mediaId, token);
             var transcript = speechToTextService.transcribe(call.getAgent(), media.bytes(), media.contentType());
@@ -219,7 +228,7 @@ public class WhatsAppChannelService {
             var call = callPipelineService.startWhatsAppConversation(phoneNumberId, customerNumber);
             provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
             var recorded = inbox.recordInbound(call, messageId, customerName, type, body, mediaId, mime);
-            if (!"human".equals(recorded.mode())) {
+            if (!"human".equals(recorded.mode()) && aiMayReply(call)) {
                 var prompt = body.isBlank() ? "[The customer sent a WhatsApp " + type + "]" : body;
                 var turn = callPipelineService.processLiveTranscriptTurn(call, prompt);
                 if (!turn.text().isBlank()) inbox.sendAiText(call, recorded.conversationId(), turn.text());
@@ -231,6 +240,19 @@ public class WhatsAppChannelService {
         } finally {
             saveFinalState(inbound, messageId);
         }
+    }
+
+    /**
+     * Whether the agent may answer: not when the workspace's subscription is unpaid or its messages for
+     * the cycle are used. Running out of call minutes does not stop replies. A held message still reaches
+     * the inbox, so staff can reply themselves.
+     */
+    private boolean aiMayReply(com.sauti.call.Call call) {
+        var decision = billingAccess.automatedMessages(call.getTenant().getId());
+        if (!decision.allowed()) {
+            LOGGER.info("WhatsApp reply held for staff: {}", decision.blockedReason());
+        }
+        return decision.allowed();
     }
 
     private String richBody(String type, JsonNode message) {

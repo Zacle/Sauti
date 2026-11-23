@@ -3,7 +3,7 @@ import { MarketingPricingPage } from "@/features/marketing/Pricing/presentation/
 
 export const metadata: Metadata = {
   title: "Pricing | Sauti",
-  description: "Estimate your AI call workload, compare transparent Sauti plans, and keep usage, overages, and regional voice costs under control.",
+  description: "Estimate your AI call workload, compare transparent Sauti plans, and keep usage and regional voice costs under control, with no overage charges.",
 };
 
 export default function PricingPage() {

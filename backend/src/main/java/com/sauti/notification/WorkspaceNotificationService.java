@@ -4,7 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sauti.calendar.BookingRepository;
 import com.sauti.notification.WorkspaceNotificationDtos.NotificationListResponse;
 import com.sauti.notification.WorkspaceNotificationDtos.NotificationResponse;
+import com.sauti.tenant.Tenant;
 import jakarta.persistence.EntityNotFoundException;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -54,6 +58,46 @@ public class WorkspaceNotificationService {
                 json(payload)
         );
         return repository.save(notification);
+    }
+
+    /**
+     * The workspace reached 80% or 100% of its call minutes, or of its outbound messages when
+     * {@code messages} is true. Saved in the caller's transaction.
+     */
+    @Transactional
+    public WorkspaceNotification usageThresholdReached(Tenant tenant, UUID alertId, boolean messages,
+                                                      int thresholdPercent, int used, int included, boolean trial,
+                                                      OffsetDateTime cycleEndsAt) {
+        var unit = messages ? "messages" : "minutes";
+        var allowance = trial ? "trial " + unit : messages ? "messages" : "call minutes";
+        var paused = messages ? "AI and automatic messages are paused (staff can still reply from the inbox)"
+                : "new AI calls are paused";
+        var renews = cycleEndsAt == null ? null
+                : cycleEndsAt.withOffsetSameInstant(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("d MMM uuuu"));
+        var exhausted = thresholdPercent >= 100;
+        String title;
+        String message;
+        if (exhausted) {
+            title = (trial ? "Trial " + unit : messages ? "Messages" : "Call minutes") + " used up";
+            message = trial
+                    ? "All " + included + " trial " + unit + " are used, so " + paused + ". Choose a plan to continue."
+                    : "All " + included + " " + unit + " for this cycle are used, so " + paused + " until " + renews + ".";
+        } else {
+            title = thresholdPercent + "% of your " + allowance + " used";
+            message = used + " of " + included + " " + unit + " used. "
+                    + (messages ? "AI and automatic messages pause" : "New AI calls pause") + " when they run out"
+                    + (renews == null ? "." : "; " + unit + " renew on " + renews + ".");
+        }
+        var payload = new LinkedHashMap<String, Object>();
+        payload.put("kind", unit);
+        payload.put("thresholdPercent", thresholdPercent);
+        payload.put("used", used);
+        payload.put("included", included);
+        payload.put("trial", trial);
+        if (cycleEndsAt != null) payload.put("cycleEndsAt", cycleEndsAt.toString());
+        var type = "billing." + unit + (exhausted ? "_used_up" : "_warning");
+        return repository.save(new WorkspaceNotification(tenant, type, title, message, "/billing", "billing",
+                alertId, json(payload)));
     }
 
     @Transactional(readOnly = true)

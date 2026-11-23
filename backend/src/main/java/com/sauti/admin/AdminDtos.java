@@ -44,6 +44,12 @@ public final class AdminDtos {
                                   boolean phoneNumbersApproved, boolean liveCallingApproved,
                                   boolean smsApproved, boolean whatsappApproved,
                                   String approvedBy, OffsetDateTime approvedAt, String notes) { }
+    /**
+     * Minutes and outbound messages added to a workspace's allowance, and why (kept in the audit log).
+     * A null amount leaves that part of the grant unchanged.
+     */
+    public record ExtraAllowanceRequest(Integer minutes, Integer messages, String reason) { }
+
     public record ConfigurePilotPolicy(String status, String currency, BigDecimal monthlyBudget,
                                        boolean phoneNumbersApproved, boolean liveCallingApproved,
                                        boolean smsApproved, boolean whatsappApproved, String notes) { }
@@ -62,7 +68,8 @@ public final class AdminDtos {
 
     public record WorkspaceItem(UUID id, String businessName, String email, String countryCode,
                                 String plan, String status, int minutesUsed, int minutesLimit,
-                                long agents, long calls, long bookings, long customers,
+                                int extraMinutes, int messagesUsed, int messagesLimit, int extraMessages,
+                                boolean trial, long agents, long calls, long bookings, long customers,
                                 PilotPolicyItem pilotPolicy, OffsetDateTime createdAt) { }
 
     public record WorkspacePage(List<WorkspaceItem> workspaces, long total, int page, int pageSize) { }

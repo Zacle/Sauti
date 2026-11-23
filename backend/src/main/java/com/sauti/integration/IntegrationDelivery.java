@@ -63,6 +63,14 @@ public class IntegrationDelivery {
         updatedAt = deliveredAt;
     }
 
+    /** Not sent, on purpose and for good (for example the workspace has no messages left); never retried. */
+    public void skipped(String reason) {
+        attempts++;
+        status = "skipped";
+        lastError = reason;
+        updatedAt = OffsetDateTime.now();
+    }
+
     public void retry(Integer responseCode, String error) {
         attempts++;
         this.responseCode = responseCode;
