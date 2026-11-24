@@ -13,6 +13,23 @@ public interface CallRepository extends JpaRepository<Call, UUID>,
         org.springframework.data.jpa.repository.JpaSpecificationExecutor<Call> {
     boolean existsByAgent_Id(UUID agentId);
 
+    /**
+     * Minutes billed for calls that ended in [from, to): each connected call is rounded up to whole
+     * minutes. Calls that never connected or failed on Sauti's side, and WhatsApp threads, cost nothing.
+     */
+    @Query("""
+            select coalesce(sum(ceiling(c.durationSeconds / 60.0)), 0) from Call c
+            where c.tenant.id = :tenantId and c.endedAt >= :from and c.endedAt < :to
+              and c.durationSeconds > 0 and c.direction <> 'whatsapp'
+              and c.outcome not in ('failed', 'busy', 'no_answer', 'canceled', 'unanswered', 'rejected', 'media_failed')
+            """)
+    Number billedMinutesBetween(@Param("tenantId") UUID tenantId, @Param("from") OffsetDateTime from,
+                                @Param("to") OffsetDateTime to);
+
+    /** Workspaces with a call that ended since {@code since}: the ones whose minutes may have moved. */
+    @Query("select distinct c.tenant.id from Call c where c.endedAt >= :since")
+    List<UUID> tenantIdsWithCallsEndedSince(@Param("since") OffsetDateTime since);
+
     boolean existsByTenantIdAndDirectionAndEndedAtIsNotNull(UUID tenantId, String direction);
 
     List<Call> findAllByTenantIdOrderByStartedAtDesc(UUID tenantId);

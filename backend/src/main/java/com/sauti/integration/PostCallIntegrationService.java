@@ -67,6 +67,7 @@ public class PostCallIntegrationService {
     private final WebhookDestinationValidator destinationValidator;
     private final WebhookDeliveryService tenantWebhooks;
     private final CommunicationUsageMeteringService usageMetering;
+    private final com.sauti.billing.BillingAccessPolicy billingAccess;
     private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final TransactionTemplate transactions;
     private final String emailFrom;
@@ -91,6 +92,7 @@ public class PostCallIntegrationService {
                                       WebhookDestinationValidator destinationValidator,
                                       WebhookDeliveryService tenantWebhooks,
                                       CommunicationUsageMeteringService usageMetering,
+                                      com.sauti.billing.BillingAccessPolicy billingAccess,
                                       PlatformTransactionManager transactionManager,
                                       @Value("${sauti.email.from}") String emailFrom,
                                       @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBaseUrl,
@@ -113,6 +115,7 @@ public class PostCallIntegrationService {
         this.destinationValidator = destinationValidator;
         this.tenantWebhooks = tenantWebhooks;
         this.usageMetering = usageMetering;
+        this.billingAccess = billingAccess;
         this.transactions = new TransactionTemplate(transactionManager);
         this.emailFrom = emailFrom;
         this.graphApiBaseUrl = graphApiBaseUrl.replaceFirst("/+$", "");
@@ -207,6 +210,13 @@ public class PostCallIntegrationService {
             var binding = bindings.findById(delivery.getAgentIntegrationId()).orElseThrow();
             var connection = binding.getConnectionId() == null ? null
                     : connections.findById(binding.getConnectionId()).orElseThrow();
+            if ("whatsapp".equals(delivery.getProvider())) {
+                var held = billingAccess.automatedMessagesBlockedReason(call.getTenant().getId());
+                if (held != null) {
+                    delivery.skipped(held);
+                    return;
+                }
+            }
             var payload = payload(call, "test".equals(call.getDirection()));
             int responseCode = switch (delivery.getProvider()) {
                 case "email" -> sendEmail(call, map(binding.getConfiguration()));

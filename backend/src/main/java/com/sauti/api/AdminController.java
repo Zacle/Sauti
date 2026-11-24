@@ -103,6 +103,13 @@ public class AdminController {
         return service.configurePilotPolicy(tenantId, request, user.email());
     }
 
+    @PatchMapping("/workspaces/{tenantId}/extra-allowance")
+    WorkspaceItem setExtraAllowance(@AuthenticationPrincipal AuthenticatedUser user,
+                                    @PathVariable UUID tenantId,
+                                    @RequestBody com.sauti.admin.AdminDtos.ExtraAllowanceRequest request) {
+        return service.setExtraAllowance(tenantId, request, user.email());
+    }
+
     @GetMapping("/workspaces/{tenantId}/readiness")
     PilotReadinessItem pilotReadiness(@PathVariable UUID tenantId) {
         return service.pilotReadiness(tenantId);

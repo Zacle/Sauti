@@ -76,6 +76,13 @@ export function getAdminWorkspace(tenantId: string) {
   return apiRequest<AdminWorkspace>(`/admin/workspaces/${tenantId}`);
 }
 
+/** Replaces the minutes and messages added to a workspace's allowance; the reason goes to the audit log. */
+export function setAdminExtraAllowance(tenantId: string, extra: { minutes: number; messages: number }, reason: string) {
+  return apiRequest<AdminWorkspace>(`/admin/workspaces/${tenantId}/extra-allowance`, {
+    method: "PATCH", body: JSON.stringify({ ...extra, reason }),
+  });
+}
+
 export function configureAdminPilotPolicy(tenantId: string, policy: {
   status: string; currency: string; monthlyBudget: number;
   phoneNumbersApproved: boolean; liveCallingApproved: boolean;

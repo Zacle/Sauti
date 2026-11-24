@@ -33,8 +33,18 @@ public class Tenant extends Auditable {
     @Column(nullable = false)
     private int monthlyMinutesLimit = 60;
 
+    /** @deprecated a running total that never reset; minutes used are summed from calls instead. */
+    @Deprecated
     @Column(nullable = false)
     private int minutesUsedThisCycle = 0;
+
+    /** Minutes a platform admin added to this workspace's allowance (trial total or each paid cycle). */
+    @Column(nullable = false)
+    private int extraMinutes = 0;
+
+    /** Outbound messages a platform admin added to this workspace's allowance, like {@link #extraMinutes}. */
+    @Column(nullable = false)
+    private int extraMessages = 0;
 
     private String lemonSqueezyCustomerId;
 
@@ -126,8 +136,37 @@ public class Tenant extends Auditable {
         return monthlyMinutesLimit;
     }
 
+    /** @deprecated never reset; use the billing module's usage for the current cycle. */
+    @Deprecated
     public int getMinutesUsedThisCycle() {
         return minutesUsedThisCycle;
+    }
+
+    public int getExtraMinutes() {
+        return extraMinutes;
+    }
+
+    /** True until the workspace has a paid plan: its allowance is a one-off total that never renews. */
+    public boolean isOnTrial() {
+        return "trial".equals(plan);
+    }
+
+    public void setExtraMinutes(int extraMinutes) {
+        if (extraMinutes < 0 || extraMinutes > 100_000) {
+            throw new IllegalArgumentException("Extra minutes must be between 0 and 100,000");
+        }
+        this.extraMinutes = extraMinutes;
+    }
+
+    public int getExtraMessages() {
+        return extraMessages;
+    }
+
+    public void setExtraMessages(int extraMessages) {
+        if (extraMessages < 0 || extraMessages > 1_000_000) {
+            throw new IllegalArgumentException("Extra messages must be between 0 and 1,000,000");
+        }
+        this.extraMessages = extraMessages;
     }
 
     public String getWebhookUrl() {

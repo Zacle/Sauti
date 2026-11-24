@@ -227,6 +227,11 @@ export type AdminAuditPage = {
 export type AdminWorkspace = {
     id: string; businessName: string; email: string; countryCode: string;
     plan: string; status: string; minutesUsed: number; minutesLimit: number;
+    /** Minutes an admin added: to the one-off trial total, or to every paid cycle. */
+    extraMinutes: number;
+    /** Outbound messages this cycle (or in the trial), and an admin's extra messages. */
+    messagesUsed: number; messagesLimit: number; extraMessages: number;
+    trial: boolean;
     agents: number; calls: number; bookings: number; customers: number;
     pilotPolicy: {
       status: "pending" | "approved" | "suspended" | string;
@@ -948,6 +953,24 @@ export type BillingUsage = {
   remainingMinutes: number;
   usagePercent: number;
   limitReached: boolean;
+  /** A trial's minutes are a one-off total; cycleEndsAt is then null. */
+  trial?: boolean;
+  planMinutes?: number;
+  extraMinutes?: number;
+  cycleStartsAt?: string | null;
+  cycleEndsAt?: string | null;
+  /** New AI calls are refused: unpaid, or the minutes are used. */
+  accessBlocked?: boolean;
+  blockedReason?: "unpaid" | "over_limit" | null;
+  /** Outbound SMS and WhatsApp messages share one allowance on the same cycle. */
+  messagesIncluded?: number;
+  messagesUsed?: number;
+  messagesRemaining?: number;
+  planMessages?: number;
+  extraMessages?: number;
+  /** AI replies, the SMS tool and automatic confirmations are held; staff can still reply. */
+  messagesBlocked?: boolean;
+  messagesBlockedReason?: "unpaid" | "messages_over_limit" | null;
 };
 
 export type BillingLedgerEntry = {

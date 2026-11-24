@@ -65,8 +65,6 @@ public class SecurityConfig {
                         .requestMatchers("/webhooks/whatsapp", "/webhooks/whatsapp/**").permitAll()
                         .requestMatchers("/webhooks/telnyx", "/webhooks/telnyx/**").permitAll()
                         .requestMatchers("/webhooks/mpesa/**").permitAll()
-                        .requestMatchers("/webhooks/lemon-squeezy").permitAll()
-                        .requestMatchers("/webhooks/2checkout/**").permitAll()
                         .requestMatchers("/webhooks/whop").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/actuator/health").permitAll()

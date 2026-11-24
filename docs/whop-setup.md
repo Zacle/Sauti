@@ -258,6 +258,4 @@ must complete before another plan change can be requested.
    lifecycle remain in `observe`; refund/dispute financial enforcement still
    requires a separate review.
 
-The older 2Checkout and Lemon Squeezy adapters remain dormant rollback code.
-Do not configure their secrets or select them in production unless a later
-review explicitly changes the active provider.
+The older 2Checkout and Lemon Squeezy adapters were removed in November 2026; Whop is the only checkout provider. Their database tables and columns are kept for history.

@@ -65,7 +65,6 @@ const emptyUsage: BillingUsage = {
   limitReached: false,
 };
 
-type LimitPolicy = "cap" | "pause" | "approval";
 type Projection = ReturnType<typeof projectBilling>;
 
 const mediumDate = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
@@ -83,7 +82,6 @@ export function BillingPage() {
   const [interval, setInterval] = useState<BillingInterval>("monthly");
   const [projectedMinutes, setProjectedMinutes] = useState(900);
   const [quantities, setQuantities] = useState<Partial<Record<BillingAddOnId, number>>>({});
-  const [policy, setPolicy] = useState<LimitPolicy>("cap");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [managementIntent, setManagementIntent] = useState<"change" | "cancel">("change");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -159,13 +157,19 @@ export function BillingPage() {
     () => estimateForecast(usage.minutesUsedThisCycle, Math.max(usage.monthlyMinutesLimit, currentPlan.includedMinutes)),
     [currentPlan.includedMinutes, usage.minutesUsedThisCycle, usage.monthlyMinutesLimit],
   );
-  const currentProjection = useMemo(() => projectBilling(currentPlan, forecast, "monthly", quantities), [currentPlan, forecast, quantities]);
+  // New AI calls pause at the allowance, so this cycle's bill never includes extra minutes.
+  const currentProjection = useMemo(
+    () => projectBilling(currentPlan, Math.min(forecast, currentPlan.includedMinutes), "monthly", quantities),
+    [currentPlan, forecast, quantities],
+  );
   const modelProjection = useMemo(() => projectBilling(selectedPlan, projectedMinutes, interval, quantities), [interval, projectedMinutes, quantities, selectedPlan]);
   const includedMinutes = Math.max(1, usage.monthlyMinutesLimit || currentPlan.includedMinutes);
   const remainingMinutes = Math.max(0, includedMinutes - usage.minutesUsedThisCycle);
-  const resetDate = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(
-    new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0),
-  );
+  const resetDate = usage.trial
+    ? "Doesn't renew"
+    : new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(
+      usage.cycleEndsAt ? new Date(usage.cycleEndsAt) : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1),
+    );
   const isSandbox = checkoutStatus?.environment === "sandbox";
   const checkoutConfigured = checkoutStatus?.configured !== false;
   const checkoutProvider = checkoutStatus?.provider === "whop" ? "Whop" : checkoutStatus?.provider ?? "the billing provider";
@@ -322,14 +326,16 @@ export function BillingPage() {
               currentPlanPrice={currentPlan.monthlyPrice}
               forecast={forecast}
               includedMinutes={includedMinutes}
-              policy={policy}
               projection={currentProjection}
               remainingMinutes={remainingMinutes}
               renewsAt={account?.subscription?.renewsAt ?? null}
               resetDate={resetDate}
-              setPolicy={setPolicy}
               switchTab={switchTab}
+              trial={Boolean(usage.trial)}
               usedMinutes={usage.minutesUsedThisCycle}
+              usedMessages={usage.messagesUsed ?? 0}
+              includedMessages={usage.messagesIncluded ?? 0}
+              messagesPaused={usage.messagesBlockedReason === "messages_over_limit"}
             />
           ) : null}
           {activeTab === "usage" ? (
@@ -452,23 +458,26 @@ function PendingChange({ change }: { change: NonNullable<BillingAccount["pending
 /* ---------------- Overview ---------------- */
 
 function OverviewTab({
-  account, currentPlanName, currentPlanPrice, forecast, includedMinutes, policy, projection, remainingMinutes, renewsAt, resetDate, setPolicy, switchTab, usedMinutes,
+  account, currentPlanName, currentPlanPrice, forecast, includedMinutes, includedMessages, messagesPaused, projection, remainingMinutes, renewsAt, resetDate, switchTab, trial, usedMessages, usedMinutes,
 }: {
   account: BillingAccount | null;
   currentPlanName: string;
   currentPlanPrice: number;
   forecast: number;
   includedMinutes: number;
-  policy: LimitPolicy;
   projection: Projection;
   remainingMinutes: number;
   renewsAt: string | null;
   resetDate: string;
-  setPolicy: (policy: LimitPolicy) => void;
   switchTab: (tab: BillingTab) => void;
+  trial: boolean;
   usedMinutes: number;
+  usedMessages: number;
+  includedMessages: number;
+  messagesPaused: boolean;
 }) {
   const eighty = Math.round(includedMinutes * 0.8);
+  const messagePercent = includedMessages ? Math.min(100, (usedMessages / includedMessages) * 100) : 0;
   return (
     <div className="grid gap-8">
       <Card className="overflow-hidden">
@@ -493,6 +502,18 @@ function OverviewTab({
             <Fact label="Forecast" value={`${forecast.toLocaleString()} min`} hint="by cycle end" />
           </dl>
         </div>
+        {includedMessages ? (
+          <div className="border-t border-line px-5 py-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 text-[0.8rem]">
+              <span className="text-fg-soft">{trial ? "Trial messages" : "Messages this cycle"} <span className="text-fg-muted">· SMS and WhatsApp sent by Sauti or your team</span></span>
+              <span className="tabular-nums text-ink">{usedMessages.toLocaleString()} of {includedMessages.toLocaleString()}</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3" role="progressbar" aria-label="Messages used" aria-valuemin={0} aria-valuemax={includedMessages} aria-valuenow={usedMessages}>
+              <div className={cn("h-full rounded-full", messagePercent >= 100 ? "bg-danger" : messagePercent >= 80 ? "bg-warning" : "bg-signal")} style={{ width: `${messagePercent}%` }} />
+            </div>
+            {messagesPaused ? <p className="m-0 mt-2 text-[0.78rem] text-danger">All messages are used. AI replies, agent texts and automatic confirmations are paused; your team can still reply from the inbox.</p> : null}
+          </div>
+        ) : null}
       </Card>
 
       <section className="grid grid-cols-1 gap-8 [&>*]:min-w-0 lg:grid-cols-2">
@@ -501,18 +522,17 @@ function OverviewTab({
           <Card>
             <Ledger rows={[
               { label: "Base plan", note: `${currentPlanName} plan`, value: money(projection.basePrice) },
-              { label: "Overage", note: `${projection.overageMinutes.toLocaleString()} minutes over`, value: money(projection.overageCost) },
               { label: "Add-ons", note: "Active add-ons", value: money(projection.addOnCost) },
-            ]} total={money(projection.total)} footnote="Estimate based on your forecast. Actual charges come from your invoice." />
+            ]} total={money(projection.total)} footnote="New AI calls pause at the allowance, so no extra minutes are charged. Actual charges come from your invoice." />
           </Card>
         </div>
         <div className="grid content-start gap-3">
           <SectionTitle title="Usage alerts" />
           <Card>
             <ol className="m-0 grid list-none divide-y divide-line p-0">
-              <AlertRow reached={usedMinutes >= eighty} title="80% of minutes" detail={`${eighty.toLocaleString()} minutes`} note={usedMinutes >= eighty ? "Reached. We let you know; nothing was paused." : "We'll let you know when you get here."} />
-              <AlertRow reached={usedMinutes >= includedMinutes} title="All included minutes" detail={`${includedMinutes.toLocaleString()} minutes`} note={usedMinutes >= includedMinutes ? "Reached. Calls continue while billing is in preview." : "Calls keep going during testing after this point."} />
-              <AlertRow reached={false} title="Cycle resets" detail={resetDate} note="Minutes start again from zero." />
+              <AlertRow reached={usedMinutes >= eighty} title="80% of minutes" detail={`${eighty.toLocaleString()} minutes`} note={usedMinutes >= eighty ? "Reached. Calls continue until the allowance is used." : "The owner gets an email and a notification."} />
+              <AlertRow reached={usedMinutes >= includedMinutes} title="All included minutes" detail={`${includedMinutes.toLocaleString()} minutes`} note={usedMinutes >= includedMinutes ? (trial ? "Reached. New AI calls are paused until you choose a plan." : "Reached. New AI calls are paused until the cycle resets or you upgrade.") : "New AI calls pause here. The owner is told by email."} />
+              <AlertRow reached={false} title={trial ? "Trial minutes" : "Cycle resets"} detail={resetDate} note={trial ? "A one-off allowance. A plan adds minutes every month." : "Minutes start again from zero."} />
             </ol>
           </Card>
         </div>
@@ -521,12 +541,16 @@ function OverviewTab({
       {account ? <CommunicationCosts account={account} /> : null}
 
       <section className="grid gap-3">
-        <SectionTitle title="When you run out" meta="Preview, not saved" />
-        <div role="radiogroup" aria-label="Limit behaviour" className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <PolicyOption active={policy === "cap"} icon={Check} label="Keep answering up to a cap" note="Best for not missing callers." onClick={() => setPolicy("cap")} />
-          <PolicyOption active={policy === "pause"} icon={Phone} label="Pause new AI calls" note="Calls in progress are never cut off." onClick={() => setPolicy("pause")} />
-          <PolicyOption active={policy === "approval"} icon={UsersRound} label="Ask an owner first" note="Notify before using more minutes." onClick={() => setPolicy("approval")} />
-        </div>
+        <SectionTitle title="When the allowance runs out" />
+        <Card>
+          <ul className="m-0 grid list-none divide-y divide-line p-0 text-[0.86rem]">
+            <li className="px-5 py-3"><span className="font-medium text-ink">New AI calls pause.</span> <span className="text-fg-soft">Callers are turned away instead of answered, and browser tests and outbound calls can&apos;t start.</span></li>
+            <li className="px-5 py-3"><span className="font-medium text-ink">Calls in progress finish.</span> <span className="text-fg-soft">Nobody is cut off mid-conversation.</span></li>
+            <li className="px-5 py-3"><span className="font-medium text-ink">Messages have their own allowance.</span> <span className="text-fg-soft">{includedMessages ? `${includedMessages.toLocaleString()} SMS and WhatsApp messages${trial ? " in the trial" : " a cycle"}. ` : ""}When they&apos;re used, AI replies, agent texts and automatic confirmations pause. Customer messages still reach the inbox, and your team can always reply.</span></li>
+            <li className="px-5 py-3"><span className="font-medium text-ink">Running out of one doesn&apos;t stop the other.</span> <span className="text-fg-soft">Calls continue when messages are used up, and messages continue when minutes are.</span></li>
+            <li className="px-5 py-3"><span className="font-medium text-ink">{trial ? "Choose a plan to continue." : "Both return when the cycle resets, or straight away after an upgrade."}</span></li>
+          </ul>
+        </Card>
       </section>
     </div>
   );
@@ -610,27 +634,6 @@ function AlertRow({ reached, title, detail, note }: { reached: boolean; title: s
         <p className="m-0 mt-0.5 text-[0.78rem] text-fg-soft">{note}</p>
       </div>
     </li>
-  );
-}
-
-function PolicyOption({ active, icon: Icon, label, note, onClick }: { active: boolean; icon: typeof Check; label: string; note: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      onClick={onClick}
-      className={cn(
-        "flex cursor-pointer items-start gap-3 rounded-[var(--radius-card)] border bg-surface p-4 text-left font-sans transition-colors",
-        active ? "border-signal ring-2 ring-signal/20" : "border-line hover:border-line-strong",
-      )}
-    >
-      <span className={cn("grid size-7 shrink-0 place-items-center rounded-[6px]", active ? "bg-signal text-signal-fg" : "bg-surface-2 text-fg-soft")}><Icon className="size-3.5" /></span>
-      <span>
-        <span className="block text-[0.86rem] font-medium text-ink">{label}</span>
-        <span className="mt-0.5 block text-[0.78rem] text-fg-muted">{note}</span>
-      </span>
-    </button>
   );
 }
 
@@ -745,7 +748,6 @@ function UsageTab({ forecast, includedMinutes, resetDate, usedMinutes, switchTab
         <Card>
           <Ledger rows={[
             { label: "Growth plan", note: "750 minutes included", value: money(projection.basePrice) },
-            { label: "Overage", note: `${projection.overageMinutes} minutes`, value: money(projection.overageCost) },
             { label: "Add-ons", note: "Currently active", value: money(projection.addOnCost) },
           ]} total={money(projection.total)} />
         </Card>
@@ -786,6 +788,7 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
   subscription: BillingAccount["subscription"];
 }) {
   const selectedPlan = planById(selectedPlanId);
+  const fittingPlan = pricingPlans.find((plan) => projectedMinutes <= plan.includedMinutes);
   const currentPlan = planById(currentPlanId);
   const activeAddOnIds = new Set(activeAddOns.map((item) => item.addOn));
   const currentPrice = subscription?.interval === "annual" ? `${money(currentPlan.monthlyPrice * 0.9 * 12)} / year` : `${money(currentPlan.monthlyPrice)} / month`;
@@ -880,8 +883,8 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
                 </span>
                 <span className="mt-4 grid gap-1.5 border-t border-line pt-4 text-[0.82rem] text-fg-soft">
                   <span className="flex items-center gap-2"><Check className="size-3.5 text-signal" />{plan.includedMinutes.toLocaleString()} minutes included</span>
+                  <span className="flex items-center gap-2"><Check className="size-3.5 text-signal" />{plan.includedMessages.toLocaleString()} messages included</span>
                   <span className="flex items-center gap-2"><Check className="size-3.5 text-signal" />{plan.concurrentCalls} {plan.concurrentCalls === 1 ? "call" : "calls"} at once</span>
-                  <span className="flex items-center gap-2"><Check className="size-3.5 text-signal" />{money(plan.overageRate)} per extra minute</span>
                 </span>
               </button>
             );
@@ -922,7 +925,9 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
               </div>
               <p className="m-0 mt-3 text-[0.8rem] text-fg-soft">
                 {selectedPlan.name} includes {selectedPlan.includedMinutes.toLocaleString()} minutes.{" "}
-                {projection.overageMinutes > 0 ? <>That&apos;s <span className="text-ink">{projection.overageMinutes.toLocaleString()} minutes over</span>.</> : "You'd stay within the allowance."}
+                {projection.minutesOver > 0
+                  ? <>That&apos;s <span className="text-ink">{projection.minutesOver.toLocaleString()} minutes over</span>, so new AI calls would pause before the cycle ends{fittingPlan && fittingPlan.id !== selectedPlan.id ? <>. {fittingPlan.name} covers it</> : null}.</>
+                  : "You'd stay within the allowance."}
               </p>
             </Card>
           </div>
@@ -968,7 +973,6 @@ function PlansTab({ activeAddOns, addOnCheckoutError, addOnCheckoutLoading, addO
             <Ledger
               rows={[
                 { label: `${selectedPlan.name} plan`, note: interval === "annual" ? "Annual, shown per month" : "Monthly", value: money(projection.basePrice) },
-                { label: "Overage", note: `${projection.overageMinutes.toLocaleString()} × ${money(selectedPlan.overageRate)}`, value: money(projection.overageCost) },
                 { label: "Add-ons", note: `${activeAddOns.length} active`, value: money(projection.addOnCost) },
               ]}
               total={money(projection.total)}

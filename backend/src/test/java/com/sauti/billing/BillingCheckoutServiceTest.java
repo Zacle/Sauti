@@ -12,19 +12,19 @@ import org.junit.jupiter.api.Test;
 class BillingCheckoutServiceTest {
     @Test
     void routesCheckoutToConfiguredProviderWithoutChangingThePublicContract() {
-        var twoCheckout = mock(BillingCheckoutGateway.class);
-        var lemonSqueezy = mock(BillingCheckoutGateway.class);
+        var whop = mock(BillingCheckoutGateway.class);
+        var other = mock(BillingCheckoutGateway.class);
         var tenantId = UUID.randomUUID();
         var request = new BillingCheckoutGateway.CheckoutRequest("growth", "annual");
         var expected = new BillingCheckoutGateway.CheckoutResponse(
-                "https://secure.2checkout.com/test", "growth", "annual", "2checkout");
-        when(twoCheckout.provider()).thenReturn("2checkout");
-        when(lemonSqueezy.provider()).thenReturn("lemon_squeezy");
-        when(twoCheckout.create(tenantId, request)).thenReturn(expected);
-        var service = new BillingCheckoutService(List.of(lemonSqueezy, twoCheckout), "2checkout", false);
+                "https://whop.com/checkout/test", "growth", "annual", "whop");
+        when(whop.provider()).thenReturn("whop");
+        when(other.provider()).thenReturn("other");
+        when(whop.create(tenantId, request)).thenReturn(expected);
+        var service = new BillingCheckoutService(List.of(other, whop), "whop", false);
 
         assertThat(service.create(tenantId, request)).isEqualTo(expected);
-        verify(twoCheckout).create(tenantId, request);
+        verify(whop).create(tenantId, request);
     }
 
     @Test

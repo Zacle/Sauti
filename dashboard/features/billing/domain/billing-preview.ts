@@ -33,10 +33,10 @@ export const billingAddOns: BillingAddOn[] = [
   { id: "messaging", name: "SMS / WhatsApp messaging", description: "Optional customer messaging after voice interactions.", monthlyPrice: 19, unit: "workspace" },
 ];
 
+/** New AI calls stop at the allowance, so minutes over it are never billed; they only signal that a bigger plan fits. */
 export type BillingProjection = {
   basePrice: number;
-  overageMinutes: number;
-  overageCost: number;
+  minutesOver: number;
   addOnCost: number;
   total: number;
 };
@@ -56,10 +56,9 @@ export function projectBilling(
   quantities: Partial<Record<BillingAddOnId, number>>,
 ): BillingProjection {
   const basePrice = interval === "annual" ? plan.monthlyPrice * (1 - ANNUAL_DISCOUNT) : plan.monthlyPrice;
-  const overageMinutes = Math.max(0, projectedMinutes - plan.includedMinutes);
-  const overageCost = overageMinutes * plan.overageRate;
+  const minutesOver = Math.max(0, projectedMinutes - plan.includedMinutes);
   const addOnCost = billingAddOns.reduce((sum, addOn) => sum + addOn.monthlyPrice * Math.max(0, quantities[addOn.id] ?? 0), 0);
-  return { basePrice, overageMinutes, overageCost, addOnCost, total: basePrice + overageCost + addOnCost };
+  return { basePrice, minutesOver, addOnCost, total: basePrice + addOnCost };
 }
 
 export function estimateForecast(usedMinutes: number, includedMinutes: number) {

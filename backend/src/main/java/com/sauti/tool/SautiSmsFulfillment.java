@@ -33,12 +33,14 @@ public class SautiSmsFulfillment implements ToolFulfillment {
     private final String publicBaseUrl;
     private final CommunicationUsageMeteringService usageMetering;
     private final PilotProvisioningPolicyService provisioningPolicies;
+    private final com.sauti.billing.BillingAccessPolicy billingAccess;
 
     public SautiSmsFulfillment(
             ObjectMapper objectMapper,
             MessagingRecipientResolver recipients,
             CommunicationUsageMeteringService usageMetering,
             PilotProvisioningPolicyService provisioningPolicies,
+            com.sauti.billing.BillingAccessPolicy billingAccess,
             @Value("${sauti.telnyx.api-key:}") String telnyxApiKey,
             @Value("${sauti.telnyx.messaging-profile-id:}") String messagingProfileId,
             @Value("${sauti.telnyx.public-base-url}") String publicBaseUrl
@@ -47,6 +49,7 @@ public class SautiSmsFulfillment implements ToolFulfillment {
         this.recipients = recipients;
         this.usageMetering = usageMetering;
         this.provisioningPolicies = provisioningPolicies;
+        this.billingAccess = billingAccess;
         this.telnyxApiKey = telnyxApiKey;
         this.messagingProfileId = messagingProfileId == null ? "" : messagingProfileId.trim();
         this.publicBaseUrl = publicBaseUrl.replaceFirst("/+$", "");
@@ -56,6 +59,10 @@ public class SautiSmsFulfillment implements ToolFulfillment {
     public LlmToolResult execute(Call call, AgentTool toolConfig, LlmToolCall toolCall) {
         try { provisioningPolicies.authorize(call.getTenant().getId(), "sms"); }
         catch (IllegalStateException blocked) { return LlmToolResult.error(toolCall, blocked.getMessage()); }
+        var held = billingAccess.automatedMessagesBlockedReason(call.getTenant().getId());
+        if (held != null) {
+            return LlmToolResult.success(toolCall, Map.of("sent", false, "reason", "messages_paused", "detail", held));
+        }
         if (telnyxApiKey == null || telnyxApiKey.isBlank()) {
             LOGGER.warn("Telnyx API key not configured; SMS not sent for callId={}", call.getId());
             return LlmToolResult.success(toolCall, Map.of("sent", false, "reason", "sms_provider_not_configured"));

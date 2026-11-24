@@ -40,7 +40,7 @@ class AdminServiceTest {
                 mock(PlatformIntegrationHealthService.class), mock(PilotInvitationRepository.class),
                 mock(PlatformAdminAuditService.class), mock(PilotProvisioningPolicyService.class),
                 mock(ApplicationEventPublisher.class), mock(PilotReadinessService.class),
-                mock(PublicWebAnalyticsService.class)).overview();
+                mock(PublicWebAnalyticsService.class), mock(com.sauti.billing.WorkspaceUsageService.class)).overview();
 
         assertThat(overview.workspaces()).isEqualTo(4);
         assertThat(overview.customers()).isEqualTo(19);

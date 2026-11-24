@@ -42,6 +42,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
     private final WhatsAppTemplateParameterMapper whatsappTemplateParameters;
     private final CommunicationUsageMeteringService usageMetering;
     private final PilotProvisioningPolicyService provisioningPolicies;
+    private final com.sauti.billing.BillingAccessPolicy billingAccess;
     private final MpesaCallbackTokenService mpesaCallbackTokens;
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private final String graphApiBase;
@@ -56,6 +57,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
                                             WhatsAppTemplateParameterMapper whatsappTemplateParameters,
                                             CommunicationUsageMeteringService usageMetering,
                                             PilotProvisioningPolicyService provisioningPolicies,
+                                            com.sauti.billing.BillingAccessPolicy billingAccess,
                                             MpesaCallbackTokenService mpesaCallbackTokens,
                                             @Value("${sauti.whatsapp.graph-api-base-url:https://graph.facebook.com/v23.0}") String graphApiBase,
                                             @Value("${sauti.telnyx.public-base-url}") String publicBaseUrl) {
@@ -65,6 +67,7 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
         this.whatsappTemplateParameters = whatsappTemplateParameters;
         this.usageMetering = usageMetering;
         this.provisioningPolicies = provisioningPolicies;
+        this.billingAccess = billingAccess;
         this.mpesaCallbackTokens = mpesaCallbackTokens;
         this.graphApiBase = graphApiBase.replaceFirst("/+$", "");
         this.publicBaseUrl = publicBaseUrl.replaceFirst("/+$", "");
@@ -91,6 +94,10 @@ public class DuringCallIntegrationFulfillment implements ToolFulfillment {
 
     private LlmToolResult whatsapp(Call call, LlmToolCall toolCall) throws Exception {
         provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
+        var held = billingAccess.automatedMessagesBlockedReason(call.getTenant().getId());
+        if (held != null) {
+            return LlmToolResult.success(toolCall, Map.of("sent", false, "reason", "messages_paused", "detail", held));
+        }
         if (!"whatsapp".equalsIgnoreCase(string(call.getDirection()))) {
             return LlmToolResult.error(toolCall,
                     "WhatsApp confirmations can only be sent in a customer-started WhatsApp conversation");

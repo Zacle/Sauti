@@ -42,10 +42,10 @@ const guides: Guide[] = [
   },
   {
     title: "Understand your bill",
-    summary: "Plan minutes, overage and what counts as a call minute.",
+    summary: "Plan minutes, what counts as a call minute, and what happens at the limit.",
     href: "/billing",
     icon: CreditCard,
-    steps: ["Minutes are counted per connected call", "Your plan resets each billing cycle", "Alerts fire at 80% and 100%", "Change plans any time"],
+    steps: ["Minutes are counted per connected call", "Your plan resets each billing cycle", "You get an email at 80% and 100% of minutes and of messages", "Change plans any time"],
   },
   {
     title: "Privacy and recordings",
@@ -61,7 +61,8 @@ const faqs = [
   { q: "Can callers interrupt the agent?", a: "Yes. The agent stops speaking when the caller talks. You can make it more patient or more responsive in Settings → Calls & AI → Interruption sensitivity." },
   { q: "Which languages are supported?", a: "English, Swahili and French work out of the box, and the agent switches language when the caller does. Add languages on the agent's Voice & language step." },
   { q: "How do I hand a call to a person?", a: "Turn on live transfer in the agent's tools, add your team's number and describe when the agent should transfer. If nobody answers, the agent takes a message instead." },
-  { q: "What happens when I run out of minutes?", a: "You get an alert at 80% and 100% of your plan. Depending on your billing settings, extra minutes are charged as overage or new calls are paused until the next cycle." },
+  { q: "What happens when I run out of messages?", a: "SMS and WhatsApp messages share one allowance each cycle: 50 on a trial, then 250, 1,000 or 5,000 by plan. The owner gets an email at 80% and 100%. At the limit, AI replies, texts from your agents and automatic confirmations pause until the next cycle. Customer messages still reach the inbox, your team can still reply, and calls are not affected." },
+  { q: "What happens when I run out of minutes?", a: "The workspace owner gets an email at 80% and at 100%. New AI calls then pause until the next billing cycle, and calls already in progress finish normally. Extra minutes are never charged. WhatsApp replies keep working. To keep calling, upgrade your plan from Billing." },
   { q: "Is my data shared with other businesses?", a: "No. Every workspace is isolated. Transcripts and recordings are only visible to people in your workspace and are deleted after your retention period." },
 ];
 
