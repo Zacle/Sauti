@@ -144,6 +144,39 @@ class IntegrationServiceTest {
     }
 
     @Test
+    void oauthReconnectReplacesCredentialsThatCanNoLongerBeDecrypted() {
+        var objectMapper = new ObjectMapper();
+        var oldKey = new CredentialEncryption("old-tool-encryption-key-32-bytes");
+        var encryption = new CredentialEncryption("dev-tool-encryption-key-32-bytes");
+        var connections = mock(IntegrationConnectionRepository.class);
+        var bindings = mock(AgentIntegrationRepository.class);
+        var tenantId = UUID.randomUUID();
+        var agentId = UUID.randomUUID();
+        var connection = new IntegrationConnection(
+                tenantId, "google_sheets", "Google Sheets",
+                oldKey.encrypt("{\"accessToken\":\"old\",\"refreshToken\":\"old-refresh\"}"), "{}");
+        when(connections.findFirstByTenantIdAndProviderOrderByCreatedAtDesc(tenantId, "google_sheets"))
+                .thenReturn(Optional.of(connection));
+        when(connections.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(bindings.findByTenantIdAndAgentIdAndProvider(tenantId, agentId, "google_sheets"))
+                .thenReturn(Optional.empty());
+        when(bindings.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        var service = new IntegrationService(
+                objectMapper, encryption, new IntegrationCatalog(), connections, bindings,
+                mock(IntegrationDeliveryRepository.class), mock(AgentRepository.class),
+                mock(AgentToolRepository.class), mock(CalendarCredentialRepository.class),
+                mock(AgentVariableService.class), mock(WebhookDestinationValidator.class));
+
+        service.connectOAuth(tenantId, agentId, "google_sheets", Map.of(
+                "accessToken", "new-access", "refreshToken", "new-refresh",
+                "grantedAt", 200, "expiresIn", 3600), Map.of());
+
+        assertThat(service.credentials(connection))
+                .containsEntry("accessToken", "new-access")
+                .containsEntry("refreshToken", "new-refresh");
+    }
+
+    @Test
     void enablingGoogleCalendarLinksTheWorkspaceCredentialToAgentTools() {
         var objectMapper = new ObjectMapper();
         var encryption = new CredentialEncryption("dev-tool-encryption-key-32-bytes");
