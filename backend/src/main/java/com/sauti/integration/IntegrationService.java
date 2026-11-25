@@ -273,7 +273,15 @@ public class IntegrationService {
         var existing = connections.findFirstByTenantIdAndProviderOrderByCreatedAtDesc(tenantId, provider)
                 .orElse(null);
         var mergedCredentials = new LinkedHashMap<String, Object>();
-        if (existing != null) mergedCredentials.putAll(decrypt(existing));
+        if (existing != null) {
+            // Reconnecting must work even when the stored credential can no longer be decrypted
+            // (for example after the encryption key changed); the fresh grant replaces it.
+            try {
+                mergedCredentials.putAll(decrypt(existing));
+            } catch (IllegalStateException unreadable) {
+                LOGGER.warn("Replacing unreadable {} credential for tenantId={}", provider, tenantId);
+            }
+        }
         credentials.forEach((key, value) -> {
             if (!"refreshToken".equals(key) || (value != null && !String.valueOf(value).isBlank())) {
                 mergedCredentials.put(key, value);
