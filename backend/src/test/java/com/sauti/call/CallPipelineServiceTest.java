@@ -20,6 +20,7 @@ import com.sauti.session.CallSession;
 import com.sauti.session.CallSessionStore;
 import com.sauti.tenant.Tenant;
 import java.util.List;
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -781,4 +782,78 @@ class CallPipelineServiceTest {
         agent.activate();
         return new Call(tenant, agent, callSid, "+221771234567", "inbound");
     }
+
+    @Test
+    void aWhatsAppConversationContinuesWhileTheCustomerKeepsWriting() {
+        var fixture = whatsAppFixture(OffsetDateTime.now().minusHours(30));
+
+        var call = fixture.service.startWhatsAppConversation("123456789", "254700000000",
+                OffsetDateTime.now().minusHours(2));
+
+        assertThat(call).isSameAs(fixture.existing);
+        verify(fixture.existing, org.mockito.Mockito.never()).complete("conversation_expired");
+    }
+
+    @Test
+    void aWhatsAppConversationEndsAfterADayOfQuiet() {
+        var fixture = whatsAppFixture(OffsetDateTime.now().minusHours(30));
+
+        var call = fixture.service.startWhatsAppConversation("123456789", "254700000000",
+                OffsetDateTime.now().minusHours(25));
+
+        assertThat(call).isNotSameAs(fixture.existing);
+        verify(fixture.existing).complete("conversation_expired");
+        verify(fixture.dashboardEventPublisher).callEnded(fixture.existing);
+    }
+
+    @Test
+    void endingAQuietWhatsAppConversationRunsItsWrapUp() {
+        var fixture = whatsAppFixture(OffsetDateTime.now().minusHours(30));
+
+        assertThat(fixture.service.endWhatsAppConversation(fixture.agent.getId(), "254700000000")).isTrue();
+
+        verify(fixture.existing).complete("conversation_expired");
+        verify(fixture.postCallAnalysisService).schedule(fixture.existing);
+        verify(fixture.dashboardEventPublisher).callEnded(fixture.existing);
+    }
+
+    private WhatsAppFixture whatsAppFixture(OffsetDateTime startedAt) {
+        var callRepository = mock(CallRepository.class);
+        var agentRepository = mock(AgentRepository.class);
+        var dashboardEventPublisher = mock(DashboardEventPublisher.class);
+        var postCallAnalysisService = mock(PostCallAnalysisService.class);
+        var service = new CallPipelineService(
+                callRepository,
+                mock(CallTurnRepository.class),
+                agentRepository,
+                mock(AgentVariableRepository.class),
+                mock(StreamingSttProvider.class),
+                mock(LanguageDetector.class),
+                mock(ConversationOrchestrator.class),
+                mock(StreamingTtsProvider.class),
+                mock(CallSessionStore.class),
+                dashboardEventPublisher,
+                postCallAnalysisService
+        );
+        var tenant = new Tenant("Demo Clinic", "owner@example.com", "KE");
+        var agent = new Agent(tenant, "Amina", "Welcome", "Prompt");
+        agent.configureWhatsApp(true, "123456789");
+        agent.activate();
+        var existing = mock(Call.class);
+        when(existing.getStartedAt()).thenReturn(startedAt);
+        when(existing.getTwilioCallSid()).thenReturn("WA-existing");
+        when(existing.getId()).thenReturn(java.util.UUID.randomUUID());
+        when(existing.getTenant()).thenReturn(tenant);
+        when(existing.getAgent()).thenReturn(agent);
+        when(agentRepository.findByWhatsappPhoneNumberId("123456789")).thenReturn(Optional.of(agent));
+        when(callRepository.findFirstByAgent_IdAndDirectionAndCallerNumberAndOutcomeOrderByStartedAtDesc(
+                agent.getId(), "whatsapp", "254700000000", "active"
+        )).thenReturn(Optional.of(existing));
+        when(callRepository.save(any(Call.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        return new WhatsAppFixture(service, agent, existing, dashboardEventPublisher, postCallAnalysisService);
+    }
+
+    private record WhatsAppFixture(CallPipelineService service, Agent agent, Call existing,
+                                   DashboardEventPublisher dashboardEventPublisher,
+                                   PostCallAnalysisService postCallAnalysisService) { }
 }

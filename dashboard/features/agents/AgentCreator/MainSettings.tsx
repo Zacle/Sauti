@@ -280,7 +280,7 @@ export function MainSettings(props: {
 
           <SwitchRow
             title="WhatsApp"
-            description="Reply to customer WhatsApp messages. Text works today; voice notes are coming next."
+            description="Answer customer WhatsApp messages and voice notes. Your team can take over any conversation from the inbox."
             checked={props.whatsappEnabled}
             onChange={props.onWhatsappEnabled}
           >

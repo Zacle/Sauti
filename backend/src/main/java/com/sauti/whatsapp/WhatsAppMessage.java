@@ -26,6 +26,13 @@ public class WhatsAppMessage extends Auditable {
     private String mediaMimeType;
     @Column(nullable = false, length = 30) private String status;
     private String failureReason;
+    /** customer, ai or staff; unknown for outbound messages sent before authors were kept. */
+    @Column(length = 20) private String author;
+    /** The team member who sent a staff reply, and their email as it was then. */
+    private UUID sentByUserId;
+    @Column(length = 320) private String sentBy;
+    /** The approved template a staff message was sent from. */
+    @Column(length = 512) private String templateName;
 
     protected WhatsAppMessage() { }
 
@@ -43,6 +50,32 @@ public class WhatsAppMessage extends Auditable {
         this.mediaId = blankToNull(mediaId);
         this.mediaMimeType = blankToNull(mediaMimeType);
         this.status = status;
+        this.author = "inbound".equals(direction) ? "customer" : null;
+    }
+
+    /** An outbound message written by the agent or by a member of the team. */
+    public static WhatsAppMessage outbound(WhatsAppConversation conversation, String author, String messageType,
+                                           String body, String mediaMimeType) {
+        var message = new WhatsAppMessage(conversation, null, "outbound", messageType, body, null, mediaMimeType, "sending");
+        message.author = author;
+        return message;
+    }
+
+    /** A reply written by a member of the team, or sent from one of the business's approved templates. */
+    public static WhatsAppMessage staff(WhatsAppConversation conversation, String messageType, String body,
+                                        StaffSender sender, String templateName) {
+        var message = outbound(conversation, "staff", messageType, body, null);
+        if (sender != null) {
+            message.sentByUserId = sender.userId();
+            message.sentBy = blankToNull(sender.label());
+        }
+        message.templateName = blankToNull(templateName);
+        return message;
+    }
+
+    /** A voice note recorded before it was transcribed gains its words. */
+    public void transcribed(String transcript) {
+        if (transcript != null && !transcript.isBlank()) this.body = transcript.trim();
     }
 
     public void providerAccepted(String providerMessageId) {
@@ -66,4 +99,11 @@ public class WhatsAppMessage extends Auditable {
     public String getMediaMimeType() { return mediaMimeType; }
     public String getStatus() { return status; }
     public String getFailureReason() { return failureReason; }
+    public String getAuthor() { return author; }
+    public UUID getSentByUserId() { return sentByUserId; }
+    public String getSentBy() { return sentBy; }
+    public String getTemplateName() { return templateName; }
+
+    /** Who on the team is sending: a signed-in person, or an API key. */
+    public record StaffSender(UUID userId, String label) { }
 }

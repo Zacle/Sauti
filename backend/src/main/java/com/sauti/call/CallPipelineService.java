@@ -23,6 +23,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 @Service
 public class CallPipelineService {
+    /** A WhatsApp conversation ends once the customer has been quiet this long. */
+    public static final java.time.Duration WHATSAPP_CONVERSATION_IDLE = java.time.Duration.ofHours(24);
     private static final Logger LOGGER = LoggerFactory.getLogger(CallPipelineService.class);
     private static final Consumer<String> NO_TEXT_DELTAS = ignored -> { };
     private final CallRepository callRepository;
@@ -222,6 +224,17 @@ public class CallPipelineService {
 
     @Transactional
     public Call startWhatsAppConversation(String phoneNumberId, String customerNumber) {
+        return startWhatsAppConversation(phoneNumberId, customerNumber, null);
+    }
+
+    /**
+     * The open conversation record for this customer, or a new one. A conversation continues while the
+     * customer keeps writing: it ends once they have been quiet for 24 hours (from their previous message,
+     * or from its start when that is not known).
+     */
+    @Transactional
+    public Call startWhatsAppConversation(String phoneNumberId, String customerNumber,
+                                          OffsetDateTime previousCustomerMessageAt) {
         var agent = agentRepository.findByWhatsappPhoneNumberId(phoneNumberId)
                 .filter(Agent::isActive)
                 .filter(Agent::isWhatsappEnabled)
@@ -233,15 +246,13 @@ public class CallPipelineService {
                 );
         if (existing.isPresent()) {
             var call = existing.get();
-            if (call.getStartedAt().isAfter(OffsetDateTime.now().minusHours(24))) {
+            var lastActivity = previousCustomerMessageAt == null || previousCustomerMessageAt.isBefore(call.getStartedAt())
+                    ? call.getStartedAt() : previousCustomerMessageAt;
+            if (lastActivity.isAfter(OffsetDateTime.now().minus(WHATSAPP_CONVERSATION_IDLE))) {
                 callSessionStore.createIfAbsent(call.getTwilioCallSid(), CallSession.fromCall(call, ""));
                 return call;
             }
-            call.complete("conversation_expired");
-            analyzePostCall(call);
-            archiveSession(call);
-            callRepository.save(call);
-            dashboardEventPublisher.callEnded(call);
+            expireWhatsAppConversation(call);
         }
         var callSid = "WA-" + java.util.UUID.randomUUID();
         var call = new Call(agent.getTenant(), agent, callSid, customerNumber, "whatsapp");
@@ -251,6 +262,39 @@ public class CallPipelineService {
         callSessionStore.createIfAbsent(callSid, CallSession.fromCall(call, ""));
         dashboardEventPublisher.callStarted(call);
         return call;
+    }
+
+    /**
+     * Ends the open WhatsApp conversation record with this customer, if there is one, so its analysis and
+     * follow-ups run. Returns whether one was ended.
+     */
+    @Transactional
+    public boolean endWhatsAppConversation(java.util.UUID agentId, String customerNumber) {
+        return endWhatsAppConversation(agentId, customerNumber, "conversation_expired");
+    }
+
+    /**
+     * Ends the open WhatsApp call record with the given outcome ("conversation_expired" after 24 quiet
+     * hours, "conversation_closed" when the team closes it), so its analysis and follow-ups run.
+     */
+    @Transactional
+    public boolean endWhatsAppConversation(java.util.UUID agentId, String customerNumber, String outcome) {
+        var existing = callRepository.findFirstByAgent_IdAndDirectionAndCallerNumberAndOutcomeOrderByStartedAtDesc(
+                agentId, "whatsapp", customerNumber, "active");
+        existing.ifPresent(call -> expireWhatsAppConversation(call, outcome));
+        return existing.isPresent();
+    }
+
+    private void expireWhatsAppConversation(Call call) {
+        expireWhatsAppConversation(call, "conversation_expired");
+    }
+
+    private void expireWhatsAppConversation(Call call, String outcome) {
+        call.complete(outcome);
+        analyzePostCall(call);
+        archiveSession(call);
+        callRepository.save(call);
+        dashboardEventPublisher.callEnded(call);
     }
 
     @Transactional
