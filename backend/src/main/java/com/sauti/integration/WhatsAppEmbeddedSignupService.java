@@ -181,7 +181,9 @@ public class WhatsAppEmbeddedSignupService {
                         node.path("language").asText(""),
                         node.path("category").asText(""),
                         parameterFormat,
-                        templateParameters(node.path("components"), parameterFormat)
+                        templateParameters(node.path("components"), parameterFormat),
+                        componentText(node.path("components"), "header"),
+                        componentText(node.path("components"), "body")
                 ));
             }
         });
@@ -286,6 +288,19 @@ public class WhatsAppEmbeddedSignupService {
         return List.copyOf(parameters);
     }
 
+    /** The text of a template's text header or its body, or "" when it has none. */
+    static String componentText(JsonNode components, String wanted) {
+        if (!components.isArray()) return "";
+        for (var component : components) {
+            if (!wanted.equalsIgnoreCase(component.path("type").asText(""))) continue;
+            if ("header".equals(wanted) && !"TEXT".equalsIgnoreCase(component.path("format").asText("TEXT"))) {
+                return "";
+            }
+            return component.path("text").asText("");
+        }
+        return "";
+    }
+
     private static int positiveInteger(String value, int fallback) {
         try {
             var parsed = Integer.parseInt(value);
@@ -304,7 +319,8 @@ public class WhatsAppEmbeddedSignupService {
                                    String displayPhoneNumber, String verifiedName,
                                    List<TemplateOption> templates) {}
     public record TemplateOption(String id, String name, String language, String category,
-                                 String parameterFormat, List<TemplateParameter> parameters) {}
+                                 String parameterFormat, List<TemplateParameter> parameters,
+                                 String headerText, String bodyText) {}
     public record TemplateParameter(String key, String component, int position, String name, String placeholder) {}
     private record PhoneOption(String id, String displayPhoneNumber, String verifiedName,
                                String qualityRating, String status) {}

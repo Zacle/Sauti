@@ -224,6 +224,32 @@ const daysBack = (n: number, fn: (i: number) => Record<string, unknown>) =>
 
 const volume = (i: number) => 18 + Math.round(9 * Math.sin(i / 1.7) + (i % 7 === 5 || i % 7 === 6 ? -8 : 4) + i * 0.4);
 
+const whatsappConversations: Array<Record<string, unknown>> = [
+  { id: "wa-1", agentId: "agent-front-desk", customerNumber: "+254 712 004 118", customerName: "Amani Kariuki", mode: "ai", status: "open", unreadCount: 2, lastMessagePreview: "Can I move my cleaning to Friday?", lastMessageAt: iso(now - 6 * 60_000), lastCustomerMessageAt: iso(now - 6 * 60_000), replyWindowEndsAt: iso(now - 6 * 60_000 + DAY), needsAttention: false, attentionReason: null, updatedAt: iso(now - 60_000) },
+  { id: "wa-2", agentId: "agent-front-desk", customerNumber: "+254 733 218 904", customerName: "Wanjiru Mwangi", mode: "human", status: "open", unreadCount: 1, lastMessagePreview: "Thank you, see you then!", lastMessageAt: iso(now - 2 * 3_600_000), lastCustomerMessageAt: iso(now - 2 * 3_600_000), replyWindowEndsAt: iso(now - 2 * 3_600_000 + DAY), needsAttention: true, attentionReason: "waiting_for_team", updatedAt: iso(now - 60_000) },
+  { id: "wa-3", agentId: "agent-after-hours", customerNumber: "+33 6 12 44 81 09", customerName: "Claire Dubois", mode: "ai", status: "open", unreadCount: 0, lastMessagePreview: "Do you accept AXA insurance?", lastMessageAt: iso(now - DAY - 3_600_000), lastCustomerMessageAt: iso(now - DAY - 3_600_000), replyWindowEndsAt: iso(now - 3_600_000), needsAttention: true, attentionReason: "agent_failed", updatedAt: iso(now - 60_000) },
+  { id: "wa-4", agentId: "agent-front-desk", customerNumber: "+254 722 650 311", customerName: "Otieno Ouma", mode: "human", status: "closed", unreadCount: 0, lastMessagePreview: "Thanks, all sorted.", lastMessageAt: iso(now - 3 * DAY), lastCustomerMessageAt: iso(now - 3 * DAY), replyWindowEndsAt: iso(now - 2 * DAY), needsAttention: false, attentionReason: null, updatedAt: iso(now - 2 * DAY) },
+];
+
+const whatsappTemplates = [
+  { name: "appointment_follow_up", language: "en", category: "UTILITY", headerText: "", bodyText: "Hi {{1}}, this is Bright Smile Dental following up on your message. Would {{2}} suit you?",
+    fields: [{ key: "body.1", component: "body", name: "1", placeholder: "{{1}}" }, { key: "body.2", component: "body", name: "2", placeholder: "{{2}}" }] },
+  { name: "reconnect", language: "en", category: "UTILITY", headerText: "Bright Smile Dental", bodyText: "Hello {{first_name}}, we have an update about your enquiry. Reply to continue.",
+    fields: [{ key: "body.first_name", component: "body", name: "first_name", placeholder: "{{first_name}}" }] },
+];
+
+function whatsappPage(params: URLSearchParams) {
+  const view = params.get("view") ?? "open";
+  const query = (params.get("q") ?? "").trim().toLowerCase();
+  const items = whatsappConversations.filter((item) => {
+    if (view === "closed" ? item.status !== "closed" : item.status === "closed") return false;
+    if (view === "attention" && !item.needsAttention) return false;
+    return !query || [item.customerName, item.customerNumber, item.lastMessagePreview]
+      .some((field) => String(field ?? "").toLowerCase().includes(query));
+  });
+  return { items: structuredClone(items), nextCursor: null };
+}
+
 const routes: Record<string, unknown> = {
   "GET /workspaces/tenant-preview/api-keys": [
     { id: "key-1", name: "CRM sync", hint: "sauti_sk_3f9a1c2e_…", access: "READ_ONLY", createdAt: iso(now - 86_400_000 * 30), lastUsedAt: iso(now - 3_600_000), revokedAt: null },
@@ -347,11 +373,6 @@ const routes: Record<string, unknown> = {
       { id: "le-3", direction: "credit", category: "top_up", quantity: 1, unit: "credit", amount: 25, currency: "USD", costBasis: "credit", externalReference: null, description: "Communication balance top-up", createdAt: iso(now - 9 * DAY) },
     ],
   },
-  "GET /whatsapp/conversations": [
-    { id: "wa-1", agentId: "agent-front-desk", customerNumber: "+254 712 004 118", customerName: "Amani Kariuki", mode: "ai", status: "open", unreadCount: 2, lastMessagePreview: "Can I move my cleaning to Friday?", lastMessageAt: iso(now - 6 * 60_000) },
-    { id: "wa-2", agentId: "agent-front-desk", customerNumber: "+254 733 218 904", customerName: "Wanjiru Mwangi", mode: "human", status: "open", unreadCount: 0, lastMessagePreview: "Thank you, see you then!", lastMessageAt: iso(now - 2 * 3_600_000) },
-    { id: "wa-3", agentId: "agent-after-hours", customerNumber: "+33 6 12 44 81 09", customerName: "Claire Dubois", mode: "ai", status: "open", unreadCount: 0, lastMessagePreview: "Do you accept AXA insurance?", lastMessageAt: iso(now - DAY) },
-  ],
   "GET /integrations/catalog": [
     ["google_calendar", "Google Calendar", "Calendar", "Check free slots during the call and create the event when the caller books.", true, false],
     ["calendly", "Calendly", "Calendar", "Offer times from your Calendly event types.", true, false],
@@ -541,6 +562,9 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
   const exact = routes[`${verb} ${clean}`];
   if (exact !== undefined) return structuredClone(exact);
 
+  if (clean === "/whatsapp/conversations" && verb === "GET") return whatsappPage(new URLSearchParams(path.split("?")[1] ?? ""));
+  if (clean === "/whatsapp/conversations/changes" && verb === "GET") return { items: [], next: new Date(Date.now() - 30_000).toISOString() };
+
   if (clean === "/calls/search" && verb === "GET") return searchSampleCalls(new URLSearchParams(path.split("?")[1] ?? ""));
 
   const actionsFor = clean.match(/^\/calls\/([^/]+)\/actions$/);
@@ -700,18 +724,34 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
     return structuredClone(found);
   }
 
-  const whatsapp = clean.match(/^\/whatsapp\/conversations\/([^/]+)\/(messages|read|assignment)$/);
+  const whatsapp = clean.match(/^\/whatsapp\/conversations\/([^/]+)\/(messages|read|assignment|close|reopen|templates)$/);
   if (whatsapp) {
-    const conversations = routes["GET /whatsapp/conversations"] as Array<Record<string, unknown>>;
-    const conversation = conversations.find((item) => item.id === whatsapp[1]) ?? conversations[0];
-    if (whatsapp[2] === "messages" && verb === "GET") return whatsappThread(whatsapp[1]);
-    if (whatsapp[2] === "messages") {
-      const text = typeof body === "string" ? (JSON.parse(body) as { text?: string }).text ?? "" : "";
-      return { id: `wa-msg-${Date.now()}`, providerMessageId: null, direction: "outbound", type: "text", body: text, mediaId: null, mediaMimeType: null, status: "sent", failureReason: null, createdAt: new Date().toISOString() };
+    const conversation = whatsappConversations.find((item) => item.id === whatsapp[1]) ?? whatsappConversations[0];
+    const sentAt = new Date().toISOString();
+    const staffMessage = (type: string, text: string, templateName: string | null) => ({
+      id: `wa-msg-${Date.now()}`, providerMessageId: null, direction: "outbound", type, body: text, mediaId: null, mediaMimeType: null,
+      status: "sent", failureReason: null, createdAt: sentAt, updatedAt: sentAt, author: "staff", sentBy: "owner@brightsmile.example", templateName,
+    });
+    const changed = (changes: Record<string, unknown>) => {
+      Object.assign(conversation, changes, { updatedAt: sentAt });
+      return structuredClone(conversation);
+    };
+    if (whatsapp[2] === "messages" && verb === "GET") return path.includes("since=") ? [] : whatsappThread(whatsapp[1]);
+    if (whatsapp[2] === "templates" && verb === "GET") return structuredClone(whatsappTemplates);
+    if (whatsapp[2] === "messages" || whatsapp[2] === "templates") {
+      const request = typeof body === "string" ? (JSON.parse(body) as { text?: string; name?: string; values?: Record<string, string> }) : {};
+      if (whatsapp[2] === "messages") return staffMessage("text", request.text ?? "", null);
+      const template = whatsappTemplates.find((item) => item.name === request.name) ?? whatsappTemplates[0];
+      const text = [template.headerText, template.fields.reduce((result, field) =>
+        result.split(field.placeholder).join(request.values?.[field.key] ?? field.placeholder), template.bodyText)].filter(Boolean).join("\n\n");
+      changed({ lastMessagePreview: text, lastMessageAt: sentAt, needsAttention: false, attentionReason: null });
+      return staffMessage("template", text, template.name);
     }
-    if (whatsapp[2] === "read") return { ...conversation, unreadCount: 0 };
+    if (whatsapp[2] === "read") return changed({ unreadCount: 0 });
+    if (whatsapp[2] === "close") return changed({ status: "closed", unreadCount: 0, needsAttention: false, attentionReason: null });
+    if (whatsapp[2] === "reopen") return changed({ status: "open" });
     const mode = typeof body === "string" ? (JSON.parse(body) as { mode?: string }).mode : undefined;
-    return { ...conversation, mode: mode ?? conversation.mode };
+    return changed({ mode: mode ?? conversation.mode });
   }
 
   // Writes: echo the submitted JSON so optimistic UIs keep working.
@@ -734,6 +774,10 @@ function whatsappThread(conversationId: string) {
     id: `${conversationId}-${offsetMinutes}`, providerMessageId: null, direction, type: "text", body: text,
     mediaId: null, mediaMimeType: null, status: direction === "outbound" ? "read" : "received", failureReason: null,
     createdAt: new Date(Date.now() - offsetMinutes * 60_000).toISOString(),
+    updatedAt: new Date(Date.now() - offsetMinutes * 60_000).toISOString(),
+    author: direction === "outbound" ? (conversationId === "wa-2" && offsetMinutes < 10 ? "staff" : "ai") : "customer",
+    sentBy: direction === "outbound" && conversationId === "wa-2" && offsetMinutes < 10 ? "owner@brightsmile.example" : null,
+    templateName: null,
   });
   return [
     message(42, "inbound", "Hi, I have a cleaning booked for Thursday at 9."),

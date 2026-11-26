@@ -61,7 +61,8 @@ class WhatsAppInboxServiceTest {
                 new WhatsAppInboxService(conversations, messages,
                         mock(IntegrationService.class), mock(WhatsAppMessageSender.class),
                         mock(CommunicationUsageMeteringService.class),
-                        mock(PilotProvisioningPolicyService.class)));
+                        mock(PilotProvisioningPolicyService.class),
+                        mock(com.sauti.integration.WhatsAppEmbeddedSignupService.class)));
     }
 
     private record Fixture(UUID tenantId, WhatsAppConversation conversation,

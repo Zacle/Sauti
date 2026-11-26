@@ -198,6 +198,23 @@ public class WhatsAppMessageSender {
         }
     }
 
+    /**
+     * Sends an approved template. WhatsApp accepts these outside the 24-hour reply window.
+     *
+     * @param template the Graph API {@code template} object: name, language and any components
+     */
+    public SendResult sendTemplateTracked(String phoneNumberId, String customerNumber,
+                                          Map<String, ?> template, String workspaceAccessToken) {
+        var token = resolveToken(workspaceAccessToken);
+        return sendMessage(phoneNumberId, Map.of(
+                "messaging_product", "whatsapp",
+                "recipient_type", "individual",
+                "to", customerNumber,
+                "type", "template",
+                "template", template
+        ), token);
+    }
+
     public void markRead(String phoneNumberId, String providerMessageId, String workspaceAccessToken) {
         if (providerMessageId == null || providerMessageId.isBlank()) return;
         var token = resolveToken(workspaceAccessToken);

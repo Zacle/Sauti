@@ -2,6 +2,121 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-25: FR7 WhatsApp channel, phase 2 (team names, close, templates, paging, pricing line)
+
+Uncommitted, alongside phase 1. Another session has since checked out
+`fix/oauth-reconnect-undecryptable-credentials`, so the uncommitted work now sits on that branch; move it to
+`whatsapp/reliable-inbox` (which still points at `main`) before committing. Product decisions from the user:
+a template send counts as one message and is never blocked at the allowance (like staff text replies),
+and the pricing page's messaging line now says messages are included.
+
+- **Who on the team replied** (`whatsapp_messages.sent_by_user_id` / `sent_by`): the sender's email (or
+  "API key <name>") is kept as written. The inbox shows "Team · ana@clinic.com".
+- **Close and reopen** (`POST /whatsapp/conversations/{id}/close`, `/reopen`):
+  - Closing clears "needs a reply", moves the chat to the Closed view, and ends its open call record now
+    with outcome `conversation_closed` (`WhatsAppChannelService.close` ->
+    `CallPipelineService.endWhatsAppConversation(agent, number, outcome)`), so the summary and
+    follow-ups run without waiting 24 hours.
+  - A new customer message reopens it (`WhatsAppConversation.receive` already set status open).
+- **Templates after the 24-hour window** (`GET`/`POST /whatsapp/conversations/{id}/templates`):
+  - Lists the approved templates of the conversation's WhatsApp connection through
+    `WhatsAppEmbeddedSignupService.templates`, whose `TemplateOption` now also carries `headerText`
+    and `bodyText`.
+  - Staff must have taken over. Every placeholder must be filled; positional and named formats are
+    both sent (`WhatsAppInboxService.templatePayload`). The stored message is the filled-in text, type
+    `template`, with `template_name`. It is metered as one message and clears "needs a reply".
+  - Composer: once the window has closed, "Send a template" opens a dialog with the fields and a
+    preview of what the customer will see.
+- **Paging, search and polling:**
+  - `GET /whatsapp/conversations?view=open|attention|closed&q=&cursor=&limit=` returns
+    `{items, nextCursor}`: keyset paging on (last_message_at, id). Search matches name, number (typed
+    with spaces or "+") or the last message.
+  - `GET /whatsapp/conversations/changes?since=` returns conversations changed since a time, in any view,
+    plus `next` (30 seconds behind, so a change still being saved is not missed).
+  - `GET .../{id}/messages?since=` returns only added or changed messages.
+  - The inbox loads 30 at a time ("Load more"), polls only for changes every 5 seconds, and places each
+    changed conversation in or out of the current view.
+  - Conversations and messages now expose `updatedAt`.
+- **Migration** `V88__whatsapp_inbox_team_tools.sql`: the message columns, indexes for paging and changes,
+  and `last_message_at` backfilled from `created_at` where it was empty.
+- **Pricing page:** "SMS and WhatsApp: Usage cost + 20%" is now "Included". Two footnotes no longer say
+  messaging is billed separately.
+- **Tests:**
+  - `WhatsAppInboxFlowTest` (real schema) adds paging, search, closed view, close ending the call
+    record, reopen, and changes or messages since.
+  - New `WhatsAppInboxTeamRepliesTest`: sender kept, template payload order and named parameters,
+    metering, refusals, search pattern, cursor.
+- **Not verified:** a real template send through Meta, and the change polling against a live database
+  under load. In the preview the changes endpoint returns nothing, so cross-tab updates aren't shown there.
+- **Left for later:**
+  - closing quiet chats automatically
+  - staff display names (users have only an email today)
+  - a push channel instead of polling
+  - paging long threads
+
+### 2026-11-24: FR7 WhatsApp channel, phase 1 (no lost messages, what needs staff, quiet conversations end)
+
+Branch `whatsapp/reliable-inbox`, from `main` after PR #11. FR7: the same agent answers WhatsApp text and
+voice notes, with a shared inbox where staff read threads and reply.
+
+- **Before this phase:**
+  - Customer messages were processed once, in memory. A restart or any failure (model, Meta, speech to
+    text) left them `failed` or stuck with no retry and no sign in the inbox.
+  - A voice note that could not be downloaded or transcribed never reached the inbox at all.
+  - A conversation's call record ended only when the customer wrote again more than 24 hours after it
+    *started*, so quiet chats were never analysed or synced, and long chats were split mid-conversation.
+  - Staff replies did not save the conversation (the list preview and time stayed stale), and nothing
+    showed who wrote an outbound message, why the agent had not answered, or when the reply window closed.
+  - The agent editor said "voice notes are coming next", though they already worked.
+- **Every message reaches the inbox first** (`WhatsAppChannelService.process`):
+  - The claim now keeps what arrived (`whatsapp_inbound_messages` body, media, name, `attempts`), so
+    the message can be processed again.
+  - The message is recorded in the inbox before any agent work. A voice note is recorded as "Voice note"
+    and gains its words once transcribed (`WhatsAppInboxService.transcribed`).
+  - Retries (`WhatsAppInboxWorker.retryUnfinished`, every minute): messages left received, queued or
+    processing for 5 minutes, and failures after 1 minute, up to 3 tries. A message already answered (an
+    outbound message after it that did not fail) is not answered again.
+- **What needs staff** (`whatsapp_conversations.needs_attention` / `attention_reason`):
+  - `agent_failed`: the last try failed.
+  - `agent_paused`: automatic messages are paused (FR6 billing).
+  - `waiting_for_team`: a person has taken over.
+  - Cleared when the agent or the team sends a reply.
+- **Reply window:** `last_customer_message_at` drives `replyWindowEndsAt` (24 hours). Staff replies outside it
+  are refused with a plain message. Template sending is not built.
+- **Quiet conversations end** (`WhatsAppInboxWorker.endQuietConversations`, every 10 minutes):
+  - 24 hours after the customer's last message, the call record is ended as `conversation_expired`, so
+    analysis, CRM sync and post-call follow-ups run (`CallPipelineService.endWhatsAppConversation`).
+  - `startWhatsAppConversation` now keeps a conversation going while the customer keeps writing,
+    instead of cutting it 24 hours after it started.
+- **Authors:** `whatsapp_messages.author` is `customer`, `ai` or `staff`. Outbound messages from before
+  this change have no author.
+- **Migration** `V87__whatsapp_reliable_inbox.sql`. Existing inbound rows get `attempts = 3`, so nothing
+  from before the deploy is replayed.
+- **API:** conversations add `lastCustomerMessageAt`, `replyWindowEndsAt`, `needsAttention` and
+  `attentionReason`; messages add `author`.
+- **Dashboard** (`features/whatsapp/WhatsAppInboxPage.tsx`):
+  - a "Needs a reply" chip in the list, and a banner in the thread saying why
+  - "Agent" or "Team" on outbound messages
+  - the composer shows how long the reply window stays open, and explains when it has closed
+  - "Agent replying" / "Team replying" in the list instead of "AI handling" / "Human handling"
+  - corrected WhatsApp copy in the agent editor
+  - preview fixtures cover a healthy chat, one waiting for the team, and one the agent failed on
+    with its window closed
+- **Tests:**
+  - `WhatsAppChannelServiceTest`: stored content, voice note kept when transcription fails, last try
+    flags staff, paused and taken-over conversations, no double answer, retry queue, voice reply
+  - `WhatsAppInboxFlowTest` (real schema): reply window and attention in the API, answered check, quiet
+    sessions, window refusal, retry query
+  - `WhatsAppInboxWorkerTest`
+  - three new `CallPipelineServiceTest` cases for continuing and ending conversations
+- **Deploy note:** on the first sweep, every open WhatsApp conversation whose customer has been quiet for
+  24 hours is ended, and its analysis and post-call integrations run once.
+- **Not verified:** a real Meta webhook, a real retry after a restart, and the end-of-conversation
+  integrations on live data. In the preview, the pane's synthetic click doesn't switch the Radix "Take over"
+  tab; a real click does.
+- **Left for later phases:** sending approved templates once the window closes, staff names on replies,
+  closing or archiving conversations, paging the inbox, and live updates instead of polling.
+
 ### 2026-11-23: FR6 usage and billing, phase 3 (message allowances)
 
 Same branch, `billing/usage-and-billing`, on top of phases 1 and 2.

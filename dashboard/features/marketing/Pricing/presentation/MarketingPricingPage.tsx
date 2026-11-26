@@ -62,7 +62,7 @@ const addOns = [
   { icon: Gauge, name: "Concurrent call line", price: "$25 / month", detail: "Increase how many live conversations can run at once when peak demand grows." },
   { icon: Phone, name: "Business number", price: "From $5 / month", detail: "Local, mobile, and toll-free availability and regulatory fees vary by country." },
   { icon: WandSparkles, name: "Premium voice", price: "Provider cost + 20%", detail: "Standard production voices are included. Pay only when you select a premium provider voice." },
-  { icon: MessageSquareText, name: "SMS and WhatsApp", price: "Usage cost + 20%", detail: "Messaging is optional and always shown separately from voice usage." },
+  { icon: MessageSquareText, name: "SMS and WhatsApp", price: "Included", detail: "Each plan includes SMS and WhatsApp messages. At the allowance, automatic messages pause; nothing extra is billed." },
 ] as const;
 
 const protections = [
@@ -363,7 +363,7 @@ export function MarketingPricingPage() {
 
               <p className="mt-6 flex gap-2 text-xs leading-relaxed text-fg-muted">
                 <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                Plans never bill extra minutes. Above Scale, talk to us about a tailored allowance. Regional calling, numbers, messaging and premium voices appear separately before activation.
+                Plans never bill extra minutes. Above Scale, talk to us about a tailored allowance. Regional calling, numbers and premium voices appear separately before activation.
               </p>
 
               <div className="mt-auto flex flex-wrap gap-3 pt-8">
@@ -421,7 +421,7 @@ export function MarketingPricingPage() {
           </div>
           <p className="mt-4 flex gap-2 text-xs text-fg-muted">
             <Globe2 className="size-3.5 shrink-0" aria-hidden="true" />
-            Regional carrier, number, messaging and optional premium-voice charges are previewed before activation and billed separately.
+            Regional carrier, number and optional premium-voice charges are previewed before activation and billed separately. Messages are included in every plan.
           </p>
         </Reveal>
       </Section>
