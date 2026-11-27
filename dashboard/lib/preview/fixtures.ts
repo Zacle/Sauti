@@ -225,10 +225,10 @@ const daysBack = (n: number, fn: (i: number) => Record<string, unknown>) =>
 const volume = (i: number) => 18 + Math.round(9 * Math.sin(i / 1.7) + (i % 7 === 5 || i % 7 === 6 ? -8 : 4) + i * 0.4);
 
 const whatsappConversations: Array<Record<string, unknown>> = [
-  { id: "wa-1", agentId: "agent-front-desk", customerNumber: "+254 712 004 118", customerName: "Amani Kariuki", mode: "ai", status: "open", unreadCount: 2, lastMessagePreview: "Can I move my cleaning to Friday?", lastMessageAt: iso(now - 6 * 60_000), lastCustomerMessageAt: iso(now - 6 * 60_000), replyWindowEndsAt: iso(now - 6 * 60_000 + DAY), needsAttention: false, attentionReason: null, updatedAt: iso(now - 60_000) },
-  { id: "wa-2", agentId: "agent-front-desk", customerNumber: "+254 733 218 904", customerName: "Wanjiru Mwangi", mode: "human", status: "open", unreadCount: 1, lastMessagePreview: "Thank you, see you then!", lastMessageAt: iso(now - 2 * 3_600_000), lastCustomerMessageAt: iso(now - 2 * 3_600_000), replyWindowEndsAt: iso(now - 2 * 3_600_000 + DAY), needsAttention: true, attentionReason: "waiting_for_team", updatedAt: iso(now - 60_000) },
-  { id: "wa-3", agentId: "agent-after-hours", customerNumber: "+33 6 12 44 81 09", customerName: "Claire Dubois", mode: "ai", status: "open", unreadCount: 0, lastMessagePreview: "Do you accept AXA insurance?", lastMessageAt: iso(now - DAY - 3_600_000), lastCustomerMessageAt: iso(now - DAY - 3_600_000), replyWindowEndsAt: iso(now - 3_600_000), needsAttention: true, attentionReason: "agent_failed", updatedAt: iso(now - 60_000) },
-  { id: "wa-4", agentId: "agent-front-desk", customerNumber: "+254 722 650 311", customerName: "Otieno Ouma", mode: "human", status: "closed", unreadCount: 0, lastMessagePreview: "Thanks, all sorted.", lastMessageAt: iso(now - 3 * DAY), lastCustomerMessageAt: iso(now - 3 * DAY), replyWindowEndsAt: iso(now - 2 * DAY), needsAttention: false, attentionReason: null, updatedAt: iso(now - 2 * DAY) },
+  { id: "wa-1", agentId: "agent-front-desk", customerNumber: "+254 712 004 118", customerName: "Amani Kariuki", mode: "ai", status: "open", unreadCount: 2, lastMessagePreview: "Can I move my cleaning to Friday?", lastMessageAt: iso(now - 6 * 60_000), lastCustomerMessageAt: iso(now - 6 * 60_000), replyWindowEndsAt: iso(now - 6 * 60_000 + DAY), needsAttention: false, attentionReason: null, updatedAt: iso(now - 60_000), closedReason: null },
+  { id: "wa-2", agentId: "agent-front-desk", customerNumber: "+254 733 218 904", customerName: "Wanjiru Mwangi", mode: "human", status: "open", unreadCount: 1, lastMessagePreview: "Thank you, see you then!", lastMessageAt: iso(now - 2 * 3_600_000), lastCustomerMessageAt: iso(now - 2 * 3_600_000), replyWindowEndsAt: iso(now - 2 * 3_600_000 + DAY), needsAttention: true, attentionReason: "waiting_for_team", updatedAt: iso(now - 60_000), closedReason: null },
+  { id: "wa-3", agentId: "agent-after-hours", customerNumber: "+33 6 12 44 81 09", customerName: "Claire Dubois", mode: "ai", status: "open", unreadCount: 0, lastMessagePreview: "Do you accept AXA insurance?", lastMessageAt: iso(now - DAY - 3_600_000), lastCustomerMessageAt: iso(now - DAY - 3_600_000), replyWindowEndsAt: iso(now - 3_600_000), needsAttention: true, attentionReason: "agent_failed", updatedAt: iso(now - 60_000), closedReason: null },
+  { id: "wa-4", agentId: "agent-front-desk", customerNumber: "+254 722 650 311", customerName: "Otieno Ouma", mode: "human", status: "closed", unreadCount: 0, lastMessagePreview: "Thanks, all sorted.", lastMessageAt: iso(now - 3 * DAY), lastCustomerMessageAt: iso(now - 3 * DAY), replyWindowEndsAt: iso(now - 2 * DAY), needsAttention: false, attentionReason: null, updatedAt: iso(now - 2 * DAY), closedReason: "inactive" },
 ];
 
 const whatsappTemplates = [
@@ -748,8 +748,8 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
       return staffMessage("template", text, template.name);
     }
     if (whatsapp[2] === "read") return changed({ unreadCount: 0 });
-    if (whatsapp[2] === "close") return changed({ status: "closed", unreadCount: 0, needsAttention: false, attentionReason: null });
-    if (whatsapp[2] === "reopen") return changed({ status: "open" });
+    if (whatsapp[2] === "close") return changed({ status: "closed", closedReason: "team", unreadCount: 0, needsAttention: false, attentionReason: null });
+    if (whatsapp[2] === "reopen") return changed({ status: "open", closedReason: null });
     const mode = typeof body === "string" ? (JSON.parse(body) as { mode?: string }).mode : undefined;
     return changed({ mode: mode ?? conversation.mode });
   }
@@ -776,7 +776,7 @@ function whatsappThread(conversationId: string) {
     createdAt: new Date(Date.now() - offsetMinutes * 60_000).toISOString(),
     updatedAt: new Date(Date.now() - offsetMinutes * 60_000).toISOString(),
     author: direction === "outbound" ? (conversationId === "wa-2" && offsetMinutes < 10 ? "staff" : "ai") : "customer",
-    sentBy: direction === "outbound" && conversationId === "wa-2" && offsetMinutes < 10 ? "owner@brightsmile.example" : null,
+    sentBy: direction === "outbound" && conversationId === "wa-2" && offsetMinutes < 10 ? "Achieng Otieno" : null,
     templateName: null,
   });
   return [

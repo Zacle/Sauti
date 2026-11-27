@@ -13,13 +13,13 @@ public final class WhatsAppInboxDtos {
                                        String lastMessagePreview, OffsetDateTime lastMessageAt,
                                        OffsetDateTime lastCustomerMessageAt, OffsetDateTime replyWindowEndsAt,
                                        boolean needsAttention, String attentionReason,
-                                       OffsetDateTime updatedAt) {
+                                       OffsetDateTime updatedAt, String closedReason) {
         static ConversationResponse from(WhatsAppConversation value) {
             return new ConversationResponse(value.getId(), value.getAgentId(), value.getCustomerNumber(),
                     value.getCustomerName(), value.getMode(), value.getStatus(), value.getUnreadCount(),
                     value.getLastMessagePreview(), value.getLastMessageAt(), value.getLastCustomerMessageAt(),
                     value.replyWindowEndsAt(), value.isNeedsAttention(), value.getAttentionReason(),
-                    value.getUpdatedAt());
+                    value.getUpdatedAt(), value.getClosedReason());
         }
     }
 
@@ -29,10 +29,16 @@ public final class WhatsAppInboxDtos {
                                   String author, String sentBy, String templateName,
                                   OffsetDateTime updatedAt) {
         static MessageResponse from(WhatsAppMessage value) {
+            return from(value, null);
+        }
+
+        /** @param sentByName the team member's current name, shown in place of the email kept on the message */
+        static MessageResponse from(WhatsAppMessage value, String sentByName) {
             return new MessageResponse(value.getId(), value.getProviderMessageId(), value.getDirection(),
                     value.getMessageType(), value.getBody(), value.getMediaId(), value.getMediaMimeType(),
                     value.getStatus(), value.getFailureReason(), value.getCreatedAt(),
-                    value.getAuthor(), value.getSentBy(), value.getTemplateName(), value.getUpdatedAt());
+                    value.getAuthor(), sentByName != null ? sentByName : value.getSentBy(), value.getTemplateName(),
+                    value.getUpdatedAt());
         }
     }
 

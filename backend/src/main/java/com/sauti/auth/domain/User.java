@@ -18,6 +18,7 @@ import java.util.UUID;
 @Table(name = "app_users")
 public class User extends Auditable {
     public static final Set<String> CONSOLE_THEME_MODES = Set.of("light", "dark", "system");
+    public static final int DISPLAY_NAME_MAX = 80;
     public static final Set<String> CONSOLE_THEME_ACCENTS = Set.of("green", "blue", "violet", "amber", "rose", "graphite");
 
     @Id
@@ -43,6 +44,10 @@ public class User extends Auditable {
 
     @Column(nullable = false, length = 16)
     private String consoleThemeAccent = "green";
+
+    /** What colleagues see on this person's work, such as WhatsApp replies; null until they set it. */
+    @Column(length = DISPLAY_NAME_MAX)
+    private String displayName;
 
     protected User() {
     }
@@ -102,7 +107,21 @@ public class User extends Auditable {
         this.passwordHash = null;
         this.emailVerified = false;
         this.lastWorkspaceId = null;
+        this.displayName = null;
         this.deletedAt = now;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    /** Sets the name colleagues see; blank clears it, so the email is shown instead. */
+    public void rename(String name) {
+        var value = name == null ? "" : name.strip().replaceAll("\\s+", " ");
+        if (value.length() > DISPLAY_NAME_MAX) {
+            throw new IllegalArgumentException("Keep your name to " + DISPLAY_NAME_MAX + " characters or fewer");
+        }
+        this.displayName = value.isEmpty() ? null : value;
     }
 
     public UUID getLastWorkspaceId() {

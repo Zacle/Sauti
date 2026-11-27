@@ -41,6 +41,8 @@ public class WhatsAppInboxService {
     private final CommunicationUsageMeteringService usageMetering;
     private final PilotProvisioningPolicyService provisioningPolicies;
     private final WhatsAppEmbeddedSignupService templateCatalog;
+    private final com.sauti.auth.application.AccountQueries accounts;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     /** How far the changes cursor reaches back, so a change still being saved when it was read is not missed. */
     static final Duration CHANGES_OVERLAP = Duration.ofSeconds(30);
@@ -55,7 +57,9 @@ public class WhatsAppInboxService {
                                 WhatsAppMessageSender sender,
                                 CommunicationUsageMeteringService usageMetering,
                                 PilotProvisioningPolicyService provisioningPolicies,
-                                WhatsAppEmbeddedSignupService templateCatalog) {
+                                WhatsAppEmbeddedSignupService templateCatalog,
+                                com.sauti.auth.application.AccountQueries accounts,
+                                org.springframework.context.ApplicationEventPublisher events) {
         this.conversations = conversations;
         this.messages = messages;
         this.integrations = integrations;
@@ -63,6 +67,30 @@ public class WhatsAppInboxService {
         this.usageMetering = usageMetering;
         this.provisioningPolicies = provisioningPolicies;
         this.templateCatalog = templateCatalog;
+        this.accounts = accounts;
+        this.events = events;
+    }
+
+    private WhatsAppConversation saveConversation(WhatsAppConversation conversation) {
+        var saved = conversations.save(conversation);
+        events.publishEvent(new WhatsAppInboxChanged(saved.getTenantId(), saved.getId()));
+        return saved;
+    }
+
+    private WhatsAppMessage saveMessage(WhatsAppMessage message) {
+        var saved = messages.save(message);
+        var conversation = saved.getConversation();
+        if (conversation != null) {
+            events.publishEvent(new WhatsAppInboxChanged(conversation.getTenantId(), conversation.getId()));
+        }
+        return saved;
+    }
+
+    /** A message as the inbox shows it, with the team member's current name when they have set one. */
+    private MessageResponse response(WhatsAppMessage message) {
+        var userId = message.getSentByUserId();
+        var name = userId == null ? null : accounts.displayNames(List.of(userId)).get(userId);
+        return MessageResponse.from(message, name);
     }
 
     /**
@@ -109,12 +137,19 @@ public class WhatsAppInboxService {
     /** The thread, or with {@code since}, only messages added or changed (delivered, read, transcribed) after it. */
     @Transactional(readOnly = true)
     public List<MessageResponse> messages(UUID tenantId, UUID conversationId, OffsetDateTime since) {
+        return messageResponses(tenantId, conversationId, since);
+    }
+
+    private List<MessageResponse> messageResponses(UUID tenantId, UUID conversationId, OffsetDateTime since) {
         requireConversation(tenantId, conversationId);
         var rows = since == null
                 ? messages.findAllByConversation_IdAndTenantIdOrderByCreatedAtAsc(conversationId, tenantId)
                 : messages.findAllByConversation_IdAndTenantIdAndUpdatedAtAfterOrderByCreatedAtAsc(
                         conversationId, tenantId, since);
-        return rows.stream().map(MessageResponse::from).toList();
+        var names = accounts.displayNames(rows.stream().map(WhatsAppMessage::getSentByUserId)
+                .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet()));
+        return rows.stream().map(row -> MessageResponse.from(row,
+                row.getSentByUserId() == null ? null : names.get(row.getSentByUserId()))).toList();
     }
 
     /**
@@ -123,20 +158,33 @@ public class WhatsAppInboxService {
      */
     @Transactional
     public Closed close(UUID tenantId, UUID conversationId) {
+        return close(tenantId, conversationId, WhatsAppConversation.CLOSED_BY_TEAM);
+    }
+
+    /** @param reason {@link WhatsAppConversation#CLOSED_BY_TEAM} or {@link WhatsAppConversation#CLOSED_INACTIVE} */
+    @Transactional
+    public Closed close(UUID tenantId, UUID conversationId, String reason) {
         var conversation = requireConversation(tenantId, conversationId);
-        conversation.close();
-        var saved = conversations.save(conversation);
+        conversation.close(reason);
+        var saved = saveConversation(conversation);
         var session = saved.isSessionOpen()
                 ? new QuietSession(saved.getId(), saved.getAgentId(), saved.getCustomerNumber())
                 : null;
         return new Closed(ConversationResponse.from(saved), session);
     }
 
+    /** Open conversations with no message since the cutoff that are not waiting on the team. */
+    @Transactional(readOnly = true)
+    public List<InactiveConversation> inactiveOpen(OffsetDateTime cutoff, int limit) {
+        return conversations.findInactiveOpen(cutoff, PageRequest.of(0, limit)).stream()
+                .map(item -> new InactiveConversation(item.getTenantId(), item.getId())).toList();
+    }
+
     @Transactional
     public ConversationResponse reopen(UUID tenantId, UUID conversationId) {
         var conversation = requireConversation(tenantId, conversationId);
         conversation.reopen();
-        return ConversationResponse.from(conversations.save(conversation));
+        return ConversationResponse.from(saveConversation(conversation));
     }
 
     @Transactional(readOnly = true)
@@ -179,7 +227,7 @@ public class WhatsAppInboxService {
             filled.put(field.key(), value.trim());
         }
         var text = renderTemplate(template, filled);
-        var pending = messages.save(WhatsAppMessage.staff(conversation, "template", text, by, template.name()));
+        var pending = saveMessage(WhatsAppMessage.staff(conversation, "template", text, by, template.name()));
         try {
             var result = sender.sendTemplateTracked(conversation.getPhoneNumberId(),
                     conversation.getCustomerNumber(), templatePayload(template, filled), token(conversation));
@@ -188,11 +236,11 @@ public class WhatsAppInboxService {
                     result.providerMessageId(), pending.getId().toString(), "template");
             conversation.sent(text, OffsetDateTime.now());
             conversation.answered();
-            conversations.save(conversation);
-            return MessageResponse.from(messages.save(pending));
+            saveConversation(conversation);
+            return response(saveMessage(pending));
         } catch (RuntimeException exception) {
             pending.status("failed", safeFailure(exception));
-            messages.save(pending);
+            saveMessage(pending);
             throw exception;
         }
     }
@@ -277,8 +325,8 @@ public class WhatsAppInboxService {
                         call.getAgent().getWhatsappPhoneNumberId(), call.getCallerNumber(), customerName));
         var preview = preview(type, body);
         conversation.receive(customerName, preview, OffsetDateTime.now());
-        conversation = conversations.save(conversation);
-        messages.save(new WhatsAppMessage(conversation, providerMessageId, "inbound", type,
+        conversation = saveConversation(conversation);
+        saveMessage(new WhatsAppMessage(conversation, providerMessageId, "inbound", type,
                 body, mediaId, mediaMimeType, "received"));
         return new InboundResult(conversation.getId(), conversation.getMode(), true);
     }
@@ -297,11 +345,11 @@ public class WhatsAppInboxService {
         if (transcript == null || transcript.isBlank()) return;
         messages.findByProviderMessageId(providerMessageId).ifPresent(message -> {
             message.transcribed(transcript);
-            messages.save(message);
+            saveMessage(message);
             var conversation = message.getConversation();
             if (preview("audio", "").equals(conversation.getLastMessagePreview())) {
                 conversation.previewTranscript(transcript);
-                conversations.save(conversation);
+                saveConversation(conversation);
             }
         });
     }
@@ -312,7 +360,7 @@ public class WhatsAppInboxService {
         messages.findByProviderMessageId(providerMessageId).ifPresent(message -> {
             var conversation = message.getConversation();
             conversation.needsAttention(reason);
-            conversations.save(conversation);
+            saveConversation(conversation);
         });
     }
 
@@ -341,7 +389,7 @@ public class WhatsAppInboxService {
     public void sessionEnded(UUID conversationId) {
         conversations.findById(conversationId).ifPresent(conversation -> {
             conversation.sessionEnded();
-            conversations.save(conversation);
+            saveConversation(conversation);
         });
     }
 
@@ -352,7 +400,7 @@ public class WhatsAppInboxService {
     public MessageResponse sendAiVoice(Call call, UUID conversationId, String text, byte[] oggOpus) {
         provisioningPolicies.authorize(call.getTenant().getId(), "whatsapp");
         var conversation = requireConversation(call.getTenant().getId(), conversationId);
-        var pending = messages.save(WhatsAppMessage.outbound(conversation, "ai", "audio", text, "audio/ogg"));
+        var pending = saveMessage(WhatsAppMessage.outbound(conversation, "ai", "audio", text, "audio/ogg"));
         try {
             var result = sender.sendVoiceNoteTracked(conversation.getPhoneNumberId(),
                     conversation.getCustomerNumber(), oggOpus, token(conversation));
@@ -363,10 +411,10 @@ public class WhatsAppInboxService {
             conversation.sent("Voice reply", OffsetDateTime.now());
             conversation.answered();
             markProviderRead(conversation);
-            return MessageResponse.from(messages.save(pending));
+            return response(saveMessage(pending));
         } catch (RuntimeException exception) {
             pending.status("failed", safeFailure(exception));
-            messages.save(pending);
+            saveMessage(pending);
             throw exception;
         }
     }
@@ -395,7 +443,7 @@ public class WhatsAppInboxService {
         provisioningPolicies.authorize(tenantId, "whatsapp");
         var conversation = requireConversation(tenantId, conversationId);
         if (text == null || text.isBlank()) throw new IllegalArgumentException("Message text is required");
-        var pending = messages.save(markRead
+        var pending = saveMessage(markRead
                 ? WhatsAppMessage.outbound(conversation, "ai", type, text.trim(), null)
                 : WhatsAppMessage.staff(conversation, type, text.trim(), staff, null));
         try {
@@ -407,12 +455,12 @@ public class WhatsAppInboxService {
                     pending.getId().toString(), type);
             conversation.sent(text, OffsetDateTime.now());
             conversation.answered();
-            conversations.save(conversation);
+            saveConversation(conversation);
             if (markRead) markProviderRead(conversation);
-            return MessageResponse.from(messages.save(pending));
+            return response(saveMessage(pending));
         } catch (RuntimeException exception) {
             pending.status("failed", safeFailure(exception));
-            messages.save(pending);
+            saveMessage(pending);
             throw exception;
         }
     }
@@ -422,14 +470,14 @@ public class WhatsAppInboxService {
         var conversation = requireConversation(tenantId, conversationId);
         conversation.assign(mode == null ? "" : mode.trim().toLowerCase(java.util.Locale.ROOT));
         if ("human".equals(conversation.getMode())) markProviderRead(conversation);
-        return ConversationResponse.from(conversations.save(conversation));
+        return ConversationResponse.from(saveConversation(conversation));
     }
 
     @Transactional
     public ConversationResponse markRead(UUID tenantId, UUID conversationId) {
         var conversation = requireConversation(tenantId, conversationId);
         markProviderRead(conversation);
-        return ConversationResponse.from(conversations.save(conversation));
+        return ConversationResponse.from(saveConversation(conversation));
     }
 
     @Transactional
@@ -437,20 +485,20 @@ public class WhatsAppInboxService {
         if (providerMessageId == null || providerMessageId.isBlank()) return;
         messages.findByProviderMessageId(providerMessageId).ifPresent(message -> {
             message.status(normalizeStatus(status), failureReason);
-            messages.save(message);
+            saveMessage(message);
         });
     }
 
     private void markProviderRead(WhatsAppConversation conversation) {
         conversation.markRead();
-        conversations.save(conversation);
+        saveConversation(conversation);
         var latest = messages.findFirstByConversation_IdAndDirectionOrderByCreatedAtDesc(
                 conversation.getId(), "inbound").orElse(null);
         if (latest != null && latest.getProviderMessageId() != null) {
             try {
                 sender.markRead(conversation.getPhoneNumberId(), latest.getProviderMessageId(), token(conversation));
                 latest.status("read", null);
-                messages.save(latest);
+                saveMessage(latest);
             } catch (RuntimeException exception) {
                 LOGGER.warn("Could not send WhatsApp read receipt conversationId={}", conversation.getId(), exception);
             }
@@ -495,6 +543,7 @@ public class WhatsAppInboxService {
     public record QuietSession(UUID conversationId, UUID agentId, String customerNumber) { }
     /** A closed conversation, and its call record when that still has to be ended. */
     public record Closed(ConversationResponse conversation, QuietSession openSession) { }
+    public record InactiveConversation(UUID tenantId, UUID conversationId) { }
 
     /** Where a page of the inbox ends: the last row's message time and id. */
     record Cursor(OffsetDateTime at, UUID id) {

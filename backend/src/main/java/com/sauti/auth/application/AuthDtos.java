@@ -111,6 +111,8 @@ public final class AuthDtos {
     public record AccountResponse(
             UUID id,
             String email,
+            /** The name colleagues see, or null when the person hasn't set one. */
+            String displayName,
             boolean emailVerified,
             boolean hasPassword,
             boolean platformAdmin,
@@ -124,6 +126,9 @@ public final class AuthDtos {
      * HttpOnly cookie that page scripts cannot read.
      */
     /** {@code platformAdminSession} is true only for sessions started with an authenticator code. */
+    public record DisplayNameRequest(String displayName) {
+    }
+
     public record SessionResponse(String accessToken, long expiresInSeconds, AccountResponse account,
                                   boolean platformAdminSession) {
     }

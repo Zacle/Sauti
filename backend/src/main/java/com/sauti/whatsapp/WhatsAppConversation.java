@@ -17,6 +17,10 @@ public class WhatsAppConversation extends Auditable {
     public static final String AGENT_FAILED = "agent_failed";
     public static final String AGENT_PAUSED = "agent_paused";
     public static final String WAITING_FOR_TEAM = "waiting_for_team";
+    /** Someone on the team closed it. */
+    public static final String CLOSED_BY_TEAM = "team";
+    /** Closed on its own after a quiet week. */
+    public static final String CLOSED_INACTIVE = "inactive";
 
     @Id private UUID id;
     @Column(nullable = false) private UUID tenantId;
@@ -33,6 +37,8 @@ public class WhatsAppConversation extends Auditable {
     @Column(nullable = false) private boolean needsAttention;
     @Column(length = 40) private String attentionReason;
     @Column(nullable = false) private boolean sessionOpen;
+    /** Why it was closed: {@link #CLOSED_BY_TEAM} or {@link #CLOSED_INACTIVE}; null while open. */
+    @Column(length = 20) private String closedReason;
 
     protected WhatsAppConversation() { }
 
@@ -51,6 +57,7 @@ public class WhatsAppConversation extends Auditable {
     public void receive(String customerName, String preview, OffsetDateTime at) {
         if (!clean(customerName).isBlank()) this.customerName = clean(customerName);
         this.status = "open";
+        this.closedReason = null;
         this.unreadCount++;
         this.lastCustomerMessageAt = at == null ? OffsetDateTime.now() : at;
         this.sessionOpen = true;
@@ -97,12 +104,16 @@ public class WhatsAppConversation extends Auditable {
         this.mode = nextMode;
     }
     /** Staff are done with it: it leaves the open list and waits on no one. A new customer message reopens it. */
-    public void close() {
+    public void close(String reason) {
         this.status = "closed";
+        this.closedReason = CLOSED_INACTIVE.equals(reason) ? CLOSED_INACTIVE : CLOSED_BY_TEAM;
         this.unreadCount = 0;
         answered();
     }
-    public void reopen() { this.status = "open"; }
+    public void reopen() {
+        this.status = "open";
+        this.closedReason = null;
+    }
     public boolean isClosed() { return "closed".equals(status); }
 
     private void touch(String preview, OffsetDateTime at) {
@@ -126,4 +137,5 @@ public class WhatsAppConversation extends Auditable {
     public boolean isNeedsAttention() { return needsAttention; }
     public String getAttentionReason() { return attentionReason; }
     public boolean isSessionOpen() { return sessionOpen; }
+    public String getClosedReason() { return closedReason; }
 }

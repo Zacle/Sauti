@@ -2,6 +2,46 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-27: FR7 WhatsApp channel, phase 3 (live inbox, names on replies, quiet chats close)
+
+Branch `whatsapp/inbox-live-names`, stacked on `whatsapp/reliable-inbox` (PR #13). Product decisions from the
+user: chats close on their own after 7 days without a message, and people get a display name.
+
+- **Names on replies:**
+  - `app_users.display_name` (up to 80 characters), set with `PUT /api/v1/me/display-name` and edited in
+    Settings > Security > "Your name". `/me` returns `displayName`. Clearing it shows the email again.
+  - WhatsApp staff replies show the sender's current name (`AccountQueries.displayNames`, looked up when
+    the thread is read), falling back to the email kept on the message. Older replies gain the name too.
+  - Deleting an account clears the name.
+- **Quiet chats close** (`WhatsAppInboxWorker.closeInactiveConversations`, hourly):
+  - Open conversations with no message for 7 days are closed with `closed_reason = 'inactive'`.
+  - A conversation waiting on the team is never closed this way.
+  - A customer message reopens it, as before. The thread says "Closed after a week without messages".
+  - Team closes now record `closed_reason = 'team'`.
+- **Live inbox:**
+  - Every inbox save publishes `WhatsAppInboxChanged`. After the transaction commits,
+    `WhatsAppLiveUpdates` sends `whatsapp.changed` (conversation id only) over the existing dashboard
+    WebSocket (`DashboardEventPublisher.whatsappChanged`).
+  - The inbox (`useDashboardSignal`) then fetches the changes, and the open thread's new messages, within
+    about a quarter of a second.
+  - Polling continues as the backup: every 30 seconds while the connection is up, or every 5 (list) and
+    3 (thread) seconds without it. The hook reconnects with a pause of 2 up to 30 seconds and a fresh ticket.
+- **Migration** `V89__account_names_and_inbox_auto_close.sql`. Existing closed conversations get
+  `closed_reason = 'team'`.
+- **Tests:**
+  - `WhatsAppInboxFlowTest` adds the week-quiet close (one that needs a reply stays open) and names on
+    replies, including the 80-character limit.
+  - `WhatsAppInboxTeamRepliesTest` adds the name lookup and the change event.
+  - `WhatsAppInboxWorkerTest` adds the inactive sweep.
+- **Deploy note:** on the first hourly sweep (5 minutes after start), every open conversation quiet for 7
+  days, and not waiting on the team, closes. Their call records already ended 24 hours after the customer's
+  last message, so no summary or integration runs a second time.
+- **Not verified:** the live signal end to end in a browser (the preview has no WebSocket), and behaviour with
+  several console tabs open.
+- **Left for later:**
+  - names in the Members list and the activity log
+  - paging long threads
+
 ### 2026-11-25: FR7 WhatsApp channel, phase 2 (team names, close, templates, paging, pricing line)
 
 Uncommitted, alongside phase 1. Another session has since checked out

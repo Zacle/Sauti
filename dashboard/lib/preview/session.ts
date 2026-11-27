@@ -20,6 +20,7 @@ export const previewSession: AuthSession = {
   account: {
     id: "user-preview",
     email: "owner@brightsmile.example",
+    displayName: "Achieng Otieno",
     emailVerified: true,
     hasPassword: true,
     platformAdmin: false,

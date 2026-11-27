@@ -60,6 +60,14 @@ public class DashboardEventPublisher {
         )));
     }
 
+    /**
+     * Something in a WhatsApp conversation changed (a message, its status, or the conversation itself).
+     * Only ids are sent: the console then asks the inbox API for what changed, with its usual checks.
+     */
+    public void whatsappChanged(java.util.UUID tenantId, java.util.UUID conversationId) {
+        publish(DashboardEvent.of("whatsapp.changed", tenantId, Map.of("conversationId", conversationId.toString())));
+    }
+
     private void publish(DashboardEvent event) {
         dashboardWebSocketHandler.publish(event);
     }

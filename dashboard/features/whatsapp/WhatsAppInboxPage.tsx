@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/console";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import { WhatsAppTemplateDialog } from "./WhatsAppTemplateDialog";
+import { useDashboardSignal } from "./useDashboardSignal";
 import styles from "./WhatsAppInboxPage.module.css";
 
 const PAGE_SIZE = 30;
@@ -51,6 +52,8 @@ export function WhatsAppInboxPage() {
   const [templateOpen, setTemplateOpen] = useState(false);
   const [error, setError] = useState("");
   const changesSince = useRef<string | null>(null);
+  const latestMessage = useRef<string | null>(null);
+  const signalTimer = useRef<number | undefined>(undefined);
 
   const selectedId = selected?.id ?? "";
   const now = useNow(30_000);
@@ -89,42 +92,63 @@ export function WhatsAppInboxPage() {
   useEffect(() => { void loadFirstPage(); }, [loadFirstPage]);
   useEffect(() => { void listAgents().then(setAgents).catch(() => undefined); }, []);
 
-  // Every few seconds, ask only for what changed since the last time.
-  useEffect(() => {
-    const poll = async () => {
-      try {
-        const changes = await listWhatsAppConversationChanges(changesSince.current);
-        changesSince.current = changes.next;
-        apply(changes.items);
-      } catch { /* the next poll tries again */ }
-    };
-    void poll();
-    const interval = window.setInterval(() => void poll(), 5000);
-    return () => window.clearInterval(interval);
+  const pollChanges = useCallback(async () => {
+    try {
+      const changes = await listWhatsAppConversationChanges(changesSince.current);
+      changesSince.current = changes.next;
+      apply(changes.items);
+    } catch { /* the next poll tries again */ }
   }, [apply]);
+
+  /** Adds new or changed messages of the open thread to what is shown. */
+  const mergeMessages = useCallback((items: WhatsAppMessage[], replace = false) => {
+    for (const item of items) if (!latestMessage.current || item.updatedAt > latestMessage.current) latestMessage.current = item.updatedAt;
+    setMessages((current) => {
+      const byId = new Map((replace ? [] : current).map((item) => [item.id, item]));
+      for (const item of items) byId.set(item.id, item);
+      return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    });
+  }, []);
+
+  const pollMessages = useCallback(async (conversationId: string) => {
+    const latest = latestMessage.current;
+    const since = latest ? new Date(new Date(latest).getTime() - OVERLAP_MS).toISOString() : null;
+    try { mergeMessages(await listWhatsAppMessages(conversationId, since)); } catch { /* the next poll tries again */ }
+  }, [mergeMessages]);
+
+  // The server says the moment something changes; a short pause gathers a burst of saves into one fetch.
+  const live = useDashboardSignal("whatsapp.changed", (payload) => {
+    window.clearTimeout(signalTimer.current);
+    const conversationId = typeof payload.conversationId === "string" ? payload.conversationId : "";
+    signalTimer.current = window.setTimeout(() => {
+      void pollChanges();
+      if (conversationId && conversationId === selectedId) void pollMessages(conversationId);
+    }, 250);
+  });
+  useEffect(() => () => window.clearTimeout(signalTimer.current), []);
+
+  // Polling stays as the backup, every few seconds without the live connection and every 30 with it.
+  useEffect(() => {
+    void pollChanges();
+    const interval = window.setInterval(() => void pollChanges(), live ? 30_000 : 5_000);
+    return () => window.clearInterval(interval);
+  }, [live, pollChanges]);
 
   useEffect(() => {
     if (!selectedId) { setMessages([]); return; }
-    let latest: string | null = null;
-    const merge = (items: WhatsAppMessage[], replace = false) => {
-      for (const item of items) if (!latest || item.updatedAt > latest) latest = item.updatedAt;
-      setMessages((current) => {
-        const byId = new Map((replace ? [] : current).map((item) => [item.id, item]));
-        for (const item of items) byId.set(item.id, item);
-        return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      });
-    };
+    latestMessage.current = null;
     void Promise.all([listWhatsAppMessages(selectedId), markWhatsAppConversationRead(selectedId)])
-      .then(([items, updated]) => { merge(items, true); apply([updated]); })
+      .then(([items, updated]) => { mergeMessages(items, true); apply([updated]); })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to open the conversation."));
-    const interval = window.setInterval(() => {
-      const since = latest ? new Date(new Date(latest).getTime() - OVERLAP_MS).toISOString() : null;
-      void listWhatsAppMessages(selectedId, since).then((items) => merge(items)).catch(() => undefined);
-    }, 3000);
-    return () => window.clearInterval(interval);
     // apply changes with the view; reopening the thread for that would reload it needlessly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const interval = window.setInterval(() => void pollMessages(selectedId), live ? 30_000 : 3_000);
+    return () => window.clearInterval(interval);
+  }, [live, pollMessages, selectedId]);
 
   async function loadMore() {
     if (!nextCursor) return;
@@ -243,7 +267,7 @@ export function WhatsAppInboxPage() {
             </div>
           </header>
           {closed ? <div className={styles.closedNote} role="status">
-            Closed. If the customer writes again, it reopens on its own.</div>
+            {selected.closedReason === "inactive" ? "Closed after a week without messages." : "Closed."} If the customer writes again, it reopens on its own.</div>
             : selected.needsAttention && selected.attentionReason && <div className={styles.attention} role="status">
               <TriangleAlert size={16} /><span>{attentionCopy(selected.attentionReason, selected.mode)}</span></div>}
           <div className={styles.messages}>
