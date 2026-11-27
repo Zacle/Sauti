@@ -60,6 +60,8 @@ export type AuthSession = {
 export type WorkspaceMember = {
   userId: string;
   email: string;
+  /** The name the member chose, or null when they haven't set one. */
+  displayName: string | null;
   role: WorkspaceRole;
   joinedAt: string;
 };

@@ -83,6 +83,7 @@ public class AuditEvent {
 
     public UUID id() { return id; }
     public String actorLabel() { return actorLabel; }
+    public UUID actorUserId() { return actorUserId; }
     public String action() { return action; }
     public String summary() { return summary; }
     public OffsetDateTime createdAt() { return createdAt; }

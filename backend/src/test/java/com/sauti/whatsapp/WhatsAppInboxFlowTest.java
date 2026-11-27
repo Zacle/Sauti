@@ -299,6 +299,43 @@ class WhatsAppInboxFlowTest {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    void aLongThreadOpensAtItsNewestMessagesAndPagesBackwards() throws Exception {
+        var owner = accounts.owner("Thread Clinic", "thread-" + System.nanoTime() + "@example.com", "KE");
+        var call = whatsAppCall(owner);
+        var ids = new java.util.ArrayList<String>();
+        for (var index = 1; index <= 5; index++) {
+            var providerId = "wamid-t" + index + "-" + System.nanoTime();
+            ids.add(providerId);
+            inbox.recordInbound(call, providerId, "", "text", "Message " + index, null, null);
+        }
+        entityManager.flush();
+        for (var index = 0; index < 5; index++) {
+            jdbc.update("update whatsapp_messages set created_at = ? where provider_message_id = ?",
+                    OffsetDateTime.now().minusMinutes(10 - index), ids.get(index));
+        }
+        entityManager.clear();
+        var conversationId = conversations.findAll().stream()
+                .filter(item -> item.getTenantId().equals(owner.workspaceId())).findFirst().orElseThrow().getId();
+        var page = owner.path("/whatsapp/conversations/" + conversationId + "/messages/page");
+
+        var newest = json.readTree(mvc.perform(get(page).param("limit", "2").header("Authorization", owner.bearer()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].body").value("Message 4"))
+                .andExpect(jsonPath("$.items[1].body").value("Message 5"))
+                .andReturn().getResponse().getContentAsString());
+        var middle = json.readTree(mvc.perform(get(page).param("limit", "2")
+                        .param("before", newest.path("earlierCursor").asText()).header("Authorization", owner.bearer()))
+                .andExpect(jsonPath("$.items[0].body").value("Message 2"))
+                .andExpect(jsonPath("$.items[1].body").value("Message 3"))
+                .andReturn().getResponse().getContentAsString());
+        mvc.perform(get(page).param("limit", "2").param("before", middle.path("earlierCursor").asText())
+                        .header("Authorization", owner.bearer()))
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].body").value("Message 1"))
+                .andExpect(jsonPath("$.earlierCursor").doesNotExist());
+    }
+
     private Agent whatsAppAgent(TestAccounts.Member owner) throws Exception {
         var created = mvc.perform(post(owner.path("/agents/setup")).header("Authorization", owner.bearer())
                         .contentType(MediaType.APPLICATION_JSON).content("""

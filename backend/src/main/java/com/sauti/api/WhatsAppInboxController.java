@@ -10,6 +10,7 @@ import com.sauti.whatsapp.WhatsAppInboxDtos.MessageResponse;
 import com.sauti.whatsapp.WhatsAppInboxDtos.SendMessageRequest;
 import com.sauti.whatsapp.WhatsAppInboxDtos.SendTemplateRequest;
 import com.sauti.whatsapp.WhatsAppInboxDtos.TemplateResponse;
+import com.sauti.whatsapp.WhatsAppInboxDtos;
 import com.sauti.whatsapp.WhatsAppInboxService;
 import com.sauti.whatsapp.WhatsAppMessage.StaffSender;
 import java.time.OffsetDateTime;
@@ -65,6 +66,14 @@ public class WhatsAppInboxController {
                                    @RequestParam(required = false)
                                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime since) {
         return inbox.messages(user.tenantId(), id, since);
+    }
+
+    /** The newest messages of the thread, or with before, the page above an earlier one. */
+    @GetMapping("/{id}/messages/page")
+    WhatsAppInboxDtos.MessagePage messagePage(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable UUID id,
+                                              @RequestParam(defaultValue = "") String before,
+                                              @RequestParam(defaultValue = "50") int limit) {
+        return inbox.messagePage(user.tenantId(), id, before, limit);
     }
 
     @PostMapping("/{id}/messages")

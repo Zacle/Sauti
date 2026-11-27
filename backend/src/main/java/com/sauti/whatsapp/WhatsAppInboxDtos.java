@@ -51,6 +51,9 @@ public final class WhatsAppInboxDtos {
      */
     public record ConversationChanges(List<ConversationResponse> items, OffsetDateTime next) { }
 
+    /** Part of a thread in time order; pass earlierCursor back as before to get the messages above it. */
+    public record MessagePage(List<MessageResponse> items, String earlierCursor) { }
+
     /** An approved template the team can send once the 24-hour window has closed. */
     public record TemplateResponse(String name, String language, String category, String headerText,
                                    String bodyText, List<TemplateField> fields) { }

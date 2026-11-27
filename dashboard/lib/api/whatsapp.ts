@@ -81,6 +81,16 @@ export function listWhatsAppMessages(conversationId: string, since?: string | nu
   return apiRequest<WhatsAppMessage[]>(`${conversationPath(conversationId, "messages")}${query}`);
 }
 
+/** Part of a thread in time order; earlierCursor fetches the messages above it, or is null at the start. */
+export type WhatsAppMessagePage = { items: WhatsAppMessage[]; earlierCursor: string | null };
+
+/** The newest messages of a thread, or with before, the page above an earlier one. */
+export function listWhatsAppMessagePage(conversationId: string, before?: string | null, limit = 50) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (before) params.set("before", before);
+  return apiRequest<WhatsAppMessagePage>(`${conversationPath(conversationId, "messages/page")}?${params}`);
+}
+
 export function closeWhatsAppConversation(conversationId: string) {
   return apiRequest<WhatsAppConversation>(conversationPath(conversationId, "close"), { method: "POST" });
 }

@@ -25,7 +25,7 @@ public class AccountMemberDirectory implements MemberDirectory {
     public Map<UUID, MemberProfile> profiles(Collection<UUID> userIds) {
         if (userIds.isEmpty()) return Map.of();
         return users.findAllById(userIds).stream()
-                .collect(Collectors.toMap(User::getId, user -> new MemberProfile(user.getId(), user.getEmail())));
+                .collect(Collectors.toMap(User::getId, user -> new MemberProfile(user.getId(), user.getEmail(), user.getDisplayName())));
     }
 
     @Override

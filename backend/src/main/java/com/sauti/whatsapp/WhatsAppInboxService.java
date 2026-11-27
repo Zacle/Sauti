@@ -146,6 +146,31 @@ public class WhatsAppInboxService {
                 ? messages.findAllByConversation_IdAndTenantIdOrderByCreatedAtAsc(conversationId, tenantId)
                 : messages.findAllByConversation_IdAndTenantIdAndUpdatedAtAfterOrderByCreatedAtAsc(
                         conversationId, tenantId, since);
+        return withNames(rows);
+    }
+
+    /**
+     * The newest messages of a thread, or with {@code before} the ones above an earlier page, in time
+     * order. Long threads open quickly and load older messages as staff scroll up.
+     */
+    @Transactional(readOnly = true)
+    public WhatsAppInboxDtos.MessagePage messagePage(UUID tenantId, UUID conversationId, String before, int limit) {
+        requireConversation(tenantId, conversationId);
+        var size = Math.max(1, Math.min(MAX_PAGE_SIZE, limit));
+        var cursor = Cursor.parse(before);
+        var rows = messages.findThreadPage(conversationId, tenantId, cursor.at(), cursor.id(), PageRequest.of(0, size + 1));
+        var page = new ArrayList<>(rows.subList(0, Math.min(size, rows.size())));
+        String earlier = null;
+        if (rows.size() > size) {
+            var oldest = page.get(page.size() - 1);
+            earlier = new Cursor(oldest.getCreatedAt(), oldest.getId()).encode();
+        }
+        java.util.Collections.reverse(page);
+        return new WhatsAppInboxDtos.MessagePage(withNames(page), earlier);
+    }
+
+    /** Messages as the inbox shows them, with each team member's current name when they have set one. */
+    private List<MessageResponse> withNames(List<WhatsAppMessage> rows) {
         var names = accounts.displayNames(rows.stream().map(WhatsAppMessage::getSentByUserId)
                 .filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet()));
         return rows.stream().map(row -> MessageResponse.from(row,

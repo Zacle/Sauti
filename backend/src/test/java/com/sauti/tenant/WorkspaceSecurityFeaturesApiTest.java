@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -177,6 +178,17 @@ class WorkspaceSecurityFeaturesApiTest {
                 .andExpect(jsonPath("$[0].action").value("member.role_changed"))
                 .andExpect(jsonPath("$[0].actor").value("log-owner@example.com"))
                 .andExpect(jsonPath("$[0].summary").value("Changed log-member@example.com from Member to Admin"));
+
+        // Once people choose a name, the members list and the log show it; the summary keeps what was written.
+        mvc.perform(put("/api/v1/me/display-name").header("Authorization", owner.bearer())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"displayName\":\"Amina Log\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(get(owner.path("/activity")).header("Authorization", owner.bearer()))
+                .andExpect(jsonPath("$[0].actor").value("Amina Log"))
+                .andExpect(jsonPath("$[0].summary").value("Changed log-member@example.com from Member to Admin"));
+        mvc.perform(get(owner.path("/members")).header("Authorization", owner.bearer()))
+                .andExpect(jsonPath("$[?(@.email == 'log-owner@example.com')].displayName").value("Amina Log"))
+                .andExpect(jsonPath("$[?(@.email == 'log-member@example.com')].displayName").value(org.hamcrest.Matchers.contains((Object) null)));
 
         var reader = accounts.member(owner.workspaceId(), "log-reader@example.com", WorkspaceRole.MEMBER);
         mvc.perform(get(owner.path("/activity")).header("Authorization", reader.bearer()))

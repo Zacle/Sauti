@@ -75,11 +75,17 @@ export function ownershipCandidates<T extends MemberLike>(actorRole: Role | null
 }
 
 /** Two letters for an avatar, from the part of the email before the @. */
-export function initialsFor(email: string) {
-  const name = email.split("@")[0] ?? "";
-  const parts = name.split(/[._-]+/).filter(Boolean);
+/** Two letters for an avatar, from a name ("Amina Otieno") or an email ("amina.otieno@…"). */
+export function initialsFor(nameOrEmail: string) {
+  const name = nameOrEmail.split("@")[0] ?? "";
+  const parts = name.split(/[\s._-]+/).filter(Boolean);
   const letters = parts.length >= 2 ? parts[0][0] + parts[1][0] : name.slice(0, 2);
   return letters.toUpperCase() || "?";
+}
+
+/** How a member is named in the console: the name they chose, or their email. */
+export function memberLabel(member: { email: string; displayName?: string | null }) {
+  return member.displayName?.trim() || member.email;
 }
 
 export function isValidEmail(value: string) {
