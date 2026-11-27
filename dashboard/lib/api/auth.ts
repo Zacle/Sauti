@@ -81,6 +81,10 @@ export const authApi = {
   me() {
     return apiRequest<Account>("/me");
   },
+  /** Sets the name colleagues see on your work; an empty name shows your email instead. */
+  renameAccount(displayName: string) {
+    return apiRequest<Account>("/me/display-name", { method: "PUT", body: JSON.stringify({ displayName }) });
+  },
   /** Your recent sign-ins and security changes. */
   accountActivity() {
     return apiRequest<ActivityEntry[]>("/me/activity");

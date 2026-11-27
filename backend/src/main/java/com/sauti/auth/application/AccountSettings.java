@@ -68,6 +68,14 @@ public class AccountSettings {
         return ConsoleAppearanceResponse.from(user);
     }
 
+    /** Sets the name colleagues see on this person's work; blank clears it. */
+    @Transactional
+    public void rename(UUID userId, String displayName) {
+        var user = requireUser(userId);
+        user.rename(displayName);
+        users.save(user);
+    }
+
     /** Remembers which workspace to reopen on the next sign-in, on any device. */
     @Transactional
     public void rememberWorkspace(UUID userId, UUID workspaceId) {

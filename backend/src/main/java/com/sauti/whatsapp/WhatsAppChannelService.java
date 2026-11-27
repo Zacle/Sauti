@@ -145,7 +145,13 @@ public class WhatsAppChannelService {
      * without waiting for 24 quiet hours. A new customer message reopens it.
      */
     public WhatsAppInboxDtos.ConversationResponse close(java.util.UUID tenantId, java.util.UUID conversationId) {
-        var closed = inbox.close(tenantId, conversationId);
+        return close(tenantId, conversationId, WhatsAppConversation.CLOSED_BY_TEAM);
+    }
+
+    /** Closes the conversation for the given reason, ending its call record if that is still open. */
+    public WhatsAppInboxDtos.ConversationResponse close(java.util.UUID tenantId, java.util.UUID conversationId,
+                                                        String reason) {
+        var closed = inbox.close(tenantId, conversationId, reason);
         var session = closed.openSession();
         if (session != null) {
             callPipelineService.endWhatsAppConversation(session.agentId(), session.customerNumber(), "conversation_closed");

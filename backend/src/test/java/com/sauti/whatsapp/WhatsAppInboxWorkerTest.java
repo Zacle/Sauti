@@ -31,4 +31,23 @@ class WhatsAppInboxWorkerTest {
         verify(inbox).sessionEnded(quiet.conversationId());
         verify(inbox, never()).sessionEnded(broken.conversationId());
     }
+
+    @Test
+    void closesConversationsQuietForAWeekAndKeepsGoingPastAFailure() {
+        var inbox = mock(WhatsAppInboxService.class);
+        var channel = mock(WhatsAppChannelService.class);
+        var broken = new WhatsAppInboxService.InactiveConversation(UUID.randomUUID(), UUID.randomUUID());
+        var quiet = new WhatsAppInboxService.InactiveConversation(UUID.randomUUID(), UUID.randomUUID());
+        var cutoff = org.mockito.ArgumentCaptor.forClass(java.time.OffsetDateTime.class);
+        when(inbox.inactiveOpen(cutoff.capture(), anyInt())).thenReturn(List.of(broken, quiet));
+        when(channel.close(broken.tenantId(), broken.conversationId(), WhatsAppConversation.CLOSED_INACTIVE))
+                .thenThrow(new IllegalStateException("database busy"));
+        var worker = new WhatsAppInboxWorker(channel, inbox, mock(CallPipelineService.class));
+
+        assertThat(worker.closeInactiveConversations()).isEqualTo(1);
+
+        verify(channel).close(quiet.tenantId(), quiet.conversationId(), WhatsAppConversation.CLOSED_INACTIVE);
+        assertThat(cutoff.getValue()).isBefore(java.time.OffsetDateTime.now().minusDays(7).plusMinutes(1))
+                .isAfter(java.time.OffsetDateTime.now().minusDays(7).minusMinutes(1));
+    }
 }

@@ -10,12 +10,15 @@ import org.springframework.stereotype.Component;
 /**
  * Keeps WhatsApp conversations moving without a new customer message: customer messages left unfinished
  * are processed again, and a conversation whose customer has been quiet for 24 hours is ended, so its
- * summary, CRM sync and follow-ups run then rather than whenever the customer next writes.
+ * summary, CRM sync and follow-ups run then rather than whenever the customer next writes. A conversation
+ * with no message for a week, and nothing waiting on the team, is closed so the open list stays current.
  */
 @Component
 public class WhatsAppInboxWorker {
     private static final Logger LOGGER = LoggerFactory.getLogger(WhatsAppInboxWorker.class);
     private static final int QUIET_BATCH = 50;
+    /** How long an open conversation may go without a message before it closes on its own. */
+    static final java.time.Duration INACTIVE_AFTER = java.time.Duration.ofDays(7);
 
     private final WhatsAppChannelService channel;
     private final WhatsAppInboxService inbox;
@@ -54,5 +57,21 @@ public class WhatsAppInboxWorker {
             }
         }
         return ended;
+    }
+
+    @Scheduled(initialDelayString = "${sauti.whatsapp.inactive-sweep-initial-delay-ms:300000}",
+            fixedDelayString = "${sauti.whatsapp.inactive-sweep-delay-ms:3600000}")
+    public int closeInactiveConversations() {
+        var closed = 0;
+        for (var item : inbox.inactiveOpen(OffsetDateTime.now().minus(INACTIVE_AFTER), QUIET_BATCH)) {
+            try {
+                channel.close(item.tenantId(), item.conversationId(), WhatsAppConversation.CLOSED_INACTIVE);
+                closed++;
+            } catch (RuntimeException exception) {
+                LOGGER.warn("Could not close an inactive WhatsApp conversation conversationId={}",
+                        item.conversationId(), exception);
+            }
+        }
+        return closed;
     }
 }

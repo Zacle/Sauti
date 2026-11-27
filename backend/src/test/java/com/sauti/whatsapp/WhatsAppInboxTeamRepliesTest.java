@@ -49,6 +49,24 @@ class WhatsAppInboxTeamRepliesTest {
     }
 
     @Test
+    void aReplyShowsTheSendersNameOnceTheyHaveSetOneAndTellsOpenConsoles() {
+        var harness = new Harness();
+        var userId = UUID.randomUUID();
+        harness.conversation.assign("human");
+        harness.conversation.receive("Amina", "Hi", java.time.OffsetDateTime.now());
+        when(harness.sender.sendTextTracked(anyString(), anyString(), anyString(), any()))
+                .thenReturn(new WhatsAppMessageSender.SendResult("wamid-2", "sent"));
+        when(harness.accounts.displayNames(List.of(userId))).thenReturn(Map.of(userId, "Ana Wanjiku"));
+
+        var sent = harness.service.sendHuman(harness.tenantId, harness.conversation.getId(), "On my way",
+                new StaffSender(userId, "ana@clinic.example"));
+
+        assertThat(sent.sentBy()).isEqualTo("Ana Wanjiku");
+        verify(harness.events, org.mockito.Mockito.atLeastOnce()).publishEvent(
+                new WhatsAppInboxChanged(harness.tenantId, harness.conversation.getId()));
+    }
+
+    @Test
     void sendsAnApprovedTemplateWithItsValuesInOrder() {
         var harness = new Harness();
         harness.conversation.assign("human");
@@ -137,8 +155,11 @@ class WhatsAppInboxTeamRepliesTest {
         final WhatsAppMessageSender sender = mock(WhatsAppMessageSender.class);
         final CommunicationUsageMeteringService metering = mock(CommunicationUsageMeteringService.class);
         final WhatsAppEmbeddedSignupService catalog = mock(WhatsAppEmbeddedSignupService.class);
+        final com.sauti.auth.application.AccountQueries accounts = mock(com.sauti.auth.application.AccountQueries.class);
+        final org.springframework.context.ApplicationEventPublisher events =
+                mock(org.springframework.context.ApplicationEventPublisher.class);
         final WhatsAppInboxService service = new WhatsAppInboxService(conversations, messages, integrations,
-                sender, metering, mock(PilotProvisioningPolicyService.class), catalog);
+                sender, metering, mock(PilotProvisioningPolicyService.class), catalog, accounts, events);
 
         Harness() {
             var connectionId = UUID.randomUUID();

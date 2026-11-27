@@ -30,6 +30,8 @@ export type WorkspaceMembership = {
 export type Account = {
   id: string;
   email: string;
+  /** The name colleagues see on this person’s work, such as WhatsApp replies; null until set. */
+  displayName: string | null;
   emailVerified: boolean;
   hasPassword: boolean;
   platformAdmin: boolean;

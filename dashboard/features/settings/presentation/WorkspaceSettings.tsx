@@ -120,7 +120,7 @@ export function WorkspaceSettings() {
       {active === "calls" && <CallsSection agentCount={agentCount} bargeInSensitivity={bargeInSensitivity} recordCalls={recordCalls} saveTranscript={saveTranscript} saving={saving === "calls"} setBargeInSensitivity={setBargeInSensitivity} setRecordCalls={setRecordCalls} setSaveTranscript={setSaveTranscript} save={saveCalls}/>}
       {active === "notifications" && <NotificationsSection connectionCount={connectionCount} consoleEnabled={consoleBookingNotifications} emailEnabled={emailBookingNotifications} saving={saving === "notifications"} setConsoleEnabled={setConsoleBookingNotifications} setEmailEnabled={setEmailBookingNotifications} save={saveNotifications}/>}
       {active === "privacy" && <><PrivacySection acknowledged={acknowledged} conversationDays={conversationDays} recordingDays={recordingDays} recordingEnabled={recordingEnabled} recordingOptions={recordingOptions} saving={saving === "privacy"} setAcknowledged={setAcknowledged} setConversationDays={(next) => { setConversationDays(next); if (recordingDays > next) setRecordingDays(Math.max(...[7, 30, 90].filter((days) => days <= next))); }} setRecordingDays={setRecordingDays} save={savePrivacy}/><WorkspaceExportPanel/></>}
-      {active === "security" && <><SecuritySection email={session?.account.email ?? ""}/><SignOutEverywhere/><RecentAccountActivity/><DeleteAccountPanel/></>}
+      {active === "security" && <><YourNameSection/><SecuritySection email={session?.account.email ?? ""}/><SignOutEverywhere/><RecentAccountActivity/><DeleteAccountPanel/></>}
       {active === "developer" && <><DeveloperSection secretConfigured={secretConfigured} saving={saving === "webhook"} webhookSecret={webhookSecret} webhookUrl={webhookUrl} setWebhookSecret={setWebhookSecret} setWebhookUrl={setWebhookUrl} save={saveWebhook}/><ApiKeysPanel/></>}
     </main>
     <footer className={styles.supportBar}><span>Need help choosing or changing a workspace setting?</span><Link href="/help">Open the Sauti help centre <ChevronRight size={15}/></Link></footer>
@@ -182,6 +182,27 @@ function timezoneOptions(current: string) {
   const api = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
   const values = api.supportedValuesOf?.("timeZone") ?? ["UTC", "Africa/Cairo", "Africa/Dakar", "Africa/Johannesburg", "Africa/Kinshasa", "Africa/Lagos", "Africa/Nairobi", "America/New_York", "Asia/Dubai", "Europe/London"];
   return Array.from(new Set([current, "UTC", ...values])).sort().map((timezone) => ({ value: timezone, label: timezone.replaceAll("_", " ") }));
+}
+
+/** The name colleagues see on this person’s work, such as their WhatsApp replies. */
+function YourNameSection() {
+  const { session, updateSession } = useAuth();
+  const saved = session?.account.displayName ?? "";
+  const [name, setName] = useState(saved), [saving, setSaving] = useState(false), [notice, setNotice] = useState(""), [failure, setFailure] = useState("");
+  useEffect(() => { setName(saved); }, [saved]);
+  async function save() {
+    if (!session) return;
+    setSaving(true); setFailure(""); setNotice("");
+    try {
+      const account = await authApi.renameAccount(name);
+      updateSession({ ...session, account: { ...session.account, displayName: account.displayName ?? (name.trim() || null) } });
+      setNotice(name.trim() ? "Saved. Your replies now show this name." : "Cleared. Your replies show your email.");
+    } catch (caught) { setFailure(messageFrom(caught, "Unable to save your name.")); } finally { setSaving(false); }
+  }
+  return <section className={styles.panel}><div className={styles.panelHeader}><div><h2>Your name</h2><p>Shown to your team on replies you send, for example in the WhatsApp inbox.</p></div></div>
+    {failure && <div className={styles.inlineError} role="alert">{failure}</div>}{notice && <div className={styles.inlineSuccess} role="status"><Check size={16}/>{notice}</div>}
+    <div className={styles.developerForm}><label className={styles.inputField}><span>Name</span><input autoComplete="name" maxLength={80} onChange={(event) => setName(event.target.value)} placeholder={session?.account.email ?? "Your name"} value={name}/><small>Leave it empty to show your email instead.</small></label></div>
+    <ActionBar note="Only people in your workspaces see it."><Button size="xs" disabled={saving || name.trim() === saved} onClick={() => void save()} type="button">{saving ? <LoaderCircle className={styles.spin} size={17}/> : <Save size={17}/>} {saving ? "Saving…" : "Save name"}</Button></ActionBar></section>;
 }
 
 /** Ends every session for this account, including this one, for example after losing a device. */

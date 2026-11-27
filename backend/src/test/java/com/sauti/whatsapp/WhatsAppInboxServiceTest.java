@@ -62,7 +62,9 @@ class WhatsAppInboxServiceTest {
                         mock(IntegrationService.class), mock(WhatsAppMessageSender.class),
                         mock(CommunicationUsageMeteringService.class),
                         mock(PilotProvisioningPolicyService.class),
-                        mock(com.sauti.integration.WhatsAppEmbeddedSignupService.class)));
+                        mock(com.sauti.integration.WhatsAppEmbeddedSignupService.class),
+                        mock(com.sauti.auth.application.AccountQueries.class),
+                        mock(org.springframework.context.ApplicationEventPublisher.class)));
     }
 
     private record Fixture(UUID tenantId, WhatsAppConversation conversation,

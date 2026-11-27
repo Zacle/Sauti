@@ -35,6 +35,14 @@ interface WhatsAppConversationRepository extends JpaRepository<WhatsAppConversat
                                              @Param("cursorAt") OffsetDateTime cursorAt,
                                              @Param("cursorId") UUID cursorId, Pageable page);
 
+    /** Open conversations quiet since the cutoff that are not waiting on the team, oldest first. */
+    @Query("""
+            select c from WhatsAppConversation c
+            where c.status <> 'closed' and c.needsAttention = false and c.lastMessageAt < :cutoff
+            order by c.lastMessageAt asc
+            """)
+    List<WhatsAppConversation> findInactiveOpen(@Param("cutoff") OffsetDateTime cutoff, Pageable page);
+
     List<WhatsAppConversation> findByTenantIdAndUpdatedAtAfterOrderByUpdatedAtAsc(
             UUID tenantId, OffsetDateTime since, Pageable page);
     Optional<WhatsAppConversation> findFirstByPhoneNumberIdAndCustomerNumberOrderByLastMessageAtDesc(

@@ -44,7 +44,7 @@ public class AccountQueries {
         var stillOpen = remembered != null
                 && memberships.stream().anyMatch(view -> view.workspace().id().equals(remembered));
         var preferred = stillOpen ? remembered : memberships.isEmpty() ? null : memberships.get(0).workspace().id();
-        return new AccountResponse(user.getId(), user.getEmail(), user.isEmailVerified(), user.hasPassword(),
+        return new AccountResponse(user.getId(), user.getEmail(), user.getDisplayName(), user.isEmailVerified(), user.hasPassword(),
                 isPlatformAdmin(user), preferred, memberships);
     }
 
@@ -52,6 +52,17 @@ public class AccountQueries {
     public SessionResponse session(SessionGrant grant) {
         return new SessionResponse(grant.accessToken().value(), grant.accessToken().expiresInSeconds(), account(grant.user()),
                 grant.platformAdminSession());
+    }
+
+    /** The names people have set, by account; people without one are left out. */
+    @Transactional(readOnly = true)
+    public java.util.Map<UUID, String> displayNames(java.util.Collection<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) return java.util.Map.of();
+        var names = new java.util.HashMap<UUID, String>();
+        users.findAllById(new java.util.HashSet<>(userIds)).forEach(user -> {
+            if (!user.isDeleted() && user.getDisplayName() != null) names.put(user.getId(), user.getDisplayName());
+        });
+        return names;
     }
 
     /** Can this person use Sauti administration (after the authenticator step)? */

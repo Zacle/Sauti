@@ -6,6 +6,7 @@ import com.sauti.auth.application.AccountQueries;
 import com.sauti.auth.application.AccountSettings;
 import com.sauti.auth.application.AuthDtos.AccountResponse;
 import com.sauti.auth.application.AuthDtos.DeleteAccountRequest;
+import com.sauti.auth.application.AuthDtos.DisplayNameRequest;
 import com.sauti.auth.application.AuthDtos.RememberWorkspaceRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -36,6 +37,13 @@ public class MeController {
 
     @GetMapping
     AccountResponse me(@AuthenticationPrincipal AuthenticatedUser user) {
+        return accounts.account(user.userId());
+    }
+
+    /** The name colleagues see on this person's work, such as WhatsApp replies. */
+    @PutMapping("/display-name")
+    AccountResponse rename(@AuthenticationPrincipal AuthenticatedUser user, @RequestBody DisplayNameRequest request) {
+        settings.rename(user.userId(), request.displayName());
         return accounts.account(user.userId());
     }
 

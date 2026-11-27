@@ -17,6 +17,8 @@ export type WhatsAppConversation = {
   needsAttention: boolean;
   attentionReason: WhatsAppAttentionReason | null;
   updatedAt: string;
+  /** Why it was closed: by someone on the team, or on its own after a week without messages. */
+  closedReason: "team" | "inactive" | null;
 };
 
 export type WhatsAppAttentionReason = "agent_failed" | "agent_paused" | "waiting_for_team";
@@ -34,7 +36,7 @@ export type WhatsAppMessage = {
   createdAt: string;
   /** Who wrote it; null for replies sent before authors were kept. */
   author: "customer" | "ai" | "staff" | null;
-  /** The team member's email (or API key name) for staff replies. */
+  /** For staff replies: the team member's name, or their email (or API key name) when they haven't set one. */
   sentBy: string | null;
   /** The approved template a staff message was sent from. */
   templateName: string | null;
