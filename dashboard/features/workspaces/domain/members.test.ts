@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actionsFor, assignableRoles, initialsFor, isValidEmail, ownershipCandidates, type MemberLike } from "./members.ts";
+import { actionsFor, assignableRoles, initialsFor, isValidEmail, memberLabel, ownershipCandidates, type MemberLike } from "./members.ts";
 
 const owner: MemberLike = { userId: "o", role: "OWNER" };
 const admin: MemberLike = { userId: "a", role: "ADMIN" };
@@ -42,6 +42,13 @@ test("ownership can be handed only by an Owner, to someone else", () => {
 test("initials and email checks", () => {
   assert.equal(initialsFor("amina.otieno@clinic.example"), "AO");
   assert.equal(initialsFor("joe@clinic.example"), "JO");
+  assert.equal(initialsFor("Amina Otieno"), "AO");
   assert.equal(isValidEmail(" new.person@example.com "), true);
   assert.equal(isValidEmail("not-an-email"), false);
+});
+
+test("members are named by the name they chose, or their email", () => {
+  assert.equal(memberLabel({ email: "amina@clinic.example", displayName: "Amina Otieno" }), "Amina Otieno");
+  assert.equal(memberLabel({ email: "amina@clinic.example", displayName: "  " }), "amina@clinic.example");
+  assert.equal(memberLabel({ email: "amina@clinic.example", displayName: null }), "amina@clinic.example");
 });

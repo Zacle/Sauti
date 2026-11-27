@@ -2,6 +2,35 @@
 
 This document lets a new coding agent continue safely from the previous state. Update it after every meaningful change.
 
+### 2026-11-27: FR7 WhatsApp channel, phase 4 (long threads, names everywhere, thread scrolling fix)
+
+Branch `whatsapp/thread-paging-names`, stacked on `whatsapp/inbox-live-names` (PR #14). No product decisions.
+
+- **Long threads page** (`GET /whatsapp/conversations/{id}/messages/page?before=&limit=50`):
+  - Returns the newest messages in time order, plus `earlierCursor` (keyset on created_at and id) for the
+    page above. Done in `WhatsAppInboxService.messagePage`.
+  - The inbox opens a thread with its newest 50 messages, scrolled to the bottom. "Load earlier messages"
+    adds the page above and keeps the reader exactly where they were.
+  - New messages scroll into view only when the reader is already at the bottom.
+  - `GET .../messages` (whole thread, or `since`) is unchanged and still drives polling.
+- **Thread scrolling fix (existing bug):**
+  - The workspace grid's row sized to its content, so on desktop a thread longer than the frame was
+    clipped and could not be scrolled.
+  - Fixed with `grid-template-rows: minmax(0, 1fr)` and `min-height: 0` on the panes. On narrow screens
+    the thread has its own height, so it scrolls there too.
+- **Names everywhere:**
+  - `MemberDirectory.MemberProfile` carries `displayName` (with `label()`).
+  - The Members list shows the name with the email under it. Role, remove and owner-transfer messages
+    use the name.
+  - The activity log shows each person's current name in place of the email written with the entry
+    (`ActivityLog.views`). Summaries keep their original wording.
+  - `initialsFor` handles names; new `memberLabel` helper.
+- **Tests:**
+  - `WhatsAppInboxFlowTest`: paging a 5-message thread two at a time.
+  - `WorkspaceSecurityFeaturesApiTest`: name in members and activity.
+  - `members.test.ts`: `initialsFor` and `memberLabel`.
+- **Not verified:** a thread of thousands of messages against a live database.
+
 ### 2026-11-27: FR7 WhatsApp channel, phase 3 (live inbox, names on replies, quiet chats close)
 
 Branch `whatsapp/inbox-live-names`, stacked on `whatsapp/reliable-inbox` (PR #13). Product decisions from the

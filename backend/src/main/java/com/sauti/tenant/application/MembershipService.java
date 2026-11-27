@@ -52,8 +52,7 @@ public class MembershipService {
         var all = memberships.findAllByIdTenantIdOrderByCreatedAtAsc(workspaceId);
         var profiles = directory.profiles(all.stream().map(Membership::userId).toList());
         return all.stream()
-                .map(membership -> MemberView.of(membership, profiles.containsKey(membership.userId())
-                        ? profiles.get(membership.userId()).email() : ""))
+                .map(membership -> MemberView.of(membership, profiles.get(membership.userId())))
                 .toList();
     }
 
@@ -70,7 +69,7 @@ public class MembershipService {
             record(workspaceId, actorUserId, "member.role_changed", targetUserId,
                     "Changed " + emailOf(targetUserId) + " from " + label(previous) + " to " + label(newRole));
         }
-        return MemberView.of(target, emailOf(targetUserId));
+        return MemberView.of(target, directory.profiles(List.of(targetUserId)).get(targetUserId));
     }
 
     @Transactional

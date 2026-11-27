@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Archive, ArchiveRestore, Bot, CheckCheck, Clock, FileText, LoaderCircle, MessageCircle, RefreshCw, Search, Send, TriangleAlert, UserRound } from "lucide-react";
 import { listAgents } from "@/lib/api/agents";
 import {
@@ -9,6 +9,7 @@ import {
   downloadWhatsAppMedia,
   listWhatsAppConversationChanges,
   listWhatsAppConversations,
+  listWhatsAppMessagePage,
   listWhatsAppMessages,
   markWhatsAppConversationRead,
   reopenWhatsAppConversation,
@@ -54,6 +55,11 @@ export function WhatsAppInboxPage() {
   const changesSince = useRef<string | null>(null);
   const latestMessage = useRef<string | null>(null);
   const signalTimer = useRef<number | undefined>(undefined);
+  const thread = useRef<HTMLDivElement>(null);
+  /** How the thread should scroll after the next render: to the newest message, or keep the reader's place. */
+  const nextScroll = useRef<{ mode: "bottom" } | { mode: "keep"; fromBottom: number } | null>(null);
+  const [earlierCursor, setEarlierCursor] = useState<string | null>(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
 
   const selectedId = selected?.id ?? "";
   const now = useNow(30_000);
@@ -103,6 +109,9 @@ export function WhatsAppInboxPage() {
   /** Adds new or changed messages of the open thread to what is shown. */
   const mergeMessages = useCallback((items: WhatsAppMessage[], replace = false) => {
     for (const item of items) if (!latestMessage.current || item.updatedAt > latestMessage.current) latestMessage.current = item.updatedAt;
+    const box = thread.current;
+    // Follow new messages only when the reader is already at the bottom; never pull them away from older ones.
+    if (replace || !box || box.scrollHeight - box.scrollTop - box.clientHeight < 80) nextScroll.current = { mode: "bottom" };
     setMessages((current) => {
       const byId = new Map((replace ? [] : current).map((item) => [item.id, item]));
       for (const item of items) byId.set(item.id, item);
@@ -137,8 +146,9 @@ export function WhatsAppInboxPage() {
   useEffect(() => {
     if (!selectedId) { setMessages([]); return; }
     latestMessage.current = null;
-    void Promise.all([listWhatsAppMessages(selectedId), markWhatsAppConversationRead(selectedId)])
-      .then(([items, updated]) => { mergeMessages(items, true); apply([updated]); })
+    setEarlierCursor(null);
+    void Promise.all([listWhatsAppMessagePage(selectedId), markWhatsAppConversationRead(selectedId)])
+      .then(([page, updated]) => { mergeMessages(page.items, true); setEarlierCursor(page.earlierCursor); apply([updated]); })
       .catch((caught) => setError(caught instanceof Error ? caught.message : "Unable to open the conversation."));
     // apply changes with the view; reopening the thread for that would reload it needlessly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,6 +159,31 @@ export function WhatsAppInboxPage() {
     const interval = window.setInterval(() => void pollMessages(selectedId), live ? 30_000 : 3_000);
     return () => window.clearInterval(interval);
   }, [live, pollMessages, selectedId]);
+
+  /** Adds the page above the oldest message shown, keeping the reader where they were. */
+  async function loadEarlier() {
+    if (!selectedId || !earlierCursor) return;
+    setLoadingEarlier(true);
+    try {
+      const page = await listWhatsAppMessagePage(selectedId, earlierCursor);
+      const box = thread.current;
+      if (box) nextScroll.current = { mode: "keep", fromBottom: box.scrollHeight - box.scrollTop };
+      setMessages((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        return [...page.items.filter((item) => !seen.has(item.id)), ...current];
+      });
+      setEarlierCursor(page.earlierCursor);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load earlier messages.");
+    } finally { setLoadingEarlier(false); }
+  }
+
+  useLayoutEffect(() => {
+    const box = thread.current, scroll = nextScroll.current;
+    if (!box || !scroll) return;
+    nextScroll.current = null;
+    box.scrollTop = scroll.mode === "bottom" ? box.scrollHeight : box.scrollHeight - scroll.fromBottom;
+  }, [messages]);
 
   async function loadMore() {
     if (!nextCursor) return;
@@ -270,7 +305,10 @@ export function WhatsAppInboxPage() {
             {selected.closedReason === "inactive" ? "Closed after a week without messages." : "Closed."} If the customer writes again, it reopens on its own.</div>
             : selected.needsAttention && selected.attentionReason && <div className={styles.attention} role="status">
               <TriangleAlert size={16} /><span>{attentionCopy(selected.attentionReason, selected.mode)}</span></div>}
-          <div className={styles.messages}>
+          <div className={styles.messages} ref={thread}>
+            {earlierCursor && <div className={styles.loadEarlier}>
+              <Button variant="secondary" size="xs" disabled={loadingEarlier} onClick={() => void loadEarlier()}>
+                {loadingEarlier && <LoaderCircle className="spin" />} Load earlier messages</Button></div>}
             {messages.map((message) => <article key={message.id}
               className={message.direction === "outbound" ? styles.outbound : styles.inbound}>
               {messageLabel(message) && <small>{messageLabel(message)}</small>}

@@ -7,6 +7,7 @@ import com.sauti.tenant.domain.Permission;
 import com.sauti.tenant.domain.WorkspaceInvitation;
 import com.sauti.tenant.domain.WorkspaceRole;
 import com.sauti.tenant.domain.WorkspaceStatus;
+import com.sauti.tenant.application.port.MemberDirectory;
 import java.time.OffsetDateTime;
 import java.util.Set;
 import java.util.UUID;
@@ -27,9 +28,12 @@ public final class WorkspaceViews {
     public record WorkspaceAccess(UUID workspaceId, WorkspaceRole role, WorkspaceStatus status) {
     }
 
-    public record MemberView(UUID userId, String email, WorkspaceRole role, OffsetDateTime joinedAt) {
-        public static MemberView of(Membership membership, String email) {
-            return new MemberView(membership.userId(), email, membership.role(), membership.joinedAt());
+    /** @param displayName the name the member chose, or null when they haven't set one */
+    public record MemberView(UUID userId, String email, String displayName, WorkspaceRole role,
+                             OffsetDateTime joinedAt) {
+        public static MemberView of(Membership membership, MemberDirectory.MemberProfile profile) {
+            return new MemberView(membership.userId(), profile == null ? "" : profile.email(),
+                    profile == null ? null : profile.displayName(), membership.role(), membership.joinedAt());
         }
     }
 

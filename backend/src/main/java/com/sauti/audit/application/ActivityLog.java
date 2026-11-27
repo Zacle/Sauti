@@ -56,14 +56,27 @@ public class ActivityLog {
     @Transactional(readOnly = true)
     public List<ActivityView> workspaceActivity(UUID workspaceId, OffsetDateTime before) {
         var cursor = before == null ? now().plusMinutes(1) : before;
-        return events.findTop50ByWorkspaceIdAndCreatedAtBeforeOrderByCreatedAtDesc(workspaceId, cursor).stream()
-                .map(ActivityView::of)
-                .toList();
+        return views(events.findTop50ByWorkspaceIdAndCreatedAtBeforeOrderByCreatedAtDesc(workspaceId, cursor));
     }
 
     @Transactional(readOnly = true)
     public List<ActivityView> accountActivity(UUID userId) {
-        return events.findTop20ByUserIdOrderByCreatedAtDesc(userId).stream().map(ActivityView::of).toList();
+        return views(events.findTop20ByUserIdOrderByCreatedAtDesc(userId));
+    }
+
+    /**
+     * Shows each person by the name they have chosen now; the label written with the entry (their email
+     * then, "Sauti", or an API key's name) is kept for everyone else.
+     */
+    private List<ActivityView> views(List<AuditEvent> rows) {
+        var actors = rows.stream().map(AuditEvent::actorUserId).filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        var profiles = actors.isEmpty() ? java.util.Map.<UUID, MemberDirectory.MemberProfile>of() : directory.profiles(actors);
+        return rows.stream().map(event -> {
+            var profile = event.actorUserId() == null ? null : profiles.get(event.actorUserId());
+            var name = profile == null ? null : profile.displayName();
+            return ActivityView.of(event, name == null || name.isBlank() ? event.actorLabel() : name);
+        }).toList();
     }
 
     private String emailOf(UUID userId) {
@@ -77,8 +90,8 @@ public class ActivityLog {
     }
 
     public record ActivityView(UUID id, String action, String actor, String summary, OffsetDateTime at) {
-        static ActivityView of(AuditEvent event) {
-            return new ActivityView(event.id(), event.action(), event.actorLabel(), event.summary(), event.createdAt());
+        static ActivityView of(AuditEvent event, String actor) {
+            return new ActivityView(event.id(), event.action(), actor, event.summary(), event.createdAt());
         }
     }
 }

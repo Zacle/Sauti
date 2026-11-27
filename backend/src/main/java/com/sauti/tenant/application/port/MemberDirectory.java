@@ -14,6 +14,15 @@ public interface MemberDirectory {
 
     Optional<UUID> findUserIdByEmail(String email);
 
-    record MemberProfile(UUID userId, String email) {
+    /** @param displayName the name the person chose, or null when they haven't set one */
+    record MemberProfile(UUID userId, String email, String displayName) {
+        public MemberProfile(UUID userId, String email) {
+            this(userId, email, null);
+        }
+
+        /** The name to show for this person: their chosen name, or their email. */
+        public String label() {
+            return displayName == null || displayName.isBlank() ? email : displayName;
+        }
     }
 }

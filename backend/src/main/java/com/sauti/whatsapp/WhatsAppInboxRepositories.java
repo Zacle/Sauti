@@ -63,6 +63,18 @@ interface WhatsAppMessageRepository extends JpaRepository<WhatsAppMessage, UUID>
     boolean existsByProviderMessageId(String providerMessageId);
     Optional<WhatsAppMessage> findByProviderMessageId(String providerMessageId);
     List<WhatsAppMessage> findAllByConversation_IdAndTenantIdOrderByCreatedAtAsc(UUID conversationId, UUID tenantId);
+    /** Messages of a thread before the cursor (sent time and id), newest first. */
+    @Query("""
+            select m from WhatsAppMessage m
+            where m.conversation.id = :conversationId and m.tenantId = :tenantId
+              and (m.createdAt < :cursorAt or (m.createdAt = :cursorAt and m.id < :cursorId))
+            order by m.createdAt desc, m.id desc
+            """)
+    List<WhatsAppMessage> findThreadPage(@Param("conversationId") UUID conversationId,
+                                         @Param("tenantId") UUID tenantId,
+                                         @Param("cursorAt") OffsetDateTime cursorAt,
+                                         @Param("cursorId") UUID cursorId, Pageable page);
+
     List<WhatsAppMessage> findAllByConversation_IdAndTenantIdAndUpdatedAtAfterOrderByCreatedAtAsc(
             UUID conversationId, UUID tenantId, OffsetDateTime since);
     Optional<WhatsAppMessage> findFirstByConversation_IdAndDirectionOrderByCreatedAtDesc(UUID conversationId, String direction);

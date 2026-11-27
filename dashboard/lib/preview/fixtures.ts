@@ -266,9 +266,9 @@ const routes: Record<string, unknown> = {
   ],
   "GET /me/deletion-impact": [{ workspaceId: "tenant-preview", name: "Bright Smile Dental", otherMembers: 2 }],
   "GET /workspaces/tenant-preview/members": [
-    { userId: "user-preview", email: "owner@brightsmile.example", role: "OWNER", joinedAt: iso(now - 86_400_000 * 120) },
-    { userId: "user-amina", email: "amina.otieno@brightsmile.example", role: "ADMIN", joinedAt: iso(now - 86_400_000 * 40) },
-    { userId: "user-joseph", email: "joseph@brightsmile.example", role: "MEMBER", joinedAt: iso(now - 86_400_000 * 9) },
+    { userId: "user-preview", email: "owner@brightsmile.example", displayName: "Achieng Otieno", role: "OWNER", joinedAt: iso(now - 86_400_000 * 120) },
+    { userId: "user-amina", email: "amina.otieno@brightsmile.example", displayName: "Amina Otieno", role: "ADMIN", joinedAt: iso(now - 86_400_000 * 40) },
+    { userId: "user-joseph", email: "joseph@brightsmile.example", displayName: null, role: "MEMBER", joinedAt: iso(now - 86_400_000 * 9) },
   ],
   "GET /workspaces/tenant-preview/invitations": [
     { id: "inv-1", email: "reception@brightsmile.example", role: "MEMBER", createdAt: iso(now - 86_400_000 * 2), expiresAt: iso(now + 86_400_000 * 5), expired: false },
@@ -724,7 +724,7 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
     return structuredClone(found);
   }
 
-  const whatsapp = clean.match(/^\/whatsapp\/conversations\/([^/]+)\/(messages|read|assignment|close|reopen|templates)$/);
+  const whatsapp = clean.match(/^\/whatsapp\/conversations\/([^/]+)\/(messages\/page|messages|read|assignment|close|reopen|templates)$/);
   if (whatsapp) {
     const conversation = whatsappConversations.find((item) => item.id === whatsapp[1]) ?? whatsappConversations[0];
     const sentAt = new Date().toISOString();
@@ -737,6 +737,7 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
       return structuredClone(conversation);
     };
     if (whatsapp[2] === "messages" && verb === "GET") return path.includes("since=") ? [] : whatsappThread(whatsapp[1]);
+    if (whatsapp[2] === "messages/page") return whatsappThreadPage(whatsapp[1], new URLSearchParams(path.split("?")[1] ?? ""));
     if (whatsapp[2] === "templates" && verb === "GET") return structuredClone(whatsappTemplates);
     if (whatsapp[2] === "messages" || whatsapp[2] === "templates") {
       const request = typeof body === "string" ? (JSON.parse(body) as { text?: string; name?: string; values?: Record<string, string> }) : {};
@@ -768,6 +769,25 @@ export function previewResponse(path: string, method = "GET", body?: BodyInit | 
   return [];
 }
 
+
+/** A long sample thread for Amani (wa-1), so paging can be seen; other threads fit on one page. */
+function whatsappThreadPage(conversationId: string, params: URLSearchParams) {
+  const recent = whatsappThread(conversationId);
+  const older = conversationId !== "wa-1" ? [] : Array.from({ length: 60 }, (_, index) => {
+    const minutes = 3 * DAY / 60_000 - index * 30;
+    const inbound = index % 2 === 0;
+    const at = new Date(Date.now() - minutes * 60_000).toISOString();
+    return { id: `wa-1-old-${index}`, providerMessageId: null, direction: inbound ? "inbound" : "outbound", type: "text",
+      body: inbound ? `Earlier question ${index / 2 + 1}` : `Earlier answer ${(index - 1) / 2 + 1}`, mediaId: null, mediaMimeType: null,
+      status: inbound ? "received" : "read", failureReason: null, createdAt: at, updatedAt: at,
+      author: inbound ? "customer" : "ai", sentBy: null, templateName: null };
+  });
+  const all = [...older, ...recent];
+  const end = params.get("before") ? Number(params.get("before")) : all.length;
+  const limit = Number(params.get("limit") ?? 50);
+  const start = Math.max(0, end - limit);
+  return { items: all.slice(start, end), earlierCursor: start > 0 ? String(start) : null };
+}
 
 function whatsappThread(conversationId: string) {
   const message = (offsetMinutes: number, direction: "inbound" | "outbound", text: string) => ({

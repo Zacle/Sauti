@@ -14,6 +14,7 @@ import {
   assignableRoles,
   canManageMembers,
   initialsFor,
+  memberLabel,
   isValidEmail,
   ownershipCandidates,
   ROLE_DESCRIPTIONS,
@@ -109,7 +110,7 @@ export function MembersSection() {
     setFailure("");
     try {
       await workspacesApi.changeRole(workspaceId, member.userId, role as WorkspaceRole);
-      toast.success("Role updated", { description: `${member.email} is now ${roleLabel(role as Role)}.` });
+      toast.success("Role updated", { description: `${memberLabel(member)} is now ${roleLabel(role as Role)}.` });
       await load();
     } catch (caught) {
       setFailure(messageFrom(caught, "Unable to change the role."));
@@ -144,7 +145,7 @@ export function MembersSection() {
     try {
       if (confirmation.kind === "remove") {
         await workspacesApi.removeMember(workspaceId, confirmation.member.userId);
-        toast.success("Member removed", { description: `${confirmation.member.email} can no longer open this workspace.` });
+        toast.success("Member removed", { description: `${memberLabel(confirmation.member)} can no longer open this workspace.` });
         setConfirmation(null);
         await load();
       } else if (confirmation.kind === "leave") {
@@ -156,7 +157,7 @@ export function MembersSection() {
         window.location.assign("/dashboard");
       } else {
         await workspacesApi.transferOwnership(workspaceId, confirmation.member.userId);
-        toast.success("Ownership transferred", { description: `${confirmation.member.email} is now the Owner. You're an Admin.` });
+        toast.success("Ownership transferred", { description: `${memberLabel(confirmation.member)} is now the Owner. You're an Admin.` });
         setConfirmation(null);
         setNewOwnerId("");
         await refreshAccount();
@@ -218,16 +219,16 @@ export function MembersSection() {
             const self = member.userId === myId;
             return (
               <li key={member.userId} className={styles.memberRow}>
-                <span className={styles.avatar} aria-hidden="true">{initialsFor(member.email)}</span>
+                <span className={styles.avatar} aria-hidden="true">{initialsFor(memberLabel(member))}</span>
                 <span className={styles.memberIdentity}>
-                  <strong>{member.email}{self ? <em> (you)</em> : null}</strong>
-                  <small>Joined {dateFormat.format(new Date(member.joinedAt))}</small>
+                  <strong>{memberLabel(member)}{self ? <em> (you)</em> : null}</strong>
+                  <small>{member.displayName ? `${member.email} · ` : ""}Joined {dateFormat.format(new Date(member.joinedAt))}</small>
                 </span>
                 <span className={styles.memberRole}>
                   {actions.changeRole ? (
                     <Select
                       size="sm"
-                      ariaLabel={`Role for ${member.email}`}
+                      ariaLabel={`Role for ${memberLabel(member)}`}
                       value={member.role}
                       disabled={busyRow === member.userId}
                       onValueChange={(value) => void changeRole(member, value)}
@@ -302,7 +303,7 @@ export function MembersSection() {
               placeholder="Choose a member"
               value={newOwnerId}
               onValueChange={setNewOwnerId}
-              options={candidates.map((member) => ({ value: member.userId, label: member.email }))}
+              options={candidates.map((member) => ({ value: member.userId, label: memberLabel(member), description: member.displayName ? member.email : undefined }))}
             />
             <Button
               size="xs"
@@ -346,9 +347,9 @@ export function MembersSection() {
 }
 
 function confirmTitle(confirmation: Confirmation, workspaceName: string) {
-  if (confirmation.kind === "remove") return `Remove ${confirmation.member.email}?`;
+  if (confirmation.kind === "remove") return `Remove ${memberLabel(confirmation.member)}?`;
   if (confirmation.kind === "leave") return `Leave ${workspaceName}?`;
-  return `Make ${confirmation.member.email} the Owner?`;
+  return `Make ${memberLabel(confirmation.member)} the Owner?`;
 }
 
 function confirmText(confirmation: Confirmation) {
